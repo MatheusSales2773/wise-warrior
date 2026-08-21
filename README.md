@@ -60,6 +60,8 @@ Wise Warrior transforma a rotina de estudos em uma jornada de RPG cooperativa. E
 docker compose up --build
 ```
 
+Para iniciar em segundo plano, use `docker compose up -d --build`. Consulte o estado dos serviços com `docker compose ps`.
+
 Depois que os serviços estiverem saudáveis:
 
 - Frontend: `http://localhost:5173`
