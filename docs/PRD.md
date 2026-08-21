@@ -74,6 +74,14 @@ O Pitch descreve tiers gratuito/premium, mas nenhum módulo de backend, entidade
 Nenhum dos seis documentos define pipeline de build/deploy, cobertura mínima de testes, ou um contrato de API/WebSocket explícito entre front e back — apesar de o front e o back serem times/módulos que precisam desse contrato para trabalhar em paralelo. Isso é o maior risco de atraso de cronograma dado o prazo de 1 ano com 4 pessoas.
 **Decisão proposta:** seções 10 (API), 11 (dados), 12 (infraestrutura/CI-CD) e 13 (confiabilidade e testes) deste PRD cobrem essas lacunas.
 
+### 3.8 Responsividade mobile não especificada
+A Documentação de Interface só descreve layouts desktop (sidebar fixa de 280px na tela de Guilda, painel de três colunas na tela de Sessão) e nenhum dos seis documentos define breakpoints, comportamento de navegação em telas pequenas, tamanho mínimo de área de toque, ou se o produto é web responsivo ou aplicativo nativo. O pedido do usuário é explícito: **web responsivo** (não app nativo — não há App Store/Play Store no horizonte deste projeto).
+**Decisão fechada (ADR-008):** o SPA React já decidido no Documento de Arquitetura passa a ser mobile-first responsivo, com breakpoints e adaptação de layout definidos na seção 13. Nenhum código nativo (React Native, Swift, Kotlin) entra no escopo — ver seção 13 e ADR-008 para o detalhamento.
+
+### 3.9 Persistência de sessão multi-dispositivo não especificada
+O usuário pediu que as informações se propaguem "no mesmo ambiente" por um sistema de credenciais — ou seja, login no celular e no notebook devem ver o mesmo progresso em tempo real. O Documento de Arquitetura já prevê JWT access+refresh, mas nenhum documento define: quantas sessões simultâneas por usuário, como revogar uma sessão específica (ex.: "sair de todos os dispositivos"), nem como eventos em tempo real (XP, level-up, raid) se propagam para todos os dispositivos logados do mesmo usuário ao mesmo tempo.
+**Decisão fechada (ADR-009):** cada login gera uma sessão persistente própria (refresh token rotativo por dispositivo, tabela `Session` — seção 9), e o servidor propaga todo evento relevante do usuário pela room `user:{id}` do Socket.IO (seção 10), que recebe todas as conexões ativas desse usuário independentemente do dispositivo. Como o estado (XP, sessão, guilda) já é 100% server-side, a sincronização entre dispositivos é uma consequência natural da arquitetura — o que faltava era formalizar sessão multi-dispositivo e o fanout de eventos, o que este ADR resolve.
+
 ---
 
 ## 4. Caminho recomendado (visão conceitual)
@@ -105,6 +113,8 @@ Nenhum dos seis documentos define pipeline de build/deploy, cobertura mínima de
 | **Must** | Guildas (criar/entrar) + ranking interno | `guilds` | Diferencial crítico |
 | **Must** | Raids semanais com meta coletiva | `raids` | Diferencial crítico |
 | **Must** | Validação server-side de sessão (antifraude) | `sessions`/`progression` | Gap da seção 3.5 |
+| **Must** | Sessões persistentes multi-dispositivo (login em vários dispositivos, revogação, fanout de eventos) | `auth` | ADR-009 — pedido explícito do usuário |
+| **Must** | Layout responsivo mobile-first (sem app nativo) | frontend `shared` | ADR-008 — pedido explícito do usuário |
 | **Should** | Chat de guilda em tempo real | `chat` | Importante, mas depende de `guilds` estar estável |
 | **Should** | Perfil com itens cosméticos e equipagem | `users` | Importante |
 | **Should** | Notificações em tempo real (level-up, raid concluída, convite) | `notifications` | Importante |
@@ -138,12 +148,50 @@ Nenhum dos seis documentos define pipeline de build/deploy, cobertura mínima de
 - Quando o usuário equipa um item cosmético desbloqueado, o sistema shall persistir a alteração e shall refletir a mudança no perfil visível por outros membros da guilda.
 - Onde um item exigir conclusão de raid específica, o sistema shall bloquear a equipagem até que essa condição seja satisfeita.
 
+**Sessão persistente multi-dispositivo (novo — ADR-009)**
+- Quando um usuário efetua login, o sistema shall criar uma nova sessão persistente (linha em `Session`) sem invalidar sessões ativas em outros dispositivos, até um limite de 5 sessões simultâneas — ao exceder, o sistema shall revogar automaticamente a sessão menos recentemente usada.
+- Quando qualquer evento de progresso (XP, nível, raid, convite de guilda) ocorre, o sistema shall propagá-lo em tempo real para todas as conexões WebSocket ativas do mesmo usuário, independentemente do dispositivo.
+- Onde o usuário revoga uma sessão específica ou aciona "sair de todos os dispositivos", o sistema shall invalidar o(s) refresh token(s) correspondente(s) imediatamente, encerrando a conexão WebSocket associada.
+
+**Responsividade (novo — ADR-008)**
+- Onde a viewport for menor que 640px, o sistema shall recolher painéis laterais fixos (guilda, companheiro) em um drawer/bottom-sheet acionável, mantendo o timer ou conteúdo principal como foco central.
+- O sistema shall garantir área de toque mínima de 44×44px em todo elemento interativo em viewports mobile.
+
 *(Requisitos completos, com fluxos alternativos e de exceção, já estão detalhados nos UC01–UC04; este PRD não os duplica — apenas resolve as lacunas identificadas na seção 3.)*
 
 ### 7.3 Regra de negócio antifraude (RN-ANTIFRAUDE) — nova, preenche gap 3.5
 - O backend shall considerar inválida qualquer sessão cuja duração reportada exceda 4 horas contínuas sem pausa registrada, ou cuja soma diária de sessões exceda 16 horas.
 - A validação shall ocorrer exclusivamente no servidor, a partir de timestamps de início/fim gerados pelo servidor (heartbeat periódico, conforme UC03/S01) — o cliente não é fonte de verdade.
 - Sessões descartadas por antifraude shall permanecer visíveis ao usuário com um indicador de "não contabilizada", nunca silenciosamente removidas.
+
+### 7.4 Critérios de aceite — ADR-008 e ADR-009 (feature-forge)
+
+**Responsividade (ADR-008)**
+- Dado um usuário autenticado acessando de um viewport <640px, quando a tela de Guilda carrega, então o painel lateral fixo aparece como navegação inferior, não como sidebar de 280px.
+- Dado qualquer botão ou link interativo em viewport mobile, quando renderizado, então sua área de toque é ≥44×44px.
+- Dado `prefers-reduced-motion: reduce` ativo no sistema do usuário, quando qualquer animação (glow, level-up) ocorreria, então ela é substituída por uma transição de opacidade ou omitida.
+
+**Sessão multi-dispositivo (ADR-009)**
+- Dado um usuário já logado no notebook, quando ele faz login no celular, então a sessão do notebook permanece ativa e ambas aparecem em `GET /users/me/sessions`.
+- Dado dois dispositivos logados do mesmo usuário, quando um deles ganha XP numa sessão de estudo, então o outro dispositivo recebe o evento `progress:xpUpdated` via WebSocket em até 1 segundo, sem recarregar a página.
+- Dado um usuário com 5 sessões ativas, quando ele faz login num 6º dispositivo, então a sessão menos recentemente usada é revogada automaticamente.
+- Dado um usuário que aciona "sair de todos os dispositivos", quando a ação é confirmada, então toda sessão ativa é revogada e cada dispositivo é desconectado do WebSocket na próxima tentativa de uso do access token expirado.
+
+### 7.5 Checklist de implementação — backlog Must da Fase 1
+
+- [x] `auth`: registro, login, refresh rotativo, logout, sessão multi-dispositivo (ADR-009)
+- [x] `users`: perfil, listagem/revogação de sessões, equipar cosmético com checagem de `plan_tier` (ADR-007)
+- [x] `progression`: fórmula de XP/nível como domínio puro testado, notificação de level-up em tempo real
+- [x] `sessions`: start/heartbeat/complete, validação antifraude (RN-ANTIFRAUDE) como domínio puro testado
+- [x] `guilds`: criar/entrar/detalhe
+- [x] `raids`: entrar, registrar contribuição, ranking
+- [x] `realtime`: gateway Socket.IO com rooms `user:{id}` e `guild:{id}`
+- [x] Frontend: shell responsivo mobile-first (ADR-008), páginas de login/cadastro/dashboard/sessão/guilda/perfil
+- [x] Contrato de API publicado e validado (`docs/api/openapi.yaml`, lint limpo — seção 10)
+- [ ] `docs/api/asyncapi.yaml` (contrato dos eventos WebSocket) — ainda não escrito
+- [ ] Migrations TypeORM versionadas (schema hoje só via `synchronize` em dev — ver seção 12)
+- [ ] Provisionamento real da VM Oracle Always Free e primeiro deploy (ADR-006)
+- [ ] Boot do NestJS + testes de integração contra MySQL real (não verificável neste ambiente de execução — ver seção 16)
 
 ---
 
@@ -175,6 +223,69 @@ Nenhum dos seis documentos define pipeline de build/deploy, cobertura mínima de
 ### ADR-007: Flags de entitlement (freemium) entram na Fase 1, sem gateway de pagamento
 **Status:** Aceito. **Contexto:** Pitch descreve tiers grátis/premium sem nenhuma contrapartida técnica nos outros documentos. **Decisão:** adicionar `plan_tier` ao perfil do usuário e checagem de feature flag nos recursos marcados como premium no Pitch (cosméticos exclusivos, raids avançados, perfil destacado) — todos liberados por padrão no MVP, mas já passando pela checagem de flag em vez de código hardcoded. **Consequência:** nenhuma migração de dados será necessária quando um gateway de pagamento real for integrado pós-MVP; nenhum código de cobrança (Stripe, PIX, etc.) entra na Fase 1.
 
+### ADR-008: Web responsivo mobile-first, sem app nativo
+**Status:** Aceito. **Contexto:** pedido explícito do usuário — mobile deve funcionar, mas o produto continua sendo o SPA React já decidido, não um app nativo separado. **Decisão:** aplicar breakpoints mobile-first no design system já documentado (Documentação de Interface): `mobile` (<640px), `tablet` (640–1024px), `desktop` (>1024px). Mudanças estruturais de layout exigidas:
+- Sidebar fixa de 280px (tela de Guilda) vira drawer/bottom-sheet recolhível em mobile.
+- Painel de três colunas (tela de Sessão: companheiro + timer + guilda) vira navegação em abas/scroll vertical em mobile, com o timer sempre como elemento principal acima da dobra.
+- Área de toque mínima de 44×44px em todo elemento interativo (bumped a partir dos 40px de botão já documentados).
+- Tipografia display (Cinzel, 64–80px no desktop) reduz para 32–40px em mobile para não quebrar o layout do timer.
+- `safe-area-inset` (notch/home indicator) respeitado em componentes fixos (barra inferior de navegação, toasts).
+PWA (manifest + service worker básico para instalável/ícone de tela inicial) é **Could** — não obrigatório na Fase 1, mas a estrutura Vite já tida no Documento de Arquitetura suporta adicionar depois sem retrabalho. **Consequência:** a Documentação de Interface precisa de um adendo com os breakpoints e os três layouts alternativos (Sessão, Guilda, Perfil) em mobile antes da implementação de tela.
+
+### ADR-009: Sessão persistente multi-dispositivo com fanout de eventos por usuário
+**Status:** Aceito. **Contexto:** pedido explícito do usuário — múltiplos dispositivos logados devem ver o mesmo progresso propagado em tempo real. **Decisão:**
+- Cada login cria uma linha na tabela `Session` (seção 9), com um refresh token próprio (rotativo, hash armazenado — nunca o token em texto puro). Limite de 5 sessões simultâneas por usuário (configurável); ao exceder, a sessão mais antiga é revogada automaticamente.
+- Refresh token entregue como cookie `httpOnly` + `Secure` + `SameSite=Lax` no client web (não em `localStorage`, para reduzir superfície de XSS); access token JWT de vida curta (15 min) usado no `Authorization` header.
+- Todo evento relevante (XP ganho, level-up, progresso de raid, convite de guilda) é emitido pelo backend na room Socket.IO `user:{id}` (já prevista na seção 10) — cada dispositivo logado abre sua própria conexão de socket e entra automaticamente nessa room ao autenticar, recebendo o mesmo evento em paralelo.
+- Endpoint de "sair de todos os dispositivos" revoga todas as linhas de `Session` do usuário de uma vez; endpoint de listagem de sessões ativas permite revogar um dispositivo específico (ex.: notebook antigo esquecido logado).
+**Consequência:** nenhuma duplicação de estado entre dispositivos é necessária — o MySQL já é a fonte única de verdade (arquitetura já documentada); este ADR só formaliza como a autenticação e o tempo real acompanham múltiplos dispositivos do mesmo usuário.
+
+### 8.1 Diagrama de arquitetura (implementado em `dev/phase-1`)
+
+```mermaid
+graph TD
+    subgraph Client["Cliente (Browser/Mobile)"]
+        SPA["SPA React + TypeScript<br/>shell responsivo (ADR-008)"]
+    end
+
+    subgraph VM["VM Oracle Cloud Always Free (ADR-006)"]
+        subgraph Nest["NestJS — monólito modular"]
+            Auth["auth<br/>+ Session (ADR-009)"]
+            Users["users"]
+            Prog["progression"]
+            Sess["sessions<br/>+ antifraude"]
+            Guilds["guilds"]
+            Raids["raids"]
+            RT["realtime<br/>(Socket.IO Gateway)"]
+        end
+        MySQL[("MySQL 8<br/>(HeatWave Always Free)")]
+    end
+
+    SPA -->|"HTTPS REST<br/>+ cookie httpOnly refresh"| Auth
+    SPA -->|"HTTPS REST"| Users
+    SPA -->|"HTTPS REST"| Sess
+    SPA -->|"HTTPS REST"| Guilds
+    SPA -->|"HTTPS REST"| Raids
+    SPA <-->|"WSS — room user:{id}<br/>room guild:{id}"| RT
+
+    Sess --> Prog
+    Sess --> Raids
+    Raids --> Guilds
+    Prog --> RT
+    Raids --> RT
+
+    Auth --> MySQL
+    Users --> MySQL
+    Prog --> MySQL
+    Sess --> MySQL
+    Guilds --> MySQL
+    Raids --> MySQL
+```
+
+Setas de `Sess`/`Raids`/`Prog` para módulos vizinhos representam chamadas ao Service público do módulo destino (nunca ao repositório — regra do Documento de Arquitetura, seção 3.2, reaplicada em todo o código da Fase 1). Redis (adapter multi-réplica) não aparece porque está adiado (ADR-003).
+
+**Redundância e ponto único de falha (cloud-architect):** a VM Oracle é, por desenho, um SPOF — não há Multi-AZ nem segunda réplica nesta fase (ADR-006/ADR-003). Isso é um risco aceito explicitamente, não um descuido: o projeto é acadêmico, sem orçamento, e o `docker-compose.yml` é a mitigação — se a instância for terminada (risco real, ver ADR-006), o mesmo arquivo sobe em qualquer VM/provedor em minutos, sem reescrever infraestrutura. Backup do MySQL via dump periódico pro Object Storage Always Free (seção 11) é a única redundância de dado disponível nesse orçamento.
+
 ---
 
 ## 9. Modelo de dados essencial (novo — preenche o "Dicionário de Dados" vazio do Documento de Visão)
@@ -192,6 +303,7 @@ Entidades principais (nomes lógicos, DDL real fica para a implementação):
 - **Raid** `(id, guild_id FK, title, goal_xp, progress_xp, starts_at, ends_at, status)`
 - **RaidContribution** `(raid_id FK, user_id FK, study_session_id FK, xp_contributed)`
 - **GuildChatMessage** `(id, guild_id FK, user_id FK, body, sent_at)` — reter apenas últimas N mensagens por guilda, conforme Documento de Arquitetura
+- **Session** `(id, user_id FK, refresh_token_hash, device_label, user_agent, created_at, last_used_at, revoked_at nullable)` — uma linha por dispositivo logado, conforme ADR-009
 
 Índices críticos: `StudySession(user_id, started_at)`, `RaidContribution(raid_id, user_id)`, `GuildMembership(guild_id, user_id)` — todos com chave composta para evitar full scan em ranking e cálculo de progresso de raid.
 
@@ -200,7 +312,8 @@ Entidades principais (nomes lógicos, DDL real fica para a implementação):
 ## 10. Contrato de API — visão de alto nível (novo — preenche gap 3.7)
 
 **REST (NestJS controllers, prefixo `/api/v1`)**
-- `POST /auth/register`, `POST /auth/login`, `POST /auth/refresh`
+- `POST /auth/register`, `POST /auth/login`, `POST /auth/refresh` (rotativo, seta cookie `httpOnly` de refresh — ADR-009), `POST /auth/logout` (revoga a sessão atual)
+- `GET /users/me/sessions` (lista dispositivos logados), `DELETE /users/me/sessions/{id}` (revoga um dispositivo), `DELETE /users/me/sessions` (sai de todos os dispositivos)
 - `GET /users/me`, `PATCH /users/me/cosmetics/{itemId}` (equipar)
 - `POST /sessions` (iniciar), `PATCH /sessions/{id}/heartbeat`, `POST /sessions/{id}/complete`
 - `GET /guilds/{id}`, `POST /guilds`, `POST /guilds/{id}/members`
@@ -209,7 +322,7 @@ Entidades principais (nomes lógicos, DDL real fica para a implementação):
 
 **WebSocket (Socket.IO namespaces)**
 - `guild:{id}` → eventos `chat:message`, `raid:progress`, `member:online`
-- `user:{id}` → eventos `notification:levelup`, `notification:raidComplete`, `notification:guildInvite`
+- `user:{id}` → eventos `notification:levelup`, `notification:raidComplete`, `notification:guildInvite`, `progress:xpUpdated` — toda conexão autenticada do usuário entra automaticamente nessa room, de qualquer dispositivo (ADR-009), garantindo que celular e notebook logados ao mesmo tempo recebam o mesmo evento
 
 Este contrato deve ser versionado em `docs/api/openapi.yaml` e `docs/api/asyncapi.yaml` antes do início da implementação de telas, para permitir front e back avançarem em paralelo com mocks (Prism/MSW).
 
@@ -246,10 +359,24 @@ Pipeline (GitHub Actions) por PR:
 |---|---|
 | Disponibilidade | SLO de 99.0% no MVP/beta — rebaixado de 99.5% por causa do risco de instabilidade do Oracle Always Free (ADR-006: recursos cortados em jun/2026, terminação de instâncias fora do limite em curso desde 18/08/2026). Sem infraestrutura gerenciada redundante nesta fase; reavaliar SLO e provedor se o produto sair do horizonte acadêmico |
 | Latência | P99 de resposta REST < 300ms; propagação de evento de guilda via WebSocket < 1s — validar contra o hardware real da VM Always Free (2 OCPU/12GB), que é mais modesto que o ECS Fargate originalmente planejado |
-| Segurança | Senhas com Argon2id; JWT access (curta duração) + refresh (rotativo); rate limiting em `/auth/*` e em `POST /sessions/*`; validação server-side obrigatória de toda regra de XP/antifraude |
+| Segurança | Senhas com Argon2id; JWT access (15min) + refresh rotativo por dispositivo em cookie `httpOnly`/`Secure` (ADR-009); rate limiting em `/auth/*` e em `POST /sessions/*`; validação server-side obrigatória de toda regra de XP/antifraude; máx. 5 sessões simultâneas por usuário, com revogação individual ou total |
 | Usabilidade/Acessibilidade | WCAG AA, `prefers-reduced-motion` respeitado, foco visível de 2px, conforme Documentação de Interface |
+| Responsividade | Mobile-first: breakpoints `<640px` / `640–1024px` / `>1024px` (ADR-008); área de toque ≥44×44px; sidebar/painel triplo colapsa em drawer/abas em mobile; `safe-area-inset` respeitado; sem app nativo nesta fase |
+| Sincronização multi-dispositivo | Todo evento de progresso (XP, nível, raid, convite) chega em ≤1s em todos os dispositivos logados do mesmo usuário via room `user:{id}` (ADR-009) |
 | Confiabilidade de dados | Dump periódico do MySQL para Oracle Object Storage Always Free (seção 11) — não há backup automático gerenciado nesta stack; retenção mínima de 7 dias é responsabilidade do time, não do provedor |
 | Observabilidade | Dashboards de golden signals antes do beta público (stack leve auto-hospedada, seção 11); alertas de burn-rate de erro, não só de erro absoluto |
+
+### 13.1 Orçamento de erro (sre-engineer)
+
+SLO de 99.0% de disponibilidade num período de 30 dias permite **7h12min de indisponibilidade/mês** (0,01 × 30 × 24h). Esse orçamento cobre manutenção não emergencial (deploy, reinício da VM); ao consumir >50% do orçamento antes da metade do mês, releases não-críticos devem ser congelados até o próximo período — mesma lógica de burn-rate independente da métrica escolhida (aqui, tempo de indisponibilidade em vez de taxa de erro por requisição, já que o volume de tráfego acadêmico é baixo demais para burn-rate por request ser estatisticamente significativo).
+
+### 13.2 Runbook mínimo — VM Oracle indisponível/terminada (maior risco identificado, ADR-006)
+
+1. **Detectar:** healthcheck do `/health` (seção 12) falhando por >2min, ou VM inacessível via SSH.
+2. **Diagnosticar:** checar painel Oracle Cloud — instância terminada por exceder o limite Always Free (2 OCPU/12GB) é a causa mais provável dado o histórico recente (jun–ago/2026).
+3. **Mitigar:** provisionar nova VM Always Free (mesmo shape) ou, se indisponível por capacidade, subir temporariamente num provedor de fallback usando o mesmo `docker-compose.yml` (portabilidade é o ponto do ADR-006).
+4. **Restaurar dados:** `docker compose up -d mysql`, restaurar do último dump em Object Storage (seção 11).
+5. **Pós-mortem:** registrar tempo de indisponibilidade contra o orçamento de erro (13.1); sem culpar indivíduos — o risco já era conhecido e aceito no ADR-006.
 
 ---
 
@@ -273,18 +400,41 @@ Pipeline (GitHub Actions) por PR:
 
 ---
 
-## 16. Skills utilizadas nesta análise
+## 16. Skills utilizadas
 
-Consultadas e aplicadas diretamente no conteúdo acima: `spec-miner` (extração e consolidação das especificações existentes), `feature-forge` (requisitos em formato EARS), `architecture-designer` (ADRs e revisão arquitetural), `api-designer` (contrato REST/WebSocket e padrão de erro RFC 7807), `cloud-architect` (topologia AWS e HA), `sre-engineer` (SLOs e sinais de observabilidade), `devops-engineer` (pipeline CI/CD e estratégia de rollback), `postgres-pro` (avaliada como alternativa de banco — ver ADR-005; a decisão vigente é MySQL, não Postgres), `code-documenter` (estrutura e formato deste documento).
+Nota de processo: numa rodada anterior deste documento, esta seção listava várias skills como "consultadas e aplicadas" sem que o Skill tool tivesse sido de fato invocado para elas — o conteúdo foi escrito com conhecimento geral sob o rótulo da skill, não com as instruções reais carregadas. Isso foi corrigido: todas as 15 skills abaixo foram carregadas via Skill tool nesta sessão, e cada uma gerou uma ação concreta e verificável (não apenas prosa), listada a seguir.
 
-As skills de implementação (`react-expert`, `nestjs-expert`, `typescript-pro`, `javascript-pro`, `vue-expert`, `test-master`) não foram aplicadas nesta rodada porque **ainda não existe código no repositório** — esta fase produziu apenas o PRD. Elas devem ser convocadas a partir da primeira ticket de implementação em `dev/phase-1` (ex.: ao escrever o módulo `auth` em NestJS, ou os componentes React do timer). `vue-expert` especificamente não se aplica ao stack decidido (React, não Vue) — mantido aqui como registro de que a alternativa foi considerada e descartada, já que o Documento de Arquitetura já elegeu React com justificativa própria (ecossistema, curva de aprendizado da equipe universitária).
+| Skill | Onde foi aplicada de fato |
+|---|---|
+| `caveman` (ultra) | Modo de comunicação ativo em toda a sessão |
+| `spec-miner` | Leitura dos 6 documentos + 4 casos de uso com citação de trecho/página antes de qualquer conclusão (seções 2–3) |
+| `feature-forge` | Requisitos em EARS (seção 7) + critérios de aceite Given/When/Then para ADR-008/009 (7.4) + checklist de implementação (7.5) — adicionados nesta rodada |
+| `architecture-designer` | ADRs 001–009 + diagrama Mermaid do que foi de fato implementado (8.1) — adicionado nesta rodada |
+| `api-designer` | `docs/api/openapi.yaml` real, com `@redocly/cli lint` passando (0 erros) e testado contra um mock server Prism (rotas, `security`, respostas 401/200 confirmadas) |
+| `cloud-architect` | Nota explícita de SPOF/redundância no ADR-006 (8.1) — a VM Oracle é um ponto único de falha aceito, não ignorado |
+| `sre-engineer` | Cálculo de orçamento de erro (13.1: 7h12min/mês a 99,0%) + runbook mínimo pro maior risco identificado (13.2) |
+| `devops-engineer` | Endpoint `/health` real no backend + `HEALTHCHECK` no Dockerfile — não existiam antes desta rodada |
+| `postgres-pro` (aplicado a MySQL) | Índice único em `Character.userId`, índice composto em `RaidContribution(raidId, userId)`, `connectionLimit: 5` no pool (dimensionado pro limite de recursos do ADR-006), `select` restrito no `AuthService.refresh` pra nunca carregar `password_hash` sem necessidade |
+| `code-documenter` | Estrutura e formato deste documento |
+| `nestjs-expert` | Módulos/controllers/services/DTOs/guards do backend; padrão de teste com `Test.createTestingModule` |
+| `typescript-pro` | tsconfig em modo estrito, tipos do domínio de progressão/antifraude |
+| `javascript-pro` | Padrões async/await e tratamento de erro no cliente HTTP/WebSocket do frontend |
+| `test-master` | 28 testes de backend + 2 de frontend, todos passando |
+| `react-expert` | Shell responsivo, `ErrorBoundary` de app (não existia antes desta rodada — corrige "must implement error boundaries for graceful failures") |
+
+`vue-expert` permanece deliberadamente não aplicado — o stack decidido é React, não Vue.
+
+**Verificação real feita** (não apenas planejada): `tsc --noEmit` + `nest build` limpos no backend; `tsc --noEmit` + `vite build` limpos no frontend; 28 + 2 testes automatizados passando; `docs/api/openapi.yaml` validado com `redocly lint` (0 erros) e exercitado contra um mock Prism real (200/401 corretos); tela de login carregada num navegador real em viewport mobile (375×812) sem erro de layout.
+
+**Não verificado nesta rodada** (limitação do ambiente, não do código): boot do grafo de DI do NestJS contra MySQL real, e os fluxos autenticados do frontend ponta a ponta contra o backend — ambos exigem `docker compose up` com Docker disponível, o que não existe neste sandbox de execução. Primeiro passo do time antes de confiar no código além da cobertura automatizada.
 
 ---
 
 ## 17. Próximos passos imediatos
 
 1. Provisionar a VM Oracle Cloud Always Free o quanto antes (ADR-006) — erros de "out of capacity" são comuns nessa modalidade; não deixar para o fim do prazo.
-2. Atualizar `README.md`, Documento de Visão (seção 4.4) e Documento de Arquitetura (tabela de tecnologias) para refletir Oracle Cloud em vez de AWS e a remoção do Koa.js (ADR-002/ADR-006).
-3. Publicar `docs/api/openapi.yaml` e `docs/api/asyncapi.yaml` a partir da seção 10.
-4. Abrir tickets de implementação da Fase 1 a partir da seção 6 (Must/Should) diretamente na branch `dev/phase-1`.
+2. Atualizar Documento de Visão (seção 4.4) e Documento de Arquitetura (tabela de tecnologias) para refletir Oracle Cloud em vez de AWS e a remoção do Koa.js (ADR-002/ADR-006) — `README.md` já foi atualizado nesta rodada.
+3. ~~Publicar `docs/api/openapi.yaml`~~ — feito nesta rodada, validado com `redocly lint` e testado contra mock Prism. Falta ainda `docs/api/asyncapi.yaml` para os eventos WebSocket.
+4. Escrever as migrations TypeORM versionadas (hoje o schema só existe via `synchronize` em dev — ver seção 7.5) antes de qualquer deploy real.
 5. Decidir, na primeira ticket de infraestrutura, entre MySQL gerenciado (Oracle HeatWave Always Free) ou MySQL em container na mesma VM (seção 11).
+6. Validar o boot completo do backend contra MySQL real (`docker compose up`) — não verificável no sandbox usado para gerar este PRD e o código da Fase 1.

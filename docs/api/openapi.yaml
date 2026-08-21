@@ -1,0 +1,451 @@
+openapi: "3.1.0"
+info:
+  title: Wise Warrior API
+  version: "1.0.0"
+  description: >
+    Contrato REST da Fase 1 (dev/phase-1). Gerado a partir dos controllers
+    NestJS reais em apps/backend/src/modules/**. Eventos WebSocket (Socket.IO)
+    estão documentados separadamente em docs/api/asyncapi.yaml (pendente).
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+servers:
+  - url: http://localhost:3000/api/v1
+    description: Desenvolvimento local
+security:
+  - BearerAuth: []
+
+paths:
+  /health:
+    get:
+      summary: Liveness check
+      operationId: getHealth
+      tags: [Health]
+      security: []
+      responses:
+        "200":
+          description: Serviço no ar
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status, timestamp]
+                properties:
+                  status: { type: string, enum: [ok] }
+                  timestamp: { type: string, format: date-time }
+
+  /auth/register:
+    post:
+      summary: Cria conta e sessão (ADR-009)
+      operationId: registerUser
+      tags: [Auth]
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RegisterRequest" }
+      responses:
+        "201":
+          description: Conta criada; cookie de refresh setado
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AccessTokenResponse" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  /auth/login:
+    post:
+      summary: Autentica e cria uma nova sessão de dispositivo (ADR-009)
+      operationId: loginUser
+      tags: [Auth]
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/LoginRequest" }
+      responses:
+        "200":
+          description: Login válido; cookie de refresh setado
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AccessTokenResponse" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /auth/refresh:
+    post:
+      summary: Rotaciona o refresh token do cookie httpOnly e emite novo access token
+      operationId: refreshSession
+      tags: [Auth]
+      security: []
+      responses:
+        "200":
+          description: Novo access token emitido
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AccessTokenResponse" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /auth/logout:
+    post:
+      summary: Revoga a sessão do dispositivo atual
+      operationId: logout
+      tags: [Auth]
+      responses:
+        "204": { description: Sessão encerrada }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /users/me:
+    get:
+      summary: Perfil do usuário autenticado
+      operationId: getMyProfile
+      tags: [Users]
+      responses:
+        "200":
+          description: Perfil
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/UserProfile" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /users/me/cosmetics/{itemId}:
+    patch:
+      summary: Equipa um item cosmético já desbloqueado
+      operationId: equipCosmeticItem
+      tags: [Users]
+      parameters:
+        - { name: itemId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "204": { description: Item equipado }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /users/me/sessions:
+    get:
+      summary: Lista dispositivos com sessão ativa (ADR-009)
+      description: >
+        Sem paginação por decisão explícita: o número de sessões simultâneas
+        por usuário é limitado a MAX_SESSIONS_PER_USER (5, ver PRD ADR-009) —
+        uma coleção nesse tamanho não justifica cursor/offset.
+      operationId: listMySessions
+      tags: [Users]
+      responses:
+        "200":
+          description: Sessões ativas
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/SessionSummary" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+    delete:
+      summary: Encerra todas as sessões do usuário ("sair de todos os dispositivos")
+      operationId: revokeAllMySessions
+      tags: [Users]
+      responses:
+        "204": { description: Todas as sessões revogadas }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /users/me/sessions/{sessionId}:
+    delete:
+      summary: Encerra um dispositivo específico
+      operationId: revokeMySession
+      tags: [Users]
+      parameters:
+        - { name: sessionId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "204": { description: Sessão revogada }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /sessions:
+    post:
+      summary: Inicia uma sessão de estudo (timer Pomodoro)
+      operationId: startStudySession
+      tags: [Sessions]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/StartSessionRequest" }
+      responses:
+        "201":
+          description: Sessão iniciada
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/StudySession" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+
+  /sessions/{id}/heartbeat:
+    patch:
+      summary: Pulso periódico do servidor (RN-ANTIFRAUDE — nunca o cliente marca o tempo)
+      operationId: heartbeatStudySession
+      tags: [Sessions]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "204": { description: Heartbeat registrado }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /sessions/{id}/complete:
+    post:
+      summary: Encerra a sessão e aplica a validação antifraude + XP
+      operationId: completeStudySession
+      tags: [Sessions]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: Resultado da sessão (pode ter sido descartada — ver discardedReason)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/StudySession" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /guilds:
+    post:
+      summary: Cria uma guilda (o criador se torna líder)
+      operationId: createGuild
+      tags: [Guilds]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateGuildRequest" }
+      responses:
+        "201":
+          description: Guilda criada
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Guild" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  /guilds/{id}:
+    get:
+      summary: Detalhe de uma guilda
+      operationId: getGuild
+      tags: [Guilds]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: Guilda
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/GuildDetail" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /guilds/{id}/members:
+    post:
+      summary: Entra na guilda
+      operationId: joinGuild
+      tags: [Guilds]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "204": { description: Membro adicionado }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /raids/{id}:
+    get:
+      summary: Detalhe de uma raid
+      operationId: getRaid
+      tags: [Raids]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: Raid
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RaidDetail" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /raids/{id}/ranking:
+    get:
+      summary: Ranking de contribuição da raid
+      description: >
+        Sem paginação por decisão explícita: bounded pelo tamanho da guilda
+        (tipicamente dezenas de membros, não milhares) — ver nota de
+        /users/me/sessions acima para o mesmo raciocínio.
+      operationId: getRaidRanking
+      tags: [Raids]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: Ranking ordenado por XP contribuído (desc)
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/RaidRankingEntry" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /raids/{id}/join:
+    post:
+      summary: Confirma participação numa raid ativa da guilda do usuário (UC02)
+      operationId: joinRaid
+      tags: [Raids]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "204": { description: Participação confirmada }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    RegisterRequest:
+      type: object
+      required: [email, password, displayName]
+      properties:
+        email: { type: string, format: email }
+        password: { type: string, minLength: 8, maxLength: 128 }
+        displayName: { type: string, minLength: 2, maxLength: 60 }
+
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email: { type: string, format: email }
+        password: { type: string }
+        deviceLabel: { type: string, maxLength: 80 }
+
+    AccessTokenResponse:
+      type: object
+      required: [accessToken]
+      properties:
+        accessToken: { type: string }
+
+    UserProfile:
+      type: object
+      required: [id, email, displayName, planTier, level, xpTotal, title]
+      properties:
+        id: { type: string, format: uuid }
+        email: { type: string, format: email }
+        displayName: { type: string }
+        planTier: { type: string, enum: [free, premium] }
+        level: { type: integer, minimum: 1 }
+        xpTotal: { type: integer, minimum: 0 }
+        title: { type: [string, "null"] }
+
+    SessionSummary:
+      type: object
+      required: [id, deviceLabel, userAgent, createdAt, lastUsedAt]
+      properties:
+        id: { type: string, format: uuid }
+        deviceLabel: { type: [string, "null"] }
+        userAgent: { type: [string, "null"] }
+        createdAt: { type: string, format: date-time }
+        lastUsedAt: { type: string, format: date-time }
+
+    StartSessionRequest:
+      type: object
+      required: [subject, mode]
+      properties:
+        subject: { type: string, maxLength: 80 }
+        mode: { type: string, enum: [solo, guild] }
+        raidId: { type: string, format: uuid, description: "Obrigatório quando mode = guild" }
+
+    StudySession:
+      type: object
+      required: [id, userId, subject, mode, startedAt, xpAwarded]
+      properties:
+        id: { type: string, format: uuid }
+        userId: { type: string, format: uuid }
+        subject: { type: string }
+        mode: { type: string, enum: [solo, guild] }
+        startedAt: { type: string, format: date-time }
+        endedAt: { type: [string, "null"], format: date-time }
+        durationValidSeconds: { type: integer, minimum: 0 }
+        xpAwarded: { type: integer, minimum: 0 }
+        discardedReason:
+          type: [string, "null"]
+          enum: [continuous-session-exceeds-limit, daily-limit-exceeded, null]
+
+    CreateGuildRequest:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string, minLength: 3, maxLength: 60 }
+
+    Guild:
+      type: object
+      required: [id, name, level, createdBy]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        level: { type: integer }
+        createdBy: { type: string, format: uuid }
+
+    GuildDetail:
+      type: object
+      required: [id, name, level, memberCount]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        level: { type: integer }
+        memberCount: { type: integer }
+
+    RaidDetail:
+      type: object
+      required: [id, title, goalXp, progressXp, endsAt, status]
+      properties:
+        id: { type: string, format: uuid }
+        title: { type: string }
+        goalXp: { type: integer }
+        progressXp: { type: integer }
+        endsAt: { type: string, format: date-time }
+        status: { type: string, enum: [active, completed, expired] }
+
+    RaidRankingEntry:
+      type: object
+      required: [userId, xpContributed]
+      properties:
+        userId: { type: string, format: uuid }
+        xpContributed: { type: integer }
+
+    Problem:
+      type: object
+      required: [type, title, status, detail, instance]
+      description: RFC 7807 — formato de erro de toda a API (ver HttpExceptionFilter)
+      properties:
+        type: { type: string, format: uri }
+        title: { type: string }
+        status: { type: integer }
+        detail: { type: string }
+        instance: { type: string }
+
+  responses:
+    BadRequest:
+      description: Requisição inválida
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/Problem" }
+    Unauthorized:
+      description: Credenciais ou token ausentes/inválidos
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/Problem" }
+    Forbidden:
+      description: Autenticado, mas sem permissão sobre o recurso
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/Problem" }
+    NotFound:
+      description: Recurso não encontrado
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/Problem" }
+    Conflict:
+      description: "Conflito de estado (ex.: e-mail/nome já em uso)"
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/Problem" }
