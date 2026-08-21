@@ -32,7 +32,7 @@ export class RaidContribution {
   @ManyToOne(() => StudySession, { onDelete: 'SET NULL', nullable: true })
   studySession?: StudySession | null;
 
-  @Column({ name: 'study_session_id', nullable: true })
+  @Column({ name: 'study_session_id', type: 'uuid', nullable: true })
   studySessionId?: string | null;
 
   @Column({ name: 'xp_contributed' })

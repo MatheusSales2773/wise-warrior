@@ -53,8 +53,25 @@ Wise Warrior transforma a rotina de estudos em uma jornada de RPG cooperativa. E
 
 ## Como executar localmente
 
+### Projeto completo com Docker Compose
+
 ```bash
-# 1. Banco de dados (MySQL via Docker)
+# Sobe MySQL, backend e frontend em uma única execução
+docker compose up --build
+```
+
+Depois que os serviços estiverem saudáveis:
+
+- Frontend: `http://localhost:5173`
+- Backend: `http://localhost:3000/api/v1`
+- Healthcheck da API: `http://localhost:3000/api/v1/health`
+
+Para encerrar, execute `docker compose down`. O banco permanece no volume `mysql_data`.
+
+### Execução fora do Docker
+
+```bash
+# 1. Suba somente o banco
 docker compose up -d mysql
 
 # 2. Instalar dependências (raiz do monorepo, workspaces)

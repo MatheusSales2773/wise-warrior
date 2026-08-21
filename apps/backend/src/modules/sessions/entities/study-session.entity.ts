@@ -29,7 +29,7 @@ export class StudySession {
   mode: StudySessionMode;
 
   /** Preenchido quando mode = 'guild' — raid que recebe a contribuição desta sessão. */
-  @Column({ name: 'raid_id', nullable: true })
+  @Column({ name: 'raid_id', type: 'uuid', nullable: true })
   raidId?: string | null;
 
   @CreateDateColumn({ name: 'started_at' })
@@ -49,6 +49,6 @@ export class StudySession {
   xpAwarded: number;
 
   /** Preenchido quando a sessão é descartada por antifraude — nunca some silenciosamente. */
-  @Column({ name: 'discarded_reason', nullable: true })
+  @Column({ name: 'discarded_reason', type: 'varchar', nullable: true })
   discardedReason?: string | null;
 }

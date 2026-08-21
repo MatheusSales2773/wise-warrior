@@ -32,6 +32,6 @@ export class Character {
    * "Companheiro" (mascote RPG) fica fora do escopo da Fase 1 — ADR-004.
    * Coluna reservada para não exigir migração quando a feature for priorizada.
    */
-  @Column({ name: 'companion_id', nullable: true })
+  @Column({ name: 'companion_id', type: 'uuid', nullable: true })
   companionId?: string | null;
 }
