@@ -4,19 +4,19 @@
  * do PRD: mobile <640px, tablet 640–1024px, desktop >1024px.
  */
 :root {
-  --color-bg: #0f1117;
-  --color-surface: #1a1d2e;
-  --color-surface-light: #252a3d;
-  --color-border: rgba(255, 255, 255, 0.08);
-  --color-primary: #f5a623;
-  --color-primary-dark: #c47d0e;
-  --color-secondary: #06b6d4;
-  --color-danger: #ef4444;
-  --color-success: #10b981;
-  --color-purple: #7c3aed;
-  --color-text-primary: #f8fafc;
-  --color-text-secondary: #94a3b8;
-  --color-text-muted: #64748b;
+  --color-bg: #07070c;
+  --color-surface: #12121c;
+  --color-surface-light: #181826;
+  --color-border: rgba(212, 168, 90, 0.16);
+  --color-primary: #d4a85a;
+  --color-primary-dark: #9c7131;
+  --color-secondary: #b3a98e;
+  --color-danger: #c86a5c;
+  --color-success: #6fa77c;
+  --color-purple: #80639f;
+  --color-text-primary: #f3ead4;
+  --color-text-secondary: #b3a98e;
+  --color-text-muted: #6b6555;
 
   --font-display: 'Cinzel', serif;
   --font-ui: 'Inter', system-ui, sans-serif;
