@@ -1,8 +1,8 @@
 {
-  "name": "@wise-warrior/backend",
+  "name": "@wise/backend",
   "version": "0.1.0",
   "private": true,
-  "description": "Wise Warrior backend — NestJS monólito modular (auth, sessions, progression, guilds, raids)",
+  "description": "Wise backend — NestJS monólito modular (auth, sessions, progression, guilds, raids)",
   "scripts": {
     "build": "nest build",
     "start": "node dist/main.js",

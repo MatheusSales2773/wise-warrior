@@ -15,7 +15,7 @@ function WarriorSigil(): ReactNode {
       className="auth-sigil"
       viewBox="0 0 120 120"
       role="img"
-      aria-label="Sigilo do Wise Warrior"
+      aria-label="Sigilo do Wise"
     >
       <path
         d="M60 8 103 33v54l-43 25L17 87V33L60 8Z"
@@ -53,12 +53,12 @@ export function AuthShell({ eyebrow, title, description, children }: AuthShellPr
       <div className="auth-page__atmosphere" aria-hidden="true" />
       <div className="auth-layout">
         <section className="auth-story" aria-labelledby="auth-story-title">
-          <Link className="auth-brand" to="/entrar" aria-label="Wise Warrior, ir para entrar">
+          <Link className="auth-brand" to="/entrar" aria-label="Wise, ir para entrar">
             <span className="auth-brand__mark" aria-hidden="true">
               <WarriorSigil />
             </span>
             <span className="auth-brand__name">
-              <span>Wise</span> Warrior
+              <span>Wise</span>
             </span>
           </Link>
 

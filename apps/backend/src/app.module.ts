@@ -19,9 +19,9 @@ import { RealtimeModule } from './modules/realtime/realtime.module';
         type: 'mysql',
         host: config.get('DB_HOST', 'localhost'),
         port: Number(config.get('DB_PORT', 3306)),
-        username: config.get('DB_USERNAME', 'wise_warrior'),
+        username: config.get('DB_USERNAME', 'wise'),
         password: config.get('DB_PASSWORD', 'change-me'),
-        database: config.get('DB_DATABASE', 'wise_warrior'),
+        database: config.get('DB_DATABASE', 'wise'),
         autoLoadEntities: true,
         // Migrations versionadas em produção (Documento de Arquitetura);
         // sincronização automática só é aceitável em desenvolvimento local.

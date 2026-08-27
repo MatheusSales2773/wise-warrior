@@ -1,6 +1,6 @@
 openapi: "3.1.0"
 info:
-  title: Wise Warrior API
+  title: Wise API
   version: "1.0.0"
   description: >
     Contrato REST da Fase 1 (dev/phase-1). Gerado a partir dos controllers

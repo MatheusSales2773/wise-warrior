@@ -1,4 +1,4 @@
-# ⚔️ Wise Warrior
+# ⚔️ Wise
 
 > Plataforma de foco e produtividade gamificada e colaborativa
 
@@ -15,7 +15,7 @@
 
 ## Sobre o projeto
 
-Wise Warrior transforma a rotina de estudos em uma jornada de RPG cooperativa. Estudantes, universitários e concurseiros realizam sessões temporizadas de produtividade, ganham XP, evoluem de nível e colaboram em guildas com metas coletivas — tornando o hábito de estudar mais estimulante e recompensador.
+Wise transforma a rotina de estudos em uma jornada de RPG cooperativa. Estudantes, universitários e concurseiros realizam sessões temporizadas de produtividade, ganham XP, evoluem de nível e colaboram em guildas com metas coletivas — tornando o hábito de estudar mais estimulante e recompensador.
 
 ---
 

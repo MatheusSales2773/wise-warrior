@@ -1,4 +1,4 @@
-# Wise Warrior — PRD (Product Requirements Document)
+# Wise — PRD (Product Requirements Document)
 
 **Versão:** 1.1
 **Branch:** `dev/phase-1`
@@ -21,7 +21,7 @@
 
 ## 1. Sumário executivo
 
-Wise Warrior é uma plataforma web de produtividade gamificada: usuários realizam sessões de estudo temporizadas (Pomodoro), acumulam XP, evoluem de nível, customizam avatar/companheiro RPG e cooperam em guildas através de raids semanais. Hoje o projeto **só possui documentação** (Visão, Arquitetura, Interface, Pitch, 4 casos de uso) — nenhum código foi escrito. Este PRD parte da leitura crítica desses seis documentos, identifica onde eles se contradizem ou deixam lacunas, e define o que deve ser construído na Fase 1 (`dev/phase-1`).
+Wise é uma plataforma web de produtividade gamificada: usuários realizam sessões de estudo temporizadas (Pomodoro), acumulam XP, evoluem de nível, customizam avatar/companheiro RPG e cooperam em guildas através de raids semanais. Hoje o projeto **só possui documentação** (Visão, Arquitetura, Interface, Pitch, 4 casos de uso) — nenhum código foi escrito. Este PRD parte da leitura crítica desses seis documentos, identifica onde eles se contradizem ou deixam lacunas, e define o que deve ser construído na Fase 1 (`dev/phase-1`).
 
 ---
 

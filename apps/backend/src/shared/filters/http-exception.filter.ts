@@ -31,7 +31,7 @@ export class HttpExceptionFilter implements ExceptionFilter {
           'Erro interno inesperado';
 
     response.status(status).contentType('application/problem+json').json({
-      type: `https://wise-warrior.app/errors/${status}`,
+      type: `https://wise.app/errors/${status}`,
       title: isHttpException ? exception.name : 'InternalServerError',
       status,
       detail: Array.isArray(detail) ? detail.join('; ') : detail,

@@ -2,7 +2,7 @@
 
 ## Objetivo
 
-Permitir que qualquer pessoa suba o Wise Warrior inteiro com um único comando:
+Permitir que qualquer pessoa suba o Wise inteiro com um único comando:
 
 ```bash
 docker compose up --build

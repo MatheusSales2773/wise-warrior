@@ -1,8 +1,8 @@
 {
-  "name": "wise-warrior",
+  "name": "wise",
   "private": true,
   "version": "0.1.0",
-  "description": "Wise Warrior — plataforma de foco e produtividade gamificada e colaborativa",
+  "description": "Wise — plataforma de foco e produtividade gamificada e colaborativa",
   "workspaces": [
     "apps/backend",
     "apps/frontend"
