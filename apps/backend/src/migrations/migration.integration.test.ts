@@ -2,7 +2,7 @@ import type { Connection, RowDataPacket } from 'mysql2/promise';
 import mysql from 'mysql2/promise';
 import { DataSource } from 'typeorm';
 import { createDatabaseOptions } from '../config/database.config';
-import { CreateWiseSchema20260903150000 } from './20260903150000-create-wise-schema';
+import { CreateWiseSchema1788458400000 } from './1788458400000-create-wise-schema';
 
 const expectedTables = [
   'users',
@@ -120,7 +120,7 @@ describe('TypeORM migrations against an empty MySQL schema', () => {
     dataSource = new DataSource({
       ...options,
       database: databaseName,
-      migrations: [CreateWiseSchema20260903150000],
+      migrations: [CreateWiseSchema1788458400000],
       migrationsRun: false,
     });
 
@@ -285,7 +285,7 @@ describe('TypeORM migrations against an empty MySQL schema', () => {
       admin,
       `SELECT name FROM ${identifier(databaseName)}.migrations`,
     );
-    expect(migrationRows.map((row) => row.name)).toEqual(['CreateWiseSchema20260903150000']);
+    expect(migrationRows.map((row) => row.name)).toEqual(['CreateWiseSchema1788458400000']);
 
     await dataSource.undoLastMigration();
     const remainingRows = await rows(

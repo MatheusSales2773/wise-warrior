@@ -28,8 +28,8 @@ const createdAt = (name: string) => ({
   default: 'CURRENT_TIMESTAMP(6)',
 });
 
-export class CreateWiseSchema20260903150000 implements MigrationInterface {
-  name = 'CreateWiseSchema20260903150000';
+export class CreateWiseSchema1788458400000 implements MigrationInterface {
+  name = 'CreateWiseSchema1788458400000';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.createTable(
