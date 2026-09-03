@@ -4,6 +4,10 @@
     "slug": "wise-warrior",
     "version": "0.1.0",
     "scheme": "wise",
+    "ios": {
+      "bundleIdentifier": "dev.guilhermeluan.wisewarrior",
+      "supportsTablet": false
+    },
     "orientation": "default",
     "plugins": [
       "expo-router",
