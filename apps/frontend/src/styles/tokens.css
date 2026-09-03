@@ -1,0 +1,75 @@
+/*
+ * Design tokens extraídos da Documentação de Interface e Prototipação
+ * (Quadro 1 — paleta; Quadro 2 — tipografia). Breakpoints conforme ADR-008
+ * do PRD: mobile <640px, tablet 640–1024px, desktop >1024px.
+ */
+:root {
+  --color-bg: #07070c;
+  --color-surface: #12121c;
+  --color-surface-light: #181826;
+  --color-border: rgba(212, 168, 90, 0.16);
+  --color-primary: #d4a85a;
+  --color-primary-dark: #9c7131;
+  --color-secondary: #b3a98e;
+  --color-danger: #c86a5c;
+  --color-success: #6fa77c;
+  --color-purple: #80639f;
+  --color-text-primary: #f3ead4;
+  --color-text-secondary: #b3a98e;
+  --color-text-muted: #6b6555;
+
+  --font-display: 'Cinzel', serif;
+  --font-ui: 'Inter', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-6: 24px;
+  --space-8: 32px;
+
+  --radius-card: 12px;
+  --radius-button: 8px;
+
+  /* Área de toque mínima em mobile (ADR-008) — usada por componentes interativos. */
+  --touch-target-min: 44px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--color-bg);
+  color: var(--color-text-primary);
+  font-family: var(--font-ui);
+  -webkit-font-smoothing: antialiased;
+}
+
+button,
+input,
+select,
+textarea {
+  font-family: inherit;
+}
+
+/* Foco visível de 2px (Documentação de Interface — diretriz de acessibilidade). */
+:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.001ms !important;
+    transition-duration: 0.001ms !important;
+  }
+}
