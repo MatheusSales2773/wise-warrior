@@ -3,6 +3,7 @@ import {
   CreateDateColumn,
   Entity,
   Index,
+  JoinColumn,
   ManyToOne,
   PrimaryGeneratedColumn,
 } from 'typeorm';
@@ -15,16 +16,19 @@ export class GuildChatMessage {
   id: string;
 
   @ManyToOne(() => Guild, { onDelete: 'CASCADE' })
+  @JoinColumn({ name: 'guild_id', foreignKeyConstraintName: 'FK_guild_chat_messages_guild_id_guilds' })
   guild: Guild;
 
-  @Column({ name: 'guild_id' })
-  @Index()
+  @Column({ name: 'guild_id', type: 'varchar', length: '36' })
+  @Index('IDX_guild_chat_messages_guild_id')
   guildId: string;
 
   @ManyToOne(() => User, { onDelete: 'CASCADE' })
+  @JoinColumn({ name: 'user_id', foreignKeyConstraintName: 'FK_guild_chat_messages_user_id_users' })
   user: User;
 
-  @Column({ name: 'user_id' })
+  @Column({ name: 'user_id', type: 'varchar', length: '36' })
+  @Index('IDX_guild_chat_messages_user_id')
   userId: string;
 
   @Column({ type: 'text' })

@@ -3,6 +3,7 @@ import {
   CreateDateColumn,
   Entity,
   Index,
+  JoinColumn,
   ManyToOne,
   PrimaryGeneratedColumn,
 } from 'typeorm';
@@ -18,10 +19,11 @@ export class Session {
   id: string;
 
   @ManyToOne(() => User, { onDelete: 'CASCADE' })
+  @JoinColumn({ name: 'user_id', foreignKeyConstraintName: 'FK_sessions_user_id_users' })
   user: User;
 
-  @Column({ name: 'user_id' })
-  @Index()
+  @Column({ name: 'user_id', type: 'varchar', length: '36' })
+  @Index('IDX_sessions_user_id')
   userId: string;
 
   @Column({ name: 'refresh_token_hash' })

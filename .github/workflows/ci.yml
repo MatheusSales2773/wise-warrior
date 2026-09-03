@@ -38,6 +38,45 @@ jobs:
       - name: Run backend tests
         run: npm test --workspace apps/backend
 
+  backend-migration-tests:
+    name: Backend migration tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      TEST_DB_HOST: 127.0.0.1
+      TEST_DB_PORT: 3306
+      TEST_DB_ADMIN_USERNAME: root
+      TEST_DB_ADMIN_PASSWORD: root
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -proot"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+          --health-start-period=20s
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run migration integration test
+        run: npm run migration:test --workspace apps/backend
+
   frontend-tests:
     name: Frontend tests
     runs-on: ubuntu-latest
