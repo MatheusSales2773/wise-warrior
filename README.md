@@ -55,12 +55,26 @@ Wise transforma a rotina de estudos em uma jornada de RPG cooperativa. Estudante
 
 ### Projeto completo com Docker Compose
 
+O Compose carrega automaticamente o arquivo `.env`, que contém apenas valores
+seguros para desenvolvimento local. Para selecionar o ambiente explicitamente,
+carregue o arquivo base seguido pelo override desejado:
+
 ```bash
-# Sobe MySQL, backend e frontend em uma única execução
+# Desenvolvimento (equivale a usar apenas o .env atual)
+docker compose --env-file .env --env-file .env.development up --build
+
+# Produção: preencha .env.production antes de executar
+docker compose --env-file .env --env-file .env.production up --build -d
+
+# Atalho para desenvolvimento com os valores padrão de .env
 docker compose up --build
 ```
 
 Para iniciar em segundo plano, use `docker compose up -d --build`. Consulte o estado dos serviços com `docker compose ps`.
+
+Os arquivos `.env` e `.env.development` são versionados e devem conter somente
+configuração local não sensível. O `.env.production` armazena os secrets do deploy
+e é o único arquivo de ambiente ignorado pelo Git.
 
 Depois que os serviços estiverem saudáveis:
 
@@ -69,6 +83,8 @@ Depois que os serviços estiverem saudáveis:
 - Healthcheck da API: `http://localhost:3000/api/v1/health`
 
 Para encerrar, execute `docker compose down`. O banco permanece no volume `mysql_data`.
+Se usuário, senha ou nome do banco forem alterados depois da primeira execução,
+recrie o volume local com `docker compose down --volumes` antes de subir a stack.
 
 ### Execução fora do Docker
 
