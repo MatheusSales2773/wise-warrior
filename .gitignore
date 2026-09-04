@@ -132,6 +132,11 @@ dist
 !.yarn/sdks
 !.yarn/versions
 
-# Vite logs files
-vite.config.js.timestamp-*
-vite.config.ts.timestamp-*
+# Expo generated project state and native projects
+apps/frontend/.expo/
+apps/frontend/ios/
+apps/frontend/android/
+apps/frontend/*.apk
+apps/frontend/*.aab
+apps/frontend/*.ipa
+apps/frontend/.env*.local

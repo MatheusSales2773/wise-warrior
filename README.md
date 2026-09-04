@@ -35,8 +35,8 @@ Wise transforma a rotina de estudos em uma jornada de RPG cooperativa. Estudante
 ## Stack técnica
 
 ### Frontend
-- React 18 + TypeScript · Vite · React Router v6 · Axios · socket.io-client
-- Responsivo mobile-first (ADR-008): sidebar em desktop, navegação inferior em mobile/tablet
+- Expo SDK 57 · React Native 0.86 · React 19 · TypeScript · Expo Router
+- Uma base universal para Web, iOS e Android (ADR-008)
 
 ### Backend
 - Node.js · NestJS (REST + WebSocket via Socket.IO) · TypeORM
@@ -102,7 +102,94 @@ npm run dev:backend
 npm run dev:frontend
 ```
 
-Backend em `http://localhost:3000/api/v1`, frontend em `http://localhost:5173`. Testes: `npm test` (roda a suíte de cada workspace).
+Backend em `http://localhost:3000/api/v1`; o Metro do frontend inicia em
+`http://localhost:8081` e permite abrir a plataforma desejada pelo terminal.
+Testes: `npm test` (roda a suíte de cada workspace).
+
+### Frontend universal fora do Docker
+
+#### Pré-requisitos
+
+- Node.js ≥22.13 e npm (a CI usa Node 22).
+- Web: um navegador moderno; nenhuma toolchain nativa é necessária.
+- iOS (somente macOS): Xcode com Command Line Tools, um iOS Simulator e
+  CocoaPods. Selecione o Xcode ativo com `sudo xcode-select -s
+  /Applications/Xcode.app/Contents/Developer` e aceite a licença antes da
+  primeira compilação.
+- Android: JDK 17, Android Studio, Android SDK Platform 36, Build Tools 36 e
+  `platform-tools` (`adb`). O repositório inclui `.sdkmanrc`; com SDKMAN
+  configurado, execute `sdk env` na raiz para selecionar o JDK 17.
+
+No macOS, exponha o Android SDK no shell:
+
+```bash
+export ANDROID_HOME="$HOME/Library/Android/sdk"
+export PATH="$ANDROID_HOME/platform-tools:$ANDROID_HOME/emulator:$PATH"
+```
+
+Crie `apps/frontend/.env` a partir de `apps/frontend/.env.example`. Variáveis
+consumidas pelo aplicativo precisam do prefixo `EXPO_PUBLIC_` e são incorporadas
+ao bundle, portanto nunca coloque secrets nelas:
+
+```bash
+cp apps/frontend/.env.example apps/frontend/.env
+```
+
+Instale todas as dependências na raiz do monorepo. `npm ci` reproduz exatamente
+o lockfile e é o comando usado pela CI:
+
+```bash
+npm ci
+```
+
+#### Comandos por plataforma
+
+```bash
+# Web no navegador
+npm run web --workspace apps/frontend
+
+# Primeira compilação/instalação nativa ou após mudar dependências/config nativa
+npm run ios --workspace apps/frontend
+npm run android --workspace apps/frontend
+
+# Ciclo diário depois que o binário nativo já está instalado
+npm run dev:frontend
+```
+
+`ios` exige um Simulator iniciado ou dispositivo conectado; `android` exige um
+emulador iniciado ou dispositivo visível em `adb devices`. Os comandos
+`expo run:*` geram `apps/frontend/ios` ou `apps/frontend/android`, compilam o
+binário de debug, instalam-no e iniciam o Metro. Alterações apenas em JavaScript
+ou TypeScript usam `npm run dev:frontend` e Fast Refresh sem recompilar código
+nativo.
+
+#### Gate M1 e tipos de saída
+
+```bash
+# Tipos + lint + Jest + matriz Expo + Expo Doctor + bundles das três plataformas
+npm run verify:m1
+
+# Somente o bundle Web pronto para servir
+npm run build --workspace apps/frontend
+
+# Somente os bundles Metro de Web, iOS e Android
+npm run export:bundles --workspace apps/frontend
+```
+
+Uma **exportação de bundle** transforma JavaScript/TypeScript e assets em saída
+por plataforma, mas não produz um `.app`, `.ipa`, `.apk` ou `.aab` instalável.
+Uma **compilação nativa** usa Xcode ou Gradle por meio de `expo run:ios` ou
+`expo run:android` para gerar e instalar um aplicativo local. O **Expo Go** é
+opcional para uma verificação rápida enquanto o projeto usar apenas módulos
+compatíveis; ele não substitui a compilação nativa validada por este projeto.
+
+Valide `/` e uma URL inexistente nas três plataformas: a inicial deve mostrar
+“Wise Warrior” e “Fundação universal ativa”; o fallback deve mostrar “Página não
+encontrada” e retornar ao início pelo botão. No navegador, acesse diretamente a
+URL; em iOS/Android, abra `wise://runa-inexistente` no simulador/emulador.
+
+Os diretórios nativos gerados, cache `.expo`, `dist` e artefatos locais `.ipa`,
+`.apk` e `.aab` permanecem fora do Git.
 
 ### Migrations do banco
 

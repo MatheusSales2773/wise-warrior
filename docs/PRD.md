@@ -1,10 +1,10 @@
 # Wise — PRD (Product Requirements Document)
 
-**Versão:** 1.1
+**Versão:** 1.2
 **Branch:** `dev/phase-1`
 **Autor:** Assistente técnico (Claude Code), a partir da síntese dos documentos orientadores do Grupo 2
-**Data:** 21/08/2026 (v1.0) — revisado em 21/08/2026 (v1.1, decisões fechadas com o Product Owner)
-**Status:** Decisões de escopo e infraestrutura fechadas nesta revisão (ver seção 3.8); pendente apenas de execução
+**Data:** 21/08/2026 (v1.0) — 21/08/2026 (v1.1) — 03/09/2026 (v1.2, frontend universal)
+**Status:** Decisões de escopo e arquitetura fechadas; migração universal pendente de execução
 
 ### Registro de decisões fechadas em 21/08/2026
 | Ponto aberto | Decisão | ADR |
@@ -15,13 +15,19 @@
 | Redis Adapter | Adiado — reforçado pelo limite de recursos do Oracle Always Free | ADR-003 (Aceito) |
 | Modelo freemium | Flags de entitlement (`plan_tier`) entram já na Fase 1; gateway de pagamento continua fora | ADR-007 (Aceito) |
 
+### Registro de decisão revisada em 03/09/2026
+
+| Ponto aberto | Decisão | ADR |
+|---|---|---|
+| Web, iOS e Android | Uma aplicação Expo + Expo Router + React Native Web, sem publicação obrigatória nas lojas | ADR-008 (Revisado e aceito) |
+
 > Este documento consolida e substitui as lacunas dos documentos orientadores (Documento de Visão, Documento de Arquitetura, Documentação de Interface, Pitch e Casos de Uso UC01–UC04), resolvendo inconsistências entre eles e propondo um caminho técnico único para a Fase 1 de desenvolvimento.
 
 ---
 
 ## 1. Sumário executivo
 
-Wise é uma plataforma web de produtividade gamificada: usuários realizam sessões de estudo temporizadas (Pomodoro), acumulam XP, evoluem de nível, customizam avatar/companheiro RPG e cooperam em guildas através de raids semanais. Hoje o projeto **só possui documentação** (Visão, Arquitetura, Interface, Pitch, 4 casos de uso) — nenhum código foi escrito. Este PRD parte da leitura crítica desses seis documentos, identifica onde eles se contradizem ou deixam lacunas, e define o que deve ser construído na Fase 1 (`dev/phase-1`).
+Wise é uma plataforma universal de produtividade gamificada para Web, iOS e Android: usuários realizam sessões de estudo temporizadas (Pomodoro), acumulam XP, evoluem de nível, customizam avatar/companheiro RPG e cooperam em guildas através de raids semanais. Este PRD partiu da leitura crítica dos documentos orientadores e agora registra também a evolução do frontend Web existente para uma aplicação Expo universal.
 
 ---
 
@@ -32,7 +38,7 @@ Wise é uma plataforma web de produtividade gamificada: usuários realizam sess�
 | Domínio do produto | Documento de Visão | Sessões Pomodoro + XP/níveis + guildas + raids semanais + ranking + chat + perfil customizável |
 | Estilo arquitetural | Doc. de Arquitetura v1.0 | Cliente-servidor + monólito modular em 4 camadas (Apresentação → Aplicação → Domínio → Infraestrutura), 8 módulos de backend |
 | Stack backend | Doc. de Arquitetura | Node.js LTS, NestJS, TypeORM, Socket.IO + Redis Adapter, JWT (access+refresh) com Argon2id |
-| Stack frontend | Doc. de Arquitetura + Doc. de Interface | React 18+, TypeScript, Vite, React Router v6, Axios, socket.io-client, react-i18next (pt-BR) |
+| Stack frontend | Doc. de Arquitetura + Doc. de Interface | React 18+, TypeScript, Vite e React Router v6 na implementação Web original; substituídos por Expo/Expo Router/React Native Web no ADR-008 revisado |
 | Banco de dados | Todos os documentos | MySQL 8 (AWS RDS Multi-AZ) |
 | Infraestrutura | Doc. de Arquitetura + Pitch | AWS ECS Fargate, ELB, CloudFront, CloudWatch, ElastiCache (Redis) |
 | Design system | Doc. de Interface | Paleta dark-RPG (tokens de cor documentados), tipografia (Cinzel/Inter/JetBrains Mono), componentes (cards, botões, barra de XP), diretrizes de acessibilidade (WCAG AA, `prefers-reduced-motion`) |
@@ -74,9 +80,9 @@ O Pitch descreve tiers gratuito/premium, mas nenhum módulo de backend, entidade
 Nenhum dos seis documentos define pipeline de build/deploy, cobertura mínima de testes, ou um contrato de API/WebSocket explícito entre front e back — apesar de o front e o back serem times/módulos que precisam desse contrato para trabalhar em paralelo. Isso é o maior risco de atraso de cronograma dado o prazo de 1 ano com 4 pessoas.
 **Decisão proposta:** seções 10 (API), 11 (dados), 12 (infraestrutura/CI-CD) e 13 (confiabilidade e testes) deste PRD cobrem essas lacunas.
 
-### 3.8 Responsividade mobile não especificada
-A Documentação de Interface só descreve layouts desktop (sidebar fixa de 280px na tela de Guilda, painel de três colunas na tela de Sessão) e nenhum dos seis documentos define breakpoints, comportamento de navegação em telas pequenas, tamanho mínimo de área de toque, ou se o produto é web responsivo ou aplicativo nativo. O pedido do usuário é explícito: **web responsivo** (não app nativo — não há App Store/Play Store no horizonte deste projeto).
-**Decisão fechada (ADR-008):** o SPA React já decidido no Documento de Arquitetura passa a ser mobile-first responsivo, com breakpoints e adaptação de layout definidos na seção 13. Nenhum código nativo (React Native, Swift, Kotlin) entra no escopo — ver seção 13 e ADR-008 para o detalhamento.
+### 3.8 Frontend universal Web, iOS e Android
+A decisão original limitava o produto a um SPA Web responsivo. Em 03/09/2026 o Product Owner ampliou o objetivo: preservar identidade, fluxos e funcionalidades, com experiência adequada em Web desktop e celulares iOS/Android. Tablets e publicação pública em lojas permanecem fora do aceite inicial.
+**Decisão revisada (ADR-008):** substituir gradualmente o runtime Vite/React Router por uma única aplicação Expo + Expo Router + React Native Web em `apps/frontend`. O standalone orienta a UX, enquanto domínio e contratos reais prevalecem. Ver `docs/plans/2026-09-03-react-native-universal-design.md`.
 
 ### 3.9 Persistência de sessão multi-dispositivo não especificada
 O usuário pediu que as informações se propaguem "no mesmo ambiente" por um sistema de credenciais — ou seja, login no celular e no notebook devem ver o mesmo progresso em tempo real. O Documento de Arquitetura já prevê JWT access+refresh, mas nenhum documento define: quantas sessões simultâneas por usuário, como revogar uma sessão específica (ex.: "sair de todos os dispositivos"), nem como eventos em tempo real (XP, level-up, raid) se propagam para todos os dispositivos logados do mesmo usuário ao mesmo tempo.
@@ -114,7 +120,7 @@ O usuário pediu que as informações se propaguem "no mesmo ambiente" por um si
 | **Must** | Raids semanais com meta coletiva | `raids` | Diferencial crítico |
 | **Must** | Validação server-side de sessão (antifraude) | `sessions`/`progression` | Gap da seção 3.5 |
 | **Must** | Sessões persistentes multi-dispositivo (login em vários dispositivos, revogação, fanout de eventos) | `auth` | ADR-009 — pedido explícito do usuário |
-| **Must** | Layout responsivo mobile-first (sem app nativo) | frontend `shared` | ADR-008 — pedido explícito do usuário |
+| **Must** | Frontend universal Web, iOS e Android | frontend `shared` | ADR-008 revisado — aplicação Expo única |
 | **Should** | Chat de guilda em tempo real | `chat` | Importante, mas depende de `guilds` estar estável |
 | **Should** | Perfil com itens cosméticos e equipagem | `users` | Importante |
 | **Should** | Notificações em tempo real (level-up, raid concluída, convite) | `notifications` | Importante |
@@ -153,21 +159,26 @@ O usuário pediu que as informações se propaguem "no mesmo ambiente" por um si
 - Quando qualquer evento de progresso (XP, nível, raid, convite de guilda) ocorre, o sistema shall propagá-lo em tempo real para todas as conexões WebSocket ativas do mesmo usuário, independentemente do dispositivo.
 - Onde o usuário revoga uma sessão específica ou aciona "sair de todos os dispositivos", o sistema shall invalidar o(s) refresh token(s) correspondente(s) imediatamente, encerrando a conexão WebSocket associada.
 
-**Responsividade (novo — ADR-008)**
-- Onde a viewport for menor que 640px, o sistema shall recolher painéis laterais fixos (guilda, companheiro) em um drawer/bottom-sheet acionável, mantendo o timer ou conteúdo principal como foco central.
-- O sistema shall garantir área de toque mínima de 44×44px em todo elemento interativo em viewports mobile.
+**Experiência universal (ADR-008 revisado)**
+- Onde o cliente for Web desktop, o sistema shall usar navegação lateral e composições amplas derivadas do standalone.
+- Onde o cliente for iOS/Android em celular, o sistema shall usar navegação inferior, respeitar safe areas e manter o timer como conteúdo prioritário.
+- O sistema shall garantir área de toque mínima de 44×44px em todo elemento interativo móvel e foco visível na Web.
+- O sistema shall executar a mesma regra de negócio e os mesmos contratos nas três plataformas, permitindo adaptadores apenas para capacidades específicas.
 
 *(Requisitos completos, com fluxos alternativos e de exceção, já estão detalhados nos UC01–UC04; este PRD não os duplica — apenas resolve as lacunas identificadas na seção 3.)*
 
 ### 7.3 Regra de negócio antifraude (RN-ANTIFRAUDE) — nova, preenche gap 3.5
 - O backend shall considerar inválida qualquer sessão cuja duração reportada exceda 4 horas contínuas sem pausa registrada, ou cuja soma diária de sessões exceda 16 horas.
 - A validação shall ocorrer exclusivamente no servidor, a partir de timestamps de início/fim gerados pelo servidor (heartbeat periódico, conforme UC03/S01) — o cliente não é fonte de verdade.
+- O tempo pausado shall ser excluído tanto da duração válida de foco quanto dos limites antifraude.
+- Uma sessão encerrada antecipadamente shall conceder `floor(segundosDeFocoValidados / 60) × 10 XP`, limitada à duração planejada; abaixo de cinco minutos completos, ela shall conceder zero XP e zero contribuição para raid.
 - Sessões descartadas por antifraude shall permanecer visíveis ao usuário com um indicador de "não contabilizada", nunca silenciosamente removidas.
 
 ### 7.4 Critérios de aceite — ADR-008 e ADR-009 (feature-forge)
 
-**Responsividade (ADR-008)**
-- Dado um usuário autenticado acessando de um viewport <640px, quando a tela de Guilda carrega, então o painel lateral fixo aparece como navegação inferior, não como sidebar de 280px.
+**Experiência universal (ADR-008)**
+- Dado um usuário autenticado no aplicativo iOS/Android, quando o shell carrega, então as quatro áreas funcionais aparecem na navegação inferior e os itens futuros ficam em “Mais”.
+- Dado um usuário autenticado na Web desktop, quando o shell carrega, então a navegação aparece em sidebar sem divergir nas rotas ou regras de negócio.
 - Dado qualquer botão ou link interativo em viewport mobile, quando renderizado, então sua área de toque é ≥44×44px.
 - Dado `prefers-reduced-motion: reduce` ativo no sistema do usuário, quando qualquer animação (glow, level-up) ocorreria, então ela é substituída por uma transição de opacidade ou omitida.
 
@@ -186,7 +197,8 @@ O usuário pediu que as informações se propaguem "no mesmo ambiente" por um si
 - [x] `guilds`: criar/entrar/detalhe
 - [x] `raids`: entrar, registrar contribuição, ranking
 - [x] `realtime`: gateway Socket.IO com rooms `user:{id}` e `guild:{id}`
-- [x] Frontend: shell responsivo mobile-first (ADR-008), páginas de login/cadastro/dashboard/sessão/guilda/perfil
+- [x] Frontend Web atual: shell responsivo e páginas de login/cadastro/dashboard/sessão/guilda/perfil
+- [ ] Frontend universal ADR-008: migrar para Expo e validar Web/iOS/Android conforme o design de 03/09/2026
 - [x] Contrato de API publicado e validado (`docs/api/openapi.yaml`, lint limpo — seção 10)
 - [ ] `docs/api/asyncapi.yaml` (contrato dos eventos WebSocket) — ainda não escrito
 - [ ] Migrations TypeORM versionadas (schema hoje só via `synchronize` em dev — ver seção 12)
@@ -223,14 +235,14 @@ O usuário pediu que as informações se propaguem "no mesmo ambiente" por um si
 ### ADR-007: Flags de entitlement (freemium) entram na Fase 1, sem gateway de pagamento
 **Status:** Aceito. **Contexto:** Pitch descreve tiers grátis/premium sem nenhuma contrapartida técnica nos outros documentos. **Decisão:** adicionar `plan_tier` ao perfil do usuário e checagem de feature flag nos recursos marcados como premium no Pitch (cosméticos exclusivos, raids avançados, perfil destacado) — todos liberados por padrão no MVP, mas já passando pela checagem de flag em vez de código hardcoded. **Consequência:** nenhuma migração de dados será necessária quando um gateway de pagamento real for integrado pós-MVP; nenhum código de cobrança (Stripe, PIX, etc.) entra na Fase 1.
 
-### ADR-008: Web responsivo mobile-first, sem app nativo
-**Status:** Aceito. **Contexto:** pedido explícito do usuário — mobile deve funcionar, mas o produto continua sendo o SPA React já decidido, não um app nativo separado. **Decisão:** aplicar breakpoints mobile-first no design system já documentado (Documentação de Interface): `mobile` (<640px), `tablet` (640–1024px), `desktop` (>1024px). Mudanças estruturais de layout exigidas:
-- Sidebar fixa de 280px (tela de Guilda) vira drawer/bottom-sheet recolhível em mobile.
-- Painel de três colunas (tela de Sessão: companheiro + timer + guilda) vira navegação em abas/scroll vertical em mobile, com o timer sempre como elemento principal acima da dobra.
-- Área de toque mínima de 44×44px em todo elemento interativo (bumped a partir dos 40px de botão já documentados).
-- Tipografia display (Cinzel, 64–80px no desktop) reduz para 32–40px em mobile para não quebrar o layout do timer.
-- `safe-area-inset` (notch/home indicator) respeitado em componentes fixos (barra inferior de navegação, toasts).
-PWA (manifest + service worker básico para instalável/ícone de tela inicial) é **Could** — não obrigatório na Fase 1, mas a estrutura Vite já tida no Documento de Arquitetura suporta adicionar depois sem retrabalho. **Consequência:** a Documentação de Interface precisa de um adendo com os breakpoints e os três layouts alternativos (Sessão, Guilda, Perfil) em mobile antes da implementação de tela.
+### ADR-008: Frontend universal com Expo para Web, iOS e Android
+**Status:** Revisado e aceito em 03/09/2026; substitui integralmente a versão “Web responsivo mobile-first, sem app nativo”. **Contexto:** o frontend Web responsivo já existe, mas o objetivo passou a exigir as mesmas capacidades em Web, iOS e Android. Não há versão pública a manter durante a migração, e o projeto acadêmico pode validar aplicativos localmente sem publicação nas lojas. **Decisão:** transformar `apps/frontend` numa única aplicação Expo com Expo Router e React Native Web. A UI usa primitivas React Native, `StyleSheet`, tokens TypeScript e componentes próprios; diferenças legítimas ficam em adaptadores ou arquivos específicos por plataforma. REST permanece canônico, TanStack Query gerencia somente estado remoto e Socket.IO invalida consultas. Web mantém refresh token em cookie protegido; iOS/Android usam credencial rotativa em armazenamento seguro. A compatibilidade segue a matriz oficial do Expo SDK fixado.
+
+**Experiência:** Web desktop usa sidebar; celulares usam navegação inferior. O standalone é referência de identidade e UX, não implementação a incorporar. Tema Ouro/Índigo é o único exposto. Mercado Arcano, Crônicas e Configuração permanecem visíveis como “Em breve”. Tablets, áudio ambiente, push remoto, múltiplos temas e publicação nas lojas ficam fora do aceite inicial.
+
+**Domínio relacionado:** no máximo uma Study Session ativa por usuário, controlável em qualquer dispositivo. Ela inicia online, sobrevive a perda de conexão, usa timestamps canônicos e comandos idempotentes. Pause/resume exige rede. Foco de 15/25/50 minutos conclui automaticamente; término antecipado após cinco minutos recebe 10 XP por minuto completo. Pausas Pomodoro de 5/15 minutos são locais e não concedem XP.
+
+**Consequências:** Vite, React Router DOM, DOM/CSS direto e Vitest deixam de compor o frontend final; a migração ocorre incrementalmente com validação Web/iOS/Android. O backend e o OpenAPI recebem extensões retrocompatíveis para autenticação nativa, estados, concorrência e idempotência. Eventos Socket.IO ganham AsyncAPI. Detalhes, alternativas, testes e glossário: `docs/plans/2026-09-03-react-native-universal-design.md`.
 
 ### ADR-009: Sessão persistente multi-dispositivo com fanout de eventos por usuário
 **Status:** Aceito. **Contexto:** pedido explícito do usuário — múltiplos dispositivos logados devem ver o mesmo progresso propagado em tempo real. **Decisão:**
@@ -244,8 +256,8 @@ PWA (manifest + service worker básico para instalável/ícone de tela inicial) 
 
 ```mermaid
 graph TD
-    subgraph Client["Cliente (Browser/Mobile)"]
-        SPA["SPA React + TypeScript<br/>shell responsivo (ADR-008)"]
+    subgraph Client["Expo universal (ADR-008)"]
+        SPA["React Native + TypeScript<br/>Web · iOS · Android"]
     end
 
     subgraph VM["VM Oracle Cloud Always Free (ADR-006)"]
@@ -261,7 +273,7 @@ graph TD
         MySQL[("MySQL 8<br/>(HeatWave Always Free)")]
     end
 
-    SPA -->|"HTTPS REST<br/>+ cookie httpOnly refresh"| Auth
+    SPA -->|"HTTPS REST<br/>+ credencial por plataforma"| Auth
     SPA -->|"HTTPS REST"| Users
     SPA -->|"HTTPS REST"| Sess
     SPA -->|"HTTPS REST"| Guilds
@@ -333,7 +345,7 @@ Este contrato deve ser versionado em `docs/api/openapi.yaml` e `docs/api/asyncap
 Substitui a stack AWS originalmente documentada, conforme ADR-006.
 
 - **Compute:** 1 VM Ampere A1 (Always Free, dimensionada dentro do limite atual de 2 OCPU/12GB), rodando backend NestJS e MySQL em containers Docker via Docker Compose.
-- **Rede/borda:** Nginx (ou Caddy) na própria VM como reverse proxy, terminando TLS (Let's Encrypt) e roteando HTTPS/WSS para o container NestJS; frontend React/Vite hospedado como estático (Vercel/Cloudflare Pages free tier, ou servido pela mesma VM caso o time prefira um único ponto de deploy).
+- **Rede/borda:** Nginx (ou Caddy) na própria VM como reverse proxy, terminando TLS (Let's Encrypt) e roteando HTTPS/WSS para o container NestJS; build Web estático do Expo hospedado em serviço gratuito compatível ou servido pela mesma VM. Aplicativos iOS/Android são executados localmente nesta fase acadêmica (ADR-008).
 - **Dados:** MySQL 8 via Oracle MySQL HeatWave Always Free (gerenciado) **ou** container MySQL na mesma VM — decisão de implementação a tomar na primeira ticket de infraestrutura, pesando gerenciado (menos operação, mas 1 recurso Always Free "gasto") vs. container (mais controle, mais responsabilidade de backup manual).
 - **Cache/tempo real:** Redis adiado (ADR-003) — sem custo/ocupação de recursos no MVP.
 - **Observabilidade:** sem CloudWatch; usar stack leve auto-hospedada (ex.: Grafana + Prometheus em container, ou apenas logs estruturados + `journalctl`/Docker logs) — dimensionar para não competir por recursos com a aplicação na VM de 12GB.
@@ -359,9 +371,9 @@ Pipeline (GitHub Actions) por PR:
 |---|---|
 | Disponibilidade | SLO de 99.0% no MVP/beta — rebaixado de 99.5% por causa do risco de instabilidade do Oracle Always Free (ADR-006: recursos cortados em jun/2026, terminação de instâncias fora do limite em curso desde 18/08/2026). Sem infraestrutura gerenciada redundante nesta fase; reavaliar SLO e provedor se o produto sair do horizonte acadêmico |
 | Latência | P99 de resposta REST < 300ms; propagação de evento de guilda via WebSocket < 1s — validar contra o hardware real da VM Always Free (2 OCPU/12GB), que é mais modesto que o ECS Fargate originalmente planejado |
-| Segurança | Senhas com Argon2id; JWT access (15min) + refresh rotativo por dispositivo em cookie `httpOnly`/`Secure` (ADR-009); rate limiting em `/auth/*` e em `POST /sessions/*`; validação server-side obrigatória de toda regra de XP/antifraude; máx. 5 sessões simultâneas por usuário, com revogação individual ou total |
+| Segurança | Senhas com Argon2id; JWT access (15min) + refresh rotativo por dispositivo: cookie `httpOnly`/`Secure` na Web e armazenamento seguro no iOS/Android (ADR-008/009); rate limiting em `/auth/*` e em `POST /sessions/*`; validação server-side obrigatória de toda regra de XP/antifraude; máx. 5 sessões autenticadas por usuário, com revogação individual ou total |
 | Usabilidade/Acessibilidade | WCAG AA, `prefers-reduced-motion` respeitado, foco visível de 2px, conforme Documentação de Interface |
-| Responsividade | Mobile-first: breakpoints `<640px` / `640–1024px` / `>1024px` (ADR-008); área de toque ≥44×44px; sidebar/painel triplo colapsa em drawer/abas em mobile; `safe-area-inset` respeitado; sem app nativo nesta fase |
+| Experiência universal | Aplicação Expo para Web desktop e celulares iOS/Android (ADR-008); sidebar na Web, navegação inferior no celular, área de toque ≥44×44px, safe areas e movimento reduzido; tablets fora do aceite inicial |
 | Sincronização multi-dispositivo | Todo evento de progresso (XP, nível, raid, convite) chega em ≤1s em todos os dispositivos logados do mesmo usuário via room `user:{id}` (ADR-009) |
 | Confiabilidade de dados | Dump periódico do MySQL para Oracle Object Storage Always Free (seção 11) — não há backup automático gerenciado nesta stack; retenção mínima de 7 dias é responsabilidade do time, não do provedor |
 | Observabilidade | Dashboards de golden signals antes do beta público (stack leve auto-hospedada, seção 11); alertas de burn-rate de erro, não só de erro absoluto |
