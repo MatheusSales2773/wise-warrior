@@ -191,6 +191,41 @@ URL; em iOS/Android, abra `wise://runa-inexistente` no simulador/emulador.
 Os diretórios nativos gerados, cache `.expo`, `dist` e artefatos locais `.ipa`,
 `.apk` e `.aab` permanecem fora do Git.
 
+### Migrations do banco
+
+O schema MySQL é versionado por migrations TypeORM. O backend mantém
+`synchronize: false` em todos os ambientes; em `NODE_ENV=production`, as
+migrations compiladas em `dist/migrations` são aplicadas automaticamente antes
+de o servidor começar a aceitar requisições. Em desenvolvimento e teste, a
+execução automática fica desativada.
+
+Com o MySQL acessível e a partir da raiz do monorepo, execute:
+
+```bash
+npm run migration:run --workspace apps/backend
+npm run migration:revert --workspace apps/backend
+```
+
+Os mesmos comandos podem ser executados dentro de `apps/backend` com
+`npm run migration:run` e `npm run migration:revert`. Antes de reverter uma
+migration em qualquer ambiente, faça e valide um backup do banco; `revert`
+desfaz o schema da migration e pode remover dados.
+
+Para validar o schema contra um MySQL real (o teste cria um database isolado,
+aplica e reverte a migration), configure credenciais de administrador e rode:
+
+```bash
+TEST_DB_HOST=127.0.0.1 TEST_DB_PORT=3306 \
+TEST_DB_ADMIN_USERNAME=root TEST_DB_ADMIN_PASSWORD=change-me-root \
+npm run migration:test --workspace apps/backend
+```
+
+O comando de teste não faz parte da suíte unitária comum, portanto `npm test`
+não exige Docker local. O CI executa esse teste em um job separado com um
+serviço MySQL 8. Para executar migrations compiladas manualmente, rode o build
+e use o DataSource em `apps/backend/dist/config/data-source.js` com o CLI
+TypeORM; o container de produção já faz a aplicação automaticamente no boot.
+
 ---
 
 ## Público-alvo
