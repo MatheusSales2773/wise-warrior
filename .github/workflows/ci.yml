@@ -56,25 +56,10 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Check frontend types
-        run: npm run typecheck --workspace apps/frontend
-
-      - name: Lint frontend
-        run: npm run lint --workspace apps/frontend
-
-      - name: Run frontend tests
-        run: npm test --workspace apps/frontend
-
-      - name: Check Expo dependency matrix
-        run: npm run expo:check --workspace apps/frontend
-
-      - name: Run Expo Doctor
-        run: npm run expo:doctor --workspace apps/frontend
-
-      - name: Export Expo Web app
+      - name: Verify universal M1 gate
         env:
           EXPO_PUBLIC_API_URL: https://api.ci.invalid/v1
-        run: npm run build --workspace apps/frontend
+        run: npm run verify:m1
 
   frontend-delivery:
     name: Frontend container delivery

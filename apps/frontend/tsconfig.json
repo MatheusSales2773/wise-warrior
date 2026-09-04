@@ -10,7 +10,7 @@
     "paths": {
       "@/*": ["./src/*"]
     },
-    "types": ["jest", "expo"]
+    "types": ["jest", "node", "expo"]
   },
   "include": ["**/*.ts", "**/*.tsx", ".expo/types/**/*.ts", "expo-env.d.ts"]
 }

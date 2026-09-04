@@ -108,32 +108,88 @@ Testes: `npm test` (roda a suíte de cada workspace).
 
 ### Frontend universal fora do Docker
 
-O desenvolvimento requer Node.js ≥22.13. Para Android, instale o JDK 17, o
-Android Studio, o Android SDK 36 e as ferramentas `platform-tools` (`adb`). Este
-repositório inclui uma `.sdkmanrc`; com o SDKMAN configurado, execute
-`sdk env` na raiz para selecionar o JDK 17. No macOS, exponha também o SDK:
+#### Pré-requisitos
+
+- Node.js ≥22.13 e npm (a CI usa Node 22).
+- Web: um navegador moderno; nenhuma toolchain nativa é necessária.
+- iOS (somente macOS): Xcode com Command Line Tools, um iOS Simulator e
+  CocoaPods. Selecione o Xcode ativo com `sudo xcode-select -s
+  /Applications/Xcode.app/Contents/Developer` e aceite a licença antes da
+  primeira compilação.
+- Android: JDK 17, Android Studio, Android SDK Platform 36, Build Tools 36 e
+  `platform-tools` (`adb`). O repositório inclui `.sdkmanrc`; com SDKMAN
+  configurado, execute `sdk env` na raiz para selecionar o JDK 17.
+
+No macOS, exponha o Android SDK no shell:
 
 ```bash
 export ANDROID_HOME="$HOME/Library/Android/sdk"
 export PATH="$ANDROID_HOME/platform-tools:$ANDROID_HOME/emulator:$PATH"
 ```
 
-Com um emulador iniciado ou dispositivo conectado, execute a primeira compilação
-nativa a partir da raiz:
+Crie `apps/frontend/.env` a partir de `apps/frontend/.env.example`. Variáveis
+consumidas pelo aplicativo precisam do prefixo `EXPO_PUBLIC_` e são incorporadas
+ao bundle, portanto nunca coloque secrets nelas:
 
 ```bash
-npm run android --workspace apps/frontend
+cp apps/frontend/.env.example apps/frontend/.env
 ```
 
-O comando gera `apps/frontend/android`, compila um APK de debug, instala o app e
-inicia o Metro. Depois da primeira compilação, alterações somente em JavaScript
-ou TypeScript usam `npm run dev:frontend` e Fast Refresh, sem recompilar o código
-nativo. Para Web, use `npm run web --workspace apps/frontend`; `npm run build`
-exporta os artefatos Web, mas não compila um aplicativo Android. Expo Go e
-publicação na Play Store não fazem parte deste fluxo local.
+Instale todas as dependências na raiz do monorepo. `npm ci` reproduz exatamente
+o lockfile e é o comando usado pela CI:
 
-Os diretórios nativos gerados, `.expo` e os artefatos locais permanecem fora do
-Git.
+```bash
+npm ci
+```
+
+#### Comandos por plataforma
+
+```bash
+# Web no navegador
+npm run web --workspace apps/frontend
+
+# Primeira compilação/instalação nativa ou após mudar dependências/config nativa
+npm run ios --workspace apps/frontend
+npm run android --workspace apps/frontend
+
+# Ciclo diário depois que o binário nativo já está instalado
+npm run dev:frontend
+```
+
+`ios` exige um Simulator iniciado ou dispositivo conectado; `android` exige um
+emulador iniciado ou dispositivo visível em `adb devices`. Os comandos
+`expo run:*` geram `apps/frontend/ios` ou `apps/frontend/android`, compilam o
+binário de debug, instalam-no e iniciam o Metro. Alterações apenas em JavaScript
+ou TypeScript usam `npm run dev:frontend` e Fast Refresh sem recompilar código
+nativo.
+
+#### Gate M1 e tipos de saída
+
+```bash
+# Tipos + lint + Jest + matriz Expo + Expo Doctor + bundles das três plataformas
+npm run verify:m1
+
+# Somente o bundle Web pronto para servir
+npm run build --workspace apps/frontend
+
+# Somente os bundles Metro de Web, iOS e Android
+npm run export:bundles --workspace apps/frontend
+```
+
+Uma **exportação de bundle** transforma JavaScript/TypeScript e assets em saída
+por plataforma, mas não produz um `.app`, `.ipa`, `.apk` ou `.aab` instalável.
+Uma **compilação nativa** usa Xcode ou Gradle por meio de `expo run:ios` ou
+`expo run:android` para gerar e instalar um aplicativo local. O **Expo Go** é
+opcional para uma verificação rápida enquanto o projeto usar apenas módulos
+compatíveis; ele não substitui a compilação nativa validada por este projeto.
+
+Valide `/` e uma URL inexistente nas três plataformas: a inicial deve mostrar
+“Wise Warrior” e “Fundação universal ativa”; o fallback deve mostrar “Página não
+encontrada” e retornar ao início pelo botão. No navegador, acesse diretamente a
+URL; em iOS/Android, abra `wise://runa-inexistente` no simulador/emulador.
+
+Os diretórios nativos gerados, cache `.expo`, `dist` e artefatos locais `.ipa`,
+`.apk` e `.aab` permanecem fora do Git.
 
 ---
 

@@ -136,4 +136,7 @@ dist
 apps/frontend/.expo/
 apps/frontend/ios/
 apps/frontend/android/
+apps/frontend/*.apk
+apps/frontend/*.aab
+apps/frontend/*.ipa
 apps/frontend/.env*.local

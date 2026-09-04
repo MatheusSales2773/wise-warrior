@@ -9,11 +9,13 @@
     "ios": "expo run:ios",
     "android": "expo run:android",
     "build": "expo export --platform web",
+    "export:bundles": "expo export --platform all",
     "lint": "expo lint",
     "typecheck": "tsc --noEmit",
     "expo:check": "expo install --check",
     "expo:doctor": "expo-doctor",
     "test:delivery": "./test-delivery.sh",
+    "verify:m1": "npm run typecheck && npm run lint && npm test && npm run expo:check && npm run expo:doctor && npm run export:bundles",
     "test": "jest --runInBand"
   },
   "dependencies": {
@@ -32,6 +34,7 @@
   "devDependencies": {
     "@testing-library/react-native": "14.0.1",
     "@types/jest": "^29.5.14",
+    "@types/node": "^20.16.5",
     "@types/react": "~19.2.2",
     "eslint": "^9.0.0",
     "eslint-config-expo": "~57.0.2",
