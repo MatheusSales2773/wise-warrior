@@ -38,8 +38,8 @@ jobs:
       - name: Run backend tests
         run: npm test --workspace apps/backend
 
-  frontend-tests:
-    name: Frontend tests
+  frontend-quality:
+    name: Frontend quality
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -56,8 +56,37 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Check frontend types
+        run: npm run typecheck --workspace apps/frontend
+
+      - name: Lint frontend
+        run: npm run lint --workspace apps/frontend
+
       - name: Run frontend tests
         run: npm test --workspace apps/frontend
+
+      - name: Check Expo dependency matrix
+        run: npm run expo:check --workspace apps/frontend
+
+      - name: Run Expo Doctor
+        run: npm run expo:doctor --workspace apps/frontend
+
+      - name: Export Expo Web app
+        env:
+          EXPO_PUBLIC_API_URL: https://api.ci.invalid/v1
+        run: npm run build --workspace apps/frontend
+
+  frontend-delivery:
+    name: Frontend container delivery
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: frontend-quality
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Test Expo Web container
+        run: npm run test:delivery --workspace apps/frontend
 
   build:
     name: Build
@@ -77,5 +106,5 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Build workspaces
-        run: npm run build
+      - name: Build backend
+        run: npm run build --workspace apps/backend
