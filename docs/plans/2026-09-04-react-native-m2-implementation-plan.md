@@ -103,20 +103,21 @@ rotas por arquivo fornecem o contrato estável necessário.
 | Forja | `/sessao` | funcional | sidebar | barra inferior |
 | Personagem | `/perfil` | funcional | sidebar | barra inferior |
 | Guilda | `/guilda` | funcional | sidebar | barra inferior |
-| Mercado Arcano | nenhuma | “Em breve” | sidebar | menu Mais |
-| Crônicas | nenhuma | “Em breve” | sidebar | menu Mais |
-| Configuração | nenhuma | “Em breve” | sidebar | menu Mais |
+| Mercado Arcano | nenhuma | “Em breve”, não interativo | sidebar | menu Mais |
+| Crônicas | nenhuma | “Em breve”, não interativo | sidebar | menu Mais |
+| Configuração | nenhuma | “Em breve”, não interativo | sidebar | menu Mais |
 
 “Funcional” nesta tabela significa que a navegação resolve uma rota real; o
 conteúdo da feature continua reservado à milestone correspondente. O destino
 ativo usa `usePathname`. Itens futuros não recebem `href`, não criam arquivos de
-rota e não alteram o histórico. Ao serem acionados, mostram feedback acessível e
-curto: “{nome} estará disponível em breve”.
+rota, não entram na ordem de foco e não respondem a clique/toque. Cada linha
+exibe o badge “Em breve” e seu nome acessível é “{nome}, indisponível, em breve”.
 
 Na barra inferior, “Mais” é um controle local, não uma quinta rota. Ele abre um
-modal/bottom sheet simples com os três itens futuros. Fechar por botão, gesto de
-voltar do Android, Escape na Web ou toque fora deve devolver foco ao controle que
-abriu o menu.
+`Modal` do React Native, apresentado como bottom sheet, com os três itens futuros.
+Não será instalada uma biblioteca de modal. Fechar pelo botão “Fechar”, gesto de
+voltar do Android, Escape na Web ou toque fora devolve foco ao controle que abriu
+o menu.
 
 ### 3.3 Tokens semânticos e tema único
 
@@ -135,10 +136,33 @@ tokens/
 └── index.ts          # única API pública dos tokens
 ```
 
-Ouro envelhecido `#d4a85a` e ouro claro `#f0c97a` são âncoras visuais já
-documentadas. Os demais valores devem ser extraídos da referência e nomeados pelo
-papel, não pela aparência (`surface.default`, não `gray900`). Índigo serve como
-profundidade e contraste, não como segundo tema selecionável.
+A paleta bruta fica fechada nos valores abaixo, extraídos do standalone. O agente
+não deve escolher novas cores para a M2:
+
+| Papel primitivo | Valor |
+| --- | --- |
+| fundo void/deep/elevated | `#07070c` / `#0c0c14` / `#12121c` |
+| card/card hover/inset | `#181826` / `#1f1f2e` / `#0a0a12` |
+| linha faint/soft/default/strong | `rgba(212,168,90,0.08)` / `0.16` / `0.28` / `0.45` |
+| ouro default/bright/dim/glow | `#d4a85a` / `#f0c97a` / `#8a6a3a` / `rgba(212,168,90,0.35)` |
+| feedback danger/info/success/critical/rare | `#c44545` / `#5b7fc4` / `#4ea672` / `#d65a8a` / `#8a5bc4` |
+| texto default/dim/muted/faint | `#f3ead4` / `#b3a98e` / `#6b6555` / `#46412f` |
+
+Aliases semânticos podem reutilizar esses valores, mas não criar hexadecimais ou
+RGBA adicionais. Se um par falhar WCAG AA, manter a paleta e trocar o alias para
+outro valor aprovado da tabela; não ajustar a cor por tentativa visual. Índigo
+serve como profundidade e contraste, não como segundo tema selecionável.
+
+As escalas também ficam fixas:
+
+- espaçamento: `0, 4, 8, 12, 16, 20, 24, 32, 40, 48, 64`;
+- raios: `3, 5, 8, 12` e `999` somente para pills;
+- bordas: `1` padrão e `2` para foco;
+- tipografia em pares tamanho/altura: display `32/40`, title `24/32`, subtitle
+  `18/26`, body `16/24`, label `14/20`, caption `12/16`, mono `14/20`;
+- layout: touch target `44`, sidebar `248`, breakpoint desktop `900`, conteúdo
+  máximo `1200`, gutter móvel `16`, Web estreita `24` e Web larga `32`;
+- movimento: instantâneo `0`, rápido `120 ms`, padrão `180 ms`, lento `240 ms`.
 
 Componentes consomem somente tokens semânticos. Exceções permitidas são valores
 derivados em SVG/gradiente que não aceitem referência indireta; mesmo nesses
@@ -152,7 +176,9 @@ fundo correspondente.
 
 ### 3.4 Tipografia e carregamento inicial
 
-Os arquivos TTF/OTF estáticos ficam em `apps/frontend/assets/fonts`. O plugin de
+Os arquivos TTF estáticos vêm do repositório oficial Google Fonts e ficam em
+`apps/frontend/assets/fonts`, acompanhados de cada licença OFL. Usar os arquivos
+estáticos — não as versões variáveis — nos pesos definidos na seção 2. O plugin de
 `expo-font` os incorpora em builds nativos; na Web, `useFonts` os carrega antes de
 liberar a árvore visual. `expo-splash-screen` mantém a tela inicial até a carga
 terminar. Erro de fonte deve liberar a aplicação com famílias de fallback e ser
@@ -178,6 +204,11 @@ empacotados. Não simular `fontWeight` inexistente nem baixar fontes em runtime.
   texto explícito; diferença de cor sozinha não comunica estado.
 - Ícones decorativos ficam ocultos da árvore de acessibilidade; controles com
   ícone recebem nome acessível independente do glifo.
+- `WiseIcon` usa somente `Ionicons` de `@expo/vector-icons`. O mapeamento é:
+  Acampamento `home-outline`/`home`, Forja `hammer-outline`/`hammer`, Personagem
+  `person-outline`/`person`, Guilda `shield-outline`/`shield` e Mais
+  `ellipsis-horizontal-circle-outline`/`ellipsis-horizontal-circle`. Itens
+  futuros, por serem não interativos, não exibem ícone.
 - `AccessibilityInfo.isReduceMotionEnabled()` e o evento
   `reduceMotionChanged` alimentam `useReducedMotion`. Animações ornamentais e
   transições não essenciais usam duração zero quando a preferência está ativa.
