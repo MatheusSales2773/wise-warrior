@@ -19,6 +19,9 @@
     "web": {
       "bundler": "metro",
       "output": "single"
+    },
+    "android": {
+      "package": "dev.guilhermeluan.wisewarrior"
     }
   }
 }

@@ -35,8 +35,8 @@ Wise transforma a rotina de estudos em uma jornada de RPG cooperativa. Estudante
 ## Stack técnica
 
 ### Frontend
-- React 18 + TypeScript · Vite · React Router v6 · Axios · socket.io-client
-- Responsivo mobile-first (ADR-008): sidebar em desktop, navegação inferior em mobile/tablet
+- Expo SDK 57 · React Native 0.86 · React 19 · TypeScript · Expo Router
+- Uma base universal para Web, iOS e Android (ADR-008)
 
 ### Backend
 - Node.js · NestJS (REST + WebSocket via Socket.IO) · TypeORM
@@ -103,6 +103,35 @@ npm run dev:frontend
 ```
 
 Backend em `http://localhost:3000/api/v1`, frontend em `http://localhost:5173`. Testes: `npm test` (roda a suíte de cada workspace).
+
+### Frontend universal fora do Docker
+
+O desenvolvimento requer Node.js ≥22.13. Para Android, instale o JDK 17, o
+Android Studio, o Android SDK 36 e as ferramentas `platform-tools` (`adb`). Este
+repositório inclui uma `.sdkmanrc`; com o SDKMAN configurado, execute
+`sdk env` na raiz para selecionar o JDK 17. No macOS, exponha também o SDK:
+
+```bash
+export ANDROID_HOME="$HOME/Library/Android/sdk"
+export PATH="$ANDROID_HOME/platform-tools:$ANDROID_HOME/emulator:$PATH"
+```
+
+Com um emulador iniciado ou dispositivo conectado, execute a primeira compilação
+nativa a partir da raiz:
+
+```bash
+npm run android --workspace apps/frontend
+```
+
+O comando gera `apps/frontend/android`, compila um APK de debug, instala o app e
+inicia o Metro. Depois da primeira compilação, alterações somente em JavaScript
+ou TypeScript usam `npm run dev:frontend` e Fast Refresh, sem recompilar o código
+nativo. Para Web, use `npm run web --workspace apps/frontend`; `npm run build`
+exporta os artefatos Web, mas não compila um aplicativo Android. Expo Go e
+publicação na Play Store não fazem parte deste fluxo local.
+
+Os diretórios nativos gerados, `.expo` e os artefatos locais permanecem fora do
+Git.
 
 ---
 
