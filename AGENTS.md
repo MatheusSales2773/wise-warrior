@@ -19,7 +19,7 @@ Before implementing or changing code, tests, infrastructure, or configuration:
 
 #### Language and backend
 
-- [TypeScript 5.x documentation](https://www.typescriptlang.org/docs/)
+- [TypeScript 6.x documentation](https://www.typescriptlang.org/docs/)
 - [NestJS 10 documentation](https://docs.nestjs.com/)
 - [TypeORM 0.3 documentation](https://typeorm.io/docs/)
 - [Socket.IO 4.x documentation](https://socket.io/docs/v4/)

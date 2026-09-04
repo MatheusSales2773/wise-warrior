@@ -102,7 +102,9 @@ npm run dev:backend
 npm run dev:frontend
 ```
 
-Backend em `http://localhost:3000/api/v1`, frontend em `http://localhost:5173`. Testes: `npm test` (roda a suíte de cada workspace).
+Backend em `http://localhost:3000/api/v1`; o Metro do frontend inicia em
+`http://localhost:8081` e permite abrir a plataforma desejada pelo terminal.
+Testes: `npm test` (roda a suíte de cada workspace).
 
 ### Frontend universal fora do Docker
 
