@@ -13,7 +13,10 @@
     "test:cov": "jest --coverage",
     "typeorm": "typeorm-ts-node-commonjs -d src/config/data-source.ts",
     "migration:generate": "npm run typeorm -- migration:generate",
-    "migration:run": "npm run typeorm -- migration:run"
+    "migration:run": "npm run typeorm -- migration:run",
+    "migration:revert": "npm run typeorm -- migration:revert",
+    "migration:show": "npm run typeorm -- migration:show",
+    "migration:test": "jest --runInBand --testRegex '.*migration.integration.test.ts$'"
   },
   "dependencies": {
     "@nestjs/common": "^10.4.0",

@@ -13,10 +13,10 @@ export class Character {
   id: string;
 
   @OneToOne(() => User, (user) => user.character, { onDelete: 'CASCADE' })
-  @JoinColumn({ name: 'user_id' })
+  @JoinColumn({ name: 'user_id', foreignKeyConstraintName: 'FK_characters_user_id_users' })
   user: User;
 
-  @Column({ name: 'user_id', unique: true })
+  @Column({ name: 'user_id', type: 'varchar', length: '36' })
   userId: string;
 
   @Column({ default: 1 })
@@ -30,8 +30,8 @@ export class Character {
 
   /**
    * "Companheiro" (mascote RPG) fica fora do escopo da Fase 1 — ADR-004.
-   * Coluna reservada para não exigir migração quando a feature for priorizada.
+   * A coluna permanece reservada, sem uma tabela Companion nesta migration.
    */
-  @Column({ name: 'companion_id', type: 'uuid', nullable: true })
+  @Column({ name: 'companion_id', type: 'varchar', length: '36', nullable: true })
   companionId?: string | null;
 }
