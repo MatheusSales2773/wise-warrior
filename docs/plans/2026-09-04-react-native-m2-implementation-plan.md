@@ -1,9 +1,13 @@
 # Plano de implementação — M2 Design system e navegação universal
 
-**Data:** 04/09/2026  
-**Status:** Pronto para implementação  
-**Milestone:** M2 — Design system e navegação  
-**Depende de:** M1 — Fundação Expo universal concluída  
+**Data:** 04/09/2026
+
+**Status:** Pronto para implementação
+
+**Milestone:** M2 — Design system e navegação
+
+**Depende de:** M1 — Fundação Expo universal concluída
+
 **Fontes de produto:**
 
 - `docs/plans/2026-09-03-react-native-migration-prioritization-design.md`;
