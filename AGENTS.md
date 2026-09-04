@@ -27,9 +27,9 @@ Before implementing or changing code, tests, infrastructure, or configuration:
 
 #### Frontend
 
-- [React 18 documentation](https://18.react.dev/)
-- [React Router 6.30 documentation](https://reactrouter.com/6.30.6/start/overview)
-- [Vite 5 documentation](https://v5.vite.dev/guide/)
+- [React 19 documentation](https://react.dev/)
+- [Expo SDK 57 documentation](https://docs.expo.dev/)
+- [Expo Router documentation](https://docs.expo.dev/router/introduction/)
 
 #### Testing
 
