@@ -12,7 +12,6 @@ import { User } from '../users/entities/user.entity';
 import { Character } from '../progression/entities/character.entity';
 import { Session } from './entities/session.entity';
 import { RegisterDto } from './dto/register.dto';
-import { LoginDto } from './dto/login.dto';
 import { randomToken, sha256Hex } from '../../shared/security/hash.util';
 
 export interface DeviceMetadata {

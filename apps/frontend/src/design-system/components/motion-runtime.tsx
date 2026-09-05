@@ -22,7 +22,8 @@ export function useReducedMotion(): boolean {
 
     return () => {
       isMounted = false;
-      subscription.remove();
+      // React Native Web returns no subscription when matchMedia is unavailable.
+      subscription?.remove();
     };
   }, []);
 

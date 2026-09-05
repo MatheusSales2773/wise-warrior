@@ -8,12 +8,12 @@ import { RaidsService } from '../raids/raids.service';
 import { MAX_CONTINUOUS_SESSION_SECONDS } from './domain/session-validator';
 
 function queryBuilderReturning(total: number) {
-  const qb: any = {};
-  qb.select = jest.fn().mockReturnValue(qb);
-  qb.where = jest.fn().mockReturnValue(qb);
-  qb.andWhere = jest.fn().mockReturnValue(qb);
-  qb.getRawOne = jest.fn().mockResolvedValue({ total: String(total) });
-  return qb;
+  return {
+    select: jest.fn().mockReturnThis(),
+    where: jest.fn().mockReturnThis(),
+    andWhere: jest.fn().mockReturnThis(),
+    getRawOne: jest.fn().mockResolvedValue({ total: String(total) }),
+  };
 }
 
 const mockRepo = {
@@ -48,7 +48,7 @@ describe('SessionsService', () => {
   describe('start', () => {
     it('rejects guild mode without raidId', async () => {
       await expect(
-        service.start('user-1', { subject: 'Cálculo', mode: 'guild' } as any),
+        service.start('user-1', { subject: 'Cálculo', mode: 'guild' }),
       ).rejects.toThrow(BadRequestException);
     });
 
