@@ -1,34 +1,20 @@
-import { render } from '@testing-library/react-native';
 import { fireEvent, renderRouter, screen, waitFor } from 'expo-router/testing-library';
 import { StyleSheet } from 'react-native';
-import HomeScreen from '../src/app/index';
 import { theme } from '../src/design-system/tokens/theme';
 
 describe('Expo foundation routes', () => {
-  it('renders the initial route copy through its public component', async () => {
-    await render(<HomeScreen />);
-
-    expect(screen.getByText('Wise Warrior')).toBeTruthy();
-    expect(screen.getByText('Fundação universal ativa')).toBeTruthy();
-
-    const titleStyle = StyleSheet.flatten(screen.getByText('Wise Warrior').props.style);
-    expect(titleStyle).toMatchObject({
-      color: theme.color.textPrimary,
-      fontFamily: theme.type.display.fontFamily,
-      fontSize: theme.type.display.fontSize,
-      lineHeight: theme.type.display.lineHeight,
-    });
-    expect(StyleSheet.flatten(screen.getByText('FUNDAÇÃO UNIVERSAL').props.style).fontFamily).toBe('Inter-Medium');
-    expect(StyleSheet.flatten(screen.getByText('Fundação universal ativa').props.style).fontFamily).toBe('Cinzel-SemiBold');
-    expect(StyleSheet.flatten(screen.getByText('OURO · ÍNDIGO').props.style).fontFamily).toBe('JetBrainsMono-Medium');
-  });
-
-  it('resolves the root pathname to the initial route', async () => {
-    const router = renderRouter('src/app', { initialUrl: '/' });
+  it.each([
+    ['/', 'Acampamento', 'Seu painel de progresso está em preparação.'],
+    ['/sessao', 'Forja', 'Sua sessão de estudo está em preparação.'],
+    ['/perfil', 'Personagem', 'Seu perfil está em preparação.'],
+    ['/guilda', 'Guilda', 'Sua guilda está em preparação.'],
+  ])('resolves %s directly with its honest placeholder', async (pathname, title, message) => {
+    const router = renderRouter('src/app', { initialUrl: pathname });
     await router;
 
-    expect(router).toHavePathname('/');
-    expect(screen.getByText('Wise Warrior')).toBeTruthy();
+    expect(router).toHavePathname(pathname);
+    expect(screen.getByRole('header', { name: title })).toBeTruthy();
+    expect(screen.getByText(message)).toBeTruthy();
   });
 
   it('renders the not-found route and navigates back to root', async () => {
@@ -49,6 +35,6 @@ describe('Expo foundation routes', () => {
     await fireEvent.press(screen.getByRole('button', { name: 'Voltar ao início' }));
 
     await waitFor(() => expect(router).toHavePathname('/'));
-    expect(screen.getByText('Wise Warrior')).toBeTruthy();
+    expect(screen.getByRole('header', { name: 'Acampamento' })).toBeTruthy();
   });
 });

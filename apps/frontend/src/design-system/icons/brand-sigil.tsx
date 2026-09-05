@@ -1,9 +1,9 @@
 import Svg, { Circle, Path } from 'react-native-svg';
 import { theme } from '../tokens/theme';
 
-export function BrandSigil() {
+export function BrandSigil({ size = 176 }: { size?: number }) {
   return (
-    <Svg width={176} height={176} viewBox="0 0 176 176">
+    <Svg width={size} height={size} viewBox="0 0 176 176">
       <Circle cx="88" cy="88" r="70" fill="none" stroke={theme.color.borderSubtle} strokeWidth={theme.border.standard} />
       <Circle cx="88" cy="88" r="52" fill="none" stroke={theme.color.borderGhost} strokeWidth={theme.border.standard} />
       <Path

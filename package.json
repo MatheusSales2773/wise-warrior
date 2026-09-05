@@ -13,7 +13,8 @@
     "build": "npm run build --workspace apps/backend && npm run build --workspace apps/frontend",
     "test": "npm run test --workspace apps/backend && npm run test --workspace apps/frontend",
     "lint": "npm run lint --workspace apps/backend && npm run lint --workspace apps/frontend",
-    "verify:m1": "npm run verify:m1 --workspace apps/frontend"
+    "verify:m1": "npm run verify:m1 --workspace apps/frontend",
+    "verify:m2": "npm run verify:m2 --workspace apps/frontend"
   },
   "devDependencies": {
     "eslint": "9.39.5",

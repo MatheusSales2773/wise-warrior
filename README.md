@@ -163,11 +163,14 @@ binário de debug, instalam-no e iniciam o Metro. Alterações apenas em JavaScr
 ou TypeScript usam `npm run dev:frontend` e Fast Refresh sem recompilar código
 nativo.
 
-#### Gate M1 e tipos de saída
+#### Gates M1/M2 e tipos de saída
 
 ```bash
 # Tipos + lint + Jest + matriz Expo + Expo Doctor + bundles das três plataformas
 npm run verify:m1
+
+# Gate M1 completo + shell M2, bundle Web e fallback SPA no container
+npm run verify:m2
 
 # Somente o bundle Web pronto para servir
 npm run build --workspace apps/frontend
@@ -183,10 +186,17 @@ Uma **compilação nativa** usa Xcode ou Gradle por meio de `expo run:ios` ou
 opcional para uma verificação rápida enquanto o projeto usar apenas módulos
 compatíveis; ele não substitui a compilação nativa validada por este projeto.
 
-Valide `/` e uma URL inexistente nas três plataformas: a inicial deve mostrar
-“Wise Warrior” e “Fundação universal ativa”; o fallback deve mostrar “Página não
-encontrada” e retornar ao início pelo botão. No navegador, acesse diretamente a
-URL; em iOS/Android, abra `wise://runa-inexistente` no simulador/emulador.
+O shell oferece as mesmas quatro rotas nas três plataformas: `/` (Acampamento),
+`/sessao` (Forja), `/perfil` (Personagem) e `/guilda` (Guilda). Web desktop usa
+sidebar a partir de 900 px; Web estreita, iOS e Android usam barra inferior e o
+menu local “Mais”. Mercado Arcano, Crônicas e Configuração permanecem visíveis
+como indisponíveis.
+
+Valide as quatro URLs e uma URL inexistente nas três plataformas. No navegador,
+acesse ou atualize a URL diretamente; em iOS/Android, abra os deep links
+`wise://`, `wise://sessao`, `wise://perfil`, `wise://guilda` e
+`wise://runa-inexistente` no simulador/emulador. O fallback deve mostrar “Página
+não encontrada” e retornar ao início pelo botão.
 
 Os diretórios nativos gerados, cache `.expo`, `dist` e artefatos locais `.ipa`,
 `.apk` e `.aab` permanecem fora do Git.

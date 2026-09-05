@@ -16,3 +16,5 @@ export { ProgressBar } from './ProgressBar';
 export type { ProgressBarProps } from './ProgressBar';
 export { ResourcePill } from './ResourcePill';
 export type { ResourcePillProps } from './ResourcePill';
+export { AppNavigation } from './AppNavigation';
+export { AppShell } from './AppShell';
