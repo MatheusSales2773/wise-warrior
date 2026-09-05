@@ -4,17 +4,19 @@ import {
   Entity,
   OneToOne,
   PrimaryGeneratedColumn,
+  Unique,
 } from 'typeorm';
 import { Character } from '../../progression/entities/character.entity';
 
 export type PlanTier = 'free' | 'premium';
 
 @Entity('users')
+@Unique('UQ_users_email', ['email'])
 export class User {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Column({ unique: true })
+  @Column()
   email: string;
 
   /** Hash Argon2id — nunca a senha em texto puro (ADR de segurança, PRD seção 13). */

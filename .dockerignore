@@ -6,5 +6,8 @@ node_modules
 **/node_modules
 **/dist
 **/coverage
+apps/frontend/.expo
+apps/frontend/ios
+apps/frontend/android
 *.log
 .DS_Store

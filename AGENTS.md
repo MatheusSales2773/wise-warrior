@@ -19,7 +19,7 @@ Before implementing or changing code, tests, infrastructure, or configuration:
 
 #### Language and backend
 
-- [TypeScript 5.x documentation](https://www.typescriptlang.org/docs/)
+- [TypeScript 6.x documentation](https://www.typescriptlang.org/docs/)
 - [NestJS 10 documentation](https://docs.nestjs.com/)
 - [TypeORM 0.3 documentation](https://typeorm.io/docs/)
 - [Socket.IO 4.x documentation](https://socket.io/docs/v4/)
@@ -27,13 +27,17 @@ Before implementing or changing code, tests, infrastructure, or configuration:
 
 #### Frontend
 
-- [React 18 documentation](https://18.react.dev/)
-- [React Router 6.30 documentation](https://reactrouter.com/6.30.6/start/overview)
-- [Vite 5 documentation](https://v5.vite.dev/guide/)
+- [React 19 documentation](https://react.dev/)
+- [React Native 0.86 documentation](https://reactnative.dev/docs/0.86/components-and-apis)
+- [React Native Web accessibility](https://necolas.github.io/react-native-web/docs/accessibility/)
+- [Expo SDK 57 documentation](https://docs.expo.dev/)
+- [Expo Router documentation](https://docs.expo.dev/router/introduction/)
 
 #### Testing
 
 - [Jest 29.7 documentation](https://jestjs.io/docs/29.7/getting-started)
+- [React Native Testing Library](https://oss.callstack.com/react-native-testing-library/)
+- [TypeScript ESLint legacy configuration](https://typescript-eslint.io/getting-started/legacy-eslint-setup/)
 - [Vitest 2 documentation](https://v2.vitest.dev/guide/)
 
 #### Infrastructure
