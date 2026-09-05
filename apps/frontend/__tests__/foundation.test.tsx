@@ -24,6 +24,7 @@ describe('Expo foundation routes', () => {
     expect(router).toHavePathname('/runa-inexistente');
     expect(screen.getByText('Página não encontrada')).toBeTruthy();
     expect(StyleSheet.flatten(screen.getByText('RUNA 404').props.style).fontFamily).toBe('JetBrainsMono-Medium');
+    expect(StyleSheet.flatten(screen.getByText('RUNA 404').props.style).color).toBe(theme.color.accentPrimary);
     expect(StyleSheet.flatten(screen.getByText('Página não encontrada').props.style).fontFamily).toBe('Cinzel-Bold');
     expect(StyleSheet.flatten(screen.getByText('Este caminho não pertence ao mapa.').props.style).fontFamily).toBe('Inter-Regular');
     expect(StyleSheet.flatten(screen.getByText('Voltar ao início').props.style).fontFamily).toBe('Inter-SemiBold');

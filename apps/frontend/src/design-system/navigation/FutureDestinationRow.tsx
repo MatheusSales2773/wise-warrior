@@ -12,11 +12,11 @@ export function FutureDestinationRow({ destination }: { destination: FutureDesti
       focusable={false}
       style={styles.row}
     >
-      <WiseText color="textDisabled" variant="label">
+      <WiseText color="textSecondary" variant="label">
         {destination.label}
       </WiseText>
       <View aria-hidden accessibilityElementsHidden importantForAccessibility="no" style={styles.badge}>
-        <WiseText color="accentMuted" variant="caption">
+        <WiseText color="accentPrimary" variant="caption">
           Em breve
         </WiseText>
       </View>

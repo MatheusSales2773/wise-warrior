@@ -10,7 +10,7 @@ export default function NotFoundScreen() {
       <WiseCard style={styles.panel} variant="ornamented">
         <View style={styles.panelContent}>
           <WiseIcon color="accentMuted" name="shield-outline" size="large" />
-          <WiseText color="accentMuted" style={styles.code} variant="mono">
+          <WiseText color="accentPrimary" style={styles.code} variant="mono">
             RUNA 404
           </WiseText>
           <WiseText color="textSecondary" style={styles.description} variant="body">

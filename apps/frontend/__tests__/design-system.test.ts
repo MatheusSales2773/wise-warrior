@@ -1,6 +1,61 @@
 import { isDesktopLayout } from '@/design-system/tokens/layout';
 import { motionDuration, theme, typographyFor } from '@/design-system/tokens/theme';
 
+function relativeLuminance(color: string): number {
+  const match = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(color);
+  if (!match) throw new Error(`Contrast audit requires an opaque hexadecimal color, received ${color}.`);
+
+  const channels = match.slice(1).map((channel) => Number.parseInt(channel, 16) / 255).map((channel) => (
+    channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4
+  ));
+  const weights = [0.2126, 0.7152, 0.0722] as const;
+  return channels.reduce((luminance, channel, index) => luminance + (channel * (weights[index] ?? 0)), 0);
+}
+
+function contrastRatio(foreground: string, background: string): number {
+  const foregroundLuminance = relativeLuminance(foreground);
+  const backgroundLuminance = relativeLuminance(background);
+  return (Math.max(foregroundLuminance, backgroundLuminance) + 0.05)
+    / (Math.min(foregroundLuminance, backgroundLuminance) + 0.05);
+}
+
+const textContrastPairs = [
+  { context: 'primary text on the screen canvas', foreground: theme.color.textPrimary, background: theme.color.backgroundCanvas },
+  { context: 'primary text on the raised navigation surface', foreground: theme.color.textPrimary, background: theme.color.backgroundRaised },
+  { context: 'primary text on the screen overlay gradient', foreground: theme.color.textPrimary, background: theme.color.backgroundOverlay },
+  { context: 'primary text on cards and pills', foreground: theme.color.textPrimary, background: theme.color.surfaceCard },
+  { context: 'primary text on elevated and interacting surfaces', foreground: theme.color.textPrimary, background: theme.color.surfaceElevated },
+  { context: 'primary text in fields, feedback and danger buttons', foreground: theme.color.textPrimary, background: theme.color.surfaceInset },
+  { context: 'secondary placeholder text on the screen canvas', foreground: theme.color.textSecondary, background: theme.color.backgroundCanvas },
+  { context: 'secondary navigation and future-destination labels', foreground: theme.color.textSecondary, background: theme.color.backgroundRaised },
+  { context: 'secondary placeholder text on the screen overlay gradient', foreground: theme.color.textSecondary, background: theme.color.backgroundOverlay },
+  { context: 'secondary text on cards and interacting navigation', foreground: theme.color.textSecondary, background: theme.color.surfaceCard },
+  { context: 'secondary field placeholder and disabled-button text', foreground: theme.color.textSecondary, background: theme.color.surfaceInset },
+  { context: 'gold ghost-button text on the screen canvas', foreground: theme.color.accentPrimary, background: theme.color.backgroundCanvas },
+  { context: 'gold future-destination badge on raised navigation', foreground: theme.color.accentPrimary, background: theme.color.backgroundRaised },
+  { context: 'gold RUNA 404 text on its card', foreground: theme.color.accentPrimary, background: theme.color.surfaceCard },
+  { context: 'gold ghost-button text on an interacting surface', foreground: theme.color.accentPrimary, background: theme.color.surfaceElevated },
+  { context: 'highlighted brand and controls on raised navigation', foreground: theme.color.accentHighlight, background: theme.color.backgroundRaised },
+  { context: 'highlighted mobile control on an interacting surface', foreground: theme.color.accentHighlight, background: theme.color.surfaceCard },
+  { context: 'highlighted active navigation on an elevated surface', foreground: theme.color.accentHighlight, background: theme.color.surfaceElevated },
+  { context: 'highlighted 404 action on its inset surface', foreground: theme.color.accentHighlight, background: theme.color.surfaceInset },
+  { context: 'primary-button text on gold', foreground: theme.color.backgroundCanvas, background: theme.color.accentPrimary },
+  { context: 'active primary-button text on highlighted gold', foreground: theme.color.backgroundCanvas, background: theme.color.accentHighlight },
+] as const;
+
+const graphicalContrastPairs = [
+  { context: 'Web focus indicator beside raised navigation', foreground: theme.color.accentPrimary, background: theme.color.backgroundRaised },
+  { context: 'Web focus indicator beside an elevated surface', foreground: theme.color.accentPrimary, background: theme.color.surfaceElevated },
+  { context: 'focused input border on its inset surface', foreground: theme.color.accentPrimary, background: theme.color.surfaceInset },
+  { context: 'determinate progress fill on its track', foreground: theme.color.accentPrimary, background: theme.color.surfaceCard },
+  { context: 'danger and error border on an inset surface', foreground: theme.color.feedbackDanger, background: theme.color.surfaceInset },
+  { context: 'informational feedback border on an inset surface', foreground: theme.color.feedbackInfo, background: theme.color.surfaceInset },
+  { context: 'success feedback border on an inset surface', foreground: theme.color.feedbackSuccess, background: theme.color.surfaceInset },
+  { context: 'warning feedback border on an inset surface', foreground: theme.color.accentPrimary, background: theme.color.surfaceInset },
+  { context: 'inactive navigation icon on raised navigation', foreground: theme.color.textTertiary, background: theme.color.backgroundRaised },
+  { context: 'inactive navigation icon on an interacting surface', foreground: theme.color.textTertiary, background: theme.color.surfaceCard },
+] as const;
+
 describe('Ouro/Indigo public design system', () => {
   it('exposes the fixed semantic color palette', () => {
     expect(Object.values(theme.color)).toEqual([
@@ -72,6 +127,14 @@ describe('Ouro/Indigo public design system', () => {
   it('removes non-essential duration when reduced motion is active', () => {
     expect(motionDuration(theme.motion.deliberate, true)).toBe(0);
     expect(motionDuration(theme.motion.deliberate, false)).toBe(240);
+  });
+
+  it.each(textContrastPairs)('$context passes WCAG AA text contrast', ({ foreground, background }) => {
+    expect(contrastRatio(foreground, background)).toBeGreaterThanOrEqual(4.5);
+  });
+
+  it.each(graphicalContrastPairs)('$context passes WCAG non-text contrast', ({ foreground, background }) => {
+    expect(contrastRatio(foreground, background)).toBeGreaterThanOrEqual(3);
   });
 
   it.each([

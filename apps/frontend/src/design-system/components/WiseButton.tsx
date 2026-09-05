@@ -58,10 +58,10 @@ export function WiseButton({ label, variant = 'primary', size = 'medium', disabl
         focused && Platform.OS === 'web' && controlStyles.webFocus,
       ]}
     >
-      <WiseText variant="label" color={disabled ? 'textDisabled' : colors.text}>{label}</WiseText>
+      <WiseText variant="label" color={disabled ? 'textSecondary' : colors.text}>{label}</WiseText>
       {/* Reserve the indicator slot in every state, including during font scaling. */}
       <View aria-hidden accessibilityElementsHidden importantForAccessibility="no-hide-descendants" style={{ opacity: loading ? 1 : 0 }}>
-        <WiseText variant="label" color={colors.text}>…</WiseText>
+        <WiseText variant="label" color={disabled ? 'textSecondary' : colors.text}>…</WiseText>
       </View>
       {Platform.OS === 'web' && (
         <WiseText nativeID={loadingId} variant="label" style={styles.announcement}>{loading ? 'Carregando' : ''}</WiseText>

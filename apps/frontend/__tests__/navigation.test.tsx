@@ -68,6 +68,10 @@ describe('adaptive application navigation', () => {
       expect(item.props.onPress).toBeUndefined();
       expect(item.props.href).toBeUndefined();
       expect(item.props.focusable).toBe(false);
+      expect(StyleSheet.flatten(screen.getByText(label).props.style).color).toBe(theme.color.textSecondary);
+    }
+    for (const badge of screen.getAllByText('Em breve', { includeHiddenElements: true })) {
+      expect(StyleSheet.flatten(badge.props.style).color).toBe(theme.color.accentPrimary);
     }
   });
 

@@ -4,6 +4,17 @@ import { WiseButton } from '@/design-system/components/WiseButton';
 import { theme } from '@/design-system/tokens/theme';
 
 describe('WiseButton', () => {
+  it('uses contrast-safe secondary text when disabled', async () => {
+    await render(<WiseButton disabled label="Salvar" onPress={jest.fn()} />);
+    expect(StyleSheet.flatten(screen.getByText('Salvar').props.style).color).toBe(theme.color.textSecondary);
+  });
+
+  it('uses contrast-safe secondary text for the visible disabled loading indicator', async () => {
+    await render(<WiseButton disabled loading label="Salvar" onPress={jest.fn()} />);
+    const indicator = screen.getByText('…', { includeHiddenElements: true });
+    expect(StyleSheet.flatten(indicator.props.style).color).toBe(theme.color.textSecondary);
+  });
+
   it('keeps danger text readable on a dark surface while its border communicates danger', async () => {
     await render(<WiseButton label="Excluir" variant="danger" onPress={jest.fn()} />);
     expect(StyleSheet.flatten(screen.getByRole('button').props.style)).toMatchObject({ backgroundColor: theme.color.surfaceInset, borderColor: theme.color.feedbackDanger });
