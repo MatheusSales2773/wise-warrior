@@ -7,10 +7,11 @@ import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import { InjectRepository } from '@nestjs/typeorm';
 import * as argon2 from 'argon2';
-import { IsNull, Repository } from 'typeorm';
+import { DataSource, IsNull, LessThanOrEqual, Repository } from 'typeorm';
 import { User } from '../users/entities/user.entity';
 import { Character } from '../progression/entities/character.entity';
 import { Session } from './entities/session.entity';
+import { RefreshTokenHistory } from './entities/refresh-token-history.entity';
 import { RegisterDto } from './dto/register.dto';
 import { randomToken, sha256Hex } from '../../shared/security/hash.util';
 
@@ -33,6 +34,16 @@ export interface SessionSummary {
   lastUsedAt: Date;
 }
 
+type RefreshResult =
+  | {
+      kind: 'success';
+      user: Pick<User, 'id' | 'email'>;
+      newSecret: string;
+      sessionId: string;
+    }
+  | { kind: 'invalid'; reason: 'missing' | 'expired' | 'unknown' | 'user' }
+  | { kind: 'replay' };
+
 @Injectable()
 export class AuthService {
   constructor(
@@ -42,6 +53,7 @@ export class AuthService {
     @InjectRepository(Session) private readonly sessions: Repository<Session>,
     private readonly jwt: JwtService,
     private readonly config: ConfigService,
+    private readonly dataSource: DataSource,
   ) {}
 
   private get maxSessionsPerUser(): number {
@@ -137,42 +149,121 @@ export class AuthService {
 
   /** Rotaciona o refresh token — o valor anterior nunca pode ser reaproveitado. */
   async refresh(refreshToken: string): Promise<AuthTokens> {
-    const [sessionId, secret] = refreshToken.split('.');
-    if (!sessionId || !secret) {
+    const [sessionId, secret, extra] = refreshToken.split('.');
+    if (!sessionId || !secret || extra !== undefined) {
       throw new UnauthorizedException('Refresh token inválido');
     }
 
-    const session = await this.sessions.findOne({ where: { id: sessionId } });
-    if (!session || session.revokedAt) {
-      throw new UnauthorizedException('Sessão inválida ou revogada');
+    // O token puro deixa de ser necessário antes de abrir a transação.
+    const tokenHash = sha256Hex(secret);
+
+    const result = await this.dataSource.transaction(
+      async (transactionalEntityManager): Promise<RefreshResult> => {
+        const sessionRepository = transactionalEntityManager.getRepository(Session);
+        const historyRepository = transactionalEntityManager.getRepository(
+          RefreshTokenHistory,
+        );
+
+        // O primeiro SELECT da sessão é um lock de escrita. Sem nowait, o
+        // segundo refresh aguarda o commit do primeiro e observa seu sucessor.
+        const session = await sessionRepository.findOne({
+          where: { id: sessionId },
+          lock: { mode: 'pessimistic_write' },
+        });
+        if (!session || session.revokedAt) {
+          return { kind: 'invalid', reason: 'missing' };
+        }
+
+        // O relógio é lido depois do lock: uma espera pelo refresh concorrente
+        // não pode permitir a rotação de uma sessão que expirou nesse intervalo.
+        const now = new Date();
+        const expiresAt = session.lastUsedAt.getTime() + this.refreshTtlMs;
+        if (now.getTime() >= expiresAt) {
+          return { kind: 'invalid', reason: 'expired' };
+        }
+
+        if (session.refreshTokenHash === tokenHash) {
+          // select restrito: refresh nunca precisa do password_hash na memória
+          // (postgres-pro: nunca puxar mais colunas do que a operação exige).
+          const user = await transactionalEntityManager.getRepository(User).findOne({
+            where: { id: session.userId },
+            select: ['id', 'email'],
+          });
+          if (!user) {
+            return { kind: 'invalid', reason: 'user' };
+          }
+
+          const previousLastUsedAt = session.lastUsedAt;
+          const newSecret = randomToken();
+          await historyRepository.insert({
+            sessionId: session.id,
+            tokenHash,
+            consumedAt: now,
+            retainUntil: new Date(previousLastUsedAt.getTime() + this.refreshTtlMs),
+          });
+
+          session.refreshTokenHash = sha256Hex(newSecret);
+          session.lastUsedAt = now;
+          await sessionRepository.save(session);
+
+          // O índice (session_id, retain_until) mantém esta limpeza limitada à
+          // família e à faixa vencida, sem inventar retenção por contagem.
+          await historyRepository.delete({
+            sessionId: session.id,
+            retainUntil: LessThanOrEqual(now),
+          });
+
+          return {
+            kind: 'success',
+            user,
+            newSecret,
+            sessionId: session.id,
+          };
+        }
+
+        const consumed = await historyRepository.findOne({
+          where: { sessionId: session.id, tokenHash },
+        });
+        if (consumed && consumed.retainUntil.getTime() > now.getTime()) {
+          session.revokedAt = now;
+          await sessionRepository.save(session);
+          await historyRepository.delete({
+            sessionId: session.id,
+            retainUntil: LessThanOrEqual(now),
+          });
+          // Não lance aqui: a exceção faria o callback da transação sofrer
+          // rollback e perderia a revogação que o replay exige.
+          return { kind: 'replay' };
+        }
+
+        await historyRepository.delete({
+          sessionId: session.id,
+          retainUntil: LessThanOrEqual(now),
+        });
+        return { kind: 'invalid', reason: 'unknown' };
+      },
+    );
+
+    if (result.kind === 'replay') {
+      throw new UnauthorizedException('Refresh token reutilizado');
     }
-    if (session.refreshTokenHash !== sha256Hex(secret)) {
+    if (result.kind === 'invalid') {
+      if (result.reason === 'expired') {
+        throw new UnauthorizedException('Sessão expirada');
+      }
+      if (result.reason === 'user') {
+        throw new UnauthorizedException('Usuário não encontrado');
+      }
+      if (result.reason === 'missing') {
+        throw new UnauthorizedException('Sessão inválida ou revogada');
+      }
       throw new UnauthorizedException('Refresh token inválido');
     }
-    const expiresAt = session.lastUsedAt.getTime() + this.refreshTtlMs;
-    if (Date.now() > expiresAt) {
-      throw new UnauthorizedException('Sessão expirada');
-    }
-
-    // select restrito: refresh nunca precisa do password_hash na memória
-    // (postgres-pro: nunca puxar mais colunas do que a operação exige).
-    const user = await this.users.findOne({
-      where: { id: session.userId },
-      select: ['id', 'email'],
-    });
-    if (!user) {
-      throw new UnauthorizedException('Usuário não encontrado');
-    }
-
-    const newSecret = randomToken();
-    session.refreshTokenHash = sha256Hex(newSecret);
-    session.lastUsedAt = new Date();
-    await this.sessions.save(session);
 
     return {
-      accessToken: this.signAccessToken(user),
-      refreshToken: `${session.id}.${newSecret}`,
-      sessionId: session.id,
+      accessToken: this.signAccessToken(result.user),
+      refreshToken: `${result.sessionId}.${result.newSecret}`,
+      sessionId: result.sessionId,
     };
   }
 

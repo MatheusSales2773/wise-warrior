@@ -3,6 +3,7 @@ import mysql from 'mysql2/promise';
 import { DataSource } from 'typeorm';
 import { createDatabaseOptions } from '../config/database.config';
 import { CreateWiseSchema1788458400000 } from './1788458400000-create-wise-schema';
+import { AddSessionRefreshTokenHistory1788458460000 } from './1788458460000-add-session-refresh-token-history';
 
 const expectedTables = [
   'users',
@@ -10,6 +11,7 @@ const expectedTables = [
   'cosmetic_items',
   'user_cosmetic_items',
   'sessions',
+  'session_refresh_token_history',
   'guilds',
   'guild_memberships',
   'raids',
@@ -32,6 +34,12 @@ const expectedColumns: Record<string, string[]> = {
     'created_at',
     'last_used_at',
     'revoked_at',
+  ],
+  session_refresh_token_history: [
+    'session_id',
+    'token_hash',
+    'consumed_at',
+    'retain_until',
   ],
   guilds: ['id', 'name', 'level', 'created_by', 'created_at'],
   guild_memberships: ['id', 'guild_id', 'user_id', 'role', 'joined_at'],
@@ -79,12 +87,16 @@ describe('TypeORM migrations against an empty MySQL schema', () => {
 
   let admin: Connection | undefined;
   let dataSource: DataSource | undefined;
+  let initialDataSource: DataSource | undefined;
   let databaseName: string | undefined;
 
   afterEach(async () => {
     try {
       if (dataSource?.isInitialized) {
         await dataSource.destroy();
+      }
+      if (initialDataSource?.isInitialized) {
+        await initialDataSource.destroy();
       }
     } finally {
       if (admin) {
@@ -120,7 +132,10 @@ describe('TypeORM migrations against an empty MySQL schema', () => {
     dataSource = new DataSource({
       ...options,
       database: databaseName,
-      migrations: [CreateWiseSchema1788458400000],
+      migrations: [
+        CreateWiseSchema1788458400000,
+        AddSessionRefreshTokenHistory1788458460000,
+      ],
       migrationsRun: false,
     });
 
@@ -156,7 +171,11 @@ describe('TypeORM migrations against an empty MySQL schema', () => {
          ORDER BY ORDINAL_POSITION`,
         [databaseName, tableName],
       );
-      expect(primaryKeyRows.map((row) => row.COLUMN_NAME)).toEqual(['id']);
+      expect(primaryKeyRows.map((row) => row.COLUMN_NAME)).toEqual(
+        tableName === 'session_refresh_token_history'
+          ? ['session_id', 'token_hash']
+          : ['id'],
+      );
     }
 
     const uniqueRows = await rows(
@@ -207,6 +226,11 @@ describe('TypeORM migrations against an empty MySQL schema', () => {
       ['study_sessions', 'IDX_study_sessions_user_id_started_at', 'user_id,started_at'],
       ['raid_contributions', 'IDX_raid_contributions_raid_id_user_id', 'raid_id,user_id'],
       ['sessions', 'IDX_sessions_user_id', 'user_id'],
+      [
+        'session_refresh_token_history',
+        'IDX_session_refresh_token_history_session_id_retain_until',
+        'session_id,retain_until',
+      ],
       ['guild_chat_messages', 'IDX_guild_chat_messages_guild_id', 'guild_id'],
     ]) {
       expect(criticalIndexRows).toEqual(
@@ -237,6 +261,14 @@ describe('TypeORM migrations against an empty MySQL schema', () => {
     const expectedForeignKeys = [
       ['FK_characters_user_id_users', 'characters', 'user_id', 'users', 'id', 'CASCADE'],
       ['FK_sessions_user_id_users', 'sessions', 'user_id', 'users', 'id', 'CASCADE'],
+      [
+        'FK_session_refresh_token_history_session_id_sessions',
+        'session_refresh_token_history',
+        'session_id',
+        'sessions',
+        'id',
+        'CASCADE',
+      ],
       ['FK_guilds_created_by_users', 'guilds', 'created_by', 'users', 'id', 'CASCADE'],
       ['FK_guild_memberships_guild_id_guilds', 'guild_memberships', 'guild_id', 'guilds', 'id', 'CASCADE'],
       ['FK_guild_memberships_user_id_users', 'guild_memberships', 'user_id', 'users', 'id', 'CASCADE'],
@@ -285,15 +317,101 @@ describe('TypeORM migrations against an empty MySQL schema', () => {
       admin,
       `SELECT name FROM ${identifier(databaseName)}.migrations`,
     );
-    expect(migrationRows.map((row) => row.name)).toEqual(['CreateWiseSchema1788458400000']);
+    expect(migrationRows.map((row) => row.name)).toEqual([
+      'CreateWiseSchema1788458400000',
+      'AddSessionRefreshTokenHistory1788458460000',
+    ]);
 
     await dataSource.undoLastMigration();
     const remainingRows = await rows(
       admin,
       `SELECT TABLE_NAME FROM information_schema.TABLES
+       WHERE TABLE_SCHEMA = ? AND TABLE_NAME <> 'migrations' ORDER BY TABLE_NAME`,
+      [databaseName],
+    );
+    expect(remainingRows.map((row) => row.TABLE_NAME)).toEqual(
+      expectedTables
+        .filter((tableName) => tableName !== 'session_refresh_token_history')
+        .sort(),
+    );
+
+    await dataSource.undoLastMigration();
+    const emptyRows = await rows(
+      admin,
+      `SELECT TABLE_NAME FROM information_schema.TABLES
        WHERE TABLE_SCHEMA = ? AND TABLE_NAME <> 'migrations'`,
       [databaseName],
     );
-    expect(remainingRows).toEqual([]);
+    expect(emptyRows).toEqual([]);
+  });
+
+  it('adds the history table without invalidating an existing session', async () => {
+    const host = process.env.TEST_DB_HOST ?? 'localhost';
+    const port = Number(process.env.TEST_DB_PORT ?? 3306);
+    const username = process.env.TEST_DB_ADMIN_USERNAME ?? 'root';
+    const password = process.env.TEST_DB_ADMIN_PASSWORD ?? 'change-me-root';
+    databaseName = `wise_migrations_test_${process.pid}_${Date.now()}`;
+
+    admin = await mysql.createConnection({ host, port, user: username, password });
+    await admin.query(`CREATE DATABASE ${identifier(databaseName)}`);
+
+    const options = createDatabaseOptions({
+      NODE_ENV: 'test',
+      DB_HOST: host,
+      DB_PORT: port,
+      DB_USERNAME: username,
+      DB_PASSWORD: password,
+      DB_DATABASE: databaseName,
+    });
+    initialDataSource = new DataSource({
+      ...options,
+      database: databaseName,
+      migrations: [CreateWiseSchema1788458400000],
+      migrationsRun: false,
+    });
+    await initialDataSource.initialize();
+    await initialDataSource.runMigrations();
+    await admin.query(
+      `INSERT INTO ${identifier(databaseName)}.users
+       (id, email, password_hash, display_name, plan_tier)
+       VALUES (?, ?, ?, ?, ?)`,
+      ['existing-user', 'existing@example.com', 'hash', 'Existing', 'free'],
+    );
+    await admin.query(
+      `INSERT INTO ${identifier(databaseName)}.sessions
+       (id, user_id, refresh_token_hash, last_used_at)
+       VALUES (?, ?, ?, ?)`,
+      ['existing-session', 'existing-user', 'hash-only', new Date()],
+    );
+    await initialDataSource.destroy();
+    initialDataSource = undefined;
+
+    dataSource = new DataSource({
+      ...options,
+      database: databaseName,
+      migrations: [
+        CreateWiseSchema1788458400000,
+        AddSessionRefreshTokenHistory1788458460000,
+      ],
+      migrationsRun: false,
+    });
+    await dataSource.initialize();
+    await dataSource.runMigrations();
+
+    const sessionRows = await rows(
+      admin,
+      `SELECT id, refresh_token_hash FROM ${identifier(databaseName)}.sessions`,
+    );
+    expect(sessionRows).toEqual([
+      expect.objectContaining({ id: 'existing-session', refresh_token_hash: 'hash-only' }),
+    ]);
+
+    const historyTableRows = await rows(
+      admin,
+      `SELECT TABLE_NAME FROM information_schema.TABLES
+       WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'session_refresh_token_history'`,
+      [databaseName],
+    );
+    expect(historyTableRows).toHaveLength(1);
   });
 });
