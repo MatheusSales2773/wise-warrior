@@ -4,6 +4,7 @@ import { theme, typographyFor } from '../tokens/theme';
 import { useFontFallback } from './font-runtime';
 import { FeedbackMessage } from './FeedbackMessage';
 import { WiseText } from './WiseText';
+import { controlStyles } from './control-styles';
 
 export type WiseFieldProps = Omit<TextInputProps, 'style' | 'children' | 'accessibilityLabel' | 'accessibilityLabelledBy' | 'accessibilityHint' | 'aria-label' | 'aria-labelledby' | 'id'> & {
   label: string;
@@ -41,7 +42,7 @@ export function WiseField({ label, helpText, error, nativeID, onFocus, onBlur, r
           typographyFor('body', fallback),
           error && { borderColor: theme.color.feedbackDanger },
           focused && { borderColor: theme.color.accentPrimary },
-          focused && Platform.OS === 'web' && styles.focus,
+          focused && Platform.OS === 'web' && controlStyles.webFocus,
         ]}
       />
       {error ? (
@@ -66,5 +67,4 @@ const styles = StyleSheet.create({
     color: theme.color.textPrimary,
     backgroundColor: theme.color.surfaceInset,
   },
-  focus: { outlineWidth: theme.border.focus, outlineStyle: 'solid', outlineColor: theme.color.accentPrimary },
 });

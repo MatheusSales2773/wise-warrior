@@ -19,7 +19,7 @@ export function ProgressBar({ minimumValue = 0, maximumValue = 100, value, indet
     // Do not start a zero-duration loop when motion is disabled.
     if (!indeterminate || duration === 0) return;
     const animation = Animated.loop(Animated.sequence([
-      Animated.timing(opacity, { toValue: 0.5, duration, useNativeDriver: true, isInteraction: false }),
+      Animated.timing(opacity, { toValue: theme.progress.indeterminateDimOpacity, duration, useNativeDriver: true, isInteraction: false }),
       Animated.timing(opacity, { toValue: 1, duration, useNativeDriver: true, isInteraction: false }),
     ]));
     animation.start();
@@ -52,7 +52,7 @@ export function ProgressBar({ minimumValue = 0, maximumValue = 100, value, indet
         aria-hidden
         accessibilityElementsHidden
         importantForAccessibility="no-hide-descendants"
-        style={[styles.fill, { width: indeterminate ? '40%' : `${fraction * 100}%`, opacity: indeterminate && duration > 0 ? opacity : 1 }]}
+        style={[styles.fill, { width: indeterminate ? theme.progress.indeterminateWidth : `${fraction * 100}%`, opacity: indeterminate && duration > 0 ? opacity : 1 }]}
       />
     </View>
   );

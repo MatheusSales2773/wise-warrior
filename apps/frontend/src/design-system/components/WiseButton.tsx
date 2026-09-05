@@ -2,6 +2,7 @@ import { useId, useState } from 'react';
 import { Platform, Pressable, StyleSheet, View, type PressableProps } from 'react-native';
 import { theme, type SemanticColor } from '../tokens/theme';
 import { WiseText } from './WiseText';
+import { controlStyles } from './control-styles';
 
 export type WiseButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger';
 export type WiseButtonSize = 'medium' | 'large';
@@ -17,7 +18,7 @@ const variants = {
   primary: { background: 'accentPrimary', text: 'backgroundCanvas', border: 'accentPrimary', active: 'accentHighlight' },
   secondary: { background: 'surfaceCard', text: 'textPrimary', border: 'borderEmphasis', active: 'surfaceCardActive' },
   ghost: { background: 'backgroundCanvas', text: 'accentPrimary', border: 'backgroundCanvas', active: 'surfaceCardActive' },
-  danger: { background: 'feedbackDanger', text: 'backgroundCanvas', border: 'feedbackDanger', active: 'feedbackDanger' },
+  danger: { background: 'surfaceInset', text: 'textPrimary', border: 'feedbackDanger', active: 'surfaceCardActive' },
 } satisfies Record<WiseButtonVariant, Record<'background' | 'text' | 'border' | 'active', SemanticColor>>;
 
 export function WiseButton({ label, variant = 'primary', size = 'medium', disabled = false, loading = false, accessibilityLabel, onPress, testID }: WiseButtonProps) {
@@ -54,7 +55,7 @@ export function WiseButton({ label, variant = 'primary', size = 'medium', disabl
           backgroundColor: theme.color[disabled ? 'surfaceInset' : active ? colors.active : colors.background],
           borderColor: theme.color[active ? 'accentHighlight' : colors.border],
         },
-        focused && Platform.OS === 'web' && styles.focus,
+        focused && Platform.OS === 'web' && controlStyles.webFocus,
       ]}
     >
       <WiseText variant="label" color={disabled ? 'textDisabled' : colors.text}>{label}</WiseText>
@@ -81,6 +82,5 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: theme.space.inlineTight,
   },
-  focus: { outlineWidth: theme.border.focus, outlineStyle: 'solid', outlineColor: theme.color.accentPrimary },
   announcement: { position: 'absolute', width: 1, height: 1, overflow: 'hidden', opacity: 0 },
 });

@@ -90,6 +90,7 @@ export const theme = {
   },
   iconSize: { small: 16, medium: 24, large: 32 } as const,
   motion: { none: 0, quick: 120, standard: 180, deliberate: 240 },
+  progress: { indeterminateWidth: '40%', indeterminateDimOpacity: 0.5 } as const,
   layout: {
     touchTarget: 44,
     sidebarWidth: 248,

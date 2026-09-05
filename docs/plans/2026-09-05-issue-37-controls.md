@@ -19,6 +19,8 @@ Os controles usam tokens Ouro/Índigo e primitivas nativas. O alvo físico míni
 layout em todos os estados. O campo preserva IDs e substitui ajuda por erro,
 com descrição ARIA na Web e hint no nativo. Texto e glifos decorativos distinguem
 feedback sem depender só de cor; os glifos ficam fora da árvore acessível.
+O botão danger usa texto claro sobre superfície escura e borda vermelha: o vermelho
+da paleta como fundo não atingiria 4,5:1 com as cores de texto disponíveis.
 
 O progresso limita apenas a apresentação e preserva o número original na
 acessibilidade. O indeterminado usa um segmento pulsante com duração de 240ms
@@ -57,3 +59,29 @@ Jest 29.7.0 e React Native Testing Library 14.0.1.
 - [Expo testes unitários](https://docs.expo.dev/develop/unit-testing/) e [Jest 29.7](https://jestjs.io/docs/29.7/getting-started).
 - [TypeScript narrowing](https://www.typescriptlang.org/docs/handbook/2/narrowing.html): contratos discriminados para ações e progresso.
 - [typescript-eslint configuração legada](https://typescript-eslint.io/getting-started/legacy-eslint-setup/): reparo do lint existente do backend.
+- [WCAG 2.2 contraste mínimo](https://www.w3.org/WAI/WCAG22/Understanding/contrast-minimum.html): contraste do rótulo danger.
+
+## Revisão final
+
+Base: `16f75132d30f57d9d2f96b3af59107041c3a8205`.
+
+### Standards
+
+A revisão Luna xhigh apontou dois requisitos: tokenizar a largura do segmento
+indeterminado e corrigir o contraste danger. Ambos foram corrigidos. Também
+apontou duplicação do estilo de foco, agora compartilhado em `control-styles`.
+Nenhuma pendência desses achados permanece.
+
+### Spec
+
+A tentativa de revisão Luna xhigh foi interrompida por limite de uso antes de
+produzir relatório. A revisão foi concluída localmente, conferindo os cinco
+contratos e os oito critérios de aceite contra implementação e testes.
+Nenhum requisito faltante identificado. O reparo de lint do backend é a extensão
+de escopo necessária para aprovar o comando de lint da raiz.
+
+Validação: 113 testes frontend, 30 backend e 1 integração MySQL aprovados;
+typecheck e lint dos dois workspaces, Expo Doctor 21/21, exportações das três
+plataformas, build backend e smoke Docker/nginx aprovados. As verificações
+de acessibilidade são automatizadas; não representam uma sessão manual com
+VoiceOver ou TalkBack.

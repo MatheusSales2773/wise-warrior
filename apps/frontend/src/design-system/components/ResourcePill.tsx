@@ -2,6 +2,7 @@ import { useState, type ReactNode } from 'react';
 import { Platform, Pressable, StyleSheet, View, type PressableProps } from 'react-native';
 import { theme } from '../tokens/theme';
 import { WiseText } from './WiseText';
+import { controlStyles } from './control-styles';
 
 export type ResourcePillProps = {
   label: string;
@@ -39,7 +40,7 @@ export function ResourcePill({ label, icon, onPress, accessibilityLabel, testID 
       onHoverOut={() => setHovered(false)}
       onPressIn={() => setPressed(true)}
       onPressOut={() => setPressed(false)}
-      style={[styles.pill, styles.interactive, (hovered || pressed) && styles.active, focused && Platform.OS === 'web' && styles.focus]}
+      style={[styles.pill, styles.interactive, (hovered || pressed) && styles.active, focused && Platform.OS === 'web' && controlStyles.webFocus]}
     >
       {content}
     </Pressable>
@@ -59,5 +60,4 @@ const styles = StyleSheet.create({
   },
   interactive: { minHeight: theme.layout.touchTarget, minWidth: theme.layout.touchTarget },
   active: { backgroundColor: theme.color.surfaceCardActive, borderColor: theme.color.accentPrimary },
-  focus: { outlineWidth: theme.border.focus, outlineStyle: 'solid', outlineColor: theme.color.accentPrimary },
 });

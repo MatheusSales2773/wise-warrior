@@ -4,6 +4,11 @@ import { WiseButton } from '@/design-system/components/WiseButton';
 import { theme } from '@/design-system/tokens/theme';
 
 describe('WiseButton', () => {
+  it('keeps danger text readable on a dark surface while its border communicates danger', async () => {
+    await render(<WiseButton label="Excluir" variant="danger" onPress={jest.fn()} />);
+    expect(StyleSheet.flatten(screen.getByRole('button').props.style)).toMatchObject({ backgroundColor: theme.color.surfaceInset, borderColor: theme.color.feedbackDanger });
+    expect(StyleSheet.flatten(screen.getByText('Excluir').props.style).color).toBe(theme.color.textPrimary);
+  });
   it.each(['primary', 'secondary', 'ghost', 'danger'] as const)('%s supports activation and blocks disabled/loading actions without replacing its label or geometry', async (variant) => {
     const onPress = jest.fn();
     const view = await render(<WiseButton label="Salvar" variant={variant} onPress={onPress} />);
