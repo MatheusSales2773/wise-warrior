@@ -19,8 +19,8 @@ describe('Expo foundation routes', () => {
       lineHeight: theme.type.display.lineHeight,
     });
     expect(StyleSheet.flatten(screen.getByText('FUNDAÇÃO UNIVERSAL').props.style).fontFamily).toBe('Inter-Medium');
-    expect(StyleSheet.flatten(screen.getByText('Fundação universal ativa').props.style).fontFamily).toBe('Inter-Bold');
-    expect(StyleSheet.flatten(screen.getByText('OURO · ÍNDIGO').props.style).fontFamily).toBe('JetBrainsMono-SemiBold');
+    expect(StyleSheet.flatten(screen.getByText('Fundação universal ativa').props.style).fontFamily).toBe('Cinzel-SemiBold');
+    expect(StyleSheet.flatten(screen.getByText('OURO · ÍNDIGO').props.style).fontFamily).toBe('JetBrainsMono-Medium');
   });
 
   it('resolves the root pathname to the initial route', async () => {

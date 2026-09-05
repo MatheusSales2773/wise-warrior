@@ -28,7 +28,7 @@ const palette = {
 
 const spacingScale = [0, 4, 8, 12, 16, 20, 24, 32, 40, 48, 64] as const;
 const radiusScale = [3, 5, 8, 12, 999] as const;
-type TypographyToken = Pick<TextStyle, 'fontFamily' | 'fontSize' | 'lineHeight'>;
+type TypographyToken = Pick<TextStyle, 'fontFamily' | 'fontSize' | 'letterSpacing' | 'lineHeight'>;
 
 export const theme = {
   color: {
@@ -36,10 +36,12 @@ export const theme = {
     backgroundRaised: palette.ink800,
     backgroundOverlay: palette.ink700,
     surfaceCard: palette.indigo600,
+    surfaceElevated: palette.indigo500,
     surfaceCardActive: palette.indigo500,
     surfaceInset: palette.inkInset,
     borderGhost: palette.goldLine08,
     borderSubtle: palette.goldLine16,
+    borderSoft: palette.goldLine16,
     borderEmphasis: palette.goldLine28,
     borderFocus: palette.goldLine45,
     accentPrimary: palette.gold,
@@ -77,6 +79,16 @@ export const theme = {
     pill: radiusScale[4],
   },
   border: { standard: 1, focus: 2 },
+  elevation: {
+    card: {
+      shadowColor: palette.ink900,
+      shadowOffset: { width: 0, height: 6 },
+      shadowOpacity: 0.32,
+      shadowRadius: 12,
+      elevation: 8,
+    },
+  },
+  iconSize: { small: 16, medium: 24, large: 32 } as const,
   motion: { none: 0, quick: 120, standard: 180, deliberate: 240 },
   layout: {
     touchTarget: 44,
@@ -88,20 +100,25 @@ export const theme = {
     wideWebGutter: 32,
   },
   type: {
-    display: { fontFamily: 'Cinzel-SemiBold', fontSize: 32, lineHeight: 40 },
+    display: { fontFamily: 'Cinzel-SemiBold', fontSize: 32, letterSpacing: 1, lineHeight: 40 },
     title: { fontFamily: 'Cinzel-Bold', fontSize: 24, lineHeight: 32 },
-    subtitle: { fontFamily: 'Inter-SemiBold', fontSize: 18, lineHeight: 26 },
+    subtitle: { fontFamily: 'Cinzel-SemiBold', fontSize: 18, lineHeight: 26 },
     subtitleStrong: { fontFamily: 'Inter-Bold', fontSize: 18, lineHeight: 26 },
     body: { fontFamily: 'Inter-Regular', fontSize: 16, lineHeight: 24 },
     label: { fontFamily: 'Inter-SemiBold', fontSize: 14, lineHeight: 20 },
-    caption: { fontFamily: 'Inter-Medium', fontSize: 12, lineHeight: 16 },
-    mono: { fontFamily: 'JetBrainsMono-Medium', fontSize: 14, lineHeight: 20 },
-    monoEmphasis: { fontFamily: 'JetBrainsMono-SemiBold', fontSize: 14, lineHeight: 20 },
+    caption: { fontFamily: 'Inter-Medium', fontSize: 12, letterSpacing: 2, lineHeight: 16 },
+    mono: { fontFamily: 'JetBrainsMono-Medium', fontSize: 14, letterSpacing: 1.5, lineHeight: 20 },
+    monoEmphasis: { fontFamily: 'JetBrainsMono-SemiBold', fontSize: 14, letterSpacing: 1.5, lineHeight: 20 },
   } satisfies Record<string, TypographyToken>,
 } as const;
 
+export type SemanticColor = keyof typeof theme.color;
 export type TypographyRole = keyof typeof theme.type;
 export type MotionDuration = (typeof theme.motion)[keyof typeof theme.motion];
+
+export function isSemanticColor(color: string): color is SemanticColor {
+  return Object.prototype.hasOwnProperty.call(theme.color, color);
+}
 
 export function motionDuration(duration: MotionDuration, isReduced: boolean): MotionDuration {
   return isReduced ? theme.motion.none : duration;

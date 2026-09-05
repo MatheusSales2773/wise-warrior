@@ -1,6 +1,7 @@
 import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { FontGate } from '@/design-system/components/font-runtime';
 import { MotionRuntime, useRuntimeMotionDuration } from '@/design-system/components/motion-runtime';
 import { theme } from '@/design-system/tokens/theme';
@@ -27,10 +28,12 @@ function RuntimeStack() {
 
 export default function RootLayout() {
   return (
-    <FontGate>
-      <MotionRuntime>
-        <RuntimeStack />
-      </MotionRuntime>
-    </FontGate>
+    <SafeAreaProvider>
+      <FontGate>
+        <MotionRuntime>
+          <RuntimeStack />
+        </MotionRuntime>
+      </FontGate>
+    </SafeAreaProvider>
   );
 }
