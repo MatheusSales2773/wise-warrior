@@ -28,12 +28,16 @@ Before implementing or changing code, tests, infrastructure, or configuration:
 #### Frontend
 
 - [React 19 documentation](https://react.dev/)
+- [React Native 0.86 documentation](https://reactnative.dev/docs/0.86/components-and-apis)
+- [React Native Web accessibility](https://necolas.github.io/react-native-web/docs/accessibility/)
 - [Expo SDK 57 documentation](https://docs.expo.dev/)
 - [Expo Router documentation](https://docs.expo.dev/router/introduction/)
 
 #### Testing
 
 - [Jest 29.7 documentation](https://jestjs.io/docs/29.7/getting-started)
+- [React Native Testing Library](https://oss.callstack.com/react-native-testing-library/)
+- [TypeScript ESLint legacy configuration](https://typescript-eslint.io/getting-started/legacy-eslint-setup/)
 - [Vitest 2 documentation](https://v2.vitest.dev/guide/)
 
 #### Infrastructure

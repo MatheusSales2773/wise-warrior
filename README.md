@@ -163,11 +163,14 @@ binário de debug, instalam-no e iniciam o Metro. Alterações apenas em JavaScr
 ou TypeScript usam `npm run dev:frontend` e Fast Refresh sem recompilar código
 nativo.
 
-#### Gate M1 e tipos de saída
+#### Gates M1/M2 e tipos de saída
 
 ```bash
 # Tipos + lint + Jest + matriz Expo + Expo Doctor + bundles das três plataformas
 npm run verify:m1
+
+# Gate M1 completo + shell M2, bundle Web e fallback SPA no container
+npm run verify:m2
 
 # Somente o bundle Web pronto para servir
 npm run build --workspace apps/frontend
@@ -183,13 +186,78 @@ Uma **compilação nativa** usa Xcode ou Gradle por meio de `expo run:ios` ou
 opcional para uma verificação rápida enquanto o projeto usar apenas módulos
 compatíveis; ele não substitui a compilação nativa validada por este projeto.
 
-Valide `/` e uma URL inexistente nas três plataformas: a inicial deve mostrar
-“Wise Warrior” e “Fundação universal ativa”; o fallback deve mostrar “Página não
-encontrada” e retornar ao início pelo botão. No navegador, acesse diretamente a
-URL; em iOS/Android, abra `wise://runa-inexistente` no simulador/emulador.
+#### Contrato público do design system M2
+
+Consuma a API pelo barrel `src/design-system/index.ts`. Os componentes exportados
+e seus contratos estáveis são:
+
+| Componente | Contrato público |
+| --- | --- |
+| `WiseText` | variantes `display`, `title`, `subtitle`, `body`, `label`, `caption` e `mono`; cor sempre semântica |
+| `WiseIcon` | nomes Wise/Ionicons permitidos, tamanhos `small`, `medium` e `large`; ícone informativo exige rótulo acessível |
+| `WiseCard` | superfície não interativa nas variantes `default`, `elevated` e `ornamented` |
+| `Screen` | título obrigatório, safe areas, gutters, rolagem e acomodação opcional do teclado |
+| `WiseButton` | variantes `primary`, `secondary`, `ghost` e `danger`; tamanhos `medium` e `large`; estados disabled/loading |
+| `WiseField` | label obrigatório e props nativas de `TextInput`, com ajuda ou erro associado e anunciável |
+| `FeedbackMessage` | variantes `info`, `success`, `warning` e `error`, com título opcional e live region apropriada |
+| `ProgressBar` | modo determinado com intervalo/valor ou `indeterminate`, ambos com semântica de progresso |
+| `ResourcePill` | metadado não interativo por padrão; quando acionável, exige `onPress` e rótulo acessível |
+
+O mesmo barrel exporta `theme`, `typographyFor`, `motionDuration`,
+`isSemanticColor`, `isDesktopLayout`, `screenGutter`, nomes/tipos de ícone e os
+tipos de props e variantes. Componentes consumidores devem usar esses aliases,
+sem introduzir cores, fontes, espaçamentos ou durações compartilhadas fora do
+tema.
+
+| Grupo semântico | Tokens e valores |
+| --- | --- |
+| fundos | `backgroundCanvas` `#07070c`; `backgroundRaised` `#0c0c14`; `backgroundOverlay` `#12121c` |
+| superfícies | `surfaceCard` `#181826`; `surfaceElevated`/`surfaceCardActive` `#1f1f2e`; `surfaceInset` `#0a0a12` |
+| bordas | `borderGhost` `rgba(212,168,90,0.08)`; `borderSubtle`/`borderSoft` `rgba(212,168,90,0.16)`; `borderEmphasis` `rgba(212,168,90,0.28)`; `borderFocus` `rgba(212,168,90,0.45)` |
+| destaque | `accentPrimary` `#d4a85a`; `accentHighlight` `#f0c97a`; `accentMuted` `#8a6a3a`; `accentGlow` `rgba(212,168,90,0.35)` |
+| feedback | `feedbackDanger` `#c44545`; `feedbackInfo` `#5b7fc4`; `feedbackSuccess` `#4ea672`; `feedbackEnergy` `#d65a8a`; `feedbackArcane` `#8a5bc4` |
+| texto | `textPrimary` `#f3ead4`; `textSecondary` `#b3a98e`; `textTertiary` `#6b6555`; `textDisabled` `#46412f` |
+
+As escalas oficiais são: espaço `0, 4, 8, 12, 16, 20, 24, 32, 40, 48, 64`;
+raio `3, 5, 8, 12, 999`; borda `1/2`; ícone `16/24/32`; movimento
+`0/120/180/240 ms`; e tipografia `display 32/40`, `title 24/32`,
+`subtitle`/`subtitleStrong 18/26`, `body 16/24`, `label 14/20`, `caption 12/16`
+e `mono`/`monoEmphasis 14/20` (tamanho/altura de linha), usando Cinzel, Inter e
+JetBrains Mono. Layout usa alvo mínimo `44`, sidebar `248`, conteúdo máximo
+`1200` e gutters `16/24/32`.
+
+#### Destinos e layout adaptativo M2
+
+| Destino | Rota | Estado |
+| --- | --- | --- |
+| Acampamento | `/` | disponível |
+| Forja | `/sessao` | disponível |
+| Personagem | `/perfil` | disponível |
+| Guilda | `/guilda` | disponível |
+| Mercado Arcano | nenhuma | “Em breve” |
+| Crônicas | nenhuma | “Em breve” |
+| Configuração | nenhuma | “Em breve” |
+
+Web a partir de `900 px` usa sidebar; Web abaixo desse breakpoint, iOS e Android
+usam barra inferior e o menu local “Mais”. Destinos “Em breve” são apenas
+informativos: não possuem `href`, arquivo de rota, foco ou ação. O catálogo
+imutável em `src/design-system/navigation/destinations.ts` é a fonte única para
+as duas composições.
+
+Valide as quatro URLs e uma URL inexistente nas três plataformas. No navegador,
+acesse ou atualize a URL diretamente; em iOS/Android, abra os deep links
+`wise://`, `wise://sessao`, `wise://perfil`, `wise://guilda` e
+`wise://runa-inexistente` no simulador/emulador. O fallback deve mostrar “Página
+não encontrada” e retornar ao início pelo botão.
 
 Os diretórios nativos gerados, cache `.expo`, `dist` e artefatos locais `.ipa`,
 `.apk` e `.aab` permanecem fora do Git.
+
+Limitações da M2: as quatro rotas contêm apenas telas de transição, sem
+autenticação, chamadas ao backend ou funcionalidades de produto; não há tema
+selecionável nem layout específico para tablets. Exportações Web/Metro validam
+bundles, mas não substituem build e QA nativos em simulador/emulador, incluindo
+safe area, teclado, fonte ampliada, VoiceOver e TalkBack.
 
 ### Migrations do banco
 

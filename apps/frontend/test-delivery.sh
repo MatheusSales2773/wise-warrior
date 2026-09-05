@@ -70,9 +70,24 @@ readonly health_body="$(curl --fail --silent "${base_url}/health")"
 [[ "${health_body}" == 'ok' ]]
 
 readonly root_body="$(curl --fail --silent "${base_url}/")"
-readonly fallback_body="$(curl --fail --silent "${base_url}/route-that-does-not-exist")"
-[[ "${root_body}" == "${fallback_body}" ]]
 assert_contains "${root_body}" '<div id="root"></div>' 'SPA document'
+
+readonly -a spa_paths=(
+  '/'
+  '/sessao'
+  '/perfil'
+  '/guilda'
+  '/route-that-does-not-exist'
+)
+
+route_body=''
+for spa_path in "${spa_paths[@]}"; do
+  route_body="$(curl --fail --silent "${base_url}${spa_path}")"
+  if [[ "${route_body}" != "${root_body}" ]]; then
+    printf 'Expected %s to serve the same SPA document as /, but the responses differ.\n' "${spa_path}" >&2
+    exit 1
+  fi
+done
 
 readonly asset_path="$(printf '%s' "${root_body}" | grep -Eo '/[^" ]*[.-][[:xdigit:]]{16,}[^" ]*\.(js|css|png)' | head -n 1)"
 [[ -n "${asset_path}" ]]

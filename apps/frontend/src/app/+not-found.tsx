@@ -1,51 +1,61 @@
 import { useRouter } from 'expo-router';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
+import { Screen, WiseCard, WiseIcon, WiseText, theme } from '@/design-system';
 
 export default function NotFoundScreen() {
   const router = useRouter();
 
   return (
-    <SafeAreaView style={styles.safeArea}>
-      <View style={styles.container}>
-        <Text style={styles.title}>Página não encontrada</Text>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Voltar ao início"
-          onPress={() => router.replace('/')}
-          style={styles.button}
-        >
-          <Text style={styles.buttonLabel}>Voltar ao início</Text>
-        </Pressable>
-      </View>
-    </SafeAreaView>
+    <Screen title="Página não encontrada">
+      <WiseCard style={styles.panel} variant="ornamented">
+        <View style={styles.panelContent}>
+          <WiseIcon color="accentMuted" name="shield-outline" size="large" />
+          <WiseText color="accentPrimary" style={styles.code} variant="mono">
+            RUNA 404
+          </WiseText>
+          <WiseText color="textSecondary" style={styles.description} variant="body">
+            Este caminho não pertence ao mapa.
+          </WiseText>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Voltar ao início"
+            onPress={() => router.replace('/')}
+            style={styles.button}
+          >
+            <WiseText color="accentHighlight" variant="label">Voltar ao início</WiseText>
+          </Pressable>
+        </View>
+      </WiseCard>
+    </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
+  panel: {
+    width: '100%',
   },
-  container: {
-    flex: 1,
+  panelContent: {
     alignItems: 'center',
     justifyContent: 'center',
-    padding: 24,
+    padding: theme.space.screenGap,
   },
-  title: {
-    fontSize: 24,
-    fontWeight: '700',
+  code: {
+    marginBottom: theme.space.stackDefault,
+  },
+  description: {
+    marginTop: theme.space.inlineTight,
+    textAlign: 'center',
   },
   button: {
-    marginTop: 20,
-    minHeight: 44,
-    minWidth: 44,
+    marginTop: theme.space.sectionGap,
+    minHeight: theme.layout.touchTarget,
+    minWidth: theme.layout.touchTarget,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 16,
-  },
-  buttonLabel: {
-    fontSize: 16,
-    fontWeight: '600',
+    paddingHorizontal: theme.space.cardInset,
+    backgroundColor: theme.color.surfaceInset,
+    borderColor: theme.color.borderEmphasis,
+    borderRadius: theme.radius.control,
+    borderWidth: theme.border.standard,
   },
 });
