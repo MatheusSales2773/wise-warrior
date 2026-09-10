@@ -12,6 +12,7 @@ import type { Request, Response } from 'express';
 import { AuthService, AuthTokens } from './auth.service';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
+import { DEVICE_LABELS } from './device-labels';
 
 const REFRESH_COOKIE = 'ww_refresh';
 const REFRESH_COOKIE_PATH = '/api/v1/auth';
@@ -29,6 +30,7 @@ export class AuthController {
   ) {
     const user = await this.auth.register(dto);
     const tokens = await this.auth.issueSession(user, {
+      deviceLabel: dto.deviceLabel ?? DEVICE_LABELS.web,
       userAgent: req.headers['user-agent'],
     });
     return this.attachRefreshCookie(tokens, res);
@@ -43,7 +45,7 @@ export class AuthController {
   ) {
     const user = await this.auth.validateCredentials(dto.email, dto.password);
     const tokens = await this.auth.issueSession(user, {
-      deviceLabel: dto.deviceLabel,
+      deviceLabel: dto.deviceLabel ?? DEVICE_LABELS.web,
       userAgent: req.headers['user-agent'],
     });
     return this.attachRefreshCookie(tokens, res);
@@ -84,6 +86,6 @@ export class AuthController {
       maxAge: Number(process.env.JWT_REFRESH_TTL_DAYS ?? 30) * 24 * 60 * 60 * 1000,
       path: REFRESH_COOKIE_PATH,
     });
-    return { accessToken: tokens.accessToken };
+    return { accessToken: tokens.accessToken, sessionId: tokens.sessionId };
   }
 }

@@ -3,8 +3,10 @@ import { JwtModule } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AuthController } from './auth.controller';
+import { NativeAuthController } from './native-auth.controller';
 import { AuthService } from './auth.service';
 import { JwtStrategy } from './strategies/jwt.strategy';
+import { RejectBrowserOriginGuard } from './guards/reject-browser-origin.guard';
 import { Session } from './entities/session.entity';
 import { RefreshTokenHistory } from './entities/refresh-token-history.entity';
 import { User } from '../users/entities/user.entity';
@@ -16,8 +18,8 @@ import { Character } from '../progression/entities/character.entity';
     PassportModule,
     JwtModule.register({}),
   ],
-  controllers: [AuthController],
-  providers: [AuthService, JwtStrategy],
+  controllers: [AuthController, NativeAuthController],
+  providers: [AuthService, JwtStrategy, RejectBrowserOriginGuard],
   exports: [AuthService],
 })
 export class AuthModule {}

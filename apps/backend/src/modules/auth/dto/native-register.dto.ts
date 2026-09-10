@@ -1,14 +1,14 @@
 import {
   IsEmail,
   IsIn,
-  IsOptional,
   IsString,
   MaxLength,
   MinLength,
 } from 'class-validator';
-import { WEB_DEVICE_LABELS } from '../device-labels';
+import { NATIVE_DEVICE_LABELS } from '../device-labels';
 
-export class RegisterDto {
+/** Cadastro nativo: mesmos dados da conta e rótulo obrigatório iOS/Android. */
+export class NativeRegisterDto {
   @IsEmail()
   email: string;
 
@@ -22,8 +22,6 @@ export class RegisterDto {
   @MaxLength(60)
   displayName: string;
 
-  /** Rótulo previsível do dispositivo; a Web assume `Wise Web` quando ausente. */
-  @IsOptional()
-  @IsIn(WEB_DEVICE_LABELS)
-  deviceLabel?: string;
+  @IsIn(NATIVE_DEVICE_LABELS)
+  deviceLabel: string;
 }

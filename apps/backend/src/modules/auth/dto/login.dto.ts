@@ -1,4 +1,5 @@
-import { IsEmail, IsOptional, IsString, MaxLength } from 'class-validator';
+import { IsEmail, IsIn, IsOptional, IsString } from 'class-validator';
+import { WEB_DEVICE_LABELS } from '../device-labels';
 
 export class LoginDto {
   @IsEmail()
@@ -7,9 +8,8 @@ export class LoginDto {
   @IsString()
   password: string;
 
-  /** Rótulo opcional do dispositivo, exibido na lista de sessões ativas (ADR-009). */
+  /** Rótulo previsível do dispositivo, exibido na lista de sessões ativas (ADR-009). */
   @IsOptional()
-  @IsString()
-  @MaxLength(80)
+  @IsIn(WEB_DEVICE_LABELS)
   deviceLabel?: string;
 }

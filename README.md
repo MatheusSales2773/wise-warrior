@@ -78,7 +78,7 @@ e é o único arquivo de ambiente ignorado pelo Git.
 
 Depois que os serviços estiverem saudáveis:
 
-- Frontend: `http://localhost:5173`
+- Frontend: `http://localhost:8081`
 - Backend: `http://localhost:3000/api/v1`
 - Healthcheck da API: `http://localhost:3000/api/v1/health`
 

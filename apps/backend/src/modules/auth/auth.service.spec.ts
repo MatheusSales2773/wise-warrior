@@ -258,6 +258,46 @@ describe('AuthService.refresh', () => {
     expect(historyRepository.insert).toHaveBeenCalledTimes(1);
   });
 
+  it('persists only the hash of the issued secret and returns the session id', async () => {
+    const sessions = {
+      find: jest.fn().mockResolvedValue([]),
+      create: jest.fn((value: Record<string, unknown>) => ({ id: 'session-1', ...value })),
+      save: jest.fn(async (value: unknown) => value),
+    };
+    const jwt = { sign: jest.fn(() => 'access-token') };
+    const config = {
+      get: jest.fn((key: string) => {
+        if (key === 'JWT_REFRESH_TTL_DAYS') return 30;
+        if (key === 'MAX_SESSIONS_PER_USER') return 5;
+        return undefined;
+      }),
+    };
+    const service = new AuthService(
+      {} as never,
+      {} as never,
+      sessions as never,
+      jwt as never,
+      config as never,
+      {} as never,
+    );
+
+    const result = await service.issueSession(
+      { id: 'user-1', email: 'user@example.com' } as never,
+      { deviceLabel: 'Wise iOS' },
+    );
+
+    const secret = result.refreshToken.split('.')[1]!;
+    expect(result.sessionId).toBe('session-1');
+    const persisted = sessions.save.mock.calls[0]![0] as Record<string, unknown>;
+    expect(persisted).toEqual(
+      expect.objectContaining({
+        refreshTokenHash: sha256Hex(secret),
+        deviceLabel: 'Wise iOS',
+      }),
+    );
+    expect(JSON.stringify(persisted)).not.toContain(secret);
+  });
+
   it('keeps the existing five-session limit when issuing another session', async () => {
     const activeSessions = Array.from({ length: 5 }, (_, index) => ({
       id: `session-${index}`,
@@ -298,5 +338,42 @@ describe('AuthService.refresh', () => {
     ]);
     expect(activeSessions.slice(1).every((item) => item.revokedAt === null)).toBe(true);
     expect(sessions.save).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('AuthService.register', () => {
+  it('persists only an argon2 hash of the password, never the plaintext', async () => {
+    const users = {
+      findOne: jest.fn().mockResolvedValue(null),
+      create: jest.fn((value: Record<string, unknown>) => ({
+        id: 'user-1',
+        ...value,
+      })),
+      save: jest.fn(async (value: unknown) => value),
+    };
+    const characters = {
+      create: jest.fn((value: Record<string, unknown>) => value),
+      save: jest.fn(async (value: unknown) => value),
+    };
+    const service = new AuthService(
+      users as never,
+      characters as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+    );
+
+    const user = await service.register({
+      email: 'hero@wise.app',
+      password: 'super-secret',
+      displayName: 'Hero',
+      deviceLabel: 'Wise Web',
+    });
+
+    const persisted = users.save.mock.calls[0]![0] as Record<string, unknown>;
+    expect(persisted.passwordHash).not.toBe('super-secret');
+    expect(String(persisted.passwordHash)).toMatch(/^\$argon2id\$/);
+    expect(JSON.stringify(user)).not.toContain('super-secret');
   });
 });
