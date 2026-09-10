@@ -16,7 +16,7 @@ import type { Server, Socket } from 'socket.io';
  * chat/ranking/raid (Documento de Arquitetura, seção 3.2).
  */
 @Injectable()
-@WebSocketGateway({ cors: { origin: process.env.CORS_ORIGIN ?? '*', credentials: true } })
+@WebSocketGateway()
 export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect {
   private readonly logger = new Logger(RealtimeGateway.name);
 

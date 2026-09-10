@@ -257,7 +257,9 @@ describe('AuthService.refresh', () => {
     );
     expect(historyRepository.insert).toHaveBeenCalledTimes(1);
   });
+});
 
+describe('AuthService.issueSession', () => {
   it('persists only the hash of the issued secret and returns the session id', async () => {
     const sessions = {
       find: jest.fn().mockResolvedValue([]),

@@ -1,4 +1,5 @@
 import type { INestApplication } from '@nestjs/common';
+import { ConfigModule } from '@nestjs/config';
 import { Test } from '@nestjs/testing';
 import type { AddressInfo } from 'node:net';
 import { configureApp } from '../../app.setup';
@@ -33,6 +34,7 @@ describe('Auth HTTP transport contract', () => {
     previousCorsOrigin = process.env.CORS_ORIGIN;
     process.env.CORS_ORIGIN = `${allowedOrigin},https://app.example.com`;
     const moduleRef = await Test.createTestingModule({
+      imports: [ConfigModule.forRoot({ isGlobal: true, ignoreEnvFile: true })],
       controllers: [AuthController, NativeAuthController],
       providers: [
         RejectBrowserOriginGuard,
@@ -42,7 +44,7 @@ describe('Auth HTTP transport contract', () => {
     app = moduleRef.createNestApplication();
     configureApp(app);
     await app.init();
-    await app.listen(0);
+    await app.listen(0, '127.0.0.1');
     const address = app.getHttpServer().address() as AddressInfo;
     baseUrl = `http://127.0.0.1:${address.port}/api/v1`;
   });
