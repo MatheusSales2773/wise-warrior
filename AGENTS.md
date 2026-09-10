@@ -32,6 +32,10 @@ Before implementing or changing code, tests, infrastructure, or configuration:
 - [React Native Web accessibility](https://necolas.github.io/react-native-web/docs/accessibility/)
 - [Expo SDK 57 documentation](https://docs.expo.dev/)
 - [Expo Router documentation](https://docs.expo.dev/router/introduction/)
+- [Expo Router protected routes](https://docs.expo.dev/router/advanced/protected/)
+- [Expo Router authentication](https://docs.expo.dev/router/advanced/authentication/)
+- [Expo SDK 57 SecureStore](https://docs.expo.dev/versions/v57.0.0/sdk/securestore/)
+- [Axios 1.x documentation](https://axios-http.com/docs/intro)
 
 #### Testing
 

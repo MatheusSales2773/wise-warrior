@@ -9,6 +9,8 @@ import { modalAnimationType, MoreMenu } from '@/design-system/navigation/MoreMen
 import { render } from '@testing-library/react-native';
 import { theme } from '@/design-system/tokens/theme';
 
+jest.mock('@/core/auth/auth-context', () => require('../test-utils/auth-context').createAuthContextMock());
+
 const originalPlatform = Platform.OS;
 const originalWindow = Dimensions.get('window');
 const originalScreen = Dimensions.get('screen');
