@@ -146,9 +146,19 @@ Configure `EXPO_PUBLIC_API_URL` com um host alcançável pela plataforma:
 
 O refresh token nativo é salvo pelo `expo-secure-store` e excluído do Android
 Auto Backup pelo config plugin. Depois de instalar ou atualizar esse módulo, ou
-de alterar `app.json`, execute novamente `npm run ios --workspace apps/frontend`
-ou `npm run android --workspace apps/frontend`: Fast Refresh não aplica mudanças
-em módulos ou configuração nativa.
+de alterar `app.json`, regenere os projetos nativos antes de recompilar. O
+comando Android já executa um Prebuild limpo antes da compilação:
+
+```bash
+npm run android --workspace apps/frontend
+
+# Para regenerar Android e iOS juntos antes de compilar o iOS:
+npm run prebuild:native --workspace apps/frontend
+npm run ios --workspace apps/frontend
+```
+
+O Prebuild com `--clean` recria os diretórios nativos e reaplica os config
+plugins. Fast Refresh não aplica mudanças em módulos ou configuração nativa.
 
 Instale todas as dependências na raiz do monorepo. `npm ci` reproduz exatamente
 o lockfile e é o comando usado pela CI:

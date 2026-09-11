@@ -31,10 +31,12 @@ function requireSessionPayload(value: unknown, refreshTokenRequired = false): Se
   return payload as SessionPayload;
 }
 
+export type AuthPlatform = 'web' | 'ios' | 'android';
+
 export type AuthServiceDeps = {
   http: HttpClient;
   store: CredentialStore;
-  platform?: string;
+  platform?: AuthPlatform;
 };
 
 export interface AuthService {
@@ -69,9 +71,10 @@ async function rollbackUnstoredRefreshToken(
 export function createAuthService({
   http,
   store,
-  platform = Platform.OS,
+  platform,
 }: AuthServiceDeps): AuthService {
-  const isWeb = platform === 'web';
+  const runtimePlatform = platform ?? Platform.OS;
+  const isWeb = runtimePlatform === 'web';
 
   return {
     async login(credentials: AuthCredentials): Promise<AuthSession> {
@@ -81,7 +84,7 @@ export function createAuthService({
         : {
             email: credentials.email,
             password: credentials.password,
-            deviceLabel: NATIVE_DEVICE_LABELS[platform] ?? 'Wise Native',
+            deviceLabel: NATIVE_DEVICE_LABELS[runtimePlatform] ?? 'Wise Native',
           };
 
       let payload: SessionPayload;

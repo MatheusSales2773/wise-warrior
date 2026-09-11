@@ -6,8 +6,10 @@
   "scripts": {
     "start": "expo start",
     "web": "expo start --web",
+    "prebuild:native": "expo prebuild --clean",
+    "prebuild:android": "expo prebuild --platform android --clean",
     "ios": "expo run:ios",
-    "android": "expo run:android",
+    "android": "npm run prebuild:android && expo run:android",
     "build": "expo export --platform web",
     "export:bundles": "expo export --platform all",
     "lint": "expo lint",

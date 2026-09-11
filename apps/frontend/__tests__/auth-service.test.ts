@@ -159,8 +159,11 @@ describe('auth service — native transport', () => {
     jest.restoreAllMocks();
   });
 
-  it('selects the native endpoint automatically from the runtime platform', async () => {
-    jest.replaceProperty(Platform, 'OS', 'android');
+  it.each([
+    ['ios', 'Wise iOS'],
+    ['android', 'Wise Android'],
+  ] as const)('selects the native endpoint automatically on %s', async (platform, deviceLabel) => {
+    jest.replaceProperty(Platform, 'OS', platform);
     const { http, calls } = httpDouble({
       '/auth/native/login': async () => ({
         status: 200,
@@ -174,7 +177,7 @@ describe('auth service — native transport', () => {
     expect(calls[0]).toEqual({
       method: 'post',
       url: '/auth/native/login',
-      body: { email: 'a@b.co', password: 'x', deviceLabel: 'Wise Android' },
+      body: { email: 'a@b.co', password: 'x', deviceLabel },
     });
   });
 
