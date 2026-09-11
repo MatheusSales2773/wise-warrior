@@ -3,7 +3,7 @@ import { credentialStore as nativeStore } from '@/core/auth/credential-store';
 import { credentialStore as webStore } from '@/core/auth/credential-store.web';
 
 jest.mock('expo-secure-store', () => ({
-  WHEN_UNLOCKED_THIS_DEVICE_ONLY: 'when-unlocked-this-device-only',
+  AFTER_FIRST_UNLOCK: 'after-first-unlock',
   getItemAsync: jest.fn(async () => 'stored-token'),
   setItemAsync: jest.fn(async () => undefined),
   deleteItemAsync: jest.fn(async () => undefined),
@@ -34,17 +34,18 @@ describe('credential store — web', () => {
 describe('credential store — native', () => {
   beforeEach(() => jest.clearAllMocks());
 
-  it('uses a stable namespaced key with device-only keychain accessibility', async () => {
+  it('uses a stable namespaced key with background-compatible accessibility and no biometric prompt', async () => {
     await nativeStore.write('session.secret');
     expect(mockedSecureStore.setItemAsync).toHaveBeenCalledWith(
       'wise.auth.refresh',
       'session.secret',
-      { keychainAccessible: 'when-unlocked-this-device-only' },
+      { keychainAccessible: 'after-first-unlock', requireAuthentication: false },
     );
 
     await expect(nativeStore.read()).resolves.toBe('stored-token');
     expect(mockedSecureStore.getItemAsync).toHaveBeenCalledWith('wise.auth.refresh', {
-      keychainAccessible: 'when-unlocked-this-device-only',
+      keychainAccessible: 'after-first-unlock',
+      requireAuthentication: false,
     });
 
     await nativeStore.remove();

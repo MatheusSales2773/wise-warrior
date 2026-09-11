@@ -4,13 +4,14 @@ import type { CredentialStore } from './types';
 const REFRESH_KEY = 'wise.auth.refresh';
 
 const options = {
-  keychainAccessible: SecureStore.WHEN_UNLOCKED_THIS_DEVICE_ONLY,
+  keychainAccessible: SecureStore.AFTER_FIRST_UNLOCK,
+  requireAuthentication: false,
 } as const;
 
 /**
  * Implementação nativa (iOS/Android). A credencial rotativa fica no
- * SecureStore, acessível somente com o aparelho desbloqueado e sem
- * `requireAuthentication` (renovação em background não pode abrir prompt).
+ * SecureStore, acessível em background depois do primeiro desbloqueio e sem
+ * prompt biométrico obrigatório.
  */
 export const credentialStore: CredentialStore = {
   read: () => SecureStore.getItemAsync(REFRESH_KEY, options),

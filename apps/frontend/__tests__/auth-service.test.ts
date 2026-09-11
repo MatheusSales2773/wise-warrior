@@ -1,3 +1,4 @@
+import { Platform } from 'react-native';
 import type { HttpClient, HttpResponse } from '@/core/api/api-client';
 import { isApiError } from '@/core/api/api-error';
 import { clearAccessToken, getAccessToken } from '@/core/api/token-memory';
@@ -23,14 +24,17 @@ function httpDouble(handlers: Record<string, () => Promise<HttpResponse<unknown>
   return { http, calls };
 }
 
-type StoreState = { value: string | null; failWrite?: boolean };
+type StoreState = { value: string | null; failRead?: boolean; failWrite?: boolean };
 
 function storeDouble(initial: string | null = null) {
   const state: StoreState = { value: initial };
   const writes: string[] = [];
   let removes = 0;
   const store: CredentialStore = {
-    read: async () => state.value,
+    read: async () => {
+      if (state.failRead) throw new Error('secure store indisponível');
+      return state.value;
+    },
     write: async (value) => {
       if (state.failWrite) throw new Error('secure store indisponível');
       writes.push(value);
@@ -150,7 +154,29 @@ describe('auth service — web transport', () => {
 
 describe('auth service — native transport', () => {
   beforeEach(() => clearAccessToken());
-  afterEach(() => clearAccessToken());
+  afterEach(() => {
+    clearAccessToken();
+    jest.restoreAllMocks();
+  });
+
+  it('selects the native endpoint automatically from the runtime platform', async () => {
+    jest.replaceProperty(Platform, 'OS', 'android');
+    const { http, calls } = httpDouble({
+      '/auth/native/login': async () => ({
+        status: 200,
+        data: { accessToken: ACCESS, refreshToken: 'session.token', sessionId: 'session-auto' },
+      }),
+    });
+    const service = createAuthService({ http, store: storeDouble().store });
+
+    await service.login({ email: 'a@b.co', password: 'x' });
+
+    expect(calls[0]).toEqual({
+      method: 'post',
+      url: '/auth/native/login',
+      body: { email: 'a@b.co', password: 'x', deviceLabel: 'Wise Android' },
+    });
+  });
 
   it('persists the refresh token in the credential store before publishing the session', async () => {
     const { http, calls } = httpDouble({
@@ -212,6 +238,17 @@ describe('auth service — native transport', () => {
     expect(calls).toHaveLength(0);
   });
 
+  it('reports unavailability when the stored credential cannot be read', async () => {
+    const store = storeDouble('session.stored');
+    store.state.failRead = true;
+    const service = createAuthService({ http: httpDouble({}).http, store: store.store, platform: 'ios' });
+
+    const result = await service.restore();
+
+    expect(result).toMatchObject({ status: 'unavailable' });
+    expect(getAccessToken()).toBeNull();
+  });
+
   it('rotates the stored credential on restore', async () => {
     const { http, calls } = httpDouble({
       '/auth/native/refresh': async () => ({
@@ -230,6 +267,28 @@ describe('auth service — native transport', () => {
     });
     expect(store.writes).toEqual(['session.rotated']);
     expect(getAccessToken()).toBe(ACCESS);
+  });
+
+  it('revokes the rotated session and stays anonymous when persistence fails', async () => {
+    const { http, calls } = httpDouble({
+      '/auth/native/refresh': async () => ({
+        status: 200,
+        data: { accessToken: ACCESS, refreshToken: 'session.rotated', sessionId: 'session-4' },
+      }),
+      '/auth/native/logout': async () => ({ status: 204, data: undefined }),
+    });
+    const store = storeDouble('session.stale');
+    store.state.failWrite = true;
+    const service = createAuthService({ http, store: store.store, platform: 'android' });
+
+    await expect(service.restore()).resolves.toEqual({ status: 'anonymous' });
+    expect(calls).toContainEqual({
+      method: 'post',
+      url: '/auth/native/logout',
+      body: { refreshToken: 'session.rotated' },
+    });
+    expect(store.removalCount()).toBe(1);
+    expect(getAccessToken()).toBeNull();
   });
 
   it('stays anonymous when native refresh omits the rotated credential', async () => {

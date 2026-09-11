@@ -135,6 +135,21 @@ ao bundle, portanto nunca coloque secrets nelas:
 cp apps/frontend/.env.example apps/frontend/.env
 ```
 
+Configure `EXPO_PUBLIC_API_URL` com um host alcançável pela plataforma:
+
+- Web e iOS Simulator: `http://localhost:3000/api/v1`;
+- Android Emulator padrão: `http://10.0.2.2:3000/api/v1`;
+- iOS/Android em dispositivo físico: prefira uma URL HTTPS; para desenvolvimento
+  local, use o IP LAN da máquina e mantenha aparelho e computador na mesma rede;
+- release: use HTTPS. O projeto não habilita cleartext global no Android nem
+  desativa o App Transport Security no iOS.
+
+O refresh token nativo é salvo pelo `expo-secure-store` e excluído do Android
+Auto Backup pelo config plugin. Depois de instalar ou atualizar esse módulo, ou
+de alterar `app.json`, execute novamente `npm run ios --workspace apps/frontend`
+ou `npm run android --workspace apps/frontend`: Fast Refresh não aplica mudanças
+em módulos ou configuração nativa.
+
 Instale todas as dependências na raiz do monorepo. `npm ci` reproduz exatamente
 o lockfile e é o comando usado pela CI:
 

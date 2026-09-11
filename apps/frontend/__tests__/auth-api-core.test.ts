@@ -7,6 +7,7 @@ import {
   getAuthenticatedHttpClient,
   resolveAxiosConfig,
   setAuthenticationRecovery,
+  shouldSendBrowserCredentials,
   type HttpClient,
 } from '@/core/api/api-client';
 import { ApiError, isApiError, toApiError } from '@/core/api/api-error';
@@ -111,6 +112,14 @@ describe('http client configuration', () => {
       timeout: DEFAULT_TIMEOUT_MS,
       withCredentials: false,
     });
+  });
+
+  it.each([
+    ['web', true],
+    ['ios', false],
+    ['android', false],
+  ] as const)('selects cookie transport only for %s', (platform, expected) => {
+    expect(shouldSendBrowserCredentials(platform)).toBe(expected);
   });
 
   it('injects a bearer header only when an access token exists', () => {

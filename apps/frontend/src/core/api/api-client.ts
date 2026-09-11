@@ -116,8 +116,8 @@ export function createHttpClient(config: HttpClientConfig = {}): HttpClient {
 let authenticatedClient: HttpClient | null = null;
 let bareClient: HttpClient | null = null;
 
-function defaultWithCredentials(): boolean {
-  return Platform.OS === 'web';
+export function shouldSendBrowserCredentials(platform = Platform.OS): boolean {
+  return platform === 'web';
 }
 
 /** Cliente autenticado para rotas de produto; usa somente o bearer em memória. */
@@ -133,7 +133,7 @@ export function getAuthenticatedHttpClient(): HttpClient {
 /** Cliente sem bearer para cadastro, login, refresh e logout, evitando recursão futura. */
 export function getBareHttpClient(): HttpClient {
   if (!bareClient) {
-    bareClient = createHttpClient({ withCredentials: defaultWithCredentials() });
+    bareClient = createHttpClient({ withCredentials: shouldSendBrowserCredentials() });
   }
   return bareClient;
 }
