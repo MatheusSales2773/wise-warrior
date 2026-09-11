@@ -3,9 +3,9 @@ import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { AuthProvider, useAuth } from '@/core/auth/auth-context';
+import { theme } from '@/design-system';
 import { FontGate } from '@/design-system/components/font-runtime';
 import { MotionRuntime, useRuntimeMotionDuration } from '@/design-system/components/motion-runtime';
-import { theme } from '@/design-system/tokens/theme';
 import { SessionRestoringScreen, SessionUnavailableScreen } from '@/features/auth/components/SessionGate';
 
 void SplashScreen.preventAutoHideAsync().catch(() => undefined);

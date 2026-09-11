@@ -1,8 +1,9 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
-import { TextInput } from 'react-native';
+import { Platform, StyleSheet, TextInput } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { ApiError } from '@/core/api/api-error';
 import { AuthProvider } from '@/core/auth/auth-context';
+import { theme } from '@/design-system';
 import type { AuthService } from '@/core/auth/auth-service';
 import type { AuthSession, RestoreResult } from '@/core/auth/types';
 import { LoginForm } from '@/features/auth/login-form';
@@ -76,6 +77,25 @@ describe('LoginForm', () => {
     await fireEvent.press(screen.getByLabelText('Mostrar senha'));
     expect(screen.getByLabelText('Senha').props.secureTextEntry).toBe(false);
     expect(screen.getByLabelText('Ocultar senha').props.accessibilityState).toMatchObject({ selected: true });
+  });
+
+  it('shows a visible focus indicator on the password toggle on Web', async () => {
+    const platform = Platform.OS;
+    Object.defineProperty(Platform, 'OS', { configurable: true, value: 'web' });
+    try {
+      await renderLogin(serviceDouble(async () => ({ sessionId: 's' })));
+      const toggle = screen.getByLabelText('Mostrar senha');
+
+      await fireEvent(toggle, 'focus');
+
+      expect(StyleSheet.flatten(screen.getByLabelText('Mostrar senha').props.style)).toMatchObject({
+        outlineColor: theme.color.accentPrimary,
+        outlineStyle: 'solid',
+        outlineWidth: theme.border.focus,
+      });
+    } finally {
+      Object.defineProperty(Platform, 'OS', { configurable: true, value: platform });
+    }
   });
 
   it('moves focus from the e-mail field with the keyboard and submits from the password field', async () => {

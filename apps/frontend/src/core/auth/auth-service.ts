@@ -15,6 +15,22 @@ type SessionPayload = {
   refreshToken?: string;
 };
 
+function requireSessionPayload(value: unknown, refreshTokenRequired = false): SessionPayload {
+  if (typeof value !== 'object' || value === null) {
+    throw new ApiError('unexpected');
+  }
+
+  const payload = value as Partial<SessionPayload>;
+  if (
+    !payload.accessToken?.trim()
+    || !payload.sessionId?.trim()
+    || (refreshTokenRequired && !payload.refreshToken?.trim())
+  ) {
+    throw new ApiError('unexpected');
+  }
+  return payload as SessionPayload;
+}
+
 export type AuthServiceDeps = {
   http: HttpClient;
   store: CredentialStore;
@@ -40,6 +56,16 @@ async function revokeQuietly(http: HttpClient, refreshToken: string): Promise<vo
   }
 }
 
+async function rollbackUnstoredRefreshToken(
+  http: HttpClient,
+  refreshToken: string,
+  removeStoredCredential?: () => Promise<void>,
+): Promise<void> {
+  await revokeQuietly(http, refreshToken);
+  await removeStoredCredential?.().catch(() => undefined);
+  clearAccessToken();
+}
+
 export function createAuthService({
   http,
   store,
@@ -60,8 +86,10 @@ export function createAuthService({
 
       let payload: SessionPayload;
       try {
-        ({ data: payload } = await http.post<SessionPayload>(path, body));
+        const response = await http.post<unknown>(path, body);
+        payload = requireSessionPayload(response.data, !isWeb);
       } catch (error) {
+        clearAccessToken();
         throw toApiError(error, { unauthorized: 'credentials' });
       }
 
@@ -69,8 +97,7 @@ export function createAuthService({
         try {
           await store.write(payload.refreshToken);
         } catch {
-          await revokeQuietly(http, payload.refreshToken);
-          clearAccessToken();
+          await rollbackUnstoredRefreshToken(http, payload.refreshToken);
           throw new ApiError('unexpected');
         }
       }
@@ -82,7 +109,8 @@ export function createAuthService({
     async restore(): Promise<RestoreResult> {
       if (isWeb) {
         try {
-          const { data } = await http.post<SessionPayload>('/auth/refresh');
+          const response = await http.post<unknown>('/auth/refresh');
+          const data = requireSessionPayload(response.data);
           setAccessToken(data.accessToken);
           return { status: 'authenticated', sessionId: data.sessionId };
         } catch (error) {
@@ -102,18 +130,15 @@ export function createAuthService({
       }
 
       try {
-        const { data } = await http.post<SessionPayload>('/auth/native/refresh', {
+        const response = await http.post<unknown>('/auth/native/refresh', {
           refreshToken: stored,
         });
-        if (data.refreshToken) {
-          try {
-            await store.write(data.refreshToken);
-          } catch {
-            await revokeQuietly(http, data.refreshToken);
-            await store.remove();
-            clearAccessToken();
-            return { status: 'anonymous' };
-          }
+        const data = requireSessionPayload(response.data, true);
+        try {
+          await store.write(data.refreshToken!);
+        } catch {
+          await rollbackUnstoredRefreshToken(http, data.refreshToken!, () => store.remove());
+          return { status: 'anonymous' };
         }
         setAccessToken(data.accessToken);
         return { status: 'authenticated', sessionId: data.sessionId };

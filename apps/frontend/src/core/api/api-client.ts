@@ -1,4 +1,4 @@
-import { create } from 'axios';
+import { create, isAxiosError } from 'axios';
 import { Platform } from 'react-native';
 import { getPublicApiUrl } from '@/config/environment';
 import { getAccessToken } from './token-memory';
@@ -22,6 +22,50 @@ export type HttpClientConfig = {
 };
 
 export const DEFAULT_TIMEOUT_MS = 15_000;
+
+type AuthenticationRecovery = () => Promise<boolean>;
+
+let authenticationRecovery: AuthenticationRecovery | null = null;
+let recoveryInFlight: Promise<boolean> | null = null;
+
+export function setAuthenticationRecovery(recover: AuthenticationRecovery): () => void {
+  authenticationRecovery = recover;
+  return () => {
+    if (authenticationRecovery === recover) authenticationRecovery = null;
+  };
+}
+
+function recoverAuthenticationOnce(): Promise<boolean> {
+  if (!authenticationRecovery) return Promise.resolve(false);
+  if (!recoveryInFlight) {
+    const attempt = Promise.resolve().then(() => authenticationRecovery?.() ?? false);
+    recoveryInFlight = attempt.finally(() => {
+      recoveryInFlight = null;
+    });
+  }
+  return recoveryInFlight;
+}
+
+function isUnauthorized(error: unknown): boolean {
+  return isAxiosError(error) && error.response?.status === 401;
+}
+
+/** Restaura a Session uma única vez antes de repetir uma request protegida rejeitada. */
+export function createSessionAwareHttpClient(transport: HttpClient): HttpClient {
+  async function request<T>(operation: () => Promise<HttpResponse<T>>): Promise<HttpResponse<T>> {
+    try {
+      return await operation();
+    } catch (error) {
+      if (!isUnauthorized(error) || !(await recoverAuthenticationOnce())) throw error;
+      return operation();
+    }
+  }
+
+  return {
+    get: <T>(url: string) => request(() => transport.get<T>(url)),
+    post: <T>(url: string, body?: unknown) => request(() => transport.post<T>(url, body)),
+  };
+}
 
 export function resolveAxiosConfig(config: HttpClientConfig = {}) {
   return {
@@ -76,13 +120,12 @@ function defaultWithCredentials(): boolean {
   return Platform.OS === 'web';
 }
 
-/** Cliente autenticado para rotas de produto; inclui cookie (Web) e bearer. */
+/** Cliente autenticado para rotas de produto; usa somente o bearer em memória. */
 export function getAuthenticatedHttpClient(): HttpClient {
   if (!authenticatedClient) {
-    authenticatedClient = createHttpClient({
-      bearer: getAccessToken,
-      withCredentials: defaultWithCredentials(),
-    });
+    authenticatedClient = createSessionAwareHttpClient(
+      createHttpClient({ bearer: getAccessToken }),
+    );
   }
   return authenticatedClient;
 }

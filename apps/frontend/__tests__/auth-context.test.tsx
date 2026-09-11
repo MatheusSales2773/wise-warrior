@@ -1,9 +1,14 @@
 import { act, renderHook, waitFor } from '@testing-library/react-native';
 import type { PropsWithChildren } from 'react';
 import { AuthProvider, useAuth } from '@/core/auth/auth-context';
-import type { AuthService } from '@/core/auth/auth-service';
+import { createAuthService, type AuthService } from '@/core/auth/auth-service';
 import { ApiError } from '@/core/api/api-error';
-import type { AuthSession, RestoreResult } from '@/core/auth/types';
+import {
+  createSessionAwareHttpClient,
+  type HttpClient,
+  type HttpResponse,
+} from '@/core/api/api-client';
+import type { AuthSession, CredentialStore, RestoreResult } from '@/core/auth/types';
 
 function serviceDouble(
   restore: () => Promise<RestoreResult>,
@@ -66,6 +71,50 @@ describe('AuthProvider', () => {
     expect(restore).toHaveBeenCalledTimes(2);
   });
 
+  it('shares one restore attempt across repeated retries while unavailable', async () => {
+    let refreshes = 0;
+    let resolveRetry: (response: HttpResponse<unknown>) => void = () => undefined;
+    const retryResponse = new Promise<HttpResponse<unknown>>((resolve) => {
+      resolveRetry = resolve;
+    });
+    const authHttp: HttpClient = {
+      get: async <T,>() => ({ status: 204, data: undefined as T }),
+      post: async <T,>(url: string) => {
+        if (url !== '/auth/refresh') return { status: 204, data: undefined as T };
+        refreshes += 1;
+        if (refreshes === 1) {
+          throw { isAxiosError: true, response: { status: 503, data: {} } };
+        }
+        return retryResponse as Promise<HttpResponse<T>>;
+      },
+    };
+    const store: CredentialStore = {
+      read: async () => null,
+      write: async () => undefined,
+      remove: async () => undefined,
+    };
+    const service = createAuthService({ http: authHttp, store, platform: 'web' });
+    const { result } = await renderHook(() => useAuth(), { wrapper: wrapperFor(service) });
+    await waitFor(() => expect(result.current.status).toBe('unavailable'));
+
+    await act(async () => {
+      result.current.retryRestore();
+      result.current.retryRestore();
+      await Promise.resolve();
+    });
+
+    const refreshesStarted = refreshes;
+    await act(async () => {
+      resolveRetry({
+        status: 200,
+        data: { accessToken: 'access-retry', sessionId: 'session-retry' },
+      });
+    });
+    await waitFor(() => expect(result.current.status).toBe('authenticated'));
+    expect(refreshesStarted).toBe(2);
+    expect(refreshes).toBe(2);
+  });
+
   it('publishes the login session and propagates login failures without changing state', async () => {
     const restore = jest.fn(async (): Promise<RestoreResult> => ({ status: 'anonymous' }));
     const login = jest.fn(async (): Promise<AuthSession> => ({ sessionId: 'session-login' }));
@@ -108,5 +157,44 @@ describe('AuthProvider', () => {
 
     expect(errorSpy).not.toHaveBeenCalled();
     errorSpy.mockRestore();
+  });
+
+  it('becomes anonymous when a protected request finds an invalid Session', async () => {
+    let refreshes = 0;
+    const authHttp: HttpClient = {
+      get: async <T,>() => ({ status: 204, data: undefined as T }),
+      post: async <T,>(url: string) => {
+        if (url !== '/auth/refresh') return { status: 204, data: undefined as T };
+        refreshes += 1;
+        if (refreshes === 1) {
+          return {
+            status: 200,
+            data: { accessToken: 'access-1', sessionId: 'session-1' } as T,
+          };
+        }
+        throw { isAxiosError: true, response: { status: 401, data: {} } };
+      },
+    };
+    const store: CredentialStore = {
+      read: async () => null,
+      write: async () => undefined,
+      remove: async () => undefined,
+    };
+    const service = createAuthService({ http: authHttp, store, platform: 'web' });
+    const productHttp = createSessionAwareHttpClient({
+      get: async () => {
+        throw { isAxiosError: true, response: { status: 401, data: {} } };
+      },
+      post: async <T,>() => ({ status: 204, data: undefined as T }),
+    });
+    const { result } = await renderHook(() => useAuth(), { wrapper: wrapperFor(service) });
+    await waitFor(() => expect(result.current.status).toBe('authenticated'));
+
+    await act(async () => {
+      await productHttp.get('/perfil').catch(() => undefined);
+    });
+
+    await waitFor(() => expect(result.current.status).toBe('anonymous'));
+    expect(refreshes).toBe(2);
   });
 });

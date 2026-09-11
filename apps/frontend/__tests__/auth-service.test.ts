@@ -86,6 +86,18 @@ describe('auth service — web transport', () => {
     });
   });
 
+  it('rejects a successful login response without a usable session', async () => {
+    const { http } = httpDouble({
+      '/auth/login': async () => ({ status: 200, data: { accessToken: '', sessionId: '' } }),
+    });
+    const service = createAuthService({ http, store: storeDouble().store, platform: 'web' });
+
+    await expect(service.login({ email: 'a@b.co', password: 'x' })).rejects.toMatchObject({
+      category: 'unexpected',
+    });
+    expect(getAccessToken()).toBeNull();
+  });
+
   it('surfaces a network failure as a retryable error', async () => {
     const { http } = httpDouble({ '/auth/login': async () => Promise.reject(axiosNetworkError()) });
     const service = createAuthService({ http, store: storeDouble().store, platform: 'web' });
@@ -110,6 +122,16 @@ describe('auth service — web transport', () => {
   it('treats a 401 on refresh as an anonymous session and clears the token', async () => {
     const { http } = httpDouble({ '/auth/refresh': async () => Promise.reject(axiosError(401)) });
     const service = createAuthService({ http, store: storeDouble().store, platform: 'web' });
+    await expect(service.restore()).resolves.toEqual({ status: 'anonymous' });
+    expect(getAccessToken()).toBeNull();
+  });
+
+  it('stays anonymous when refresh returns a malformed session', async () => {
+    const { http } = httpDouble({
+      '/auth/refresh': async () => ({ status: 200, data: { accessToken: ACCESS } }),
+    });
+    const service = createAuthService({ http, store: storeDouble().store, platform: 'web' });
+
     await expect(service.restore()).resolves.toEqual({ status: 'anonymous' });
     expect(getAccessToken()).toBeNull();
   });
@@ -148,6 +170,21 @@ describe('auth service — native transport', () => {
     });
     expect(store.writes).toEqual(['session.token']);
     expect(getAccessToken()).toBe(ACCESS);
+  });
+
+  it('rejects a native login response without a refresh credential', async () => {
+    const { http } = httpDouble({
+      '/auth/native/login': async () => ({
+        status: 200,
+        data: { accessToken: ACCESS, sessionId: 'session-3' },
+      }),
+    });
+    const service = createAuthService({ http, store: storeDouble().store, platform: 'ios' });
+
+    await expect(service.login({ email: 'a@b.co', password: 'x' })).rejects.toMatchObject({
+      category: 'unexpected',
+    });
+    expect(getAccessToken()).toBeNull();
   });
 
   it('revokes a freshly issued session when secure persistence fails', async () => {
@@ -193,6 +230,20 @@ describe('auth service — native transport', () => {
     });
     expect(store.writes).toEqual(['session.rotated']);
     expect(getAccessToken()).toBe(ACCESS);
+  });
+
+  it('stays anonymous when native refresh omits the rotated credential', async () => {
+    const { http } = httpDouble({
+      '/auth/native/refresh': async () => ({
+        status: 200,
+        data: { accessToken: ACCESS, sessionId: 'session-4' },
+      }),
+    });
+    const store = storeDouble('session.stale');
+    const service = createAuthService({ http, store: store.store, platform: 'android' });
+
+    await expect(service.restore()).resolves.toEqual({ status: 'anonymous' });
+    expect(getAccessToken()).toBeNull();
   });
 
   it('removes the invalid credential and stays anonymous on a 401', async () => {

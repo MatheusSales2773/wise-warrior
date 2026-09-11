@@ -9,7 +9,7 @@ import {
   type PropsWithChildren,
 } from 'react';
 import type { ApiError } from '@/core/api/api-error';
-import { getBareHttpClient } from '@/core/api/api-client';
+import { getBareHttpClient, setAuthenticationRecovery } from '@/core/api/api-client';
 import { createAuthService, type AuthService } from './auth-service';
 import { credentialStore } from './credential-store';
 import type { AuthCredentials, AuthState, AuthStatus, RestoreResult } from './types';
@@ -35,6 +35,7 @@ export function AuthProvider({ children, service: providedService }: AuthProvide
   const [authService] = useState<AuthService>(() => providedService ?? createDefaultAuthService());
   const mounted = useRef(true);
   const loginInFlight = useRef(false);
+  const restoreInFlight = useRef<Promise<RestoreResult> | null>(null);
 
   const applyResult = useCallback((result: RestoreResult) => {
     if (!mounted.current) return;
@@ -47,13 +48,31 @@ export function AuthProvider({ children, service: providedService }: AuthProvide
     }
   }, []);
 
+  const restoreAndApply = useCallback((): Promise<RestoreResult> => {
+    if (restoreInFlight.current) return restoreInFlight.current;
+
+    const attempt = authService.restore();
+    restoreInFlight.current = attempt;
+    void attempt
+      .then(applyResult, () => undefined)
+      .then(() => {
+        if (restoreInFlight.current === attempt) restoreInFlight.current = null;
+      });
+    return attempt;
+  }, [authService, applyResult]);
+
   useEffect(() => {
     mounted.current = true;
-    void authService.restore().then(applyResult);
+    const removeRecovery = setAuthenticationRecovery(async () => {
+      const result = await restoreAndApply();
+      return result.status === 'authenticated';
+    });
+    void restoreAndApply();
     return () => {
       mounted.current = false;
+      removeRecovery();
     };
-  }, [authService, applyResult]);
+  }, [restoreAndApply]);
 
   const login = useCallback(
     async (credentials: AuthCredentials) => {
@@ -73,8 +92,8 @@ export function AuthProvider({ children, service: providedService }: AuthProvide
 
   const retryRestore = useCallback(() => {
     setState({ status: 'restoring' });
-    void authService.restore().then(applyResult);
-  }, [authService, applyResult]);
+    void restoreAndApply();
+  }, [restoreAndApply]);
 
   const value = useMemo<AuthContextValue>(
     () => ({

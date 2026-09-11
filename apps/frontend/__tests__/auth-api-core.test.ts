@@ -1,10 +1,21 @@
+import * as axios from 'axios';
+import { Platform } from 'react-native';
 import {
   applyAuthorizationHeader,
+  createSessionAwareHttpClient,
   DEFAULT_TIMEOUT_MS,
+  getAuthenticatedHttpClient,
   resolveAxiosConfig,
+  setAuthenticationRecovery,
+  type HttpClient,
 } from '@/core/api/api-client';
 import { ApiError, isApiError, toApiError } from '@/core/api/api-error';
 import { clearAccessToken, getAccessToken, setAccessToken } from '@/core/api/token-memory';
+
+jest.mock('axios', () => ({
+  ...jest.requireActual('axios'),
+  create: jest.fn(),
+}));
 
 describe('token memory', () => {
   afterEach(() => clearAccessToken());
@@ -57,6 +68,29 @@ describe('api error taxonomy', () => {
 });
 
 describe('http client configuration', () => {
+  afterEach(() => jest.restoreAllMocks());
+
+  it('keeps browser cookies off authenticated product requests', () => {
+    jest.replaceProperty(Platform, 'OS', 'web');
+    const previousApiUrl = process.env.EXPO_PUBLIC_API_URL;
+    process.env.EXPO_PUBLIC_API_URL = 'https://api.example.com/v1';
+    try {
+      const create = jest.mocked(axios.create).mockReturnValue({
+        interceptors: { request: { use: jest.fn() } },
+      } as never);
+
+      getAuthenticatedHttpClient();
+
+      expect(create).toHaveBeenCalledWith(expect.objectContaining({ withCredentials: false }));
+    } finally {
+      if (previousApiUrl === undefined) {
+        delete process.env.EXPO_PUBLIC_API_URL;
+      } else {
+        process.env.EXPO_PUBLIC_API_URL = previousApiUrl;
+      }
+    }
+  });
+
   it('resolves the bounded timeout, base URL and credential policy', () => {
     expect(
       resolveAxiosConfig({
@@ -86,5 +120,37 @@ describe('http client configuration', () => {
 
     applyAuthorizationHeader(request, 'access-123');
     expect(request.headers.set).toHaveBeenCalledWith('Authorization', 'Bearer access-123');
+  });
+
+  it('restores once and retries concurrent product requests rejected with 401', async () => {
+    let restored = false;
+    const getCalls = jest.fn();
+    const transport: HttpClient = {
+      get: async <T,>() => {
+        getCalls();
+        if (!restored) {
+          throw { isAxiosError: true, response: { status: 401, data: {} } };
+        }
+        return { status: 200, data: 'ok' as T };
+      },
+      post: async <T,>() => ({ status: 204, data: undefined as T }),
+    };
+    const recover = jest.fn(async () => {
+      restored = true;
+      return true;
+    });
+    const removeRecovery = setAuthenticationRecovery(recover);
+
+    try {
+      const client = createSessionAwareHttpClient(transport);
+      await expect(Promise.all([client.get('/perfil'), client.get('/guilda')])).resolves.toEqual([
+        { status: 200, data: 'ok' },
+        { status: 200, data: 'ok' },
+      ]);
+      expect(recover).toHaveBeenCalledTimes(1);
+      expect(getCalls).toHaveBeenCalledTimes(4);
+    } finally {
+      removeRecovery();
+    }
   });
 });

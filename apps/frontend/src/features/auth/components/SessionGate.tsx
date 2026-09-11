@@ -1,6 +1,5 @@
 import { StyleSheet, View } from 'react-native';
-import { FeedbackMessage, ProgressBar, Screen, WiseButton, WiseText } from '@/design-system';
-import { theme } from '@/design-system/tokens/theme';
+import { FeedbackMessage, ProgressBar, Screen, WiseButton, WiseText, theme } from '@/design-system';
 
 /** Gate local exibido enquanto a Session é verificada, sem piscar rota alguma. */
 export function SessionRestoringScreen() {

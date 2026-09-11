@@ -1,8 +1,6 @@
 import { useState } from 'react';
-import { Pressable, StyleSheet } from 'react-native';
-import { WiseField, type WiseFieldProps } from '@/design-system/components/WiseField';
-import { WiseText } from '@/design-system/components/WiseText';
-import { theme } from '@/design-system/tokens/theme';
+import { Platform, Pressable, StyleSheet } from 'react-native';
+import { WiseField, WiseText, theme, type WiseFieldProps } from '@/design-system';
 
 export type AuthPasswordFieldProps = Omit<WiseFieldProps, 'secureTextEntry' | 'trailing'>;
 
@@ -12,6 +10,7 @@ export type AuthPasswordFieldProps = Omit<WiseFieldProps, 'secureTextEntry' | 't
  */
 export function AuthPasswordField({ label, ...fieldProps }: AuthPasswordFieldProps) {
   const [revealed, setRevealed] = useState(false);
+  const [focused, setFocused] = useState(false);
   const action = revealed ? 'Ocultar senha' : 'Mostrar senha';
 
   return (
@@ -25,8 +24,10 @@ export function AuthPasswordField({ label, ...fieldProps }: AuthPasswordFieldPro
           accessibilityLabel={action}
           accessibilityState={{ selected: revealed }}
           aria-pressed={revealed}
+          onBlur={() => setFocused(false)}
+          onFocus={() => setFocused(true)}
           onPress={() => setRevealed((value) => !value)}
-          style={styles.toggle}
+          style={[styles.toggle, focused && Platform.OS === 'web' && styles.webFocus]}
         >
           <WiseText variant="label" color="accentPrimary">{revealed ? 'Ocultar' : 'Mostrar'}</WiseText>
         </Pressable>
@@ -42,5 +43,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: theme.space.inlineTight,
+  },
+  webFocus: {
+    outlineColor: theme.color.accentPrimary,
+    outlineStyle: 'solid',
+    outlineWidth: theme.border.focus,
   },
 });

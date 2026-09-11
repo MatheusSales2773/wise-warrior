@@ -1,7 +1,6 @@
 import type { PropsWithChildren } from 'react';
 import { StyleSheet, View } from 'react-native';
-import { Screen, WiseCard, WiseText } from '@/design-system';
-import { theme } from '@/design-system/tokens/theme';
+import { Screen, WiseCard, WiseText, theme } from '@/design-system';
 
 export type AuthShellProps = PropsWithChildren<{
   eyebrow: string;
