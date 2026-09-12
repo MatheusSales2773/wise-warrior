@@ -1,34 +1,38 @@
 import type { PropsWithChildren } from 'react';
-import { StyleSheet, View } from 'react-native';
-import { Screen, WiseCard, WiseText, theme } from '@/design-system';
+import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { WiseText, theme } from '@/design-system';
+import { BrandSigil } from '@/design-system/icons/brand-sigil';
 
-export type AuthShellProps = PropsWithChildren<{
-  eyebrow: string;
-  title: string;
-  description: string;
-}>;
+export type AuthShellProps = PropsWithChildren<{ eyebrow: string; title: string; description: string }>;
 
-/**
- * Composição pública compartilhada: marca, painel narrativo e slot do
- * formulário. Usa apenas o design system existente e nunca o shell autenticado.
- */
-export function AuthShell({ eyebrow, title, description, children }: AuthShellProps) {
+export function AuthShell({ children }: AuthShellProps) {
   return (
-    <Screen testID="auth-screen" title="Wise Warrior" titleVariant="display">
-      <WiseCard style={styles.card} variant="ornamented">
-        <View style={styles.intro}>
-          <WiseText color="accentPrimary" variant="caption">{eyebrow}</WiseText>
-          <WiseText accessibilityRole="header" variant="title">{title}</WiseText>
-          <WiseText color="textSecondary" variant="body">{description}</WiseText>
-        </View>
-        <View style={styles.form}>{children}</View>
-      </WiseCard>
-    </Screen>
+    <SafeAreaView style={styles.screen}>
+      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.flex}>
+        <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" keyboardDismissMode="interactive">
+          <View style={styles.brand}>
+            <View accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+              <BrandSigil size={88} />
+            </View>
+            <WiseText variant="subtitle">Wise Warrior</WiseText>
+          </View>
+          <View style={styles.form}>
+            <WiseText variant="title" accessibilityRole="header">Bem-vindo de volta</WiseText>
+            <WiseText variant="body" color="textSecondary" style={styles.description}>Entre com seu e-mail para continuar.</WiseText>
+            {children}
+          </View>
+        </ScrollView>
+      </KeyboardAvoidingView>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  card: { width: '100%' },
-  intro: { gap: theme.space.inlineTight, marginBottom: theme.space.cardInset },
-  form: { gap: theme.space.stackDefault },
+  screen: { flex: 1, backgroundColor: theme.color.backgroundCanvas },
+  flex: { flex: 1 },
+  content: { flexGrow: 1, paddingHorizontal: 28, paddingVertical: 32, alignItems: 'center', justifyContent: 'center', gap: 64 },
+  brand: { alignItems: 'center', gap: 12 },
+  form: { width: '100%', maxWidth: 400 },
+  description: { marginTop: 8, marginBottom: 28 },
 });

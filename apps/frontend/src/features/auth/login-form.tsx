@@ -47,8 +47,8 @@ export function LoginForm() {
 
   return (
     <AuthShell
-      description="Retome sua jornada rumo ao foco lendário."
-      eyebrow="Portal da fortaleza"
+      description="Retome o fio da sua jornada e transforme cada minuto de concentração em progresso visível."
+      eyebrow="A fortaleza espera"
       title="Entre na batalha"
     >
       <View aria-busy={submitting} style={styles.form}>
@@ -90,6 +90,7 @@ export function LoginForm() {
         <WiseButton
           label="Entrar na batalha"
           loading={submitting}
+          size="large"
           onPress={() => {
             void handleSubmit();
           }}
