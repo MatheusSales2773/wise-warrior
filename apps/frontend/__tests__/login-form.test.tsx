@@ -38,6 +38,11 @@ describe('LoginForm', () => {
 
     expect(screen.getByLabelText('E-mail')).toBeTruthy();
     expect(screen.getByLabelText('Senha')).toBeTruthy();
+    expect(screen.getByText('A fortaleza espera')).toBeTruthy();
+    expect(screen.getByRole('header', { name: 'Entre na batalha' })).toBeTruthy();
+    expect(
+      screen.getByText('Retome o fio da sua jornada e transforme cada minuto de concentração em progresso visível.'),
+    ).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Entrar na batalha' })).toBeTruthy();
     expect(screen.getByLabelText('Mostrar senha')).toBeTruthy();
     expect(screen.queryByTestId('web-sidebar')).toBeNull();

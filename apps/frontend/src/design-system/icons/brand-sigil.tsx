@@ -17,7 +17,7 @@ export function BrandSigil({ size = 176 }: { size?: number }) {
         stroke={theme.color.accentPrimary}
         strokeLinecap="round"
         strokeLinejoin="round"
-        strokeWidth={1.4}
+        strokeWidth={theme.border.standard}
       />
     </Svg>
   );

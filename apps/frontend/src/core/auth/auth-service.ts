@@ -33,6 +33,9 @@ function requireSessionPayload(value: unknown, refreshTokenRequired = false): Se
 
 export type AuthPlatform = 'web' | 'ios' | 'android';
 
+type NativeAuthPlatform = Exclude<AuthPlatform, 'web'>;
+type NativeDeviceLabel = 'Wise iOS' | 'Wise Android';
+
 export type AuthServiceDeps = {
   http: HttpClient;
   store: CredentialStore;
@@ -44,10 +47,24 @@ export interface AuthService {
   restore(): Promise<RestoreResult>;
 }
 
-const NATIVE_DEVICE_LABELS: Record<string, string> = {
+const NATIVE_DEVICE_LABELS: Record<NativeAuthPlatform, NativeDeviceLabel> = {
   ios: 'Wise iOS',
   android: 'Wise Android',
 };
+
+function resolveRuntimePlatform(value: string): AuthPlatform {
+  if (value === 'web' || value === 'ios' || value === 'android') {
+    return value;
+  }
+  throw new ApiError('unexpected');
+}
+
+function nativeDeviceLabel(platform: AuthPlatform): NativeDeviceLabel {
+  if (platform === 'ios' || platform === 'android') {
+    return NATIVE_DEVICE_LABELS[platform];
+  }
+  throw new ApiError('unexpected');
+}
 
 /** Melhor esforço: ao falhar a persistência segura, o token recém-emitido é revogado. */
 async function revokeQuietly(http: HttpClient, refreshToken: string): Promise<void> {
@@ -73,7 +90,7 @@ export function createAuthService({
   store,
   platform,
 }: AuthServiceDeps): AuthService {
-  const runtimePlatform = platform ?? Platform.OS;
+  const runtimePlatform = resolveRuntimePlatform(platform ?? Platform.OS);
   const isWeb = runtimePlatform === 'web';
 
   return {
@@ -84,7 +101,7 @@ export function createAuthService({
         : {
             email: credentials.email,
             password: credentials.password,
-            deviceLabel: NATIVE_DEVICE_LABELS[runtimePlatform] ?? 'Wise Native',
+            deviceLabel: nativeDeviceLabel(runtimePlatform),
           };
 
       let payload: SessionPayload;
@@ -100,7 +117,7 @@ export function createAuthService({
         try {
           await store.write(payload.refreshToken);
         } catch {
-          await rollbackUnstoredRefreshToken(http, payload.refreshToken);
+          await rollbackUnstoredRefreshToken(http, payload.refreshToken, () => store.remove());
           throw new ApiError('unexpected');
         }
       }

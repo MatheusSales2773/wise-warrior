@@ -14,9 +14,10 @@ import { Session } from './entities/session.entity';
 import { RefreshTokenHistory } from './entities/refresh-token-history.entity';
 import { RegisterDto } from './dto/register.dto';
 import { randomToken, sha256Hex } from '../../shared/security/hash.util';
+import { DeviceLabel } from './device-labels';
 
 export interface DeviceMetadata {
-  deviceLabel?: string;
+  deviceLabel?: DeviceLabel;
   userAgent?: string;
 }
 
@@ -28,7 +29,7 @@ export interface AuthTokens {
 
 export interface SessionSummary {
   id: string;
-  deviceLabel: string | null;
+  deviceLabel: DeviceLabel | null;
   userAgent: string | null;
   createdAt: Date;
   lastUsedAt: Date;
@@ -65,7 +66,9 @@ export class AuthService {
     return days * 24 * 60 * 60 * 1000;
   }
 
-  async register(dto: RegisterDto): Promise<User> {
+  async register(
+    dto: Omit<RegisterDto, 'deviceLabel'> & { deviceLabel?: DeviceLabel },
+  ): Promise<User> {
     const existing = await this.users.findOne({ where: { email: dto.email } });
     if (existing) {
       throw new ConflictException('E-mail já cadastrado');
@@ -147,6 +150,17 @@ export class AuthService {
     );
   }
 
+  private async purgeExpiredRefreshTokenHistory(
+    historyRepository: Repository<RefreshTokenHistory>,
+    sessionId: string,
+    now: Date,
+  ): Promise<void> {
+    await historyRepository.delete({
+      sessionId,
+      retainUntil: LessThanOrEqual(now),
+    });
+  }
+
   /** Rotaciona o refresh token — o valor anterior nunca pode ser reaproveitado. */
   async refresh(refreshToken: string): Promise<AuthTokens> {
     const [sessionId, secret, extra] = refreshToken.split('.');
@@ -208,10 +222,11 @@ export class AuthService {
 
           // O índice (session_id, retain_until) mantém esta limpeza limitada à
           // família e à faixa vencida, sem inventar retenção por contagem.
-          await historyRepository.delete({
-            sessionId: session.id,
-            retainUntil: LessThanOrEqual(now),
-          });
+          await this.purgeExpiredRefreshTokenHistory(
+            historyRepository,
+            session.id,
+            now,
+          );
 
           return {
             kind: 'success',
@@ -227,19 +242,21 @@ export class AuthService {
         if (consumed && consumed.retainUntil.getTime() > now.getTime()) {
           session.revokedAt = now;
           await sessionRepository.save(session);
-          await historyRepository.delete({
-            sessionId: session.id,
-            retainUntil: LessThanOrEqual(now),
-          });
+          await this.purgeExpiredRefreshTokenHistory(
+            historyRepository,
+            session.id,
+            now,
+          );
           // Não lance aqui: a exceção faria o callback da transação sofrer
           // rollback e perderia a revogação que o replay exige.
           return { kind: 'replay' };
         }
 
-        await historyRepository.delete({
-          sessionId: session.id,
-          retainUntil: LessThanOrEqual(now),
-        });
+        await this.purgeExpiredRefreshTokenHistory(
+          historyRepository,
+          session.id,
+          now,
+        );
         return { kind: 'invalid', reason: 'unknown' };
       },
     );

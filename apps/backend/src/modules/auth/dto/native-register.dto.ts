@@ -5,7 +5,7 @@ import {
   MaxLength,
   MinLength,
 } from 'class-validator';
-import { NATIVE_DEVICE_LABELS } from '../device-labels';
+import { NATIVE_DEVICE_LABELS, NativeDeviceLabel } from '../device-labels';
 
 /** Cadastro nativo: mesmos dados da conta e rótulo obrigatório iOS/Android. */
 export class NativeRegisterDto {
@@ -23,5 +23,5 @@ export class NativeRegisterDto {
   displayName: string;
 
   @IsIn(NATIVE_DEVICE_LABELS)
-  deviceLabel: string;
+  deviceLabel: NativeDeviceLabel;
 }

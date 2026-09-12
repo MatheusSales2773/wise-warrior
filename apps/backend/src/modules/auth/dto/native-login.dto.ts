@@ -1,5 +1,5 @@
 import { IsEmail, IsIn, IsString } from 'class-validator';
-import { NATIVE_DEVICE_LABELS } from '../device-labels';
+import { NATIVE_DEVICE_LABELS, NativeDeviceLabel } from '../device-labels';
 
 /** Login nativo: credenciais e rótulo obrigatório iOS/Android. */
 export class NativeLoginDto {
@@ -10,5 +10,5 @@ export class NativeLoginDto {
   password: string;
 
   @IsIn(NATIVE_DEVICE_LABELS)
-  deviceLabel: string;
+  deviceLabel: NativeDeviceLabel;
 }

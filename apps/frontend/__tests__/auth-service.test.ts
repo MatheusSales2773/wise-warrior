@@ -234,6 +234,31 @@ describe('auth service — native transport', () => {
     expect(getAccessToken()).toBeNull();
   });
 
+  it('removes the previous credential when secure persistence fails during login', async () => {
+    const { http, calls } = httpDouble({
+      '/auth/native/login': async () => ({
+        status: 200,
+        data: { accessToken: ACCESS, refreshToken: 'session.new', sessionId: 'session-3' },
+      }),
+      '/auth/native/logout': async () => ({ status: 204, data: undefined }),
+    });
+    const store = storeDouble('session.old');
+    store.state.failWrite = true;
+    const service = createAuthService({ http, store: store.store, platform: 'ios' });
+
+    await expect(service.login({ email: 'a@b.co', password: 'x' })).rejects.toMatchObject({
+      category: 'unexpected',
+    });
+    expect(calls).toContainEqual({
+      method: 'post',
+      url: '/auth/native/logout',
+      body: { refreshToken: 'session.new' },
+    });
+    expect(store.removalCount()).toBe(1);
+    expect(store.state.value).toBeNull();
+    expect(getAccessToken()).toBeNull();
+  });
+
   it('stays anonymous when there is no stored credential', async () => {
     const { http, calls } = httpDouble({});
     const service = createAuthService({ http, store: storeDouble(null).store, platform: 'android' });
