@@ -107,6 +107,14 @@ async function rollbackUnstoredRefreshToken(
   clearAccessToken();
 }
 
+async function removeStoredCredential(store: CredentialStore): Promise<void> {
+  try {
+    await store.remove();
+  } catch {
+    throw new ApiError('storage');
+  }
+}
+
 export function createAuthService({
   http,
   store,
@@ -114,6 +122,14 @@ export function createAuthService({
 }: AuthServiceDeps): AuthService {
   const runtimePlatform = resolveRuntimePlatform(platform ?? Platform.OS);
   const isWeb = runtimePlatform === 'web';
+  let sessionOperationTail: Promise<void> = Promise.resolve();
+  let sessionLoggedOut = false;
+
+  function enqueueSessionOperation<T>(operation: () => Promise<T>): Promise<T> {
+    const result = sessionOperationTail.then(operation, operation);
+    sessionOperationTail = result.then(() => undefined, () => undefined);
+    return result;
+  }
 
   async function authenticate(
     path: string,
@@ -137,11 +153,12 @@ export function createAuthService({
       }
     }
 
+    sessionLoggedOut = false;
     setAccessToken(payload.accessToken);
     return { sessionId: payload.sessionId };
   }
 
-  async function refresh(): Promise<RestoreResult> {
+  async function refreshCurrent(): Promise<RestoreResult> {
     if (isWeb) {
       try {
         const response = await http.post<unknown>('/auth/refresh');
@@ -182,12 +199,22 @@ export function createAuthService({
     }
   }
 
+  async function refresh(): Promise<RestoreResult> {
+    return enqueueSessionOperation(async () => {
+      if (sessionLoggedOut) {
+        clearAccessToken();
+        return { status: 'anonymous' };
+      }
+      return refreshCurrent();
+    });
+  }
+
   async function invalidate(): Promise<void> {
     clearAccessToken();
     await store.remove().catch(() => undefined);
   }
 
-  async function logout(): Promise<void> {
+  async function logoutCurrent(): Promise<void> {
     let refreshToken: string | null = null;
     if (!isWeb) {
       try {
@@ -196,9 +223,7 @@ export function createAuthService({
         throw new ApiError('storage');
       }
       if (!refreshToken) {
-        clearAccessToken();
-        await store.remove().catch(() => undefined);
-        return;
+        throw new ApiError('storage');
       }
     }
 
@@ -214,8 +239,21 @@ export function createAuthService({
       if (apiError.category !== 'session') throw apiError;
     }
 
+    if (!isWeb) await removeStoredCredential(store);
     clearAccessToken();
-    if (!isWeb) await store.remove().catch(() => undefined);
+  }
+
+  async function logout(): Promise<void> {
+    return enqueueSessionOperation(async () => {
+      const previousSessionState = sessionLoggedOut;
+      try {
+        await logoutCurrent();
+        sessionLoggedOut = true;
+      } catch (error) {
+        sessionLoggedOut = previousSessionState;
+        throw error;
+      }
+    });
   }
 
   return {

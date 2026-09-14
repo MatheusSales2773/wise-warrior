@@ -26,7 +26,7 @@ function httpDouble(handlers: Record<string, () => Promise<HttpResponse<unknown>
   return { http, calls };
 }
 
-type StoreState = { value: string | null; failRead?: boolean; failWrite?: boolean };
+type StoreState = { value: string | null; failRead?: boolean; failWrite?: boolean; failRemove?: boolean };
 
 function storeDouble(initial: string | null = null) {
   const state: StoreState = { value: initial };
@@ -44,6 +44,7 @@ function storeDouble(initial: string | null = null) {
     },
     remove: async () => {
       removes += 1;
+      if (state.failRemove) throw new Error('secure store indisponível');
       state.value = null;
     },
   };
@@ -482,6 +483,56 @@ describe('auth service — logout', () => {
     expect(getAccessToken()).toBeNull();
   });
 
+  it('serializes web logout after a concurrent refresh so the cookie stays cleared', async () => {
+    let resolveRefresh: () => void = () => undefined;
+    const refreshFinished = new Promise<void>((resolve) => {
+      resolveRefresh = resolve;
+    });
+    let cookieValid = true;
+    const { http } = httpDouble({
+      '/auth/refresh': async () => {
+        await refreshFinished;
+        cookieValid = true;
+        return { status: 200, data: { accessToken: 'refreshed-access', sessionId: 'session-1' } };
+      },
+      '/auth/logout': async () => {
+        cookieValid = false;
+        return { status: 204, data: undefined };
+      },
+    });
+    const service = createAuthService({ http, store: storeDouble().store, platform: 'web' });
+
+    const restore = service.restore();
+    const logout = service.logout();
+    resolveRefresh();
+
+    await expect(Promise.all([restore, logout])).resolves.toEqual([
+      { status: 'authenticated', sessionId: 'session-1' },
+      undefined,
+    ]);
+    expect(cookieValid).toBe(false);
+  });
+
+  it('does not restore the web session after logout when a new service is created', async () => {
+    let cookieValid = true;
+    const { http, calls } = httpDouble({
+      '/auth/logout': async () => {
+        cookieValid = false;
+        return { status: 204, data: undefined };
+      },
+      '/auth/refresh': async () => {
+        if (!cookieValid) return Promise.reject(axiosError(401));
+        return { status: 200, data: { accessToken: 'restored-access', sessionId: 'session-1' } };
+      },
+    });
+    const first = createAuthService({ http, store: storeDouble().store, platform: 'web' });
+    await first.logout();
+
+    const reopened = createAuthService({ http, store: storeDouble().store, platform: 'web' });
+    await expect(reopened.restore()).resolves.toEqual({ status: 'anonymous' });
+    expect(calls.map((call) => call.url)).toEqual(['/auth/logout', '/auth/refresh']);
+  });
+
   it.each([
     ['network', axiosNetworkError(), 'network'],
     ['server', axiosError(503), 'server'],
@@ -511,6 +562,124 @@ describe('auth service — logout', () => {
     }]);
     expect(store.removalCount()).toBe(1);
     expect(getAccessToken()).toBeNull();
+  });
+
+  it('does not confirm native logout when secure removal fails', async () => {
+    const { http, calls } = httpDouble({ '/auth/native/logout': async () => ({ status: 204, data: undefined }) });
+    const store = storeDouble('native.refresh');
+    store.state.failRemove = true;
+    const service = createAuthService({ http, store: store.store, platform: 'android' });
+    setAccessToken(ACCESS);
+
+    await expect(service.logout()).rejects.toMatchObject({ category: 'storage' });
+
+    expect(calls).toContainEqual({
+      method: 'post',
+      url: '/auth/native/logout',
+      body: { refreshToken: 'native.refresh' },
+      options: { requestKind: 'auth' },
+    });
+    expect(store.removalCount()).toBe(1);
+    expect(store.state.value).toBe('native.refresh');
+    expect(getAccessToken()).toBe(ACCESS);
+  });
+
+  it('does not confirm native logout when the refresh credential is absent', async () => {
+    const { http, calls } = httpDouble({});
+    const store = storeDouble(null);
+    const service = createAuthService({ http, store: store.store, platform: 'android' });
+    setAccessToken(ACCESS);
+
+    await expect(service.logout()).rejects.toMatchObject({ category: 'storage' });
+
+    expect(calls).toHaveLength(0);
+    expect(store.removalCount()).toBe(0);
+    expect(getAccessToken()).toBe(ACCESS);
+  });
+
+  it('removes a native credential on the next restore after logout deletion failed', async () => {
+    const store = storeDouble('native.refresh');
+    store.state.failRemove = true;
+    const first = createAuthService({
+      http: httpDouble({ '/auth/native/logout': async () => ({ status: 204, data: undefined }) }).http,
+      store: store.store,
+      platform: 'android',
+    });
+
+    await expect(first.logout()).rejects.toMatchObject({ category: 'storage' });
+
+    store.state.failRemove = false;
+    const reopenedHttp = httpDouble({
+      '/auth/native/refresh': async () => Promise.reject(axiosError(401)),
+    });
+    const reopened = createAuthService({ http: reopenedHttp.http, store: store.store, platform: 'android' });
+
+    await expect(reopened.restore()).resolves.toEqual({ status: 'anonymous' });
+    expect(reopenedHttp.calls).toContainEqual({
+      method: 'post',
+      url: '/auth/native/refresh',
+      body: { refreshToken: 'native.refresh' },
+    });
+    expect(store.state.value).toBeNull();
+  });
+
+  it('serializes native logout after a concurrent refresh rotation', async () => {
+    let resolveRefresh: () => void = () => undefined;
+    const refreshFinished = new Promise<void>((resolve) => {
+      resolveRefresh = resolve;
+    });
+    const store = storeDouble('native.stale');
+    let logoutCredential: string | null = null;
+    const { http } = httpDouble({
+      '/auth/native/refresh': async () => {
+        await refreshFinished;
+        return {
+          status: 200,
+          data: { accessToken: 'rotated-access', refreshToken: 'native.rotated', sessionId: 'session-rotated' },
+        };
+      },
+      '/auth/native/logout': async () => {
+        logoutCredential = store.state.value;
+        return { status: 204, data: undefined };
+      },
+    });
+    const service = createAuthService({ http, store: store.store, platform: 'android' });
+
+    const restore = service.restore();
+    const logout = service.logout();
+    resolveRefresh();
+
+    await expect(Promise.all([restore, logout])).resolves.toEqual([
+      { status: 'authenticated', sessionId: 'session-rotated' },
+      undefined,
+    ]);
+    expect(logoutCredential).toBe('native.rotated');
+    expect(store.state.value).toBeNull();
+  });
+
+  it('allows a new native session to restore after logout in the same runtime', async () => {
+    const store = storeDouble('native.old');
+    const { http } = httpDouble({
+      '/auth/native/logout': async () => ({ status: 204, data: undefined }),
+      '/auth/native/login': async () => ({
+        status: 200,
+        data: { accessToken: 'new-access', refreshToken: 'native.new', sessionId: 'session-new' },
+      }),
+      '/auth/native/refresh': async () => ({
+        status: 200,
+        data: { accessToken: 'new-access-refreshed', refreshToken: 'native.newer', sessionId: 'session-new' },
+      }),
+    });
+    const service = createAuthService({ http, store: store.store, platform: 'android' });
+
+    await service.logout();
+    await service.login({ email: 'a@b.co', password: 'x' });
+
+    await expect(service.restore()).resolves.toEqual({
+      status: 'authenticated',
+      sessionId: 'session-new',
+    });
+    expect(getAccessToken()).toBe('new-access-refreshed');
   });
 
   it('treats an invalid native session as a successful logout', async () => {

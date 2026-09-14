@@ -1,6 +1,6 @@
 import { fireEvent, screen, waitFor } from '@testing-library/react-native';
-import { renderRouter } from 'expo-router/testing-library';
-import { mockAuthState } from '../test-utils/auth-context';
+import { renderRouter, testRouter } from 'expo-router/testing-library';
+import { mockAuthState, updateMockAuthState } from '../test-utils/auth-context';
 
 jest.mock('@/core/auth/auth-context', () => require('../test-utils/auth-context').createAuthContextMock());
 
@@ -8,6 +8,7 @@ beforeEach(() => {
   mockAuthState.status = 'anonymous';
   mockAuthState.sessionId = null;
   mockAuthState.error = null;
+  mockAuthState.logout = jest.fn(() => Promise.resolve());
   mockAuthState.retryRestore.mockClear();
 });
 
@@ -72,6 +73,24 @@ describe('M3 Web route guards', () => {
 
     await waitFor(() => expect(router).toHavePathname('/guilda'));
     expect(screen.getByTestId('mobile-navigation')).toBeTruthy();
+  });
+
+  it('removes protected history after logout so back cannot reopen the session', async () => {
+    mockAuthState.status = 'authenticated';
+    mockAuthState.sessionId = 'session-1';
+    mockAuthState.logout = jest.fn(async () => {
+      updateMockAuthState({ status: 'anonymous', sessionId: null });
+    });
+    const router = renderRouter('src/app', { initialUrl: '/perfil' });
+    await router;
+
+    await waitFor(() => expect(router).toHavePathname('/perfil'));
+    await fireEvent.press(screen.getByRole('button', { name: 'Mais' }));
+    await fireEvent.press(screen.getByRole('button', { name: 'Sair' }));
+
+    await waitFor(() => expect(router).toHavePathname('/entrar'));
+    expect(testRouter.canGoBack()).toBe(false);
+    expect(screen.getByLabelText('E-mail')).toBeTruthy();
   });
 
   it('shows the restoring gate without flashing login or shell', async () => {

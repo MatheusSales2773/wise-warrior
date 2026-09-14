@@ -1,4 +1,4 @@
-import { createElement, Fragment, type ReactNode } from 'react';
+import { createElement, Fragment, useEffect, useState, type ReactNode } from 'react';
 import type { ApiError } from '@/core/api/api-error';
 
 export type MockAuthStatus = 'restoring' | 'anonymous' | 'authenticated' | 'unavailable';
@@ -17,9 +17,26 @@ export const mockAuthState = {
   retryRestore: jest.fn(),
 };
 
+const subscribers = new Set<() => void>();
+
+export function updateMockAuthState(next: Partial<typeof mockAuthState>) {
+  Object.assign(mockAuthState, next);
+  subscribers.forEach((subscriber) => subscriber());
+}
+
 export function createAuthContextMock() {
   return {
     AuthProvider: ({ children }: { children: ReactNode }) => createElement(Fragment, null, children),
-    useAuth: () => mockAuthState,
+    useAuth: () => {
+      const [, rerender] = useState(0);
+      useEffect(() => {
+        const subscriber = () => rerender((value) => value + 1);
+        subscribers.add(subscriber);
+        return () => {
+          subscribers.delete(subscriber);
+        };
+      }, []);
+      return mockAuthState;
+    },
   };
 }

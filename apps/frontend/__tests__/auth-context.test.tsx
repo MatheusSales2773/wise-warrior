@@ -92,6 +92,33 @@ describe('AuthProvider', () => {
     expect(logout).toHaveBeenCalledTimes(1);
     expect(result.current.status).toBe('anonymous');
   });
+
+  it('ignores a stale restore result that resolves after logout', async () => {
+    let resolveRestore: (result: RestoreResult) => void = () => undefined;
+    const pendingRestore = new Promise<RestoreResult>((resolve) => {
+      resolveRestore = resolve;
+    });
+    const restore = jest.fn(() => pendingRestore);
+    const logout = jest.fn(async () => undefined);
+    const { result } = await renderHook(() => useAuth(), {
+      wrapper: wrapperFor(serviceDouble(restore, undefined, undefined, logout)),
+    });
+
+    await waitFor(() => expect(restore).toHaveBeenCalledTimes(1));
+    await act(async () => {
+      await result.current.logout();
+    });
+    expect(result.current.status).toBe('anonymous');
+
+    await act(async () => {
+      resolveRestore({ status: 'authenticated', sessionId: 'stale-session' });
+      await Promise.resolve();
+    });
+
+    expect(result.current.status).toBe('anonymous');
+    expect(result.current.sessionId).toBeNull();
+  });
+
   it('moves from restoring to authenticated using the restored session id', async () => {
     const restore = jest.fn(async (): Promise<RestoreResult> => ({ status: 'authenticated', sessionId: 'session-1' }));
     const { result } = await renderHook(() => useAuth(), { wrapper: wrapperFor(serviceDouble(restore)) });

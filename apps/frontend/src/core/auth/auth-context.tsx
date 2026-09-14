@@ -60,6 +60,7 @@ export function AuthProvider({ children, service: providedService, queryClient }
   const mounted = useRef(true);
   const stateRef = useRef<AuthState>({ status: 'restoring' });
   const identityGeneration = useRef(0);
+  const authOperationGeneration = useRef(0);
   const authenticationInFlight = useRef(false);
   const restoreInFlight = useRef<Promise<RestoreResult> | null>(null);
   const logoutInFlight = useRef<Promise<void> | null>(null);
@@ -94,6 +95,7 @@ export function AuthProvider({ children, service: providedService, queryClient }
   const restoreAndApply = useCallback((): Promise<RestoreResult> => {
     if (restoreInFlight.current) return restoreInFlight.current;
 
+    const operationGeneration = authOperationGeneration.current;
     const attempt = Promise.resolve()
       .then(() => (authService.refresh ?? authService.restore)())
       .catch((error: unknown): RestoreResult => {
@@ -105,7 +107,9 @@ export function AuthProvider({ children, service: providedService, queryClient }
       });
     restoreInFlight.current = attempt;
     void attempt
-      .then(applyResult, () => undefined)
+      .then((result) => {
+        if (operationGeneration === authOperationGeneration.current) applyResult(result);
+      }, () => undefined)
       .then(() => {
         if (restoreInFlight.current === attempt) restoreInFlight.current = null;
       });
@@ -174,6 +178,8 @@ export function AuthProvider({ children, service: providedService, queryClient }
   const logout = useCallback((): Promise<void> => {
     if (logoutInFlight.current) return logoutInFlight.current;
 
+    authOperationGeneration.current += 1;
+    restoreInFlight.current = null;
     const attempt = Promise.resolve()
       .then(() => authService.logout())
       .then(() => {
