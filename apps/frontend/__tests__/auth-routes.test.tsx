@@ -22,6 +22,16 @@ describe('M3 Web route guards', () => {
     expect(screen.queryByTestId('mobile-navigation')).toBeNull();
   });
 
+  it('keeps anonymous users on /cadastro with the registration form', async () => {
+    const router = renderRouter('src/app', { initialUrl: '/cadastro' });
+    await router;
+
+    await waitFor(() => expect(router).toHavePathname('/cadastro'));
+    expect(screen.getByLabelText('Nome do guerreiro')).toBeTruthy();
+    expect(screen.queryByTestId('web-sidebar')).toBeNull();
+    expect(screen.queryByTestId('mobile-navigation')).toBeNull();
+  });
+
   it.each(['/', '/perfil', '/guilda', '/sessao'])(
     'redirects anonymous deep link %s to /entrar',
     async (initialUrl) => {
@@ -40,6 +50,17 @@ describe('M3 Web route guards', () => {
 
     await waitFor(() => expect(router).toHavePathname('/'));
     expect(screen.queryByLabelText('E-mail')).toBeNull();
+    expect(screen.getByTestId('mobile-navigation')).toBeTruthy();
+  });
+
+  it('redirects authenticated users away from /cadastro into the shell', async () => {
+    mockAuthState.status = 'authenticated';
+    mockAuthState.sessionId = 'session-1';
+    const router = renderRouter('src/app', { initialUrl: '/cadastro' });
+    await router;
+
+    await waitFor(() => expect(router).toHavePathname('/'));
+    expect(screen.queryByLabelText('Nome do guerreiro')).toBeNull();
     expect(screen.getByTestId('mobile-navigation')).toBeTruthy();
   });
 

@@ -16,6 +16,7 @@ const metrics = {
 function serviceDouble(login: () => Promise<AuthSession>): AuthService {
   return {
     login,
+    register: async () => ({ sessionId: 'session-register' }),
     restore: async (): Promise<RestoreResult> => ({ status: 'anonymous' }),
   };
 }
@@ -44,6 +45,7 @@ describe('LoginForm', () => {
       screen.getByText('Retome o fio da sua jornada e transforme cada minuto de concentração em progresso visível.'),
     ).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Entrar na batalha' })).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'Ainda não tem uma conta? Crie seu personagem' })).toBeTruthy();
     expect(screen.getByLabelText('Mostrar senha')).toBeTruthy();
     expect(screen.queryByTestId('web-sidebar')).toBeNull();
     expect(screen.queryByTestId('mobile-navigation')).toBeNull();

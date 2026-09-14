@@ -8,13 +8,14 @@ import {
   type HttpClient,
   type HttpResponse,
 } from '@/core/api/api-client';
-import type { AuthSession, CredentialStore, RestoreResult } from '@/core/auth/types';
+import type { AuthRegistration, AuthSession, CredentialStore, RestoreResult } from '@/core/auth/types';
 
 function serviceDouble(
   restore: () => Promise<RestoreResult>,
   login: (() => Promise<AuthSession>) | undefined = async () => ({ sessionId: 'session-login' }),
+  register: (() => Promise<AuthSession>) | undefined = async () => ({ sessionId: 'session-register' }),
 ): AuthService {
-  return { restore, login };
+  return { restore, login, register };
 }
 
 function wrapperFor(service: AuthService) {
@@ -136,6 +137,28 @@ describe('AuthProvider', () => {
       await second.result.current.login({ email: 'a@b.co', password: 'bad' }).catch(() => undefined);
     });
     expect(second.result.current.status).toBe('anonymous');
+  });
+
+  it('publishes the registration session and propagates registration failures without changing state', async () => {
+    const restore = jest.fn(async (): Promise<RestoreResult> => ({ status: 'anonymous' }));
+    const registration: AuthRegistration = {
+      displayName: 'Aria',
+      email: 'aria@wise.app',
+      password: 'correct horse battery staple',
+    };
+    const register = jest.fn(async (): Promise<AuthSession> => ({ sessionId: 'session-register' }));
+    const { result } = await renderHook(() => useAuth(), {
+      wrapper: wrapperFor(serviceDouble(restore, undefined, register)),
+    });
+
+    await waitFor(() => expect(result.current.status).toBe('anonymous'));
+    await act(async () => {
+      await result.current.register(registration);
+    });
+
+    expect(register).toHaveBeenCalledWith(registration);
+    expect(result.current.status).toBe('authenticated');
+    expect(result.current.sessionId).toBe('session-register');
   });
 
   it('ignores a restore result that arrives after unmount', async () => {

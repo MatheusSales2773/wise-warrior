@@ -12,6 +12,7 @@ export const mockAuthState = {
   sessionId: 'test-session' as string | null,
   error: null as ApiError | null,
   login: jest.fn(),
+  register: jest.fn(),
   retryRestore: jest.fn(),
 };
 

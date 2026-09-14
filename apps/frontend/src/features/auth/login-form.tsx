@@ -3,6 +3,7 @@ import { StyleSheet, TextInput, View } from 'react-native';
 import { FeedbackMessage, WiseButton, WiseField, theme } from '@/design-system';
 import { useAuth } from '@/core/auth/auth-context';
 import { AuthShell } from './components/AuthShell';
+import { AuthNavigationLink } from './components/AuthNavigationLink';
 import { AuthPasswordField } from './components/AuthPasswordField';
 import { loginErrorMessage } from './messages';
 import { normalizeEmail, validateLogin, type LoginFieldErrors } from './validation';
@@ -95,6 +96,7 @@ export function LoginForm() {
             void handleSubmit();
           }}
         />
+        <AuthNavigationLink href="/cadastro" label="Ainda não tem uma conta? Crie seu personagem" />
       </View>
     </AuthShell>
   );

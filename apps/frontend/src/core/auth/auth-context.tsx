@@ -12,13 +12,21 @@ import type { ApiError } from '@/core/api/api-error';
 import { getBareHttpClient, setAuthenticationRecovery } from '@/core/api/api-client';
 import { createAuthService, type AuthService } from './auth-service';
 import { credentialStore } from './credential-store';
-import type { AuthCredentials, AuthState, AuthStatus, RestoreResult } from './types';
+import type {
+  AuthCredentials,
+  AuthRegistration,
+  AuthSession,
+  AuthState,
+  AuthStatus,
+  RestoreResult,
+} from './types';
 
 type AuthContextValue = {
   status: AuthStatus;
   sessionId: string | null;
   error: ApiError | null;
   login(credentials: AuthCredentials): Promise<void>;
+  register(registration: AuthRegistration): Promise<void>;
   retryRestore(): void;
 };
 
@@ -34,7 +42,7 @@ export function AuthProvider({ children, service: providedService }: AuthProvide
   const [state, setState] = useState<AuthState>({ status: 'restoring' });
   const [authService] = useState<AuthService>(() => providedService ?? createDefaultAuthService());
   const mounted = useRef(true);
-  const loginInFlight = useRef(false);
+  const authenticationInFlight = useRef(false);
   const restoreInFlight = useRef<Promise<RestoreResult> | null>(null);
 
   const applyResult = useCallback((result: RestoreResult) => {
@@ -74,20 +82,30 @@ export function AuthProvider({ children, service: providedService }: AuthProvide
     };
   }, [restoreAndApply]);
 
-  const login = useCallback(
-    async (credentials: AuthCredentials) => {
-      if (loginInFlight.current) return;
-      loginInFlight.current = true;
+  const authenticate = useCallback(
+    async (issueSession: () => Promise<AuthSession>) => {
+      if (authenticationInFlight.current) return;
+      authenticationInFlight.current = true;
       try {
-        const session = await authService.login(credentials);
+        const session = await issueSession();
         if (mounted.current) {
           setState({ status: 'authenticated', sessionId: session.sessionId });
         }
       } finally {
-        loginInFlight.current = false;
+        authenticationInFlight.current = false;
       }
     },
-    [authService],
+    [],
+  );
+
+  const login = useCallback(
+    (credentials: AuthCredentials) => authenticate(() => authService.login(credentials)),
+    [authService, authenticate],
+  );
+
+  const register = useCallback(
+    (registration: AuthRegistration) => authenticate(() => authService.register(registration)),
+    [authService, authenticate],
   );
 
   const retryRestore = useCallback(() => {
@@ -101,9 +119,10 @@ export function AuthProvider({ children, service: providedService }: AuthProvide
       sessionId: state.status === 'authenticated' ? state.sessionId : null,
       error: state.status === 'unavailable' ? state.error : null,
       login,
+      register,
       retryRestore,
     }),
-    [state, login, retryRestore],
+    [state, login, register, retryRestore],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

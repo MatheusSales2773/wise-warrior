@@ -4,6 +4,7 @@ import type { HttpClient } from '@/core/api/api-client';
 import { clearAccessToken, setAccessToken } from '@/core/api/token-memory';
 import type {
   AuthCredentials,
+  AuthRegistration,
   AuthSession,
   CredentialStore,
   RestoreResult,
@@ -44,6 +45,7 @@ export type AuthServiceDeps = {
 
 export interface AuthService {
   login(credentials: AuthCredentials): Promise<AuthSession>;
+  register(registration: AuthRegistration): Promise<AuthSession>;
   restore(): Promise<RestoreResult>;
 }
 
@@ -94,6 +96,43 @@ export function createAuthService({
   const isWeb = runtimePlatform === 'web';
 
   return {
+    async register(registration: AuthRegistration): Promise<AuthSession> {
+      const path = isWeb ? '/auth/register' : '/auth/native/register';
+      const body = isWeb
+        ? {
+            displayName: registration.displayName,
+            email: registration.email,
+            password: registration.password,
+          }
+        : {
+            displayName: registration.displayName,
+            email: registration.email,
+            password: registration.password,
+            deviceLabel: nativeDeviceLabel(runtimePlatform),
+          };
+
+      let payload: SessionPayload;
+      try {
+        const response = await http.post<unknown>(path, body);
+        payload = requireSessionPayload(response.data, !isWeb);
+      } catch (error) {
+        clearAccessToken();
+        throw toApiError(error, { unauthorized: 'credentials' });
+      }
+
+      if (!isWeb && payload.refreshToken) {
+        try {
+          await store.write(payload.refreshToken);
+        } catch {
+          await rollbackUnstoredRefreshToken(http, payload.refreshToken, () => store.remove());
+          throw new ApiError('unexpected');
+        }
+      }
+
+      setAccessToken(payload.accessToken);
+      return { sessionId: payload.sessionId };
+    },
+
     async login(credentials: AuthCredentials): Promise<AuthSession> {
       const path = isWeb ? '/auth/login' : '/auth/native/login';
       const body = isWeb

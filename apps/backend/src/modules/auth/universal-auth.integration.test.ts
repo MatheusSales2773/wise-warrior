@@ -218,7 +218,17 @@ describe('Universal authentication security contract', () => {
     );
     expect(webRegister.status).toBe(201);
     webResponseHeaders.push(headersFrom(webRegister));
-    webResponseBodies.push(await webRegister.text());
+    const webRegisterText = await webRegister.text();
+    webResponseBodies.push(webRegisterText);
+    const webRegisterBody = JSON.parse(webRegisterText) as {
+      sessionId: string;
+      refreshToken?: string;
+    };
+    expect(webRegisterBody).toEqual({
+      accessToken: expect.any(String),
+      sessionId: expect.any(String),
+    });
+    expect(webRegisterBody).not.toHaveProperty('refreshToken');
     refreshTokens.push(refreshTokenFromCookie(webRegister));
 
     const webLogin = await post(
@@ -228,9 +238,52 @@ describe('Universal authentication security contract', () => {
     );
     expect(webLogin.status).toBe(200);
     webResponseHeaders.push(headersFrom(webLogin));
-    webResponseBodies.push(await webLogin.text());
+    const webLoginText = await webLogin.text();
+    webResponseBodies.push(webLoginText);
+    const webLoginBody = JSON.parse(webLoginText) as {
+      sessionId: string;
+      refreshToken?: string;
+    };
+    expect(webLoginBody.sessionId).not.toBe(webRegisterBody.sessionId);
+    expect(webLoginBody).not.toHaveProperty('refreshToken');
     const webLoginRefresh = refreshTokenFromCookie(webLogin);
     refreshTokens.push(webLoginRefresh);
+
+    const registeredUserRows = (await dataSource!.query(
+      `SELECT id, email, display_name FROM ${identifier(databaseName!)}.users
+       WHERE email = ?`,
+      ['web-security@wise.app'],
+    )) as Row[];
+    expect(registeredUserRows).toHaveLength(1);
+    const registeredUserId = String(registeredUserRows[0]!.id);
+    expect(registeredUserRows[0]).toEqual(
+      expect.objectContaining({
+        email: 'web-security@wise.app',
+        display_name: 'Web Security',
+      }),
+    );
+
+    const characterRows = (await dataSource!.query(
+      `SELECT user_id, level, xp_total FROM ${identifier(databaseName!)}.characters
+       WHERE user_id = ?`,
+      [registeredUserId],
+    )) as Row[];
+    expect(characterRows).toHaveLength(1);
+    expect(characterRows[0]).toEqual(
+      expect.objectContaining({ user_id: registeredUserId, level: 1 }),
+    );
+    expect(Number(characterRows[0]!.xp_total)).toBe(0);
+
+    const registeredSessionRows = (await dataSource!.query(
+      `SELECT id, revoked_at FROM ${identifier(databaseName!)}.sessions
+       WHERE user_id = ? ORDER BY created_at ASC`,
+      [registeredUserId],
+    )) as Row[];
+    expect(registeredSessionRows).toHaveLength(2);
+    expect(registeredSessionRows.map((row) => String(row.id))).toEqual(
+      expect.arrayContaining([webRegisterBody.sessionId, webLoginBody.sessionId]),
+    );
+    expect(registeredSessionRows.every((row) => row.revoked_at === null)).toBe(true);
 
     const webRefresh = await post(
       '/auth/refresh',

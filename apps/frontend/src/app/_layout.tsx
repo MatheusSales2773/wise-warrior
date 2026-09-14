@@ -34,6 +34,7 @@ function RuntimeStack() {
       >
         <Stack.Protected guard={status === 'anonymous'}>
           <Stack.Screen name="entrar" />
+          <Stack.Screen name="(public)" />
         </Stack.Protected>
         <Stack.Protected guard={status === 'authenticated'}>
           <Stack.Screen name="(app)" />

@@ -62,6 +62,39 @@ describe('auth service — web transport', () => {
   beforeEach(() => clearAccessToken());
   afterEach(() => clearAccessToken());
 
+  it('registers through the web endpoint and keeps the refresh credential in the browser cookie', async () => {
+    const { http, calls } = httpDouble({
+      '/auth/register': async () => ({
+        status: 201,
+        data: { accessToken: ACCESS, sessionId: 'session-register-web' },
+      }),
+    });
+    const store = storeDouble();
+    const service = createAuthService({ http, store: store.store, platform: 'web' });
+
+    await expect(
+      service.register({
+        displayName: '  Aria  ',
+        email: 'aria@wise.app',
+        password: 'correct horse battery staple',
+      }),
+    ).resolves.toEqual({ sessionId: 'session-register-web' });
+
+    expect(calls).toEqual([
+      {
+        method: 'post',
+        url: '/auth/register',
+        body: {
+          displayName: '  Aria  ',
+          email: 'aria@wise.app',
+          password: 'correct horse battery staple',
+        },
+      },
+    ]);
+    expect(getAccessToken()).toBe(ACCESS);
+    expect(store.writes).toHaveLength(0);
+  });
+
   it('logs in through the web endpoint, keeps the token in memory and never writes storage', async () => {
     const { http, calls } = httpDouble({
       '/auth/login': async () => ({ status: 200, data: { accessToken: ACCESS, sessionId: 'session-1' } }),
@@ -157,6 +190,69 @@ describe('auth service — native transport', () => {
   afterEach(() => {
     clearAccessToken();
     jest.restoreAllMocks();
+  });
+
+  it('registers through the native endpoint and persists the refresh token before publishing the session', async () => {
+    const { http, calls } = httpDouble({
+      '/auth/native/register': async () => ({
+        status: 201,
+        data: {
+          accessToken: ACCESS,
+          refreshToken: 'session-register-native.refresh-secret',
+          sessionId: 'session-register-native',
+        },
+      }),
+    });
+    const store = storeDouble();
+    const service = createAuthService({ http, store: store.store, platform: 'android' });
+
+    await expect(
+      service.register({ displayName: 'Aria', email: 'aria@wise.app', password: 'correct horse battery staple' }),
+    ).resolves.toEqual({ sessionId: 'session-register-native' });
+
+    expect(calls).toEqual([
+      {
+        method: 'post',
+        url: '/auth/native/register',
+        body: {
+          displayName: 'Aria',
+          email: 'aria@wise.app',
+          password: 'correct horse battery staple',
+          deviceLabel: 'Wise Android',
+        },
+      },
+    ]);
+    expect(store.writes).toEqual(['session-register-native.refresh-secret']);
+    expect(getAccessToken()).toBe(ACCESS);
+  });
+
+  it('does not authenticate after native registration when secure persistence fails', async () => {
+    const { http, calls } = httpDouble({
+      '/auth/native/register': async () => ({
+        status: 201,
+        data: {
+          accessToken: ACCESS,
+          refreshToken: 'session-register-failed.refresh-secret',
+          sessionId: 'session-register-failed',
+        },
+      }),
+      '/auth/native/logout': async () => ({ status: 204, data: undefined }),
+    });
+    const store = storeDouble();
+    store.state.failWrite = true;
+    const service = createAuthService({ http, store: store.store, platform: 'ios' });
+
+    await expect(
+      service.register({ displayName: 'Aria', email: 'aria@wise.app', password: 'correct horse battery staple' }),
+    ).rejects.toMatchObject({ category: 'unexpected' });
+
+    expect(calls).toContainEqual({
+      method: 'post',
+      url: '/auth/native/logout',
+      body: { refreshToken: 'session-register-failed.refresh-secret' },
+    });
+    expect(store.removalCount()).toBe(1);
+    expect(getAccessToken()).toBeNull();
   });
 
   it.each([

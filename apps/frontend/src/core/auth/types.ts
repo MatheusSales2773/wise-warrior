@@ -13,6 +13,10 @@ export type AuthCredentials = {
   password: string;
 };
 
+export type AuthRegistration = AuthCredentials & {
+  displayName: string;
+};
+
 export type AuthSession = {
   sessionId: string;
 };
