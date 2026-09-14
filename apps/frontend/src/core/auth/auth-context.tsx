@@ -112,6 +112,7 @@ export function AuthProvider({ children, service: providedService, queryClient }
     if (restoreInFlight.current) return restoreInFlight.current;
 
     const capturedRestoreGeneration = restoreGeneration.current;
+    const restoreStartedDuringLogout = logoutLifecycle.current?.status === 'pending';
     let staleAuthenticatedRestore = false;
     const attempt = Promise.resolve()
       .then(() => (authService.refresh ?? authService.restore)())
@@ -144,6 +145,11 @@ export function AuthProvider({ children, service: providedService, queryClient }
     void guardedAttempt
       .then((result) => {
         if (staleAuthenticatedRestore) return;
+        if (
+          restoreStartedDuringLogout
+          && logoutLifecycle.current?.generation === capturedRestoreGeneration
+          && result.status === 'unavailable'
+        ) return;
         if (capturedRestoreGeneration === restoreGeneration.current || result.status === 'anonymous') {
           applyResult(result);
         }
@@ -235,7 +241,13 @@ export function AuthProvider({ children, service: providedService, queryClient }
         const apiError = toApiError(error, { unauthorized: 'session' });
         if (logoutLifecycle.current?.generation === logoutGeneration) {
           logoutLifecycle.current.status = 'failed';
-          applyPendingAuthenticatedRestore(logoutGeneration);
+          if (apiError.sessionRevoked) {
+            clearAccessToken();
+            protectedQueryClient.clear();
+            if (mounted.current) updateState({ status: 'anonymous' });
+          } else {
+            applyPendingAuthenticatedRestore(logoutGeneration);
+          }
         }
         throw apiError;
       });

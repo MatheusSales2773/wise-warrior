@@ -109,13 +109,19 @@ async function rollbackUnstoredRefreshToken(
   clearAccessToken();
 }
 
-async function bestEffortRemoveStoredCredential(store: CredentialStore): Promise<void> {
+async function bestEffortRemoveStoredCredential(store: CredentialStore): Promise<boolean> {
   try {
     await store.remove();
+    return true;
   } catch {
     // Keep a durable local tombstone so a later runtime never submits the
     // already-revoked refresh credential while removal is retried.
-    await store.write(LOGGED_OUT_CREDENTIAL_MARKER).catch(() => undefined);
+    try {
+      await store.write(LOGGED_OUT_CREDENTIAL_MARKER);
+      return true;
+    } catch {
+      return false;
+    }
   }
 }
 
@@ -239,6 +245,15 @@ export function createAuthService({
       if (!refreshToken) {
         throw new ApiError('storage');
       }
+      if (isLoggedOutCredential(refreshToken)) {
+        const localCleanupCompleted = await bestEffortRemoveStoredCredential(store);
+        clearAccessToken();
+        if (!localCleanupCompleted) {
+          sessionLoggedOut = true;
+          throw new ApiError('storage', { sessionRevoked: true });
+        }
+        return;
+      }
     }
 
     try {
@@ -253,12 +268,12 @@ export function createAuthService({
       if (apiError.category !== 'session') throw apiError;
     }
 
-    if (!isWeb) {
-      // A server-confirmed revocation is terminal; the next restore retries
-      // removing a credential that SecureStore could not delete now.
-      await bestEffortRemoveStoredCredential(store);
-    }
+    const localCleanupCompleted = isWeb || await bestEffortRemoveStoredCredential(store);
     clearAccessToken();
+    if (!localCleanupCompleted) {
+      sessionLoggedOut = true;
+      throw new ApiError('storage', { sessionRevoked: true });
+    }
   }
 
   async function logout(): Promise<void> {
@@ -268,8 +283,9 @@ export function createAuthService({
         await logoutCurrent();
         sessionLoggedOut = true;
       } catch (error) {
-        sessionLoggedOut = previousSessionState;
-        throw error;
+        const apiError = toApiError(error);
+        sessionLoggedOut = apiError.sessionRevoked ? true : previousSessionState;
+        throw apiError;
       }
     });
   }

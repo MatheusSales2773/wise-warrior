@@ -115,6 +115,63 @@ describe('AuthProvider', () => {
     protectedQueryClient.clear();
   });
 
+  it('keeps authenticated state when a restore during failed logout is unavailable', async () => {
+    let resolveRestore: (result: RestoreResult) => void = () => undefined;
+    const pendingRestore = new Promise<RestoreResult>((resolve) => {
+      resolveRestore = resolve;
+    });
+    const restore = jest
+      .fn<Promise<RestoreResult>, []>()
+      .mockResolvedValueOnce({ status: 'authenticated', sessionId: 'session-1' })
+      .mockImplementationOnce(() => pendingRestore);
+    let rejectLogout: (error: unknown) => void = () => undefined;
+    const pendingLogout = new Promise<void>((_, reject) => {
+      rejectLogout = reject;
+    });
+    const logout = jest.fn(() => pendingLogout);
+    const protectedQueryClient = new QueryClient();
+    protectedQueryClient.setQueryData(['protected'], { secret: 'keep-me' });
+    setAccessToken('access-session-1');
+    const { result } = await renderHook(() => useAuth(), {
+      wrapper: wrapperFor(serviceDouble(restore, undefined, undefined, logout), protectedQueryClient),
+    });
+
+    await waitFor(() => expect(result.current.status).toBe('authenticated'));
+    let logoutAttempt: Promise<void> = Promise.resolve();
+    await act(async () => {
+      logoutAttempt = result.current.logout();
+      await Promise.resolve();
+    });
+
+    const productHttp = createSessionAwareHttpClient({
+      get: async <T,>(): Promise<HttpResponse<T>> => {
+        throw { isAxiosError: true, response: { status: 401, data: {} } };
+      },
+      post: async <T,>() => ({ status: 204, data: undefined as T }),
+    });
+    const requestOutcome = productHttp.get('/perfil').then(
+      (response) => ({ status: 'resolved' as const, response }),
+      (error: unknown) => ({ status: 'rejected' as const, error }),
+    );
+    await waitFor(() => expect(restore).toHaveBeenCalledTimes(2));
+
+    rejectLogout(new ApiError('network'));
+    await act(async () => {
+      await logoutAttempt.catch(() => undefined);
+    });
+    expect(result.current.status).toBe('authenticated');
+
+    resolveRestore({ status: 'unavailable', error: new ApiError('network') });
+    await expect(requestOutcome).resolves.toMatchObject({
+      status: 'rejected',
+      error: { category: 'network' },
+    });
+    expect(result.current.status).toBe('authenticated');
+    expect(getAccessToken()).toBe('access-session-1');
+    expect(protectedQueryClient.getQueryData(['protected'])).toEqual({ secret: 'keep-me' });
+    protectedQueryClient.clear();
+  });
+
   it('shares one in-flight logout call', async () => {
     let resolveLogout: () => void = () => undefined;
     const logoutPromise = new Promise<void>((resolve) => { resolveLogout = resolve; });

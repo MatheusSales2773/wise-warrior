@@ -19,12 +19,14 @@ const RETRYABLE: ReadonlySet<ApiErrorCategory> = new Set(['network', 'server']);
 
 export type ApiErrorOptions = {
   status?: number;
+  sessionRevoked?: boolean;
 };
 
 export class ApiError extends Error {
   readonly category: ApiErrorCategory;
   readonly status?: number;
   readonly retryable: boolean;
+  readonly sessionRevoked: boolean;
 
   constructor(category: ApiErrorCategory, options: ApiErrorOptions = {}) {
     super(`ApiError:${category}`);
@@ -32,6 +34,7 @@ export class ApiError extends Error {
     this.category = category;
     this.status = options.status;
     this.retryable = RETRYABLE.has(category);
+    this.sessionRevoked = options.sessionRevoked ?? false;
   }
 }
 

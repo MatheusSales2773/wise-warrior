@@ -589,6 +589,28 @@ describe('auth service — logout', () => {
     expect(getAccessToken()).toBeNull();
   });
 
+  it('reports storage failure when native logout cleanup cannot be persisted', async () => {
+    const { http, calls } = httpDouble({ '/auth/native/logout': async () => ({ status: 204, data: undefined }) });
+    const store = storeDouble('native.refresh');
+    store.state.failRemove = true;
+    store.state.failWrite = true;
+    const service = createAuthService({ http, store: store.store, platform: 'android' });
+    setAccessToken(ACCESS);
+
+    await expect(service.logout()).rejects.toMatchObject({
+      category: 'storage',
+      sessionRevoked: true,
+    });
+
+    expect(calls).toContainEqual({
+      method: 'post',
+      url: '/auth/native/logout',
+      body: { refreshToken: 'native.refresh' },
+      options: { requestKind: 'auth' },
+    });
+    expect(getAccessToken()).toBeNull();
+  });
+
   it('does not confirm native logout when the refresh credential is absent', async () => {
     const { http, calls } = httpDouble({});
     const store = storeDouble(null);
