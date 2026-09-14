@@ -64,6 +64,14 @@ export function AuthProvider({ children, service: providedService, queryClient }
   const authenticationInFlight = useRef(false);
   const restoreInFlight = useRef<Promise<RestoreResult> | null>(null);
   const logoutInFlight = useRef<Promise<void> | null>(null);
+  const logoutLifecycle = useRef<{
+    generation: number;
+    status: 'pending' | 'succeeded' | 'failed';
+  } | null>(null);
+  const pendingAuthenticatedRestore = useRef<{
+    generation: number;
+    result: Extract<RestoreResult, { status: 'authenticated' }>;
+  } | null>(null);
 
   const updateState = useCallback((nextState: AuthState) => {
     const currentIdentity = stateRef.current.status === 'authenticated'
@@ -93,10 +101,18 @@ export function AuthProvider({ children, service: providedService, queryClient }
     }
   }, [protectedQueryClient, updateState]);
 
+  const applyPendingAuthenticatedRestore = useCallback((generation: number) => {
+    const pending = pendingAuthenticatedRestore.current;
+    if (!pending || pending.generation !== generation) return;
+    pendingAuthenticatedRestore.current = null;
+    applyResult(pending.result);
+  }, [applyResult]);
+
   const restoreAndApply = useCallback((): Promise<RestoreResult> => {
     if (restoreInFlight.current) return restoreInFlight.current;
 
     const capturedRestoreGeneration = restoreGeneration.current;
+    let staleAuthenticatedRestore = false;
     const attempt = Promise.resolve()
       .then(() => (authService.refresh ?? authService.restore)())
       .catch((error: unknown): RestoreResult => {
@@ -108,6 +124,18 @@ export function AuthProvider({ children, service: providedService, queryClient }
       });
     const guardedAttempt = attempt.then((result) => {
       if (capturedRestoreGeneration !== restoreGeneration.current && result.status === 'authenticated') {
+        staleAuthenticatedRestore = true;
+        const lifecycle = logoutLifecycle.current;
+        if (lifecycle?.generation === restoreGeneration.current) {
+          if (lifecycle.status === 'pending') {
+            pendingAuthenticatedRestore.current = {
+              generation: lifecycle.generation,
+              result,
+            };
+          } else if (lifecycle.status === 'failed') {
+            applyResult(result);
+          }
+        }
         return { status: 'anonymous' } as const;
       }
       return result;
@@ -115,6 +143,7 @@ export function AuthProvider({ children, service: providedService, queryClient }
     restoreInFlight.current = guardedAttempt;
     void guardedAttempt
       .then((result) => {
+        if (staleAuthenticatedRestore) return;
         if (capturedRestoreGeneration === restoreGeneration.current || result.status === 'anonymous') {
           applyResult(result);
         }
@@ -187,23 +216,35 @@ export function AuthProvider({ children, service: providedService, queryClient }
   const logout = useCallback((): Promise<void> => {
     if (logoutInFlight.current) return logoutInFlight.current;
 
-    restoreGeneration.current += 1;
+    const logoutGeneration = restoreGeneration.current + 1;
+    restoreGeneration.current = logoutGeneration;
     restoreInFlight.current = null;
+    pendingAuthenticatedRestore.current = null;
+    logoutLifecycle.current = { generation: logoutGeneration, status: 'pending' };
     const attempt = Promise.resolve()
       .then(() => authService.logout())
       .then(() => {
+        if (logoutLifecycle.current?.generation === logoutGeneration) {
+          logoutLifecycle.current.status = 'succeeded';
+          pendingAuthenticatedRestore.current = null;
+        }
         clearAccessToken();
         protectedQueryClient.clear();
         if (mounted.current) updateState({ status: 'anonymous' });
       }, (error: unknown) => {
-        throw toApiError(error, { unauthorized: 'session' });
+        const apiError = toApiError(error, { unauthorized: 'session' });
+        if (logoutLifecycle.current?.generation === logoutGeneration) {
+          logoutLifecycle.current.status = 'failed';
+          applyPendingAuthenticatedRestore(logoutGeneration);
+        }
+        throw apiError;
       });
     const inFlight = attempt.finally(() => {
       if (logoutInFlight.current === inFlight) logoutInFlight.current = null;
     });
     logoutInFlight.current = inFlight;
     return inFlight;
-  }, [authService, protectedQueryClient, updateState]);
+  }, [applyPendingAuthenticatedRestore, authService, protectedQueryClient, updateState]);
 
   const retryRestore = useCallback(() => {
     updateState({ status: 'restoring' });

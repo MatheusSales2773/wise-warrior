@@ -585,7 +585,7 @@ describe('auth service — logout', () => {
       options: { requestKind: 'auth' },
     });
     expect(store.removalCount()).toBe(1);
-    expect(store.state.value).toBe('native.refresh');
+    expect(store.state.value).not.toBe('native.refresh');
     expect(getAccessToken()).toBeNull();
   });
 
@@ -602,7 +602,7 @@ describe('auth service — logout', () => {
     expect(getAccessToken()).toBe(ACCESS);
   });
 
-  it('removes a native credential on the next restore after logout deletion failed', async () => {
+  it('does not submit a tombstoned native credential after restart', async () => {
     const store = storeDouble('native.refresh');
     store.state.failRemove = true;
     const first = createAuthService({
@@ -620,11 +620,7 @@ describe('auth service — logout', () => {
     const reopened = createAuthService({ http: reopenedHttp.http, store: store.store, platform: 'android' });
 
     await expect(reopened.restore()).resolves.toEqual({ status: 'anonymous' });
-    expect(reopenedHttp.calls).toContainEqual({
-      method: 'post',
-      url: '/auth/native/refresh',
-      body: { refreshToken: 'native.refresh' },
-    });
+    expect(reopenedHttp.calls).toEqual([]);
     expect(store.state.value).toBeNull();
   });
 
@@ -705,7 +701,7 @@ describe('auth service — logout', () => {
     await expect(service.logout()).resolves.toBeUndefined();
 
     expect(store.removalCount()).toBe(1);
-    expect(store.state.value).toBe('expired.refresh');
+    expect(store.state.value).not.toBe('expired.refresh');
     expect(getAccessToken()).toBeNull();
   });
 

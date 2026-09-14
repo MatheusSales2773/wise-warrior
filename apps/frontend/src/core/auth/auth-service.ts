@@ -59,6 +59,8 @@ const NATIVE_DEVICE_LABELS: Record<NativeAuthPlatform, NativeDeviceLabel> = {
   android: 'Wise Android',
 };
 
+const LOGGED_OUT_CREDENTIAL_MARKER = '__wise_warrior_logged_out__';
+
 function resolveRuntimePlatform(value: string): AuthPlatform {
   if (value === 'web' || value === 'ios' || value === 'android') {
     return value;
@@ -111,8 +113,14 @@ async function bestEffortRemoveStoredCredential(store: CredentialStore): Promise
   try {
     await store.remove();
   } catch {
-    // The server has already revoked the session; restoration retries locally.
+    // Keep a durable local tombstone so a later runtime never submits the
+    // already-revoked refresh credential while removal is retried.
+    await store.write(LOGGED_OUT_CREDENTIAL_MARKER).catch(() => undefined);
   }
+}
+
+function isLoggedOutCredential(value: string): boolean {
+  return value === LOGGED_OUT_CREDENTIAL_MARKER;
 }
 
 export function createAuthService({
@@ -177,6 +185,11 @@ export function createAuthService({
       return { status: 'unavailable', error: new ApiError('storage') };
     }
     if (!stored) {
+      clearAccessToken();
+      return { status: 'anonymous' };
+    }
+    if (isLoggedOutCredential(stored)) {
+      await bestEffortRemoveStoredCredential(store);
       clearAccessToken();
       return { status: 'anonymous' };
     }
