@@ -8,6 +8,7 @@ const MESSAGES: Record<ApiErrorCategory, string> = {
   network: 'Não foi possível entrar agora. Verifique sua conexão e tente novamente.',
   server: 'O servidor está indisponível. Tente novamente em instantes.',
   storage: 'Não foi possível salvar a sessão neste dispositivo. Tente novamente.',
+  cancelled: 'A solicitação foi cancelada. Tente novamente.',
   unexpected: 'Não foi possível entrar agora. Tente novamente.',
 };
 
@@ -25,6 +26,7 @@ const REGISTER_MESSAGES: Record<ApiErrorCategory, string> = {
   network: 'Não foi possível criar sua conta agora. Verifique sua conexão e tente novamente.',
   server: 'O servidor está indisponível. Tente novamente em instantes.',
   storage: 'Sua conta foi criada, mas não foi possível salvar a sessão neste dispositivo. Tente entrar novamente.',
+  cancelled: 'A solicitação foi cancelada. Tente novamente.',
   unexpected: 'Não foi possível criar sua conta agora. Tente novamente.',
 };
 

@@ -405,10 +405,7 @@ describe('auth service — native transport', () => {
     store.state.failWrite = true;
     const service = createAuthService({ http, store: store.store, platform: 'android' });
 
-    await expect(service.restore()).resolves.toEqual({
-      status: 'unavailable',
-      error: expect.objectContaining({ category: 'storage' }),
-    });
+    await expect(service.restore()).resolves.toEqual({ status: 'anonymous' });
     expect(calls).toContainEqual({
       method: 'post',
       url: '/auth/native/logout',

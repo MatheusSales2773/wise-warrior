@@ -36,6 +36,7 @@ Before implementing or changing code, tests, infrastructure, or configuration:
 - [Expo Router authentication](https://docs.expo.dev/router/advanced/authentication/)
 - [Expo SDK 57 SecureStore](https://docs.expo.dev/versions/v57.0.0/sdk/securestore/)
 - [Axios 1.x documentation](https://axios-http.com/docs/intro)
+- [TanStack Query v5 React Native](https://tanstack.com/query/latest/docs/framework/react/react-native)
 
 #### Testing
 

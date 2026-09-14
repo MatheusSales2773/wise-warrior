@@ -3,6 +3,7 @@ import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { AuthProvider, useAuth } from '@/core/auth/auth-context';
+import { QueryRuntime } from '@/core/query/query-runtime';
 import { theme } from '@/design-system';
 import { FontGate } from '@/design-system/components/font-runtime';
 import { MotionRuntime, useRuntimeMotionDuration } from '@/design-system/components/motion-runtime';
@@ -48,14 +49,16 @@ function RuntimeStack() {
 
 export default function RootLayout() {
   return (
-    <SafeAreaProvider>
-      <FontGate>
-        <MotionRuntime>
-          <AuthProvider>
-            <RuntimeStack />
-          </AuthProvider>
-        </MotionRuntime>
-      </FontGate>
-    </SafeAreaProvider>
+    <QueryRuntime>
+      <SafeAreaProvider>
+        <FontGate>
+          <MotionRuntime>
+            <AuthProvider>
+              <RuntimeStack />
+            </AuthProvider>
+          </MotionRuntime>
+        </FontGate>
+      </SafeAreaProvider>
+    </QueryRuntime>
   );
 }

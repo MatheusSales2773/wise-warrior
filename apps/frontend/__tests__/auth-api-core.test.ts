@@ -3,6 +3,7 @@ import { Platform } from 'react-native';
 import {
   applyAuthorizationHeader,
   createSessionAwareHttpClient,
+  createHttpClient,
   DEFAULT_TIMEOUT_MS,
   getAuthenticatedHttpClient,
   resolveAxiosConfig,
@@ -51,6 +52,12 @@ describe('api error taxonomy', () => {
     const validation = toApiError({ isAxiosError: true, response: { status: 400, data: {} } });
     expect(validation.category).toBe('validation');
     expect(validation.retryable).toBe(false);
+
+    const sensitive = toApiError({
+      isAxiosError: true,
+      response: { status: 500, data: { detail: 'refreshToken=do-not-expose' } },
+    });
+    expect(sensitive.problemDetail).toBeUndefined();
   });
 
   it('lets the caller decide whether a 401 means credentials or an invalid session', () => {
@@ -161,5 +168,81 @@ describe('http client configuration', () => {
     } finally {
       removeRecovery();
     }
+  });
+
+  it('does not recover authentication endpoints, repeated requests or cancelled requests', async () => {
+    const recover = jest.fn(async () => true);
+    const removeRecovery = setAuthenticationRecovery(recover);
+    const transport: HttpClient = {
+      get: async () => {
+        throw { isAxiosError: true, response: { status: 401, data: {} } };
+      },
+      post: async <T,>() => ({ status: 204, data: undefined as T }),
+    };
+
+    try {
+      const client = createSessionAwareHttpClient(transport);
+      await expect(client.get('/auth/refresh')).rejects.toMatchObject({ category: 'credentials', status: 401 });
+      await expect(client.get('/perfil', { replayed: true })).rejects.toMatchObject({ category: 'session', status: 401 });
+      await expect(client.get('/perfil', { requestKind: 'auth' })).rejects.toMatchObject({ category: 'credentials', status: 401 });
+
+      const controller = new AbortController();
+      controller.abort();
+      await expect(client.get('/perfil', { signal: controller.signal })).rejects.toMatchObject({ category: 'cancelled' });
+      expect(recover).not.toHaveBeenCalled();
+    } finally {
+      removeRecovery();
+    }
+  });
+
+  it('does not start a second refresh when the single replay also receives 401', async () => {
+    setAccessToken('access-old');
+    let requests = 0;
+    const recover = jest.fn(async () => {
+      setAccessToken('access-new');
+      return true;
+    });
+    const removeRecovery = setAuthenticationRecovery(recover);
+    const client = createSessionAwareHttpClient({
+      get: async () => {
+        requests += 1;
+        throw { isAxiosError: true, response: { status: 401, data: {} } };
+      },
+      post: async <T,>() => ({ status: 204, data: undefined as T }),
+    });
+
+    try {
+      await expect(client.get('/perfil')).rejects.toMatchObject({ category: 'session', status: 401 });
+      expect(requests).toBe(2);
+      expect(recover).toHaveBeenCalledTimes(1);
+    } finally {
+      removeRecovery();
+      clearAccessToken();
+    }
+  });
+
+  it('translates Axios failures into a safe error and forwards cancellation to the transport', async () => {
+    const instance = {
+      interceptors: { request: { use: jest.fn() } },
+      get: jest.fn().mockRejectedValue({
+        isAxiosError: true,
+        config: { headers: { Authorization: 'Bearer access-secret' }, data: { password: 'secret' } },
+        response: {
+          status: 400,
+          data: { detail: 'payload não deve atravessar a fronteira' },
+        },
+      }),
+      post: jest.fn(),
+    };
+    jest.mocked(axios.create).mockReturnValue(instance as never);
+    const signal = new AbortController().signal;
+    const client = createHttpClient({ baseURL: 'https://api.example.com' });
+
+    const error = await client.get('/perfil', { signal }).catch((value: unknown) => value);
+
+    expect(error).toMatchObject({ category: 'validation', status: 400 });
+    expect(error).not.toHaveProperty('response');
+    expect(error).not.toHaveProperty('config');
+    expect(instance.get).toHaveBeenCalledWith('/perfil', { signal });
   });
 });

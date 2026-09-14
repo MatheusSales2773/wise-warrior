@@ -8,8 +8,15 @@ import {
   useState,
   type PropsWithChildren,
 } from 'react';
+import type { QueryClient } from '@tanstack/react-query';
 import type { ApiError } from '@/core/api/api-error';
-import { getBareHttpClient, setAuthenticationRecovery } from '@/core/api/api-client';
+import { toApiError } from '@/core/api/api-error';
+import {
+  getBareHttpClient,
+  setAuthenticationRecovery,
+  type AuthenticationRecoveryResult,
+} from '@/core/api/api-client';
+import { queryClient as defaultQueryClient } from '@/core/query/query-runtime';
 import { createAuthService, type AuthService } from './auth-service';
 import { credentialStore } from './credential-store';
 import type {
@@ -32,34 +39,53 @@ type AuthContextValue = {
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
-export type AuthProviderProps = PropsWithChildren<{ service?: AuthService }>;
+export type AuthProviderProps = PropsWithChildren<{
+  service?: AuthService;
+  queryClient?: QueryClient;
+}>;
 
 function createDefaultAuthService(): AuthService {
   return createAuthService({ http: getBareHttpClient(), store: credentialStore });
 }
 
-export function AuthProvider({ children, service: providedService }: AuthProviderProps) {
+export function AuthProvider({ children, service: providedService, queryClient }: AuthProviderProps) {
   const [state, setState] = useState<AuthState>({ status: 'restoring' });
   const [authService] = useState<AuthService>(() => providedService ?? createDefaultAuthService());
+  const protectedQueryClient = queryClient ?? defaultQueryClient;
   const mounted = useRef(true);
+  const stateRef = useRef<AuthState>({ status: 'restoring' });
   const authenticationInFlight = useRef(false);
   const restoreInFlight = useRef<Promise<RestoreResult> | null>(null);
+
+  const updateState = useCallback((nextState: AuthState) => {
+    stateRef.current = nextState;
+    setState(nextState);
+  }, []);
 
   const applyResult = useCallback((result: RestoreResult) => {
     if (!mounted.current) return;
     if (result.status === 'authenticated') {
-      setState({ status: 'authenticated', sessionId: result.sessionId });
+      updateState({ status: 'authenticated', sessionId: result.sessionId });
     } else if (result.status === 'anonymous') {
-      setState({ status: 'anonymous' });
+      protectedQueryClient.clear();
+      updateState({ status: 'anonymous' });
     } else {
-      setState({ status: 'unavailable', error: result.error });
+      updateState({ status: 'unavailable', error: result.error });
     }
-  }, []);
+  }, [protectedQueryClient, updateState]);
 
   const restoreAndApply = useCallback((): Promise<RestoreResult> => {
     if (restoreInFlight.current) return restoreInFlight.current;
 
-    const attempt = authService.restore();
+    const attempt = Promise.resolve()
+      .then(() => (authService.refresh ?? authService.restore)())
+      .catch((error: unknown): RestoreResult => {
+        const apiError = toApiError(error, { unauthorized: 'session' });
+        if (apiError.category === 'session' || apiError.category === 'credentials') {
+          return { status: 'anonymous' };
+        }
+        return { status: 'unavailable', error: apiError };
+      });
     restoreInFlight.current = attempt;
     void attempt
       .then(applyResult, () => undefined)
@@ -71,9 +97,11 @@ export function AuthProvider({ children, service: providedService }: AuthProvide
 
   useEffect(() => {
     mounted.current = true;
-    const removeRecovery = setAuthenticationRecovery(async () => {
+    const removeRecovery = setAuthenticationRecovery(async (): Promise<AuthenticationRecoveryResult> => {
       const result = await restoreAndApply();
-      return result.status === 'authenticated';
+      if (result.status === 'authenticated') return { status: 'authenticated' };
+      if (result.status === 'unavailable') return { status: 'unavailable', error: result.error };
+      return { status: 'anonymous' };
     });
     void restoreAndApply();
     return () => {
@@ -89,13 +117,19 @@ export function AuthProvider({ children, service: providedService }: AuthProvide
       try {
         const session = await issueSession();
         if (mounted.current) {
-          setState({ status: 'authenticated', sessionId: session.sessionId });
+          if (
+            stateRef.current.status === 'authenticated'
+            && stateRef.current.sessionId !== session.sessionId
+          ) {
+            protectedQueryClient.clear();
+          }
+          updateState({ status: 'authenticated', sessionId: session.sessionId });
         }
       } finally {
         authenticationInFlight.current = false;
       }
     },
-    [],
+    [protectedQueryClient, updateState],
   );
 
   const login = useCallback(
@@ -109,9 +143,9 @@ export function AuthProvider({ children, service: providedService }: AuthProvide
   );
 
   const retryRestore = useCallback(() => {
-    setState({ status: 'restoring' });
+    updateState({ status: 'restoring' });
     void restoreAndApply();
-  }, [restoreAndApply]);
+  }, [restoreAndApply, updateState]);
 
   const value = useMemo<AuthContextValue>(
     () => ({

@@ -47,6 +47,8 @@ export interface AuthService {
   login(credentials: AuthCredentials): Promise<AuthSession>;
   register(registration: AuthRegistration): Promise<AuthSession>;
   restore(): Promise<RestoreResult>;
+  /** Refreshes an existing credential; kept optional for small test adapters. */
+  refresh?: () => Promise<RestoreResult>;
 }
 
 const NATIVE_DEVICE_LABELS: Record<NativeAuthPlatform, NativeDeviceLabel> = {
@@ -121,6 +123,47 @@ export function createAuthService({
     return { sessionId: payload.sessionId };
   }
 
+  async function refresh(): Promise<RestoreResult> {
+    if (isWeb) {
+      try {
+        const response = await http.post<unknown>('/auth/refresh');
+        const data = requireSessionPayload(response.data);
+        setAccessToken(data.accessToken);
+        return { status: 'authenticated', sessionId: data.sessionId };
+      } catch (error) {
+        return resolveRestoreFailure(error);
+      }
+    }
+
+    let stored: string | null;
+    try {
+      stored = await store.read();
+    } catch {
+      return { status: 'unavailable', error: new ApiError('storage') };
+    }
+    if (!stored) {
+      clearAccessToken();
+      return { status: 'anonymous' };
+    }
+
+    try {
+      const response = await http.post<unknown>('/auth/native/refresh', {
+        refreshToken: stored,
+      });
+      const data = requireSessionPayload(response.data, true);
+      try {
+        await store.write(data.refreshToken!);
+      } catch {
+        await rollbackUnstoredRefreshToken(http, data.refreshToken!, () => store.remove());
+        return { status: 'anonymous' };
+      }
+      setAccessToken(data.accessToken);
+      return { status: 'authenticated', sessionId: data.sessionId };
+    } catch (error) {
+      return resolveRestoreFailure(error, () => store.remove());
+    }
+  }
+
   return {
     async register(registration: AuthRegistration): Promise<AuthSession> {
       const path = isWeb ? '/auth/register' : '/auth/native/register';
@@ -153,46 +196,8 @@ export function createAuthService({
       return authenticate(path, body);
     },
 
-    async restore(): Promise<RestoreResult> {
-      if (isWeb) {
-        try {
-          const response = await http.post<unknown>('/auth/refresh');
-          const data = requireSessionPayload(response.data);
-          setAccessToken(data.accessToken);
-          return { status: 'authenticated', sessionId: data.sessionId };
-        } catch (error) {
-          return resolveRestoreFailure(error);
-        }
-      }
-
-      let stored: string | null;
-      try {
-        stored = await store.read();
-      } catch {
-        return { status: 'unavailable', error: new ApiError('storage') };
-      }
-      if (!stored) {
-        clearAccessToken();
-        return { status: 'anonymous' };
-      }
-
-      try {
-        const response = await http.post<unknown>('/auth/native/refresh', {
-          refreshToken: stored,
-        });
-        const data = requireSessionPayload(response.data, true);
-        try {
-          await store.write(data.refreshToken!);
-        } catch {
-          await rollbackUnstoredRefreshToken(http, data.refreshToken!, () => store.remove());
-          return { status: 'unavailable', error: new ApiError('storage') };
-        }
-        setAccessToken(data.accessToken);
-        return { status: 'authenticated', sessionId: data.sessionId };
-      } catch (error) {
-        return resolveRestoreFailure(error, () => store.remove());
-      }
-    },
+    refresh,
+    restore: refresh,
   };
 }
 

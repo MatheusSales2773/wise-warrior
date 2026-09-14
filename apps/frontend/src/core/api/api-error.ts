@@ -1,4 +1,4 @@
-import { isAxiosError } from 'axios';
+import { isAxiosError, isCancel } from 'axios';
 
 /**
  * Categorias estáveis que a UI usa para escolher o texto público. Nenhum
@@ -12,6 +12,7 @@ export type ApiErrorCategory =
   | 'network'
   | 'server'
   | 'storage'
+  | 'cancelled'
   | 'unexpected';
 
 const RETRYABLE: ReadonlySet<ApiErrorCategory> = new Set(['network', 'server']);
@@ -48,7 +49,21 @@ export type ClassifyOptions = {
 function problemDetailOf(data: unknown): string | undefined {
   if (typeof data !== 'object' || data === null) return undefined;
   const detail = (data as { detail?: unknown }).detail;
-  return typeof detail === 'string' ? detail : undefined;
+  if (typeof detail !== 'string') return undefined;
+
+  const normalized = detail.trim();
+  if (!normalized || /password|senha|refresh[-_ ]?token|access[-_ ]?token|authorization|bearer|cookie|secret/i.test(normalized)) {
+    return undefined;
+  }
+
+  return normalized.slice(0, 200);
+}
+
+function isCancelled(error: unknown): boolean {
+  if (isCancel(error)) return true;
+  if (typeof error !== 'object' || error === null) return false;
+  const name = (error as { name?: unknown }).name;
+  return name === 'AbortError' || name === 'CanceledError';
 }
 
 /**
@@ -57,6 +72,8 @@ function problemDetailOf(data: unknown): string | undefined {
  */
 export function toApiError(error: unknown, options: ClassifyOptions = {}): ApiError {
   if (isApiError(error)) return error;
+
+  if (isCancelled(error)) return new ApiError('cancelled');
 
   if (!isAxiosError(error)) {
     return new ApiError('unexpected');

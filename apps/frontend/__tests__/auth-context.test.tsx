@@ -1,4 +1,5 @@
 import { act, renderHook, waitFor } from '@testing-library/react-native';
+import { QueryClient } from '@tanstack/react-query';
 import type { PropsWithChildren } from 'react';
 import { AuthProvider, useAuth } from '@/core/auth/auth-context';
 import { createAuthService, type AuthService } from '@/core/auth/auth-service';
@@ -18,9 +19,9 @@ function serviceDouble(
   return { restore, login, register };
 }
 
-function wrapperFor(service: AuthService) {
+function wrapperFor(service: AuthService, queryClient?: QueryClient) {
   return function Wrapper({ children }: PropsWithChildren) {
-    return <AuthProvider service={service}>{children}</AuthProvider>;
+    return <AuthProvider queryClient={queryClient} service={service}>{children}</AuthProvider>;
   };
 }
 
@@ -217,13 +218,17 @@ describe('AuthProvider', () => {
       remove: async () => undefined,
     };
     const service = createAuthService({ http: authHttp, store, platform: 'web' });
+    const protectedQueryClient = new QueryClient();
+    protectedQueryClient.setQueryData(['protected'], { secret: 'do-not-keep' });
     const productHttp = createSessionAwareHttpClient({
       get: async () => {
         throw { isAxiosError: true, response: { status: 401, data: {} } };
       },
       post: async <T,>() => ({ status: 204, data: undefined as T }),
     });
-    const { result } = await renderHook(() => useAuth(), { wrapper: wrapperFor(service) });
+    const { result } = await renderHook(() => useAuth(), {
+      wrapper: wrapperFor(service, protectedQueryClient),
+    });
     await waitFor(() => expect(result.current.status).toBe('authenticated'));
 
     await act(async () => {
@@ -232,5 +237,52 @@ describe('AuthProvider', () => {
 
     await waitFor(() => expect(result.current.status).toBe('anonymous'));
     expect(refreshes).toBe(2);
+    expect(protectedQueryClient.getQueryData(['protected'])).toBeUndefined();
+  });
+
+  it('preserves the protected cache and exposes retryable state when refresh is unavailable', async () => {
+    let refreshes = 0;
+    const authHttp: HttpClient = {
+      get: async <T,>() => ({ status: 204, data: undefined as T }),
+      post: async <T,>(url: string) => {
+        if (url !== '/auth/refresh') return { status: 204, data: undefined as T };
+        refreshes += 1;
+        if (refreshes === 1) {
+          return {
+            status: 200,
+            data: { accessToken: 'access-1', sessionId: 'session-1' } as T,
+          };
+        }
+        throw { isAxiosError: true, response: { status: 503, data: {} } };
+      },
+    };
+    const store: CredentialStore = {
+      read: async () => null,
+      write: async () => undefined,
+      remove: async () => undefined,
+    };
+    const service = createAuthService({ http: authHttp, store, platform: 'web' });
+    const protectedQueryClient = new QueryClient();
+    protectedQueryClient.setQueryData(['protected'], { stillValidDuringOutage: true });
+    const productHttp = createSessionAwareHttpClient({
+      get: async () => {
+        throw { isAxiosError: true, response: { status: 401, data: {} } };
+      },
+      post: async <T,>() => ({ status: 204, data: undefined as T }),
+    });
+    const { result } = await renderHook(() => useAuth(), {
+      wrapper: wrapperFor(service, protectedQueryClient),
+    });
+    await waitFor(() => expect(result.current.status).toBe('authenticated'));
+
+    await act(async () => {
+      await productHttp.get('/perfil').catch(() => undefined);
+    });
+
+    await waitFor(() => expect(result.current.status).toBe('unavailable'));
+    expect(result.current.error?.category).toBe('server');
+    expect(protectedQueryClient.getQueryData(['protected'])).toEqual({ stillValidDuringOutage: true });
+    expect(refreshes).toBe(2);
+    protectedQueryClient.clear();
   });
 });
