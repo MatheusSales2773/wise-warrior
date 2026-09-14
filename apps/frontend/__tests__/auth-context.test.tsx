@@ -119,6 +119,103 @@ describe('AuthProvider', () => {
     expect(result.current.sessionId).toBeNull();
   });
 
+  it('applies a terminal anonymous restore even when logout fails', async () => {
+    let resolveRestore: (result: RestoreResult) => void = () => undefined;
+    const pendingRestore = new Promise<RestoreResult>((resolve) => {
+      resolveRestore = resolve;
+    });
+    const restore = jest
+      .fn<Promise<RestoreResult>, []>()
+      .mockResolvedValueOnce({ status: 'authenticated', sessionId: 'session-1' })
+      .mockImplementationOnce(() => pendingRestore);
+    let rejectLogout: (error: unknown) => void = () => undefined;
+    const pendingLogout = new Promise<void>((_, reject) => {
+      rejectLogout = reject;
+    });
+    const logout = jest.fn(() => pendingLogout);
+    const protectedQueryClient = new QueryClient();
+    protectedQueryClient.setQueryData(['protected'], { secret: 'remove-me' });
+    setAccessToken('stale-access');
+    const { result } = await renderHook(() => useAuth(), {
+      wrapper: wrapperFor(serviceDouble(restore, undefined, undefined, logout), protectedQueryClient),
+    });
+
+    await waitFor(() => expect(result.current.status).toBe('authenticated'));
+    await act(async () => {
+      result.current.retryRestore();
+    });
+    await waitFor(() => expect(restore).toHaveBeenCalledTimes(2));
+
+    let logoutAttempt: Promise<void> = Promise.resolve();
+    await act(async () => {
+      logoutAttempt = result.current.logout();
+      resolveRestore({ status: 'anonymous' });
+      await Promise.resolve();
+    });
+    rejectLogout(new ApiError('network'));
+    await act(async () => {
+      await logoutAttempt.catch(() => undefined);
+    });
+
+    expect(result.current.status).toBe('anonymous');
+    expect(getAccessToken()).toBeNull();
+    expect(protectedQueryClient.getQueryData(['protected'])).toBeUndefined();
+    protectedQueryClient.clear();
+  });
+
+  it('does not replay a protected request from a stale restore after logout fails', async () => {
+    let resolveRestore: (result: RestoreResult) => void = () => undefined;
+    const pendingRestore = new Promise<RestoreResult>((resolve) => {
+      resolveRestore = resolve;
+    });
+    const restore = jest
+      .fn<Promise<RestoreResult>, []>()
+      .mockResolvedValueOnce({ status: 'authenticated', sessionId: 'session-1' })
+      .mockImplementationOnce(() => pendingRestore);
+    let rejectLogout: (error: unknown) => void = () => undefined;
+    const pendingLogout = new Promise<void>((_, reject) => {
+      rejectLogout = reject;
+    });
+    const logout = jest.fn(() => pendingLogout);
+    let requests = 0;
+    const productHttp = createSessionAwareHttpClient({
+      get: async <T,>() => {
+        requests += 1;
+        if (requests === 1) throw { isAxiosError: true, response: { status: 401, data: {} } };
+        return { status: 200, data: 'must-not-replay' as T };
+      },
+      post: async <T,>() => ({ status: 204, data: undefined as T }),
+    });
+    const { result } = await renderHook(() => useAuth(), {
+      wrapper: wrapperFor(serviceDouble(restore, undefined, undefined, logout)),
+    });
+
+    await waitFor(() => expect(result.current.status).toBe('authenticated'));
+    const request = productHttp.get('/perfil');
+    const requestOutcome = request.then(
+      (response) => ({ status: 'resolved' as const, response }),
+      (error: unknown) => ({ status: 'rejected' as const, error }),
+    );
+    await waitFor(() => expect(restore).toHaveBeenCalledTimes(2));
+
+    let logoutAttempt: Promise<void> = Promise.resolve();
+    await act(async () => {
+      logoutAttempt = result.current.logout();
+      resolveRestore({ status: 'authenticated', sessionId: 'stale-session' });
+      await Promise.resolve();
+    });
+    rejectLogout(new ApiError('network'));
+    await act(async () => {
+      await logoutAttempt.catch(() => undefined);
+    });
+
+    await expect(requestOutcome).resolves.toMatchObject({
+      status: 'rejected',
+      error: { category: 'session', status: 401 },
+    });
+    expect(requests).toBe(1);
+  });
+
   it('moves from restoring to authenticated using the restored session id', async () => {
     const restore = jest.fn(async (): Promise<RestoreResult> => ({ status: 'authenticated', sessionId: 'session-1' }));
     const { result } = await renderHook(() => useAuth(), { wrapper: wrapperFor(serviceDouble(restore)) });

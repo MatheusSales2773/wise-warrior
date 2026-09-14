@@ -60,7 +60,7 @@ export function AuthProvider({ children, service: providedService, queryClient }
   const mounted = useRef(true);
   const stateRef = useRef<AuthState>({ status: 'restoring' });
   const identityGeneration = useRef(0);
-  const authOperationGeneration = useRef(0);
+  const restoreGeneration = useRef(0);
   const authenticationInFlight = useRef(false);
   const restoreInFlight = useRef<Promise<RestoreResult> | null>(null);
   const logoutInFlight = useRef<Promise<void> | null>(null);
@@ -85,6 +85,7 @@ export function AuthProvider({ children, service: providedService, queryClient }
     if (result.status === 'authenticated') {
       updateState({ status: 'authenticated', sessionId: result.sessionId });
     } else if (result.status === 'anonymous') {
+      clearAccessToken();
       protectedQueryClient.clear();
       updateState({ status: 'anonymous' });
     } else {
@@ -95,7 +96,7 @@ export function AuthProvider({ children, service: providedService, queryClient }
   const restoreAndApply = useCallback((): Promise<RestoreResult> => {
     if (restoreInFlight.current) return restoreInFlight.current;
 
-    const operationGeneration = authOperationGeneration.current;
+    const capturedRestoreGeneration = restoreGeneration.current;
     const attempt = Promise.resolve()
       .then(() => (authService.refresh ?? authService.restore)())
       .catch((error: unknown): RestoreResult => {
@@ -105,15 +106,23 @@ export function AuthProvider({ children, service: providedService, queryClient }
         }
         return { status: 'unavailable', error: apiError };
       });
-    restoreInFlight.current = attempt;
-    void attempt
+    const guardedAttempt = attempt.then((result) => {
+      if (capturedRestoreGeneration !== restoreGeneration.current && result.status === 'authenticated') {
+        return { status: 'anonymous' } as const;
+      }
+      return result;
+    });
+    restoreInFlight.current = guardedAttempt;
+    void guardedAttempt
       .then((result) => {
-        if (operationGeneration === authOperationGeneration.current) applyResult(result);
+        if (capturedRestoreGeneration === restoreGeneration.current || result.status === 'anonymous') {
+          applyResult(result);
+        }
       }, () => undefined)
       .then(() => {
-        if (restoreInFlight.current === attempt) restoreInFlight.current = null;
+        if (restoreInFlight.current === guardedAttempt) restoreInFlight.current = null;
       });
-    return attempt;
+    return guardedAttempt;
   }, [authService, applyResult]);
 
   useEffect(() => {
@@ -178,7 +187,7 @@ export function AuthProvider({ children, service: providedService, queryClient }
   const logout = useCallback((): Promise<void> => {
     if (logoutInFlight.current) return logoutInFlight.current;
 
-    authOperationGeneration.current += 1;
+    restoreGeneration.current += 1;
     restoreInFlight.current = null;
     const attempt = Promise.resolve()
       .then(() => authService.logout())

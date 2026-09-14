@@ -7,6 +7,14 @@ import type { CredentialStore } from '@/core/auth/types';
 
 type Call = { method: 'get' | 'post'; url: string; body?: unknown; options?: unknown };
 
+function deferredVoid() {
+  let resolve: () => void = () => undefined;
+  const promise = new Promise<void>((resolvePromise) => {
+    resolve = resolvePromise;
+  });
+  return { promise, resolve };
+}
+
 function httpDouble(handlers: Record<string, () => Promise<HttpResponse<unknown>>>) {
   const calls: Call[] = [];
   const http: HttpClient = {
@@ -484,14 +492,11 @@ describe('auth service — logout', () => {
   });
 
   it('serializes web logout after a concurrent refresh so the cookie stays cleared', async () => {
-    let resolveRefresh: () => void = () => undefined;
-    const refreshFinished = new Promise<void>((resolve) => {
-      resolveRefresh = resolve;
-    });
+    const refreshFinished = deferredVoid();
     let cookieValid = true;
     const { http } = httpDouble({
       '/auth/refresh': async () => {
-        await refreshFinished;
+        await refreshFinished.promise;
         cookieValid = true;
         return { status: 200, data: { accessToken: 'refreshed-access', sessionId: 'session-1' } };
       },
@@ -504,7 +509,7 @@ describe('auth service — logout', () => {
 
     const restore = service.restore();
     const logout = service.logout();
-    resolveRefresh();
+    refreshFinished.resolve();
 
     await expect(Promise.all([restore, logout])).resolves.toEqual([
       { status: 'authenticated', sessionId: 'session-1' },
@@ -564,14 +569,14 @@ describe('auth service — logout', () => {
     expect(getAccessToken()).toBeNull();
   });
 
-  it('does not confirm native logout when secure removal fails', async () => {
+  it('clears the local session after server confirmation when secure removal fails', async () => {
     const { http, calls } = httpDouble({ '/auth/native/logout': async () => ({ status: 204, data: undefined }) });
     const store = storeDouble('native.refresh');
     store.state.failRemove = true;
     const service = createAuthService({ http, store: store.store, platform: 'android' });
     setAccessToken(ACCESS);
 
-    await expect(service.logout()).rejects.toMatchObject({ category: 'storage' });
+    await expect(service.logout()).resolves.toBeUndefined();
 
     expect(calls).toContainEqual({
       method: 'post',
@@ -581,7 +586,7 @@ describe('auth service — logout', () => {
     });
     expect(store.removalCount()).toBe(1);
     expect(store.state.value).toBe('native.refresh');
-    expect(getAccessToken()).toBe(ACCESS);
+    expect(getAccessToken()).toBeNull();
   });
 
   it('does not confirm native logout when the refresh credential is absent', async () => {
@@ -606,7 +611,7 @@ describe('auth service — logout', () => {
       platform: 'android',
     });
 
-    await expect(first.logout()).rejects.toMatchObject({ category: 'storage' });
+    await expect(first.logout()).resolves.toBeUndefined();
 
     store.state.failRemove = false;
     const reopenedHttp = httpDouble({
@@ -624,15 +629,12 @@ describe('auth service — logout', () => {
   });
 
   it('serializes native logout after a concurrent refresh rotation', async () => {
-    let resolveRefresh: () => void = () => undefined;
-    const refreshFinished = new Promise<void>((resolve) => {
-      resolveRefresh = resolve;
-    });
+    const refreshFinished = deferredVoid();
     const store = storeDouble('native.stale');
     let logoutCredential: string | null = null;
     const { http } = httpDouble({
       '/auth/native/refresh': async () => {
-        await refreshFinished;
+        await refreshFinished.promise;
         return {
           status: 200,
           data: { accessToken: 'rotated-access', refreshToken: 'native.rotated', sessionId: 'session-rotated' },
@@ -647,7 +649,7 @@ describe('auth service — logout', () => {
 
     const restore = service.restore();
     const logout = service.logout();
-    resolveRefresh();
+    refreshFinished.resolve();
 
     await expect(Promise.all([restore, logout])).resolves.toEqual([
       { status: 'authenticated', sessionId: 'session-rotated' },
@@ -690,6 +692,20 @@ describe('auth service — logout', () => {
 
     await expect(service.logout()).resolves.toBeUndefined();
     expect(store.removalCount()).toBe(1);
+    expect(getAccessToken()).toBeNull();
+  });
+
+  it('clears the local session after terminal native logout when removal needs retry', async () => {
+    const { http } = httpDouble({ '/auth/native/logout': async () => Promise.reject(axiosError(401)) });
+    const store = storeDouble('expired.refresh');
+    store.state.failRemove = true;
+    const service = createAuthService({ http, store: store.store, platform: 'ios' });
+    setAccessToken(ACCESS);
+
+    await expect(service.logout()).resolves.toBeUndefined();
+
+    expect(store.removalCount()).toBe(1);
+    expect(store.state.value).toBe('expired.refresh');
     expect(getAccessToken()).toBeNull();
   });
 

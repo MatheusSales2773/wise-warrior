@@ -107,11 +107,11 @@ async function rollbackUnstoredRefreshToken(
   clearAccessToken();
 }
 
-async function removeStoredCredential(store: CredentialStore): Promise<void> {
+async function bestEffortRemoveStoredCredential(store: CredentialStore): Promise<void> {
   try {
     await store.remove();
   } catch {
-    throw new ApiError('storage');
+    // The server has already revoked the session; restoration retries locally.
   }
 }
 
@@ -202,6 +202,7 @@ export function createAuthService({
   async function refresh(): Promise<RestoreResult> {
     return enqueueSessionOperation(async () => {
       if (sessionLoggedOut) {
+        if (!isWeb) await bestEffortRemoveStoredCredential(store);
         clearAccessToken();
         return { status: 'anonymous' };
       }
@@ -239,7 +240,11 @@ export function createAuthService({
       if (apiError.category !== 'session') throw apiError;
     }
 
-    if (!isWeb) await removeStoredCredential(store);
+    if (!isWeb) {
+      // A server-confirmed revocation is terminal; the next restore retries
+      // removing a credential that SecureStore could not delete now.
+      await bestEffortRemoveStoredCredential(store);
+    }
     clearAccessToken();
   }
 
