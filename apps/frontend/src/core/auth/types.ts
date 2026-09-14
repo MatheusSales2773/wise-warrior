@@ -26,6 +26,9 @@ export type CredentialStore = {
   read(): Promise<string | null>;
   write(value: string): Promise<void>;
   remove(): Promise<void>;
+  readLogoutMarker?(): Promise<boolean>;
+  writeLogoutMarker?(): Promise<void>;
+  removeLogoutMarker?(): Promise<void>;
 };
 
 export type RestoreResult = Exclude<AuthState, { status: 'restoring' }>;

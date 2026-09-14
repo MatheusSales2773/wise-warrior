@@ -59,6 +59,22 @@ function storeDouble(initial: string | null = null) {
   return { store, state, writes, removalCount: () => removes };
 }
 
+function storeWithLogoutMarker(initial: string | null = null) {
+  const base = storeDouble(initial);
+  let logoutMarker = false;
+  const store: CredentialStore = {
+    ...base.store,
+    readLogoutMarker: async () => logoutMarker,
+    writeLogoutMarker: async () => {
+      logoutMarker = true;
+    },
+    removeLogoutMarker: async () => {
+      logoutMarker = false;
+    },
+  };
+  return { ...base, store, logoutMarker: () => logoutMarker };
+}
+
 function axiosError(status: number) {
   return { isAxiosError: true, response: { status, data: {} } };
 }
@@ -609,6 +625,31 @@ describe('auth service — logout', () => {
       options: { requestKind: 'auth' },
     });
     expect(getAccessToken()).toBeNull();
+  });
+
+  it('uses an independent logout marker when native credential cleanup is unavailable', async () => {
+    const store = storeWithLogoutMarker('native.refresh');
+    store.state.failRemove = true;
+    store.state.failWrite = true;
+    const first = createAuthService({
+      http: httpDouble({ '/auth/native/logout': async () => ({ status: 204, data: undefined }) }).http,
+      store: store.store,
+      platform: 'android',
+    });
+
+    await expect(first.logout()).resolves.toBeUndefined();
+    expect(store.logoutMarker()).toBe(true);
+
+    store.state.failRemove = false;
+    const reopenedHttp = httpDouble({
+      '/auth/native/refresh': async () => Promise.reject(axiosError(401)),
+    });
+    const reopened = createAuthService({ http: reopenedHttp.http, store: store.store, platform: 'android' });
+
+    await expect(reopened.restore()).resolves.toEqual({ status: 'anonymous' });
+    expect(reopenedHttp.calls).toEqual([]);
+    expect(store.state.value).toBeNull();
+    expect(store.logoutMarker()).toBe(false);
   });
 
   it('does not confirm native logout when the refresh credential is absent', async () => {

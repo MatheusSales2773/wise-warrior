@@ -109,19 +109,51 @@ async function rollbackUnstoredRefreshToken(
   clearAccessToken();
 }
 
+async function readLogoutMarker(store: CredentialStore): Promise<boolean> {
+  if (!store.readLogoutMarker) return false;
+  try {
+    return await store.readLogoutMarker();
+  } catch {
+    throw new ApiError('storage');
+  }
+}
+
+async function removeLogoutMarker(store: CredentialStore): Promise<boolean> {
+  if (!store.removeLogoutMarker) return true;
+  try {
+    await store.removeLogoutMarker();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function persistLogoutMarker(store: CredentialStore): Promise<boolean> {
+  if (store.writeLogoutMarker) {
+    try {
+      await store.writeLogoutMarker();
+      return true;
+    } catch {
+      // Fall back to the refresh slot for stores without an independent key.
+    }
+  }
+  try {
+    await store.write(LOGGED_OUT_CREDENTIAL_MARKER);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 async function bestEffortRemoveStoredCredential(store: CredentialStore): Promise<boolean> {
   try {
     await store.remove();
+    await removeLogoutMarker(store);
     return true;
   } catch {
     // Keep a durable local tombstone so a later runtime never submits the
     // already-revoked refresh credential while removal is retried.
-    try {
-      await store.write(LOGGED_OUT_CREDENTIAL_MARKER);
-      return true;
-    } catch {
-      return false;
-    }
+    return persistLogoutMarker(store);
   }
 }
 
@@ -161,6 +193,7 @@ export function createAuthService({
     if (!isWeb && payload.refreshToken) {
       try {
         await store.write(payload.refreshToken);
+        if (!await removeLogoutMarker(store)) throw new Error('logout marker indisponível');
       } catch {
         await rollbackUnstoredRefreshToken(http, payload.refreshToken, () => store.remove());
         throw new ApiError('storage');
@@ -182,6 +215,18 @@ export function createAuthService({
       } catch (error) {
         return resolveRestoreFailure(error);
       }
+    }
+
+    let loggedOutMarker: boolean;
+    try {
+      loggedOutMarker = await readLogoutMarker(store);
+    } catch {
+      return { status: 'unavailable', error: new ApiError('storage') };
+    }
+    if (loggedOutMarker) {
+      await bestEffortRemoveStoredCredential(store);
+      clearAccessToken();
+      return { status: 'anonymous' };
     }
 
     let stored: string | null;
@@ -237,6 +282,15 @@ export function createAuthService({
   async function logoutCurrent(): Promise<void> {
     let refreshToken: string | null = null;
     if (!isWeb) {
+      if (await readLogoutMarker(store)) {
+        const localCleanupCompleted = await bestEffortRemoveStoredCredential(store);
+        clearAccessToken();
+        if (!localCleanupCompleted) {
+          sessionLoggedOut = true;
+          throw new ApiError('storage', { sessionRevoked: true });
+        }
+        return;
+      }
       try {
         refreshToken = await store.read();
       } catch {

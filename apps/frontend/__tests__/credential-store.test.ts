@@ -55,6 +55,28 @@ describe('credential store — native', () => {
     expect(mockedSecureStore.deleteItemAsync).toHaveBeenCalledWith('wise.auth.refresh');
   });
 
+  it('persists logout state in a separate native marker', async () => {
+    await nativeStore.writeLogoutMarker!();
+    expect(mockedSecureStore.setItemAsync).toHaveBeenCalledWith(
+      'wise.auth.logout.marker',
+      '1',
+      {
+        keychainAccessible: 42,
+        requireAuthentication: false,
+      },
+    );
+
+    mockedSecureStore.getItemAsync.mockResolvedValueOnce('1');
+    await expect(nativeStore.readLogoutMarker!()).resolves.toBe(true);
+    expect(mockedSecureStore.getItemAsync).toHaveBeenCalledWith('wise.auth.logout.marker', {
+      keychainAccessible: 42,
+      requireAuthentication: false,
+    });
+
+    await nativeStore.removeLogoutMarker!();
+    expect(mockedSecureStore.deleteItemAsync).toHaveBeenCalledWith('wise.auth.logout.marker');
+  });
+
   it('propagates storage failures so callers can preserve or discard the session', async () => {
     mockedSecureStore.setItemAsync.mockRejectedValueOnce(new Error('keychain indisponível'));
     await expect(nativeStore.write('session.secret')).rejects.toThrow('keychain indisponível');
