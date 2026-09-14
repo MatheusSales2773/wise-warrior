@@ -38,6 +38,7 @@ type AuthContextValue = {
   error: ApiError | null;
   login(credentials: AuthCredentials): Promise<void>;
   register(registration: AuthRegistration): Promise<void>;
+  logout(): Promise<void>;
   retryRestore(): void;
 };
 
@@ -61,6 +62,7 @@ export function AuthProvider({ children, service: providedService, queryClient }
   const identityGeneration = useRef(0);
   const authenticationInFlight = useRef(false);
   const restoreInFlight = useRef<Promise<RestoreResult> | null>(null);
+  const logoutInFlight = useRef<Promise<void> | null>(null);
 
   const updateState = useCallback((nextState: AuthState) => {
     const currentIdentity = stateRef.current.status === 'authenticated'
@@ -169,6 +171,25 @@ export function AuthProvider({ children, service: providedService, queryClient }
     [authService, authenticate],
   );
 
+  const logout = useCallback((): Promise<void> => {
+    if (logoutInFlight.current) return logoutInFlight.current;
+
+    const attempt = Promise.resolve()
+      .then(() => authService.logout())
+      .then(() => {
+        clearAccessToken();
+        protectedQueryClient.clear();
+        if (mounted.current) updateState({ status: 'anonymous' });
+      }, (error: unknown) => {
+        throw toApiError(error, { unauthorized: 'session' });
+      });
+    const inFlight = attempt.finally(() => {
+      if (logoutInFlight.current === inFlight) logoutInFlight.current = null;
+    });
+    logoutInFlight.current = inFlight;
+    return inFlight;
+  }, [authService, protectedQueryClient, updateState]);
+
   const retryRestore = useCallback(() => {
     updateState({ status: 'restoring' });
     void restoreAndApply();
@@ -181,9 +202,10 @@ export function AuthProvider({ children, service: providedService, queryClient }
       error: state.status === 'unavailable' ? state.error : null,
       login,
       register,
+      logout,
       retryRestore,
     }),
-    [state, login, register, retryRestore],
+    [state, login, register, logout, retryRestore],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

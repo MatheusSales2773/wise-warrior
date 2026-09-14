@@ -17,6 +17,7 @@ function serviceDouble(login: () => Promise<AuthSession>): AuthService {
   return {
     login,
     register: async () => ({ sessionId: 'session-register' }),
+    logout: async () => undefined,
     restore: async (): Promise<RestoreResult> => ({ status: 'anonymous' }),
   };
 }

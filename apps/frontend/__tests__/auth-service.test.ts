@@ -1,11 +1,11 @@
 import { Platform } from 'react-native';
 import type { HttpClient, HttpResponse } from '@/core/api/api-client';
 import { isApiError } from '@/core/api/api-error';
-import { clearAccessToken, getAccessToken } from '@/core/api/token-memory';
+import { clearAccessToken, getAccessToken, setAccessToken } from '@/core/api/token-memory';
 import { createAuthService } from '@/core/auth/auth-service';
 import type { CredentialStore } from '@/core/auth/types';
 
-type Call = { method: 'get' | 'post'; url: string; body?: unknown };
+type Call = { method: 'get' | 'post'; url: string; body?: unknown; options?: unknown };
 
 function httpDouble(handlers: Record<string, () => Promise<HttpResponse<unknown>>>) {
   const calls: Call[] = [];
@@ -15,8 +15,10 @@ function httpDouble(handlers: Record<string, () => Promise<HttpResponse<unknown>
       const result = (await handlers[url]?.()) ?? { status: 204, data: undefined };
       return result as HttpResponse<T>;
     },
-    async post<T>(url: string, body?: unknown): Promise<HttpResponse<T>> {
-      calls.push({ method: 'post', url, body });
+    async post<T>(url: string, body?: unknown, options?: unknown): Promise<HttpResponse<T>> {
+      calls.push(options === undefined
+        ? { method: 'post', url, body }
+        : { method: 'post', url, body, options });
       const result = (await handlers[url]?.()) ?? { status: 204, data: undefined };
       return result as HttpResponse<T>;
     },
@@ -448,5 +450,92 @@ describe('auth service — native transport', () => {
     expect(result.status).toBe('unavailable');
     expect(store.removalCount()).toBe(0);
     expect(store.state.value).toBe('session.keep');
+  });
+});
+
+describe('auth service — logout', () => {
+  beforeEach(() => clearAccessToken());
+  afterEach(() => clearAccessToken());
+
+  it('logs out on web without a refresh body and marks the request as auth', async () => {
+    const { http, calls } = httpDouble({ '/auth/logout': async () => ({ status: 204, data: undefined }) });
+    const service = createAuthService({ http, store: storeDouble().store, platform: 'web' });
+    setAccessToken(ACCESS);
+
+    await expect(service.logout()).resolves.toBeUndefined();
+    expect(calls).toEqual([{
+      method: 'post',
+      url: '/auth/logout',
+      body: undefined,
+      options: { requestKind: 'auth' },
+    }]);
+    expect(getAccessToken()).toBeNull();
+  });
+
+  it('treats an invalid web session as a successful logout', async () => {
+    const { http } = httpDouble({ '/auth/logout': async () => Promise.reject(axiosError(401)) });
+    const service = createAuthService({ http, store: storeDouble().store, platform: 'web' });
+    setAccessToken(ACCESS);
+
+    await expect(service.logout()).resolves.toBeUndefined();
+
+    expect(getAccessToken()).toBeNull();
+  });
+
+  it.each([
+    ['network', axiosNetworkError(), 'network'],
+    ['server', axiosError(503), 'server'],
+  ] as const)('preserves web auth on %s logout failure', async (_label, failure, category) => {
+    const { http } = httpDouble({ '/auth/logout': async () => Promise.reject(failure) });
+    const store = storeDouble();
+    const service = createAuthService({ http, store: store.store, platform: 'web' });
+    setAccessToken(ACCESS);
+
+    await expect(service.logout()).rejects.toMatchObject({ category });
+    expect(store.removalCount()).toBe(0);
+    expect(getAccessToken()).toBe(ACCESS);
+  });
+
+  it('logs out natively with the stored refresh token before removing it', async () => {
+    const { http, calls } = httpDouble({ '/auth/native/logout': async () => ({ status: 204, data: undefined }) });
+    const store = storeDouble('native.refresh');
+    const service = createAuthService({ http, store: store.store, platform: 'android' });
+    setAccessToken(ACCESS);
+
+    await expect(service.logout()).resolves.toBeUndefined();
+    expect(calls).toEqual([{
+      method: 'post',
+      url: '/auth/native/logout',
+      body: { refreshToken: 'native.refresh' },
+      options: { requestKind: 'auth' },
+    }]);
+    expect(store.removalCount()).toBe(1);
+    expect(getAccessToken()).toBeNull();
+  });
+
+  it('treats an invalid native session as a successful logout', async () => {
+    const { http } = httpDouble({ '/auth/native/logout': async () => Promise.reject(axiosError(401)) });
+    const store = storeDouble('expired.refresh');
+    const service = createAuthService({ http, store: store.store, platform: 'ios' });
+    setAccessToken(ACCESS);
+
+    await expect(service.logout()).resolves.toBeUndefined();
+    expect(store.removalCount()).toBe(1);
+    expect(getAccessToken()).toBeNull();
+  });
+
+  it.each([
+    ['network', axiosNetworkError(), 'network'],
+    ['server', axiosError(503), 'server'],
+  ] as const)('preserves native auth on %s logout failure', async (_label, failure, category) => {
+    const { http } = httpDouble({ '/auth/native/logout': async () => Promise.reject(failure) });
+    const store = storeDouble('retry.refresh');
+    const service = createAuthService({ http, store: store.store, platform: 'ios' });
+    setAccessToken(ACCESS);
+
+    await expect(service.logout()).rejects.toMatchObject({ category });
+    expect(store.removalCount()).toBe(0);
+    expect(store.state.value).toBe('retry.refresh');
+    expect(getAccessToken()).toBe(ACCESS);
   });
 });

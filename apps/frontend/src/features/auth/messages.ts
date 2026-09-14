@@ -34,3 +34,20 @@ export function registerErrorMessage(error: unknown): string {
   if (isApiError(error)) return REGISTER_MESSAGES[error.category];
   return REGISTER_MESSAGES.unexpected;
 }
+
+const LOGOUT_MESSAGES: Record<ApiErrorCategory, string> = {
+  validation: 'Não foi possível sair agora. Sua sessão continua ativa; tente novamente.',
+  credentials: 'Não foi possível sair agora. Sua sessão continua ativa; tente novamente.',
+  conflict: 'Não foi possível sair agora. Sua sessão continua ativa; tente novamente.',
+  session: 'Não foi possível sair agora. Sua sessão continua ativa; tente novamente.',
+  network: 'Não foi possível sair agora. Sua sessão continua ativa; verifique sua conexão e tente novamente.',
+  server: 'Não foi possível sair agora. Sua sessão continua ativa; tente novamente em instantes.',
+  storage: 'Não foi possível remover a sessão deste dispositivo. Sua sessão continua ativa; tente novamente.',
+  cancelled: 'A solicitação foi cancelada. Sua sessão continua ativa; tente novamente.',
+  unexpected: 'Não foi possível confirmar a saída. Sua sessão continua ativa; tente novamente.',
+};
+
+export function logoutErrorMessage(error: unknown): string {
+  if (isApiError(error)) return LOGOUT_MESSAGES[error.category];
+  return LOGOUT_MESSAGES.unexpected;
+}

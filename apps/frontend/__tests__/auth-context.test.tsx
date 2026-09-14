@@ -10,14 +10,17 @@ import {
   type HttpResponse,
 } from '@/core/api/api-client';
 import type { AuthRegistration, AuthSession, CredentialStore, RestoreResult } from '@/core/auth/types';
-import { clearAccessToken, getAccessToken } from '@/core/api/token-memory';
+import { clearAccessToken, getAccessToken, setAccessToken } from '@/core/api/token-memory';
+
+afterEach(() => clearAccessToken());
 
 function serviceDouble(
   restore: () => Promise<RestoreResult>,
   login: (() => Promise<AuthSession>) | undefined = async () => ({ sessionId: 'session-login' }),
   register: (() => Promise<AuthSession>) | undefined = async () => ({ sessionId: 'session-register' }),
+  logout: () => Promise<void> = async () => undefined,
 ): AuthService {
-  return { restore, login, register };
+  return { restore, login, register, logout };
 }
 
 function wrapperFor(service: AuthService, queryClient?: QueryClient) {
@@ -27,6 +30,68 @@ function wrapperFor(service: AuthService, queryClient?: QueryClient) {
 }
 
 describe('AuthProvider', () => {
+  it('logs out successfully, clears protected cache and publishes anonymous', async () => {
+    const restore = jest.fn(async (): Promise<RestoreResult> => ({ status: 'authenticated', sessionId: 'session-1' }));
+    const logout = jest.fn(async () => undefined);
+    const protectedQueryClient = new QueryClient();
+    protectedQueryClient.setQueryData(['protected'], { secret: 'remove-me' });
+    setAccessToken('access-session-1');
+    const { result } = await renderHook(() => useAuth(), {
+      wrapper: wrapperFor(serviceDouble(restore, undefined, undefined, logout), protectedQueryClient),
+    });
+
+    await waitFor(() => expect(result.current.status).toBe('authenticated'));
+    await act(async () => { await result.current.logout(); });
+
+    expect(logout).toHaveBeenCalledTimes(1);
+    expect(result.current.status).toBe('anonymous');
+    expect(getAccessToken()).toBeNull();
+    expect(protectedQueryClient.getQueryData(['protected'])).toBeUndefined();
+    protectedQueryClient.clear();
+  });
+
+  it('preserves authenticated state and cache when logout fails', async () => {
+    const restore = jest.fn(async (): Promise<RestoreResult> => ({ status: 'authenticated', sessionId: 'session-1' }));
+    const logout = jest.fn(async () => { throw new ApiError('network'); });
+    const protectedQueryClient = new QueryClient();
+    protectedQueryClient.setQueryData(['protected'], { secret: 'keep-me' });
+    setAccessToken('access-session-1');
+    const { result } = await renderHook(() => useAuth(), {
+      wrapper: wrapperFor(serviceDouble(restore, undefined, undefined, logout), protectedQueryClient),
+    });
+
+    await waitFor(() => expect(result.current.status).toBe('authenticated'));
+    await act(async () => { await result.current.logout().catch(() => undefined); });
+
+    expect(result.current.status).toBe('authenticated');
+    expect(result.current.sessionId).toBe('session-1');
+    expect(protectedQueryClient.getQueryData(['protected'])).toEqual({ secret: 'keep-me' });
+    expect(getAccessToken()).toBe('access-session-1');
+    protectedQueryClient.clear();
+  });
+
+  it('shares one in-flight logout call', async () => {
+    let resolveLogout: () => void = () => undefined;
+    const logoutPromise = new Promise<void>((resolve) => { resolveLogout = resolve; });
+    const logout = jest.fn(() => logoutPromise);
+    const restore = jest.fn(async (): Promise<RestoreResult> => ({ status: 'authenticated', sessionId: 'session-1' }));
+    const { result } = await renderHook(() => useAuth(), {
+      wrapper: wrapperFor(serviceDouble(restore, undefined, undefined, logout)),
+    });
+
+    await waitFor(() => expect(result.current.status).toBe('authenticated'));
+    let first: Promise<void>;
+    let second: Promise<void>;
+    await act(async () => {
+      first = result.current.logout();
+      second = result.current.logout();
+      resolveLogout();
+      await Promise.all([first, second]);
+    });
+
+    expect(logout).toHaveBeenCalledTimes(1);
+    expect(result.current.status).toBe('anonymous');
+  });
   it('moves from restoring to authenticated using the restored session id', async () => {
     const restore = jest.fn(async (): Promise<RestoreResult> => ({ status: 'authenticated', sessionId: 'session-1' }));
     const { result } = await renderHook(() => useAuth(), { wrapper: wrapperFor(serviceDouble(restore)) });

@@ -46,6 +46,7 @@ export type AuthServiceDeps = {
 export interface AuthService {
   login(credentials: AuthCredentials): Promise<AuthSession>;
   register(registration: AuthRegistration): Promise<AuthSession>;
+  logout(): Promise<void>;
   restore(): Promise<RestoreResult>;
   /** Refreshes an existing credential; kept optional for small test adapters. */
   refresh?: () => Promise<RestoreResult>;
@@ -70,6 +71,21 @@ function nativeDeviceLabel(platform: AuthPlatform): NativeDeviceLabel {
     return NATIVE_DEVICE_LABELS[platform];
   }
   throw new ApiError('unexpected');
+}
+
+function assertLogoutResponse(status: number): void {
+  if (status >= 200 && status < 300) return;
+  if (status === 401) throw new ApiError('session', { status });
+  if (status >= 500) throw new ApiError('server', { status });
+  throw new ApiError('unexpected', { status });
+}
+
+function toLogoutApiError(error: unknown): ApiError {
+  const apiError = toApiError(error, { unauthorized: 'session' });
+  if (apiError.status === 401 && apiError.category !== 'session') {
+    return new ApiError('session', { status: apiError.status });
+  }
+  return apiError;
 }
 
 /** Melhor esforço: ao falhar a persistência segura, o token recém-emitido é revogado. */
@@ -171,6 +187,37 @@ export function createAuthService({
     await store.remove().catch(() => undefined);
   }
 
+  async function logout(): Promise<void> {
+    let refreshToken: string | null = null;
+    if (!isWeb) {
+      try {
+        refreshToken = await store.read();
+      } catch {
+        throw new ApiError('storage');
+      }
+      if (!refreshToken) {
+        clearAccessToken();
+        await store.remove().catch(() => undefined);
+        return;
+      }
+    }
+
+    try {
+      const response = await http.post(
+        isWeb ? '/auth/logout' : '/auth/native/logout',
+        isWeb ? undefined : { refreshToken },
+        { requestKind: 'auth' },
+      );
+      assertLogoutResponse(response.status);
+    } catch (error) {
+      const apiError = toLogoutApiError(error);
+      if (apiError.category !== 'session') throw apiError;
+    }
+
+    clearAccessToken();
+    if (!isWeb) await store.remove().catch(() => undefined);
+  }
+
   return {
     async register(registration: AuthRegistration): Promise<AuthSession> {
       const path = isWeb ? '/auth/register' : '/auth/native/register';
@@ -206,6 +253,7 @@ export function createAuthService({
     refresh,
     restore: refresh,
     invalidate,
+    logout,
   };
 }
 
