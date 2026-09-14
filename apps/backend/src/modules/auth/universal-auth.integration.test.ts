@@ -417,4 +417,44 @@ describe('Universal authentication security contract', () => {
       ),
     ).toBe(true);
   });
+
+  it('returns distinct conflict and backend-validation responses for registration', async () => {
+    const duplicateWeb = await post(
+      '/auth/register',
+      {
+        email: 'web-security@wise.app',
+        password: 'another-password',
+        displayName: 'Another Web',
+      },
+      { origin: 'http://localhost:8081' },
+    );
+    expect(duplicateWeb.status).toBe(409);
+
+    const invalidWeb = await post(
+      '/auth/register',
+      {
+        email: 'invalid-web@wise.app',
+        password: 'short',
+        displayName: 'Invalid Web',
+      },
+      { origin: 'http://localhost:8081' },
+    );
+    expect(invalidWeb.status).toBe(400);
+
+    const duplicateNative = await post('/auth/native/register', {
+      email: 'native-security@wise.app',
+      password: 'another-password',
+      displayName: 'Another Native',
+      deviceLabel: 'Wise Android',
+    });
+    expect(duplicateNative.status).toBe(409);
+
+    const invalidNative = await post('/auth/native/register', {
+      email: 'invalid-native@wise.app',
+      password: 'short',
+      displayName: 'Invalid Native',
+      deviceLabel: 'Wise Android',
+    });
+    expect(invalidNative.status).toBe(400);
+  });
 });

@@ -95,6 +95,32 @@ export function createAuthService({
   const runtimePlatform = resolveRuntimePlatform(platform ?? Platform.OS);
   const isWeb = runtimePlatform === 'web';
 
+  async function authenticate(
+    path: string,
+    body: Record<string, string | undefined>,
+  ): Promise<AuthSession> {
+    let payload: SessionPayload;
+    try {
+      const response = await http.post<unknown>(path, body);
+      payload = requireSessionPayload(response.data, !isWeb);
+    } catch (error) {
+      clearAccessToken();
+      throw toApiError(error, { unauthorized: 'credentials' });
+    }
+
+    if (!isWeb && payload.refreshToken) {
+      try {
+        await store.write(payload.refreshToken);
+      } catch {
+        await rollbackUnstoredRefreshToken(http, payload.refreshToken, () => store.remove());
+        throw new ApiError('storage');
+      }
+    }
+
+    setAccessToken(payload.accessToken);
+    return { sessionId: payload.sessionId };
+  }
+
   return {
     async register(registration: AuthRegistration): Promise<AuthSession> {
       const path = isWeb ? '/auth/register' : '/auth/native/register';
@@ -111,26 +137,7 @@ export function createAuthService({
             deviceLabel: nativeDeviceLabel(runtimePlatform),
           };
 
-      let payload: SessionPayload;
-      try {
-        const response = await http.post<unknown>(path, body);
-        payload = requireSessionPayload(response.data, !isWeb);
-      } catch (error) {
-        clearAccessToken();
-        throw toApiError(error, { unauthorized: 'credentials' });
-      }
-
-      if (!isWeb && payload.refreshToken) {
-        try {
-          await store.write(payload.refreshToken);
-        } catch {
-          await rollbackUnstoredRefreshToken(http, payload.refreshToken, () => store.remove());
-          throw new ApiError('unexpected');
-        }
-      }
-
-      setAccessToken(payload.accessToken);
-      return { sessionId: payload.sessionId };
+      return authenticate(path, body);
     },
 
     async login(credentials: AuthCredentials): Promise<AuthSession> {
@@ -143,26 +150,7 @@ export function createAuthService({
             deviceLabel: nativeDeviceLabel(runtimePlatform),
           };
 
-      let payload: SessionPayload;
-      try {
-        const response = await http.post<unknown>(path, body);
-        payload = requireSessionPayload(response.data, !isWeb);
-      } catch (error) {
-        clearAccessToken();
-        throw toApiError(error, { unauthorized: 'credentials' });
-      }
-
-      if (!isWeb && payload.refreshToken) {
-        try {
-          await store.write(payload.refreshToken);
-        } catch {
-          await rollbackUnstoredRefreshToken(http, payload.refreshToken, () => store.remove());
-          throw new ApiError('unexpected');
-        }
-      }
-
-      setAccessToken(payload.accessToken);
-      return { sessionId: payload.sessionId };
+      return authenticate(path, body);
     },
 
     async restore(): Promise<RestoreResult> {
@@ -181,7 +169,7 @@ export function createAuthService({
       try {
         stored = await store.read();
       } catch {
-        return { status: 'unavailable', error: new ApiError('unexpected') };
+        return { status: 'unavailable', error: new ApiError('storage') };
       }
       if (!stored) {
         clearAccessToken();
@@ -197,7 +185,7 @@ export function createAuthService({
           await store.write(data.refreshToken!);
         } catch {
           await rollbackUnstoredRefreshToken(http, data.refreshToken!, () => store.remove());
-          return { status: 'anonymous' };
+          return { status: 'unavailable', error: new ApiError('storage') };
         }
         setAccessToken(data.accessToken);
         return { status: 'authenticated', sessionId: data.sessionId };

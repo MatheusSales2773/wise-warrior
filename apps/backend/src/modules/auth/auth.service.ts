@@ -45,6 +45,20 @@ type RefreshResult =
   | { kind: 'invalid'; reason: 'missing' | 'expired' | 'unknown' | 'user' }
   | { kind: 'replay' };
 
+type RegistrationInput = Pick<RegisterDto, 'email' | 'password' | 'displayName'>;
+
+function isDuplicateKeyError(error: unknown): boolean {
+  if (typeof error !== 'object' || error === null) return false;
+  const candidate = error as {
+    code?: unknown;
+    errno?: unknown;
+    driverError?: { code?: unknown; errno?: unknown };
+  };
+  return [candidate, candidate.driverError].some(
+    (value) => value?.code === 'ER_DUP_ENTRY' || value?.errno === 1062,
+  );
+}
+
 @Injectable()
 export class AuthService {
   constructor(
@@ -66,28 +80,40 @@ export class AuthService {
     return days * 24 * 60 * 60 * 1000;
   }
 
-  async register(
-    dto: Omit<RegisterDto, 'deviceLabel'> & { deviceLabel?: DeviceLabel },
-  ): Promise<User> {
-    const existing = await this.users.findOne({ where: { email: dto.email } });
-    if (existing) {
-      throw new ConflictException('E-mail já cadastrado');
-    }
-
+  async register(dto: RegistrationInput, device: DeviceMetadata): Promise<AuthTokens> {
     const passwordHash = await argon2.hash(dto.password, { type: argon2.argon2id });
-    const user = await this.users.save(
-      this.users.create({
-        email: dto.email,
-        passwordHash,
-        displayName: dto.displayName,
-        planTier: 'free',
-      }),
-    );
-    await this.characters.save(
-      this.characters.create({ userId: user.id, level: 1, xpTotal: 0 }),
-    );
+    return this.dataSource.transaction(async (transactionalEntityManager) => {
+      const users = transactionalEntityManager.getRepository(User);
+      const characters = transactionalEntityManager.getRepository(Character);
+      const sessions = transactionalEntityManager.getRepository(Session);
+      const existing = await users.findOne({ where: { email: dto.email } });
+      if (existing) {
+        throw new ConflictException('E-mail já cadastrado');
+      }
 
-    return user;
+      let user: User;
+      try {
+        user = await users.save(
+          users.create({
+            email: dto.email,
+            passwordHash,
+            displayName: dto.displayName,
+            planTier: 'free',
+          }),
+        );
+      } catch (error) {
+        if (isDuplicateKeyError(error)) {
+          throw new ConflictException('E-mail já cadastrado');
+        }
+        throw error;
+      }
+
+      await characters.save(
+        characters.create({ userId: user.id, level: 1, xpTotal: 0 }),
+      );
+
+      return this.issueSessionWithRepository(user, device, sessions);
+    });
   }
 
   async validateCredentials(email: string, password: string): Promise<User> {
@@ -104,12 +130,20 @@ export class AuthService {
 
   /** Cria uma nova sessão persistente por dispositivo (ADR-009), sem invalidar as demais. */
   async issueSession(user: User, device: DeviceMetadata): Promise<AuthTokens> {
-    await this.enforceSessionLimit(user.id);
+    return this.issueSessionWithRepository(user, device, this.sessions);
+  }
+
+  private async issueSessionWithRepository(
+    user: User,
+    device: DeviceMetadata,
+    sessions: Repository<Session>,
+  ): Promise<AuthTokens> {
+    await this.enforceSessionLimit(user.id, sessions);
 
     const secret = randomToken();
     const now = new Date();
-    const session = await this.sessions.save(
-      this.sessions.create({
+    const session = await sessions.save(
+      sessions.create({
         userId: user.id,
         refreshTokenHash: sha256Hex(secret),
         deviceLabel: device.deviceLabel,
@@ -126,15 +160,18 @@ export class AuthService {
     };
   }
 
-  private async enforceSessionLimit(userId: string): Promise<void> {
-    const active = await this.sessions.find({
+  private async enforceSessionLimit(
+    userId: string,
+    sessions: Repository<Session> = this.sessions,
+  ): Promise<void> {
+    const active = await sessions.find({
       where: { userId, revokedAt: IsNull() },
       order: { lastUsedAt: 'ASC' },
     });
     const overLimit = active.length - this.maxSessionsPerUser + 1;
     if (overLimit > 0) {
       const toRevoke = active.slice(0, overLimit);
-      await this.sessions.save(
+      await sessions.save(
         toRevoke.map((session) => ({ ...session, revokedAt: new Date() })),
       );
     }

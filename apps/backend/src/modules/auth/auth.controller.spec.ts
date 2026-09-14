@@ -94,11 +94,7 @@ describe('AuthController Web contract', () => {
 
   it('defaults the Web register label to a predictable non-sensitive value', async () => {
     const auth = {
-      register: jest.fn().mockResolvedValue({
-        id: 'user-1',
-        email: 'user@example.com',
-      }),
-      issueSession: jest.fn().mockResolvedValue(tokens),
+      register: jest.fn().mockResolvedValue(tokens),
     };
     const controller = new AuthController(auth as unknown as AuthService);
     const res = response();
@@ -117,11 +113,7 @@ describe('AuthController Web contract', () => {
       email: 'user@example.com',
       password: 'super-secret',
       displayName: 'Hero',
-    });
-    expect(auth.issueSession).toHaveBeenCalledWith(
-      { id: 'user-1', email: 'user@example.com' },
-      { deviceLabel: 'Wise Web', userAgent: undefined },
-    );
+    }, { deviceLabel: 'Wise Web', userAgent: undefined });
     expect(body).toEqual({
       accessToken: tokens.accessToken,
       sessionId: tokens.sessionId,

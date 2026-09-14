@@ -20,9 +20,9 @@ function serviceDouble(register: () => Promise<AuthSession>): AuthService {
   };
 }
 
-function renderRegister(service: AuthService) {
+function renderRegister(service: AuthService, initialMetrics = metrics) {
   return render(
-    <SafeAreaProvider initialMetrics={metrics}>
+    <SafeAreaProvider initialMetrics={initialMetrics}>
       <AuthProvider service={service}>
         <RegisterForm />
       </AuthProvider>
@@ -43,6 +43,21 @@ describe('RegisterForm', () => {
     expect(screen.getByRole('link', { name: 'Já tem uma conta? Entre na batalha' })).toBeTruthy();
   });
 
+  it('keeps the registration composition available inside a compact safe area', async () => {
+    await renderRegister(
+      serviceDouble(async () => ({ sessionId: 'session-register' })),
+      {
+        frame: { x: 0, y: 0, width: 320, height: 568 },
+        insets: { top: 24, left: 0, right: 0, bottom: 34 },
+      },
+    );
+
+    expect(screen.getByLabelText('Nome do guerreiro')).toBeTruthy();
+    expect(screen.getByLabelText('Confirmar senha')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Criar personagem' })).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'Já tem uma conta? Entre na batalha' })).toBeTruthy();
+  });
+
   it('validates locally, focuses the first invalid field and never calls register', async () => {
     const register = jest.fn(async (): Promise<AuthSession> => ({ sessionId: 'session-register' }));
     const focus = jest.spyOn(TextInput.prototype, 'focus');
@@ -55,7 +70,7 @@ describe('RegisterForm', () => {
     expect(screen.getByText('Informe sua senha.')).toBeTruthy();
     expect(screen.getByText('Confirme sua senha.')).toBeTruthy();
     expect(register).not.toHaveBeenCalled();
-    expect(focus).toHaveBeenCalled();
+    expect(focus).toHaveBeenCalledTimes(1);
     focus.mockRestore();
   });
 
@@ -110,6 +125,22 @@ describe('RegisterForm', () => {
     expect(screen.getByLabelText('Nome do guerreiro').props.value).toBe('Aria');
     expect(screen.getByLabelText('E-mail').props.value).toBe('aria@wise.app');
     expect(screen.getByLabelText('Senha').props.value).toBe('secret123');
+  });
+
+  it('announces when the account exists but the device cannot save its session', async () => {
+    const register = jest.fn(async (): Promise<AuthSession> => {
+      throw new ApiError('storage');
+    });
+    await renderRegister(serviceDouble(register));
+
+    await fireEvent.changeText(screen.getByLabelText('Nome do guerreiro'), 'Aria');
+    await fireEvent.changeText(screen.getByLabelText('E-mail'), 'aria@wise.app');
+    await fireEvent.changeText(screen.getByLabelText('Senha'), 'secret123');
+    await fireEvent.changeText(screen.getByLabelText('Confirmar senha'), 'secret123');
+    await fireEvent.press(screen.getByRole('button', { name: 'Criar personagem' }));
+
+    await waitFor(() => expect(screen.getByText(/conta foi criada/i)).toBeTruthy());
+    expect(screen.getByText(/salvar a sessão neste dispositivo/i)).toBeTruthy();
   });
 
   it('moves through the fields with the keyboard and submits from the confirmation field', async () => {

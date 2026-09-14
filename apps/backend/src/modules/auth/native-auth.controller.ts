@@ -28,9 +28,9 @@ export class NativeAuthController {
   @Post('register')
   @HttpCode(HttpStatus.CREATED)
   async register(@Body() dto: NativeRegisterDto, @Req() req: Request) {
-    const user = await this.auth.register(dto);
-    return this.auth.issueSession(user, {
-      deviceLabel: dto.deviceLabel,
+    const { deviceLabel, ...registration } = dto;
+    return this.auth.register(registration, {
+      deviceLabel,
       userAgent: req.headers['user-agent'],
     });
   }

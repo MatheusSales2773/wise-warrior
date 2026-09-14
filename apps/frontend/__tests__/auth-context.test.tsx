@@ -159,6 +159,19 @@ describe('AuthProvider', () => {
     expect(register).toHaveBeenCalledWith(registration);
     expect(result.current.status).toBe('authenticated');
     expect(result.current.sessionId).toBe('session-register');
+
+    const failing = jest.fn(async (): Promise<AuthSession> => {
+      throw new ApiError('storage');
+    });
+    const second = await renderHook(() => useAuth(), {
+      wrapper: wrapperFor(serviceDouble(restore, undefined, failing)),
+    });
+    await waitFor(() => expect(second.result.current.status).toBe('anonymous'));
+    await act(async () => {
+      await second.result.current.register(registration).catch(() => undefined);
+    });
+    expect(second.result.current.status).toBe('anonymous');
+    expect(second.result.current.sessionId).toBeNull();
   });
 
   it('ignores a restore result that arrives after unmount', async () => {

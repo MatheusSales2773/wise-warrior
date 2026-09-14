@@ -18,8 +18,7 @@ function request(userAgent = 'wise-ios/1.0'): Request {
 describe('NativeAuthController contract', () => {
   it('registers and returns the rotating credential trio in the body', async () => {
     const auth = {
-      register: jest.fn().mockResolvedValue({ id: 'user-1', email: 'a@b.com' }),
-      issueSession: jest.fn().mockResolvedValue(tokens),
+      register: jest.fn().mockResolvedValue(tokens),
     };
     const controller = new NativeAuthController(auth as unknown as AuthService);
     const dto: NativeRegisterDto = {
@@ -31,11 +30,11 @@ describe('NativeAuthController contract', () => {
 
     const result = await controller.register(dto, request());
 
-    expect(auth.register).toHaveBeenCalledWith(dto);
-    expect(auth.issueSession).toHaveBeenCalledWith(
-      { id: 'user-1', email: 'a@b.com' },
-      { deviceLabel: 'Wise iOS', userAgent: 'wise-ios/1.0' },
-    );
+    expect(auth.register).toHaveBeenCalledWith({
+      email: dto.email,
+      password: dto.password,
+      displayName: dto.displayName,
+    }, { deviceLabel: 'Wise iOS', userAgent: 'wise-ios/1.0' });
     expect(result).toEqual(tokens);
   });
 

@@ -1,7 +1,9 @@
-import { UnauthorizedException } from '@nestjs/common';
+import { ConflictException, UnauthorizedException } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { Session } from './entities/session.entity';
 import { RefreshTokenHistory } from './entities/refresh-token-history.entity';
+import { User } from '../users/entities/user.entity';
+import { Character } from '../progression/entities/character.entity';
 import { sha256Hex } from '../../shared/security/hash.util';
 
 function session(overrides: Partial<Session> = {}): Session {
@@ -344,38 +346,110 @@ describe('AuthService.issueSession', () => {
 });
 
 describe('AuthService.register', () => {
-  it('persists only an argon2 hash of the password, never the plaintext', async () => {
+  function registrationService(overrides: {
+    userSave?: jest.Mock;
+    characterSave?: jest.Mock;
+    sessionSave?: jest.Mock;
+  } = {}) {
     const users = {
       findOne: jest.fn().mockResolvedValue(null),
       create: jest.fn((value: Record<string, unknown>) => ({
         id: 'user-1',
         ...value,
       })),
-      save: jest.fn(async (value: unknown) => value),
+      save: overrides.userSave ?? jest.fn(async (value: unknown) => value),
     };
     const characters = {
       create: jest.fn((value: Record<string, unknown>) => value),
-      save: jest.fn(async (value: unknown) => value),
+      save: overrides.characterSave ?? jest.fn(async (value: unknown) => value),
+    };
+    const sessions = {
+      find: jest.fn().mockResolvedValue([]),
+      create: jest.fn((value: Record<string, unknown>) => ({ id: 'session-1', ...value })),
+      save: overrides.sessionSave ?? jest.fn(async (value: unknown) => value),
+    };
+    const manager = {
+      getRepository: jest.fn((entity: unknown) => {
+        if (entity === User) return users;
+        if (entity === Character) return characters;
+        return sessions;
+      }),
+    };
+    const dataSource = {
+      transaction: jest.fn(async (callback: (transactionManager: typeof manager) => unknown) =>
+        callback(manager),
+      ),
+    };
+    const jwt = { sign: jest.fn(() => 'access-token') };
+    const config = {
+      get: jest.fn((key: string) => {
+        if (key === 'JWT_ACCESS_SECRET') return 'access-secret';
+        if (key === 'MAX_SESSIONS_PER_USER') return 5;
+        return undefined;
+      }),
     };
     const service = new AuthService(
       users as never,
       characters as never,
-      {} as never,
-      {} as never,
-      {} as never,
-      {} as never,
+      sessions as never,
+      jwt as never,
+      config as never,
+      dataSource as never,
     );
 
-    const user = await service.register({
+    return { service, users, characters, sessions, dataSource };
+  }
+
+  it('persists User, Character and Session atomically with only a password hash', async () => {
+    const { service, users, characters, sessions, dataSource } = registrationService();
+
+    const tokens = await service.register({
       email: 'hero@wise.app',
       password: 'super-secret',
       displayName: 'Hero',
-      deviceLabel: 'Wise Web',
-    });
+    }, { deviceLabel: 'Wise Web', userAgent: 'wise-web' });
 
     const persisted = users.save.mock.calls[0]![0] as Record<string, unknown>;
     expect(persisted.passwordHash).not.toBe('super-secret');
     expect(String(persisted.passwordHash)).toMatch(/^\$argon2id\$/);
-    expect(JSON.stringify(user)).not.toContain('super-secret');
+    expect(JSON.stringify(persisted)).not.toContain('super-secret');
+    expect(characters.save).toHaveBeenCalledWith({ userId: 'user-1', level: 1, xpTotal: 0 });
+    expect(sessions.save).toHaveBeenCalledWith(
+      expect.objectContaining({ userId: 'user-1', deviceLabel: 'Wise Web' }),
+    );
+    expect(tokens).toEqual({
+      accessToken: 'access-token',
+      refreshToken: expect.stringMatching(/^session-1\.[a-f0-9]{64}$/),
+      sessionId: 'session-1',
+    });
+    expect(dataSource.transaction).toHaveBeenCalledTimes(1);
+  });
+
+  it('maps a concurrent unique-email race to a conflict', async () => {
+    const userSave = jest.fn().mockRejectedValue({ code: 'ER_DUP_ENTRY', errno: 1062 });
+    const { service } = registrationService({ userSave });
+
+    await expect(
+      service.register({
+        email: 'hero@wise.app',
+        password: 'super-secret',
+        displayName: 'Hero',
+      }, { deviceLabel: 'Wise Web' }),
+    ).rejects.toBeInstanceOf(ConflictException);
+  });
+
+  it('propagates character persistence failures so the transaction can roll back', async () => {
+    const persistenceError = new Error('character database unavailable');
+    const characterSave = jest.fn().mockRejectedValue(persistenceError);
+    const { service, sessions } = registrationService({ characterSave });
+
+    await expect(
+      service.register({
+        email: 'hero@wise.app',
+        password: 'super-secret',
+        displayName: 'Hero',
+      }, { deviceLabel: 'Wise Web' }),
+    ).rejects.toBe(persistenceError);
+    expect(sessions.create).not.toHaveBeenCalled();
   });
 });

@@ -60,7 +60,7 @@ describe('Auth HTTP transport contract', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    auth.register.mockResolvedValue({ id: 'user-1', email: 'hero@wise.app' });
+    auth.register.mockResolvedValue(tokens);
     auth.validateCredentials.mockResolvedValue({
       id: 'user-1',
       email: 'hero@wise.app',
@@ -137,13 +137,18 @@ describe('Auth HTTP transport contract', () => {
 
     expect(response.status).toBe(201);
     expect(response.headers.get('set-cookie')).toBeNull();
-    expect(auth.issueSession).toHaveBeenCalledWith(
-      { id: 'user-1', email: 'hero@wise.app' },
+    expect(auth.register).toHaveBeenCalledWith(
+      {
+        email: 'hero@wise.app',
+        password: 'super-secret',
+        displayName: 'Hero',
+      },
       expect.objectContaining({
         deviceLabel: 'Wise iOS',
         userAgent: expect.any(String),
       }),
     );
+    expect(auth.issueSession).not.toHaveBeenCalled();
     const account = await response.json();
     expect(account).toEqual(tokens);
     expect(account).toHaveProperty('refreshToken');

@@ -28,9 +28,9 @@ export class AuthController {
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ) {
-    const user = await this.auth.register(dto);
-    const tokens = await this.auth.issueSession(user, {
-      deviceLabel: dto.deviceLabel ?? DEVICE_LABELS.web,
+    const { deviceLabel, ...registration } = dto;
+    const tokens = await this.auth.register(registration, {
+      deviceLabel: deviceLabel ?? DEVICE_LABELS.web,
       userAgent: req.headers['user-agent'],
     });
     return this.attachRefreshCookie(tokens, res);

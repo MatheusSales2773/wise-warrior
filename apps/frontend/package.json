@@ -13,6 +13,7 @@
     "build": "expo export --platform web",
     "export:bundles": "expo export --platform all",
     "lint": "expo lint",
+    "pretypecheck": "expo customize tsconfig.json",
     "typecheck": "tsc --noEmit",
     "expo:check": "expo install --check",
     "expo:doctor": "expo-doctor",

@@ -244,7 +244,7 @@ describe('auth service — native transport', () => {
 
     await expect(
       service.register({ displayName: 'Aria', email: 'aria@wise.app', password: 'correct horse battery staple' }),
-    ).rejects.toMatchObject({ category: 'unexpected' });
+    ).rejects.toMatchObject({ category: 'storage' });
 
     expect(calls).toContainEqual({
       method: 'post',
@@ -343,7 +343,7 @@ describe('auth service — native transport', () => {
     const service = createAuthService({ http, store: store.store, platform: 'ios' });
 
     await expect(service.login({ email: 'a@b.co', password: 'x' })).rejects.toMatchObject({
-      category: 'unexpected',
+      category: 'storage',
     });
     expect(calls).toContainEqual({
       method: 'post',
@@ -369,7 +369,7 @@ describe('auth service — native transport', () => {
 
     const result = await service.restore();
 
-    expect(result).toMatchObject({ status: 'unavailable' });
+    expect(result).toMatchObject({ status: 'unavailable', error: { category: 'storage' } });
     expect(getAccessToken()).toBeNull();
   });
 
@@ -405,7 +405,10 @@ describe('auth service — native transport', () => {
     store.state.failWrite = true;
     const service = createAuthService({ http, store: store.store, platform: 'android' });
 
-    await expect(service.restore()).resolves.toEqual({ status: 'anonymous' });
+    await expect(service.restore()).resolves.toEqual({
+      status: 'unavailable',
+      error: expect.objectContaining({ category: 'storage' }),
+    });
     expect(calls).toContainEqual({
       method: 'post',
       url: '/auth/native/logout',

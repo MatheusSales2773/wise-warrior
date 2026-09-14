@@ -11,6 +11,7 @@ export type ApiErrorCategory =
   | 'session'
   | 'network'
   | 'server'
+  | 'storage'
   | 'unexpected';
 
 const RETRYABLE: ReadonlySet<ApiErrorCategory> = new Set(['network', 'server']);

@@ -10,9 +10,7 @@ type AuthNavigationLinkProps = {
 export function AuthNavigationLink({ href, label }: AuthNavigationLinkProps) {
   return (
     <Link
-      // Expo's generated route declaration is refreshed by Metro and can lag
-      // behind a newly added route during a standalone typecheck.
-      href={href as never}
+      href={href}
       asChild
     >
       <Pressable accessibilityLabel={label} accessibilityRole="link" style={styles.link}>
