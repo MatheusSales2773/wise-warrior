@@ -453,8 +453,17 @@ describe('Universal authentication security contract', () => {
     );
     expect(invalidWeb.status).toBe(400);
 
+    const nativeFixtureEmail = 'registration-native-errors@wise.app';
+    const nativeFixture = await post('/auth/native/register', {
+      email: nativeFixtureEmail,
+      password: 'fixture-password',
+      displayName: 'Native Registration Fixture',
+      deviceLabel: 'Wise Android',
+    });
+    expect(nativeFixture.status).toBe(201);
+
     const duplicateNative = await post('/auth/native/register', {
-      email: 'native-security@wise.app',
+      email: nativeFixtureEmail,
       password: 'another-password',
       displayName: 'Another Native',
       deviceLabel: 'Wise Android',
