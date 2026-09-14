@@ -419,10 +419,22 @@ describe('Universal authentication security contract', () => {
   });
 
   it('returns distinct conflict and backend-validation responses for registration', async () => {
+    const fixtureEmail = 'registration-errors@wise.app';
+    const fixture = await post(
+      '/auth/register',
+      {
+        email: fixtureEmail,
+        password: 'fixture-password',
+        displayName: 'Registration Fixture',
+      },
+      { origin: 'http://localhost:8081' },
+    );
+    expect(fixture.status).toBe(201);
+
     const duplicateWeb = await post(
       '/auth/register',
       {
-        email: 'web-security@wise.app',
+        email: fixtureEmail,
         password: 'another-password',
         displayName: 'Another Web',
       },
@@ -456,5 +468,91 @@ describe('Universal authentication security contract', () => {
       deviceLabel: 'Wise Android',
     });
     expect(invalidNative.status).toBe(400);
+  });
+
+  it('maps concurrent registration races to one success and one conflict', async () => {
+    const email = 'registration-race@wise.app';
+    const responses = await Promise.all([
+      post(
+        '/auth/register',
+        { email, password: 'race-password-1', displayName: 'Race One' },
+        { origin: 'http://localhost:8081' },
+      ),
+      post(
+        '/auth/register',
+        { email, password: 'race-password-2', displayName: 'Race Two' },
+        { origin: 'http://localhost:8081' },
+      ),
+    ]);
+
+    expect(responses.map((response) => response.status).sort()).toEqual([201, 409]);
+    const userRows = (await dataSource!.query(
+      `SELECT id FROM ${identifier(databaseName!)}.users WHERE email = ?`,
+      [email],
+    )) as Row[];
+    expect(userRows).toHaveLength(1);
+    const characterRows = (await dataSource!.query(
+      `SELECT characters.id
+       FROM ${identifier(databaseName!)}.characters AS characters
+       INNER JOIN ${identifier(databaseName!)}.users AS users
+         ON users.id = characters.user_id
+       WHERE users.email = ?`,
+      [email],
+    )) as Row[];
+    const sessionRows = (await dataSource!.query(
+      `SELECT sessions.id
+       FROM ${identifier(databaseName!)}.sessions AS sessions
+       INNER JOIN ${identifier(databaseName!)}.users AS users
+         ON users.id = sessions.user_id
+       WHERE users.email = ?`,
+      [email],
+    )) as Row[];
+    expect(characterRows).toHaveLength(1);
+    expect(sessionRows).toHaveLength(1);
+  });
+
+  it('rolls back User, Character and Session when character persistence fails', async () => {
+    const email = 'registration-rollback@wise.app';
+    const triggerName = `wise_registration_fail_${process.pid}`;
+    await dataSource!.query(
+      `CREATE TRIGGER \`${triggerName}\`
+       BEFORE INSERT ON ${identifier(databaseName!)}.characters
+       FOR EACH ROW SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'forced registration failure'`,
+    );
+
+    try {
+      const response = await post(
+        '/auth/register',
+        { email, password: 'rollback-password', displayName: 'Rollback' },
+        { origin: 'http://localhost:8081' },
+      );
+      expect(response.status).toBe(500);
+
+      const userRows = (await dataSource!.query(
+        `SELECT id FROM ${identifier(databaseName!)}.users WHERE email = ?`,
+        [email],
+      )) as Row[];
+      const characterRows = (await dataSource!.query(
+        `SELECT characters.id
+         FROM ${identifier(databaseName!)}.characters AS characters
+         INNER JOIN ${identifier(databaseName!)}.users AS users
+           ON users.id = characters.user_id
+         WHERE users.email = ?`,
+        [email],
+      )) as Row[];
+      const sessionRows = (await dataSource!.query(
+        `SELECT sessions.id
+         FROM ${identifier(databaseName!)}.sessions AS sessions
+         INNER JOIN ${identifier(databaseName!)}.users AS users
+           ON users.id = sessions.user_id
+         WHERE users.email = ?`,
+        [email],
+      )) as Row[];
+      expect(userRows).toHaveLength(0);
+      expect(characterRows).toHaveLength(0);
+      expect(sessionRows).toHaveLength(0);
+    } finally {
+      await dataSource!.query(`DROP TRIGGER IF EXISTS \`${triggerName}\``);
+    }
   });
 });

@@ -1,6 +1,6 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
-import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { TextInput } from 'react-native';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { ApiError } from '@/core/api/api-error';
 import { AuthProvider } from '@/core/auth/auth-context';
 import type { AuthService } from '@/core/auth/auth-service';
@@ -44,7 +44,7 @@ describe('RegisterForm', () => {
   });
 
   it('keeps the registration composition available inside a compact safe area', async () => {
-    await renderRegister(
+    const rendered = await renderRegister(
       serviceDouble(async () => ({ sessionId: 'session-register' })),
       {
         frame: { x: 0, y: 0, width: 320, height: 568 },
@@ -52,10 +52,21 @@ describe('RegisterForm', () => {
       },
     );
 
-    expect(screen.getByLabelText('Nome do guerreiro')).toBeTruthy();
-    expect(screen.getByLabelText('Confirmar senha')).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Criar personagem' })).toBeTruthy();
-    expect(screen.getByRole('link', { name: 'Já tem uma conta? Entre na batalha' })).toBeTruthy();
+    expect(rendered.getByLabelText('Nome do guerreiro')).toBeTruthy();
+    expect(rendered.getByLabelText('Confirmar senha')).toBeTruthy();
+    expect(rendered.getByRole('button', { name: 'Criar personagem' })).toBeTruthy();
+    expect(rendered.getByRole('link', { name: 'Já tem uma conta? Entre na batalha' })).toBeTruthy();
+    const root = rendered.root;
+    if (!root) throw new Error('Registration shell did not render a root host element');
+    const scroll = root.queryAll(
+      (instance) => instance.props.keyboardShouldPersistTaps === 'handled',
+    )[0];
+    const safeArea = root.queryAll(
+      (instance) => instance.type === 'RNCSafeAreaView',
+    )[0];
+    if (!safeArea || !scroll) throw new Error('Registration shell lost its safe-area or scroll container');
+    expect(scroll.props.keyboardShouldPersistTaps).toBe('handled');
+    expect(scroll.props.keyboardDismissMode).toBe('interactive');
   });
 
   it('validates locally, focuses the first invalid field and never calls register', async () => {
