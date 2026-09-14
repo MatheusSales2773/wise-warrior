@@ -10,6 +10,7 @@ import {
   type HttpResponse,
 } from '@/core/api/api-client';
 import type { AuthRegistration, AuthSession, CredentialStore, RestoreResult } from '@/core/auth/types';
+import { clearAccessToken, getAccessToken } from '@/core/api/token-memory';
 
 function serviceDouble(
   restore: () => Promise<RestoreResult>,
@@ -238,6 +239,90 @@ describe('AuthProvider', () => {
     await waitFor(() => expect(result.current.status).toBe('anonymous'));
     expect(refreshes).toBe(2);
     expect(protectedQueryClient.getQueryData(['protected'])).toBeUndefined();
+  });
+
+  it('invalidates the credential and protected cache when the replay remains unauthorized', async () => {
+    let refreshes = 0;
+    const authHttp: HttpClient = {
+      get: async <T,>() => ({ status: 204, data: undefined as T }),
+      post: async <T,>(url: string) => {
+        if (url !== '/auth/refresh') return { status: 204, data: undefined as T };
+        refreshes += 1;
+        return {
+          status: 200,
+          data: { accessToken: `access-${refreshes}`, sessionId: 'session-1' } as T,
+        };
+      },
+    };
+    const remove = jest.fn(async () => undefined);
+    const store: CredentialStore = {
+      read: async () => null,
+      write: async () => undefined,
+      remove,
+    };
+    const service = createAuthService({ http: authHttp, store, platform: 'web' });
+    const protectedQueryClient = new QueryClient();
+    protectedQueryClient.setQueryData(['protected'], { secret: 'do-not-keep' });
+    const productHttp = createSessionAwareHttpClient({
+      get: async () => {
+        throw { isAxiosError: true, response: { status: 401, data: {} } };
+      },
+      post: async <T,>() => ({ status: 204, data: undefined as T }),
+    });
+    const { result } = await renderHook(() => useAuth(), {
+      wrapper: wrapperFor(service, protectedQueryClient),
+    });
+    await waitFor(() => expect(result.current.status).toBe('authenticated'));
+    expect(getAccessToken()).toBe('access-1');
+
+    await act(async () => {
+      await productHttp.get('/perfil').catch(() => undefined);
+    });
+
+    await waitFor(() => expect(result.current.status).toBe('anonymous'));
+    expect(refreshes).toBe(2);
+    expect(remove).toHaveBeenCalledTimes(1);
+    expect(getAccessToken()).toBeNull();
+    expect(protectedQueryClient.getQueryData(['protected'])).toBeUndefined();
+    protectedQueryClient.clear();
+    clearAccessToken();
+  });
+
+  it('does not replay a pending request from the previous session after login', async () => {
+    const restore = jest.fn(async (): Promise<RestoreResult> => ({
+      status: 'authenticated',
+      sessionId: 'session-a',
+    }));
+    const login = jest.fn(async (): Promise<AuthSession> => ({ sessionId: 'session-b' }));
+    let rejectInitialRequest: (error: unknown) => void = () => undefined;
+    const initialRequest = new Promise<HttpResponse<unknown>>((_, reject) => {
+      rejectInitialRequest = reject;
+    });
+    let requests = 0;
+    const productHttp = createSessionAwareHttpClient({
+      get: async <T,>() => {
+        requests += 1;
+        if (requests === 1) return initialRequest as Promise<HttpResponse<T>>;
+        return { status: 200, data: 'must-not-replay' as T };
+      },
+      post: async <T,>() => ({ status: 204, data: undefined as T }),
+    });
+    const { result } = await renderHook(() => useAuth(), {
+      wrapper: wrapperFor(serviceDouble(restore, login)),
+    });
+    await waitFor(() => expect(result.current.sessionId).toBe('session-a'));
+
+    const request = productHttp.get('/perfil');
+    await act(async () => {
+      await result.current.login({ email: 'a@b.co', password: 'correct' });
+    });
+    expect(result.current.sessionId).toBe('session-b');
+    rejectInitialRequest({ isAxiosError: true, response: { status: 401, data: {} } });
+
+    await expect(request).rejects.toMatchObject({ category: 'session', status: 401 });
+    expect(requests).toBe(1);
+    expect(result.current.status).toBe('authenticated');
+    expect(result.current.sessionId).toBe('session-b');
   });
 
   it('preserves the protected cache and exposes retryable state when refresh is unavailable', async () => {

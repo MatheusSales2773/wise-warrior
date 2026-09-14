@@ -49,6 +49,8 @@ export interface AuthService {
   restore(): Promise<RestoreResult>;
   /** Refreshes an existing credential; kept optional for small test adapters. */
   refresh?: () => Promise<RestoreResult>;
+  /** Discards the local credential after a terminal protected-request failure. */
+  invalidate?: () => Promise<void>;
 }
 
 const NATIVE_DEVICE_LABELS: Record<NativeAuthPlatform, NativeDeviceLabel> = {
@@ -164,6 +166,11 @@ export function createAuthService({
     }
   }
 
+  async function invalidate(): Promise<void> {
+    clearAccessToken();
+    await store.remove().catch(() => undefined);
+  }
+
   return {
     async register(registration: AuthRegistration): Promise<AuthSession> {
       const path = isWeb ? '/auth/register' : '/auth/native/register';
@@ -198,6 +205,7 @@ export function createAuthService({
 
     refresh,
     restore: refresh,
+    invalidate,
   };
 }
 

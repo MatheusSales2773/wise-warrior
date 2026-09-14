@@ -2,11 +2,10 @@ import {
   CanceledError,
   create,
   isAxiosError,
-  isCancel,
 } from 'axios';
 import { Platform } from 'react-native';
 import { getPublicApiUrl } from '@/config/environment';
-import { ApiError, isApiError, toApiError } from './api-error';
+import { ApiError, isApiError, isCancelled, toApiError } from './api-error';
 import { getAccessToken } from './token-memory';
 
 export type HttpResponse<T> = {
@@ -17,11 +16,7 @@ export type HttpResponse<T> = {
 export type HttpRequestOptions = {
   signal?: AbortSignal;
   /** Requests marked as auth/public never start the session recovery flow. */
-  requestKind?: 'protected' | 'auth' | 'public';
-  /** Internal marker carried by the one allowed replay of a protected request. */
-  replayed?: boolean;
-  /** Explicit escape hatch for callers that cannot use requestKind. */
-  skipAuthenticationRecovery?: boolean;
+  requestKind?: 'auth' | 'public';
 };
 
 /** Fronteira mínima consumida pelo domínio de auth; facilita testes e troca do transporte. */
@@ -44,16 +39,62 @@ export type AuthenticationRecoveryResult =
   | { status: 'anonymous' }
   | { status: 'unavailable'; error: ApiError };
 
+export type AuthenticationSnapshot = {
+  sessionId: string | null;
+  identityGeneration: number;
+};
+
 type AuthenticationRecovery = () => Promise<AuthenticationRecoveryResult | boolean>;
+export type AuthenticationInvalidation = () => Promise<void> | void;
+export type AuthenticationSnapshotReader = () => AuthenticationSnapshot;
 
 let authenticationRecovery: AuthenticationRecovery | null = null;
 let recoveryInFlight: Promise<AuthenticationRecoveryResult> | null = null;
+let authenticationInvalidation: AuthenticationInvalidation | null = null;
+let invalidationInFlight: Promise<void> | null = null;
+let invalidatedAuthenticationKey: string | null = null;
+let authenticationSnapshotReader: AuthenticationSnapshotReader | null = null;
+let successfulRecoveryGeneration = 0;
 
 export function setAuthenticationRecovery(recover: AuthenticationRecovery): () => void {
   authenticationRecovery = recover;
   return () => {
     if (authenticationRecovery === recover) authenticationRecovery = null;
   };
+}
+
+export function setAuthenticationInvalidation(invalidate: AuthenticationInvalidation): () => void {
+  authenticationInvalidation = invalidate;
+  invalidationInFlight = null;
+  invalidatedAuthenticationKey = null;
+  return () => {
+    if (authenticationInvalidation === invalidate) {
+      authenticationInvalidation = null;
+      invalidationInFlight = null;
+      invalidatedAuthenticationKey = null;
+    }
+  };
+}
+
+export function setAuthenticationSnapshot(read: AuthenticationSnapshotReader): () => void {
+  authenticationSnapshotReader = read;
+  return () => {
+    if (authenticationSnapshotReader === read) authenticationSnapshotReader = null;
+  };
+}
+
+function readAuthenticationSnapshot(): AuthenticationSnapshot | undefined {
+  return authenticationSnapshotReader?.();
+}
+
+function snapshotsMatch(
+  expected: AuthenticationSnapshot | undefined,
+  current: AuthenticationSnapshot | undefined = readAuthenticationSnapshot(),
+): boolean {
+  if (!expected && !current) return true;
+  if (!expected || !current) return false;
+  return expected.sessionId === current.sessionId
+    && expected.identityGeneration === current.identityGeneration;
 }
 
 function normalizeRecoveryResult(value: AuthenticationRecoveryResult | boolean): AuthenticationRecoveryResult {
@@ -81,7 +122,11 @@ function recoverAuthenticationOnce(): Promise<AuthenticationRecoveryResult> {
   if (!recoveryInFlight) {
     const attempt = Promise.resolve()
       .then(() => authenticationRecovery?.() ?? false)
-      .then(normalizeRecoveryResult, recoveryFailure);
+      .then(normalizeRecoveryResult, recoveryFailure)
+      .then((result) => {
+        if (result.status === 'authenticated') successfulRecoveryGeneration += 1;
+        return result;
+      });
     recoveryInFlight = attempt.finally(() => {
       recoveryInFlight = null;
     });
@@ -89,17 +134,24 @@ function recoverAuthenticationOnce(): Promise<AuthenticationRecoveryResult> {
   return recoveryInFlight;
 }
 
+function invalidateAuthenticationOnce(sessionSnapshot?: AuthenticationSnapshot): Promise<void> {
+  if (!authenticationInvalidation) return Promise.resolve();
+  const activeSnapshot = sessionSnapshot ?? readAuthenticationSnapshot();
+  const key = activeSnapshot
+    ? `${activeSnapshot.identityGeneration}:${activeSnapshot.sessionId ?? 'anonymous'}`
+    : `recovery:${successfulRecoveryGeneration}`;
+  if (invalidatedAuthenticationKey === key) return invalidationInFlight ?? Promise.resolve();
+
+  invalidatedAuthenticationKey = key;
+  invalidationInFlight = Promise.resolve()
+    .then(() => authenticationInvalidation?.())
+    .catch(() => undefined);
+  return invalidationInFlight;
+}
+
 function isUnauthorized(error: unknown): boolean {
   if (isApiError(error)) return error.status === 401;
   return isAxiosError(error) && error.response?.status === 401;
-}
-
-function isCancelledError(error: unknown): boolean {
-  if (isApiError(error)) return error.category === 'cancelled';
-  if (isCancel(error)) return true;
-  if (typeof error !== 'object' || error === null) return false;
-  const name = (error as { name?: unknown }).name;
-  return name === 'AbortError' || name === 'CanceledError';
 }
 
 function cancellationError(): CanceledError<unknown> {
@@ -139,14 +191,13 @@ function isAuthenticationEndpoint(url: string): boolean {
 function canRecoverAuthentication(url: string, options?: HttpRequestOptions): boolean {
   if (isAuthenticationEndpoint(url)) return false;
   if (options?.requestKind === 'auth' || options?.requestKind === 'public') return false;
-  if (options?.replayed || options?.skipAuthenticationRecovery) return false;
   return true;
 }
 
 function safeApiError(error: unknown, unauthorized: 'credentials' | 'session'): ApiError {
   if (isApiError(error)) {
     if (unauthorized === 'session' && error.status === 401 && error.category !== 'session') {
-      return new ApiError('session', { status: error.status, problemDetail: error.problemDetail });
+      return new ApiError('session', { status: error.status });
     }
     return error;
   }
@@ -156,11 +207,16 @@ function safeApiError(error: unknown, unauthorized: 'credentials' | 'session'): 
 async function replayOnce<T>(
   operation: (options?: HttpRequestOptions) => Promise<HttpResponse<T>>,
   options?: HttpRequestOptions,
+  sessionSnapshot?: AuthenticationSnapshot,
 ): Promise<HttpResponse<T>> {
   throwIfAborted(options?.signal);
+  if (!snapshotsMatch(sessionSnapshot)) throw new ApiError('session', { status: 401 });
   try {
-    return await operation({ ...options, replayed: true });
+    return await operation(options);
   } catch (error) {
+    if (isUnauthorized(error) && snapshotsMatch(sessionSnapshot)) {
+      await invalidateAuthenticationOnce(sessionSnapshot);
+    }
     throw safeApiError(error, 'session');
   }
 }
@@ -172,7 +228,8 @@ export function createSessionAwareHttpClient(transport: HttpClient): HttpClient 
     operation: (options?: HttpRequestOptions) => Promise<HttpResponse<T>>,
     options?: HttpRequestOptions,
   ): Promise<HttpResponse<T>> {
-    const tokenAtRequestStart = getAccessToken();
+    const sessionSnapshotAtRequestStart = readAuthenticationSnapshot();
+    const recoveryGenerationAtRequestStart = successfulRecoveryGeneration;
 
     try {
       throwIfAborted(options?.signal);
@@ -182,7 +239,7 @@ export function createSessionAwareHttpClient(transport: HttpClient): HttpClient 
         ? 'credentials'
         : 'session';
 
-      if (options?.signal?.aborted || isCancelledError(error)) {
+      if (options?.signal?.aborted || isCancelled(error)) {
         throw safeApiError(error, unauthorized);
       }
       if (!canRecoverAuthentication(url, options) || !isUnauthorized(error)) {
@@ -191,16 +248,17 @@ export function createSessionAwareHttpClient(transport: HttpClient): HttpClient 
 
       throwIfAborted(options?.signal);
 
-      // A response may have been produced by a request sent with an older
-      // access token while another request already completed the rotation.
-      // Reuse that token instead of starting a second refresh.
-      if (getAccessToken() !== tokenAtRequestStart) {
-        return replayOnce(operation, options);
+      if (!snapshotsMatch(sessionSnapshotAtRequestStart)) {
+        throw new ApiError('session', { status: 401 });
+      }
+
+      if (successfulRecoveryGeneration > recoveryGenerationAtRequestStart) {
+        return replayOnce(operation, options, sessionSnapshotAtRequestStart);
       }
 
       const result = await waitForRecovery(recoverAuthenticationOnce(), options?.signal);
       if (result.status === 'authenticated') {
-        return replayOnce(operation, options);
+        return replayOnce(operation, options, sessionSnapshotAtRequestStart);
       }
       if (result.status === 'unavailable') {
         throw result.error;

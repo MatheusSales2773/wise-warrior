@@ -125,7 +125,7 @@ describe('RegisterForm', () => {
 
   it('announces a distinct e-mail conflict without exposing backend details', async () => {
     const register = jest.fn(async (): Promise<AuthSession> => {
-      throw new ApiError('conflict', { status: 409, problemDetail: 'duplicate database key' });
+      throw new ApiError('conflict', { status: 409 });
     });
     await renderRegister(serviceDouble(register));
 

@@ -33,7 +33,7 @@ describe('login validation', () => {
 describe('login error messages', () => {
   it('maps API categories to safe public copy', () => {
     expect(loginErrorMessage(new ApiError('credentials', { status: 401 }))).toBe('E-mail ou senha incorretos.');
-    expect(loginErrorMessage(new ApiError('credentials', { status: 401, problemDetail: 'senha errada' }))).not.toContain('senha errada');
+    expect(loginErrorMessage(new ApiError('credentials', { status: 401 }))).not.toContain('senha errada');
     expect(loginErrorMessage(new ApiError('network'))).toContain('conexão');
     expect(loginErrorMessage(new ApiError('server'))).toContain('servidor');
     expect(loginErrorMessage(new Error('boom'))).toBe('Não foi possível entrar agora. Tente novamente.');

@@ -13,9 +13,13 @@ import type { ApiError } from '@/core/api/api-error';
 import { toApiError } from '@/core/api/api-error';
 import {
   getBareHttpClient,
+  setAuthenticationInvalidation,
   setAuthenticationRecovery,
+  setAuthenticationSnapshot,
+  type AuthenticationSnapshot,
   type AuthenticationRecoveryResult,
 } from '@/core/api/api-client';
+import { clearAccessToken } from '@/core/api/token-memory';
 import { queryClient as defaultQueryClient } from '@/core/query/query-runtime';
 import { createAuthService, type AuthService } from './auth-service';
 import { credentialStore } from './credential-store';
@@ -54,13 +58,24 @@ export function AuthProvider({ children, service: providedService, queryClient }
   const protectedQueryClient = queryClient ?? defaultQueryClient;
   const mounted = useRef(true);
   const stateRef = useRef<AuthState>({ status: 'restoring' });
+  const identityGeneration = useRef(0);
   const authenticationInFlight = useRef(false);
   const restoreInFlight = useRef<Promise<RestoreResult> | null>(null);
 
   const updateState = useCallback((nextState: AuthState) => {
+    const currentIdentity = stateRef.current.status === 'authenticated'
+      ? stateRef.current.sessionId
+      : null;
+    const nextIdentity = nextState.status === 'authenticated' ? nextState.sessionId : null;
+    if (currentIdentity !== nextIdentity) identityGeneration.current += 1;
     stateRef.current = nextState;
     setState(nextState);
   }, []);
+
+  const readAuthenticationSnapshot = useCallback((): AuthenticationSnapshot => ({
+    sessionId: stateRef.current.status === 'authenticated' ? stateRef.current.sessionId : null,
+    identityGeneration: identityGeneration.current,
+  }), []);
 
   const applyResult = useCallback((result: RestoreResult) => {
     if (!mounted.current) return;
@@ -103,12 +118,24 @@ export function AuthProvider({ children, service: providedService, queryClient }
       if (result.status === 'unavailable') return { status: 'unavailable', error: result.error };
       return { status: 'anonymous' };
     });
+    const removeInvalidation = setAuthenticationInvalidation(async () => {
+      try {
+        await authService.invalidate?.();
+      } finally {
+        clearAccessToken();
+        protectedQueryClient.clear();
+        if (mounted.current) updateState({ status: 'anonymous' });
+      }
+    });
+    const removeSnapshot = setAuthenticationSnapshot(readAuthenticationSnapshot);
     void restoreAndApply();
     return () => {
       mounted.current = false;
       removeRecovery();
+      removeInvalidation();
+      removeSnapshot();
     };
-  }, [restoreAndApply]);
+  }, [authService, protectedQueryClient, readAuthenticationSnapshot, restoreAndApply, updateState]);
 
   const authenticate = useCallback(
     async (issueSession: () => Promise<AuthSession>) => {

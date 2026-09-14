@@ -7,11 +7,14 @@ import {
   DEFAULT_TIMEOUT_MS,
   getAuthenticatedHttpClient,
   resolveAxiosConfig,
+  setAuthenticationInvalidation,
   setAuthenticationRecovery,
+  setAuthenticationSnapshot,
   shouldSendBrowserCredentials,
   type HttpClient,
+  type HttpResponse,
 } from '@/core/api/api-client';
-import { ApiError, isApiError, toApiError } from '@/core/api/api-error';
+import { ApiError, isApiError, isCancelled, toApiError } from '@/core/api/api-error';
 import { clearAccessToken, getAccessToken, setAccessToken } from '@/core/api/token-memory';
 
 jest.mock('axios', () => ({
@@ -39,7 +42,7 @@ describe('api error taxonomy', () => {
     const network = toApiError(Object.assign(new Error('Network Error'), { isAxiosError: true }));
     expect(network.category).toBe('network');
     expect(network.retryable).toBe(true);
-    expect(network.problemDetail).toBeUndefined();
+    expect(network).not.toHaveProperty('problemDetail');
 
     const server = toApiError({
       isAxiosError: true,
@@ -47,7 +50,7 @@ describe('api error taxonomy', () => {
     });
     expect(server.category).toBe('server');
     expect(server.retryable).toBe(true);
-    expect(server.problemDetail).toBe('serviço fora');
+    expect(server).not.toHaveProperty('problemDetail');
 
     const validation = toApiError({ isAxiosError: true, response: { status: 400, data: {} } });
     expect(validation.category).toBe('validation');
@@ -57,7 +60,13 @@ describe('api error taxonomy', () => {
       isAxiosError: true,
       response: { status: 500, data: { detail: 'refreshToken=do-not-expose' } },
     });
-    expect(sensitive.problemDetail).toBeUndefined();
+    expect(sensitive).not.toHaveProperty('problemDetail');
+
+    const reflectedSecret = toApiError({
+      isAxiosError: true,
+      response: { status: 500, data: { detail: 'request-id=jwt.eyJhbGciOiJub25lIn0.secret' } },
+    });
+    expect(reflectedSecret).not.toHaveProperty('problemDetail');
   });
 
   it('lets the caller decide whether a 401 means credentials or an invalid session', () => {
@@ -72,6 +81,18 @@ describe('api error taxonomy', () => {
     expect(toApiError(existing)).toBe(existing);
     expect(isApiError(existing)).toBe(true);
     expect(isApiError(new Error('x'))).toBe(false);
+  });
+
+  it('uses one cancellation predicate for Axios, DOM and public API errors', () => {
+    const axiosCancellation = new axios.CanceledError('cancelled');
+    const abortError = Object.assign(new Error('aborted'), { name: 'AbortError' });
+    const publicCancellation = new ApiError('cancelled');
+
+    expect(isCancelled(axiosCancellation)).toBe(true);
+    expect(isCancelled(abortError)).toBe(true);
+    expect(isCancelled(publicCancellation)).toBe(true);
+    expect(toApiError(axiosCancellation).category).toBe('cancelled');
+    expect(toApiError(abortError).category).toBe('cancelled');
   });
 });
 
@@ -170,7 +191,7 @@ describe('http client configuration', () => {
     }
   });
 
-  it('does not recover authentication endpoints, repeated requests or cancelled requests', async () => {
+  it('does not recover authentication endpoints or cancelled requests', async () => {
     const recover = jest.fn(async () => true);
     const removeRecovery = setAuthenticationRecovery(recover);
     const transport: HttpClient = {
@@ -183,7 +204,6 @@ describe('http client configuration', () => {
     try {
       const client = createSessionAwareHttpClient(transport);
       await expect(client.get('/auth/refresh')).rejects.toMatchObject({ category: 'credentials', status: 401 });
-      await expect(client.get('/perfil', { replayed: true })).rejects.toMatchObject({ category: 'session', status: 401 });
       await expect(client.get('/perfil', { requestKind: 'auth' })).rejects.toMatchObject({ category: 'credentials', status: 401 });
 
       const controller = new AbortController();
@@ -217,6 +237,156 @@ describe('http client configuration', () => {
       expect(recover).toHaveBeenCalledTimes(1);
     } finally {
       removeRecovery();
+      clearAccessToken();
+    }
+  });
+
+  it('invalidates the session once when the single replay also receives 401', async () => {
+    setAccessToken('access-old');
+    let requests = 0;
+    const recover = jest.fn(async () => {
+      setAccessToken('access-new');
+      return true;
+    });
+    const invalidate = jest.fn(async () => {
+      clearAccessToken();
+    });
+    const removeRecovery = setAuthenticationRecovery(recover);
+    const removeInvalidation = setAuthenticationInvalidation(invalidate);
+    const client = createSessionAwareHttpClient({
+      get: async () => {
+        requests += 1;
+        throw { isAxiosError: true, response: { status: 401, data: {} } };
+      },
+      post: async <T,>() => ({ status: 204, data: undefined as T }),
+    });
+
+    try {
+      await expect(client.get('/perfil')).rejects.toMatchObject({ category: 'session', status: 401 });
+      expect(requests).toBe(2);
+      expect(recover).toHaveBeenCalledTimes(1);
+      expect(invalidate).toHaveBeenCalledTimes(1);
+      expect(getAccessToken()).toBeNull();
+    } finally {
+      removeRecovery();
+      removeInvalidation();
+      clearAccessToken();
+    }
+  });
+
+  it('does not replay a request after the active session changes', async () => {
+    setAccessToken('access-session-a');
+    let snapshot: { sessionId: string | null; identityGeneration: number } = {
+      sessionId: 'session-a',
+      identityGeneration: 1,
+    };
+    const removeSnapshot = setAuthenticationSnapshot(() => snapshot);
+    const recover = jest.fn(async () => true);
+    const removeRecovery = setAuthenticationRecovery(recover);
+    let rejectInitialRequest: (error: unknown) => void = () => undefined;
+    const initialRequest = new Promise<HttpResponse<unknown>>((_, reject) => {
+      rejectInitialRequest = reject;
+    });
+    let requests = 0;
+    const client = createSessionAwareHttpClient({
+      get: async <T,>() => {
+        requests += 1;
+        return initialRequest as Promise<HttpResponse<T>>;
+      },
+      post: async <T,>() => ({ status: 204, data: undefined as T }),
+    });
+
+    try {
+      const request = client.get('/perfil');
+      await Promise.resolve();
+      snapshot = { sessionId: 'session-b', identityGeneration: 2 };
+      setAccessToken('access-session-b');
+      rejectInitialRequest({ isAxiosError: true, response: { status: 401, data: {} } });
+
+      await expect(request).rejects.toMatchObject({ category: 'session', status: 401 });
+      expect(requests).toBe(1);
+      expect(recover).not.toHaveBeenCalled();
+    } finally {
+      removeRecovery();
+      removeSnapshot();
+      clearAccessToken();
+    }
+  });
+
+  it('reuses the same successful refresh for a late concurrent 401', async () => {
+    setAccessToken('access-session-a');
+    const removeSnapshot = setAuthenticationSnapshot(() => ({
+      sessionId: 'session-a',
+      identityGeneration: 1,
+    }));
+    let rejectLateRequest: (error: unknown) => void = () => undefined;
+    const lateInitialRequest = new Promise<HttpResponse<unknown>>((_, reject) => {
+      rejectLateRequest = reject;
+    });
+    let requests = 0;
+    const recover = jest.fn(async () => {
+      setAccessToken('access-session-a-refreshed');
+      return true;
+    });
+    const removeRecovery = setAuthenticationRecovery(recover);
+    const client = createSessionAwareHttpClient({
+      get: async <T,>() => {
+        requests += 1;
+        if (requests === 1) {
+          throw { isAxiosError: true, response: { status: 401, data: {} } };
+        }
+        if (requests === 2) return lateInitialRequest as Promise<HttpResponse<T>>;
+        return { status: 200, data: 'ok' as T };
+      },
+      post: async <T,>() => ({ status: 204, data: undefined as T }),
+    });
+
+    try {
+      const first = client.get('/primeiro');
+      const late = client.get('/atrasada');
+      await expect(first).resolves.toEqual({ status: 200, data: 'ok' });
+      rejectLateRequest({ isAxiosError: true, response: { status: 401, data: {} } });
+
+      await expect(late).resolves.toEqual({ status: 200, data: 'ok' });
+      expect(recover).toHaveBeenCalledTimes(1);
+      expect(requests).toBe(4);
+    } finally {
+      removeRecovery();
+      removeSnapshot();
+      clearAccessToken();
+    }
+  });
+
+  it('runs terminal invalidation once per authenticated session', async () => {
+    setAccessToken('access-session-a');
+    let snapshot = { sessionId: 'session-a', identityGeneration: 1 };
+    const removeSnapshot = setAuthenticationSnapshot(() => snapshot);
+    const recover = jest.fn(async () => {
+      setAccessToken(`access-${recover.mock.calls.length + 1}`);
+      return true;
+    });
+    const invalidate = jest.fn(async () => undefined);
+    const removeRecovery = setAuthenticationRecovery(recover);
+    const removeInvalidation = setAuthenticationInvalidation(invalidate);
+    const client = createSessionAwareHttpClient({
+      get: async () => {
+        throw { isAxiosError: true, response: { status: 401, data: {} } };
+      },
+      post: async <T,>() => ({ status: 204, data: undefined as T }),
+    });
+
+    try {
+      await expect(client.get('/perfil')).rejects.toMatchObject({ category: 'session', status: 401 });
+      snapshot = { sessionId: 'session-b', identityGeneration: 2 };
+      setAccessToken('access-session-b');
+      await expect(client.get('/perfil')).rejects.toMatchObject({ category: 'session', status: 401 });
+
+      expect(recover).toHaveBeenCalledTimes(2);
+      expect(invalidate).toHaveBeenCalledTimes(2);
+    } finally {
+      removeRecovery();
+      removeInvalidation();
+      removeSnapshot();
       clearAccessToken();
     }
   });
