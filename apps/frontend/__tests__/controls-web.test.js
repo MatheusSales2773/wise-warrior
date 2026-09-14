@@ -6,6 +6,11 @@ import { WiseField } from '@/design-system/components/WiseField';
 import { FeedbackMessage } from '@/design-system/components/FeedbackMessage';
 import { ProgressBar } from '@/design-system/components/ProgressBar';
 import { ResourcePill } from '@/design-system/components/ResourcePill';
+import { AuthNavigationLink } from '@/features/auth/components/AuthNavigationLink';
+
+jest.mock('expo-router', () => ({
+  Link: ({ children }) => children,
+}));
 
 // Exercise the installed Web renderer, including its native-to-DOM prop mapping.
 jest.mock('react-native', () => jest.requireActual('react-native-web'));
@@ -96,4 +101,11 @@ it('only makes an actionable ResourcePill keyboard focusable with a button role'
   expect(getComputedStyle(button).outlineWidth).toBe('2px');
   await act(() => button.click());
   expect(onPress).toHaveBeenCalledTimes(1);
+});
+
+it('keeps the authentication link keyboard focus indicator visible on Web', async () => {
+  await act(() => root.render(<AuthNavigationLink href="/entrar" label="Entrar" />));
+  const link = container.querySelector('[role="link"]');
+  await act(() => link.focus());
+  expect(getComputedStyle(link).outlineWidth).toBe('2px');
 });

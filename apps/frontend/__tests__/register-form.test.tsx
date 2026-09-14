@@ -1,8 +1,9 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
-import { TextInput } from 'react-native';
+import { Platform, StyleSheet, TextInput } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { ApiError } from '@/core/api/api-error';
 import { AuthProvider } from '@/core/auth/auth-context';
+import { theme } from '@/design-system';
 import type { AuthService } from '@/core/auth/auth-service';
 import type { AuthSession, RestoreResult } from '@/core/auth/types';
 import { RegisterForm } from '@/features/auth/register-form';
@@ -41,6 +42,25 @@ describe('RegisterForm', () => {
     expect(screen.getByRole('header', { name: 'Crie seu personagem' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Criar personagem' })).toBeTruthy();
     expect(screen.getByRole('link', { name: 'Já tem uma conta? Entre na batalha' })).toBeTruthy();
+  });
+
+  it('shows the repository focus indicator on the login link on Web', async () => {
+    const platform = Platform.OS;
+    Object.defineProperty(Platform, 'OS', { configurable: true, value: 'web' });
+    try {
+      await renderRegister(serviceDouble(async () => ({ sessionId: 'session-register' })));
+      const link = screen.getByRole('link', { name: 'Já tem uma conta? Entre na batalha' });
+
+      await fireEvent(link, 'focus');
+
+      expect(StyleSheet.flatten(link.props.style)).toMatchObject({
+        outlineColor: theme.color.accentPrimary,
+        outlineStyle: 'solid',
+        outlineWidth: theme.border.focus,
+      });
+    } finally {
+      Object.defineProperty(Platform, 'OS', { configurable: true, value: platform });
+    }
   });
 
   it('keeps the registration composition available inside a compact safe area', async () => {
