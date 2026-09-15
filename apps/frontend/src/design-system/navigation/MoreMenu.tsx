@@ -6,14 +6,16 @@ import { controlStyles } from '../components/control-styles';
 import { theme } from '../tokens/theme';
 import { futureDestinations } from './destinations';
 import { FutureDestinationRow } from './FutureDestinationRow';
+import { LogoutAction } from './LogoutAction';
 
 type MoreMenuProps = {
   bottomInset: number;
   onClose: () => void;
+  onLogout: () => Promise<void>;
   visible: boolean;
 };
 
-export function MoreMenu({ bottomInset, onClose, visible }: MoreMenuProps) {
+export function MoreMenu({ bottomInset, onClose, onLogout, visible }: MoreMenuProps) {
   const motionDuration = useRuntimeMotionDuration();
   const [closeFocused, setCloseFocused] = useState(false);
   const [closeHovered, setCloseHovered] = useState(false);
@@ -78,6 +80,7 @@ export function MoreMenu({ bottomInset, onClose, visible }: MoreMenuProps) {
           {futureDestinations.map((destination) => (
             <FutureDestinationRow destination={destination} key={destination.label} />
           ))}
+          <LogoutAction onLogout={onLogout} />
         </View>
       </View>
     </Modal>

@@ -2,6 +2,8 @@ import { fireEvent, renderRouter, screen, waitFor } from 'expo-router/testing-li
 import { StyleSheet } from 'react-native';
 import { theme } from '../src/design-system/tokens/theme';
 
+jest.mock('@/core/auth/auth-context', () => require('../test-utils/auth-context').createAuthContextMock());
+
 describe('Expo foundation routes', () => {
   it.each([
     ['/', 'Acampamento', 'Seu painel de progresso está em preparação.'],

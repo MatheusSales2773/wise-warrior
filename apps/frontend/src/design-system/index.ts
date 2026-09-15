@@ -1,6 +1,6 @@
 export { Screen, WiseCard, WiseText } from './components';
 export type { ScreenProps, WiseCardProps, WiseCardVariant, WiseTextColor, WiseTextProps, WiseTextVariant } from './components';
-export { WiseIcon, wiseIconNames } from './icons';
+export { BrandSigil, WiseIcon, wiseIconNames } from './icons';
 export type { WiseIconColor, WiseIconName, WiseIconProps, WiseIconSize } from './icons';
 export { isSemanticColor, motionDuration, theme, typographyFor } from './tokens/theme';
 export type { MotionDuration, SemanticColor, TypographyRole } from './tokens/theme';

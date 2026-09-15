@@ -78,7 +78,7 @@ e é o único arquivo de ambiente ignorado pelo Git.
 
 Depois que os serviços estiverem saudáveis:
 
-- Frontend: `http://localhost:5173`
+- Frontend: `http://localhost:8081`
 - Backend: `http://localhost:3000/api/v1`
 - Healthcheck da API: `http://localhost:3000/api/v1/health`
 
@@ -135,6 +135,31 @@ ao bundle, portanto nunca coloque secrets nelas:
 cp apps/frontend/.env.example apps/frontend/.env
 ```
 
+Configure `EXPO_PUBLIC_API_URL` com um host alcançável pela plataforma:
+
+- Web e iOS Simulator: `http://localhost:3000/api/v1`;
+- Android Emulator padrão: `http://10.0.2.2:3000/api/v1`;
+- iOS/Android em dispositivo físico: prefira uma URL HTTPS; para desenvolvimento
+  local, use o IP LAN da máquina e mantenha aparelho e computador na mesma rede;
+- release: use HTTPS. O projeto não habilita cleartext global no Android nem
+  desativa o App Transport Security no iOS.
+
+O refresh token nativo é salvo pelo `expo-secure-store` e excluído do Android
+Auto Backup pelo config plugin. Depois de instalar ou atualizar esse módulo, ou
+de alterar `app.json`, regenere os projetos nativos antes de recompilar. O
+comando Android já executa um Prebuild limpo antes da compilação:
+
+```bash
+npm run android --workspace apps/frontend
+
+# Para regenerar Android e iOS juntos antes de compilar o iOS:
+npm run prebuild:native --workspace apps/frontend
+npm run ios --workspace apps/frontend
+```
+
+O Prebuild com `--clean` recria os diretórios nativos e reaplica os config
+plugins. Fast Refresh não aplica mudanças em módulos ou configuração nativa.
+
 Instale todas as dependências na raiz do monorepo. `npm ci` reproduz exatamente
 o lockfile e é o comando usado pela CI:
 
@@ -177,6 +202,10 @@ npm run build --workspace apps/frontend
 
 # Somente os bundles Metro de Web, iOS e Android
 npm run export:bundles --workspace apps/frontend
+
+# Gate E2E Web da autenticação (Chromium + MySQL/Backend/NGINX descartáveis)
+npm run playwright:install --workspace apps/frontend
+npm run test:e2e
 ```
 
 Uma **exportação de bundle** transforma JavaScript/TypeScript e assets em saída
@@ -185,6 +214,14 @@ Uma **compilação nativa** usa Xcode ou Gradle por meio de `expo run:ios` ou
 `expo run:android` para gerar e instalar um aplicativo local. O **Expo Go** é
 opcional para uma verificação rápida enquanto o projeto usar apenas módulos
 compatíveis; ele não substitui a compilação nativa validada por este projeto.
+
+O gate E2E usa `docker-compose.e2e.yml` com um projeto Compose isolado, portas
+locais livres (ou as portas informadas por `E2E_BACKEND_PORT` e
+`E2E_FRONTEND_PORT`), banco sem volume persistente e migrations aplicadas pelo
+backend antes do health check. O script desmonta os serviços e volumes ao
+terminar; relatórios, traces, vídeos, screenshots e storage state ficam em
+diretórios ignorados pelo Git. O gateway local usa HTTPS com certificado
+efêmero para que o cookie `Secure` seja exercitado no navegador.
 
 #### Contrato público do design system M2
 

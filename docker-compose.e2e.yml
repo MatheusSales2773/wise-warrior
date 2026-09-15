@@ -1,0 +1,95 @@
+services:
+  mysql:
+    image: mysql:8.0
+    environment:
+      MYSQL_DATABASE: wise_e2e
+      MYSQL_USER: wise
+      MYSQL_PASSWORD: wise-e2e-password
+      MYSQL_ROOT_PASSWORD: wise-e2e-root-password
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "mysqladmin",
+          "ping",
+          "-h",
+          "localhost",
+          "-u",
+          "root",
+          "-pwise-e2e-root-password",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 15s
+
+  backend:
+    build:
+      context: .
+      dockerfile: apps/backend/Dockerfile
+    depends_on:
+      mysql:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      DB_MIGRATIONS_RUN: "true"
+      DB_HOST: mysql
+      DB_PORT: 3306
+      DB_USERNAME: wise
+      DB_PASSWORD: wise-e2e-password
+      DB_DATABASE: wise_e2e
+      JWT_ACCESS_SECRET: wise-e2e-access-secret
+      JWT_ACCESS_TTL: 15m
+      JWT_REFRESH_SECRET: wise-e2e-refresh-secret
+      JWT_REFRESH_TTL_DAYS: 30
+      MAX_SESSIONS_PER_USER: 5
+      CORS_ORIGIN: ${E2E_BASE_URL:?E2E_BASE_URL is required}
+      PORT: 3000
+    ports:
+      - "127.0.0.1:${E2E_BACKEND_PORT:?E2E_BACKEND_PORT is required}:3000"
+
+  frontend:
+    build:
+      context: .
+      dockerfile: apps/frontend/Dockerfile
+      args:
+        EXPO_PUBLIC_API_URL: ${E2E_API_URL:?E2E_API_URL is required}
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://127.0.0.1/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 5s
+
+  gateway:
+    build:
+      context: .
+      dockerfile: apps/frontend/e2e-gateway.Dockerfile
+    depends_on:
+      backend:
+        condition: service_healthy
+      frontend:
+        condition: service_healthy
+    volumes:
+      - "${E2E_TLS_DIR:?E2E_TLS_DIR is required}/server.crt:/etc/nginx/ssl/server.crt:ro"
+      - "${E2E_TLS_DIR:?E2E_TLS_DIR is required}/server.key:/etc/nginx/ssl/server.key:ro"
+    ports:
+      - "127.0.0.1:${E2E_FRONTEND_PORT:?E2E_FRONTEND_PORT is required}:443"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "wget",
+          "--no-check-certificate",
+          "--quiet",
+          "--tries=1",
+          "--spider",
+          "https://127.0.0.1/health",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 5s

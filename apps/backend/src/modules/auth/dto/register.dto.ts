@@ -1,4 +1,12 @@
-import { IsEmail, IsString, MaxLength, MinLength } from 'class-validator';
+import {
+  IsEmail,
+  IsIn,
+  IsOptional,
+  IsString,
+  MaxLength,
+  MinLength,
+} from 'class-validator';
+import { WEB_DEVICE_LABELS, WebDeviceLabel } from '../device-labels';
 
 export class RegisterDto {
   @IsEmail()
@@ -13,4 +21,9 @@ export class RegisterDto {
   @MinLength(2)
   @MaxLength(60)
   displayName: string;
+
+  /** Rótulo previsível do dispositivo; a Web assume `Wise Web` quando ausente. */
+  @IsOptional()
+  @IsIn(WEB_DEVICE_LABELS)
+  deviceLabel?: WebDeviceLabel;
 }

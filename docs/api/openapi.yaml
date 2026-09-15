@@ -36,7 +36,11 @@ paths:
 
   /auth/register:
     post:
-      summary: Cria conta e sessão (ADR-009)
+      summary: Cria conta e sessão Web (ADR-009)
+      description: >
+        Transporte Web. O access token e o Session ID voltam no corpo; o
+        refresh token rotativo é devolvido exclusivamente no cookie httpOnly
+        `ww_refresh` e nunca no JSON.
       operationId: registerUser
       tags: [Auth]
       security: []
@@ -47,15 +51,22 @@ paths:
             schema: { $ref: "#/components/schemas/RegisterRequest" }
       responses:
         "201":
-          description: Conta criada; cookie de refresh setado
+          description: Conta criada; refresh no cookie httpOnly
+          headers:
+            Set-Cookie: { $ref: "#/components/headers/SetRefreshCookie" }
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/AccessTokenResponse" }
+              schema: { $ref: "#/components/schemas/SessionTokenResponse" }
+        "400": { $ref: "#/components/responses/BadRequest" }
         "409": { $ref: "#/components/responses/Conflict" }
 
   /auth/login:
     post:
-      summary: Autentica e cria uma nova sessão de dispositivo (ADR-009)
+      summary: Autentica e cria uma nova sessão Web (ADR-009)
+      description: >
+        Transporte Web. O access token e o Session ID voltam no corpo; o
+        refresh token rotativo é devolvido exclusivamente no cookie httpOnly
+        `ww_refresh` e nunca no JSON.
       operationId: loginUser
       tags: [Auth]
       security: []
@@ -66,34 +77,155 @@ paths:
             schema: { $ref: "#/components/schemas/LoginRequest" }
       responses:
         "200":
-          description: Login válido; cookie de refresh setado
+          description: Login válido; refresh no cookie httpOnly
+          headers:
+            Set-Cookie: { $ref: "#/components/headers/SetRefreshCookie" }
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/AccessTokenResponse" }
+              schema: { $ref: "#/components/schemas/SessionTokenResponse" }
+        "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
 
   /auth/refresh:
     post:
       summary: Rotaciona o refresh token do cookie httpOnly e emite novo access token
+      description: >
+        Transporte Web. Lê o refresh do cookie `ww_refresh`, rotaciona a
+        Session e devolve novo access token e Session ID no corpo. O novo
+        refresh token continua somente no cookie httpOnly.
       operationId: refreshSession
       tags: [Auth]
       security: []
+      parameters:
+        - { $ref: "#/components/parameters/RefreshCookie" }
       responses:
         "200":
-          description: Novo access token emitido
+          description: Novo access token emitido; cookie rotacionado
+          headers:
+            Set-Cookie: { $ref: "#/components/headers/SetRefreshCookie" }
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/AccessTokenResponse" }
+              schema: { $ref: "#/components/schemas/SessionTokenResponse" }
         "401": { $ref: "#/components/responses/Unauthorized" }
 
   /auth/logout:
     post:
       summary: Revoga a sessão do dispositivo atual
+      description: >
+        Transporte Web. Revoga a Session dona do cookie `ww_refresh` e limpa
+        o cookie no path `/api/v1/auth`.
       operationId: logout
       tags: [Auth]
+      security: []
+      parameters:
+        - name: ww_refresh
+          in: cookie
+          required: false
+          description: >
+            Credencial rotativa Web. Quando ausente, o servidor apenas limpa o
+            cookie e responde 204.
+          schema: { type: string }
+      responses:
+        "204":
+          description: Sessão encerrada (idempotente); cookie de refresh limpo
+          headers:
+            Set-Cookie:
+              description: Cookie `ww_refresh` limpo no path `/api/v1/auth`.
+              schema: { type: string }
+
+  /auth/native/register:
+    post:
+      summary: Cria conta e sessão para iOS/Android
+      description: >
+        Transporte nativo. Recebe e devolve a credencial rotativa pelo corpo
+        para persistência no armazenamento seguro do dispositivo. Requisições
+        com qualquer header `Origin` (inclusive `null`) são rejeitadas como
+        defesa em profundidade; esse header não é prova de plataforma.
+      operationId: nativeRegisterUser
+      tags: [Auth, Native]
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/NativeRegisterRequest" }
+      responses:
+        "201":
+          description: Conta criada; credencial rotativa no corpo
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/NativeSessionTokenResponse" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  /auth/native/login:
+    post:
+      summary: Autentica e cria uma sessão para iOS/Android
+      description: >
+        Transporte nativo. Recebe e devolve a credencial rotativa pelo corpo.
+        Requisições com qualquer header `Origin` (inclusive `null`) são
+        rejeitadas como defesa em profundidade.
+      operationId: nativeLoginUser
+      tags: [Auth, Native]
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/NativeLoginRequest" }
+      responses:
+        "200":
+          description: Login válido; credencial rotativa no corpo
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/NativeSessionTokenResponse" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /auth/native/refresh:
+    post:
+      summary: Rotaciona o refresh token enviado no corpo (iOS/Android)
+      description: >
+        Transporte nativo. A credencial rotativa entra e sai exclusivamente
+        pelo corpo. Requisições com `Origin` são rejeitadas.
+      operationId: nativeRefreshSession
+      tags: [Auth, Native]
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/NativeRefreshRequest" }
+      responses:
+        "200":
+          description: Credencial rotacionada no corpo
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/NativeSessionTokenResponse" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /auth/native/logout:
+    post:
+      summary: Revoga a sessão a partir do refresh enviado no corpo (iOS/Android)
+      description: >
+        Transporte nativo. Revoga a Session dona do refresh apresentado no
+        corpo. Requisições com `Origin` são rejeitadas.
+      operationId: nativeLogout
+      tags: [Auth, Native]
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/NativeRefreshRequest" }
       responses:
         "204": { description: Sessão encerrada }
-        "401": { $ref: "#/components/responses/Unauthorized" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
 
   /users/me:
     get:
@@ -301,6 +433,24 @@ components:
       scheme: bearer
       bearerFormat: JWT
 
+  parameters:
+    RefreshCookie:
+      name: ww_refresh
+      in: cookie
+      required: true
+      description: >
+        Credencial rotativa do transporte Web. Fica exclusivamente em cookie
+        httpOnly no path `/api/v1/auth`; nunca é legível por JavaScript.
+      schema: { type: string }
+
+  headers:
+    SetRefreshCookie:
+      description: >
+        Refresh token rotativo do transporte Web. Atributos: `HttpOnly`,
+        `SameSite=Lax`, `Path=/api/v1/auth`, `Secure` em produção e `Max-Age`
+        alinhado a JWT_REFRESH_TTL_DAYS. O valor nunca aparece no corpo JSON.
+      schema: { type: string }
+
   schemas:
     RegisterRequest:
       type: object
@@ -309,6 +459,10 @@ components:
         email: { type: string, format: email }
         password: { type: string, minLength: 8, maxLength: 128 }
         displayName: { type: string, minLength: 2, maxLength: 60 }
+        deviceLabel:
+          type: string
+          enum: [Wise Web]
+          description: Rótulo previsível do dispositivo; a Web assume Wise Web.
 
     LoginRequest:
       type: object
@@ -316,13 +470,55 @@ components:
       properties:
         email: { type: string, format: email }
         password: { type: string }
-        deviceLabel: { type: string, maxLength: 80 }
+        deviceLabel:
+          type: string
+          enum: [Wise Web]
 
-    AccessTokenResponse:
+    NativeRegisterRequest:
       type: object
-      required: [accessToken]
+      required: [email, password, displayName, deviceLabel]
+      properties:
+        email: { type: string, format: email }
+        password: { type: string, minLength: 8, maxLength: 128 }
+        displayName: { type: string, minLength: 2, maxLength: 60 }
+        deviceLabel: { type: string, enum: [Wise iOS, Wise Android] }
+
+    NativeLoginRequest:
+      type: object
+      required: [email, password, deviceLabel]
+      properties:
+        email: { type: string, format: email }
+        password: { type: string }
+        deviceLabel: { type: string, enum: [Wise iOS, Wise Android] }
+
+    NativeRefreshRequest:
+      type: object
+      required: [refreshToken]
+      properties:
+        refreshToken:
+          type: string
+          description: Credencial opaca `sessionId.secret`, rotativa a cada uso.
+
+    SessionTokenResponse:
+      type: object
+      required: [accessToken, sessionId]
+      description: >
+        Resposta do transporte Web. Só o access token e o Session ID são
+        legíveis; o refresh permanece no cookie httpOnly.
       properties:
         accessToken: { type: string }
+        sessionId: { type: string, format: uuid }
+
+    NativeSessionTokenResponse:
+      type: object
+      required: [accessToken, refreshToken, sessionId]
+      description: >
+        Resposta do transporte nativo. O refresh só é devolvido no corpo dos
+        endpoints `/auth/native/*`, para o SecureStore do dispositivo.
+      properties:
+        accessToken: { type: string }
+        refreshToken: { type: string }
+        sessionId: { type: string, format: uuid }
 
     UserProfile:
       type: object

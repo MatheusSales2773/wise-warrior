@@ -5,8 +5,9 @@ import { WiseText } from '../components/WiseText';
 import { futureDestinations, isDestinationActive, primaryDestinations } from './destinations';
 import { FutureDestinationRow } from './FutureDestinationRow';
 import { NavigationLink } from './NavigationLink';
+import { LogoutAction } from './LogoutAction';
 
-export function WebSidebar({ pathname }: { pathname: string }) {
+export function WebSidebar({ onLogout, pathname }: { onLogout: () => Promise<void>; pathname: string }) {
   return (
     <View accessibilityLabel="Navegação principal" style={styles.sidebar} testID="web-sidebar">
       <View aria-hidden accessibilityElementsHidden importantForAccessibility="no" style={styles.brand}>
@@ -24,6 +25,9 @@ export function WebSidebar({ pathname }: { pathname: string }) {
         {futureDestinations.map((destination) => (
           <FutureDestinationRow destination={destination} key={destination.label} />
         ))}
+      </View>
+      <View style={styles.footer}>
+        <LogoutAction onLogout={onLogout} />
       </View>
     </View>
   );
@@ -50,10 +54,10 @@ const styles = StyleSheet.create({
   },
   primary: { gap: theme.space.inlineTight },
   future: {
-    marginTop: 'auto',
     gap: theme.space.inlineHairline,
     borderTopColor: theme.color.borderSubtle,
     borderTopWidth: theme.border.standard,
     paddingTop: theme.space.stackDefault,
   },
+  footer: { marginTop: 'auto' },
 });

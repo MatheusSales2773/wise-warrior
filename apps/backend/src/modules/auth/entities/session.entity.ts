@@ -8,6 +8,7 @@ import {
   PrimaryGeneratedColumn,
 } from 'typeorm';
 import { User } from '../../users/entities/user.entity';
+import { DeviceLabel } from '../device-labels';
 
 /**
  * Uma linha por dispositivo logado (ADR-009). Nunca armazena o refresh
@@ -30,7 +31,7 @@ export class Session {
   refreshTokenHash: string;
 
   @Column({ name: 'device_label', nullable: true })
-  deviceLabel?: string;
+  deviceLabel?: DeviceLabel;
 
   @Column({ name: 'user_agent', nullable: true })
   userAgent?: string;
