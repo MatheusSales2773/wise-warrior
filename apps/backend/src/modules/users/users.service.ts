@@ -6,7 +6,7 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { User } from './entities/user.entity';
-import { Character } from '../progression/entities/character.entity';
+import { ProgressionService } from '../progression/progression.service';
 import { CosmeticItem } from './entities/cosmetic-item.entity';
 import { UserCosmeticItem } from './entities/user-cosmetic-item.entity';
 
@@ -17,6 +17,8 @@ export interface UserProfile {
   planTier: string;
   level: number;
   xpTotal: number;
+  levelStartXp: number;
+  nextLevelXp: number;
   title: string | null;
 }
 
@@ -24,12 +26,11 @@ export interface UserProfile {
 export class UsersService {
   constructor(
     @InjectRepository(User) private readonly users: Repository<User>,
-    @InjectRepository(Character)
-    private readonly characters: Repository<Character>,
     @InjectRepository(UserCosmeticItem)
     private readonly userCosmetics: Repository<UserCosmeticItem>,
     @InjectRepository(CosmeticItem)
     private readonly cosmeticItems: Repository<CosmeticItem>,
+    private readonly progression: ProgressionService,
   ) {}
 
   async getProfile(userId: string): Promise<UserProfile> {
@@ -37,14 +38,18 @@ export class UsersService {
     if (!user) {
       throw new NotFoundException('Usuário não encontrado');
     }
-    const character = await this.characters.findOne({ where: { userId } });
+    const character = await this.progression.getCharacterSnapshot(userId);
+    const xpTotal = character?.xpTotal ?? 0;
+    const projection = this.progression.getProjection(xpTotal);
     return {
       id: user.id,
       email: user.email,
       displayName: user.displayName,
       planTier: user.planTier,
-      level: character?.level ?? 1,
-      xpTotal: character?.xpTotal ?? 0,
+      level: projection.level,
+      xpTotal,
+      levelStartXp: projection.levelStartXp,
+      nextLevelXp: projection.nextLevelXp,
       title: character?.title ?? null,
     };
   }

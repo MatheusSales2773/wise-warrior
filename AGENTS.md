@@ -48,6 +48,10 @@ Before implementing or changing code, tests, infrastructure, or configuration:
 - [Playwright 1.63 CI](https://playwright.dev/docs/ci)
 - [Playwright 1.63 authentication](https://playwright.dev/docs/auth)
 
+#### API contracts
+
+- [Redocly CLI 2.x documentation](https://redocly.com/docs/cli/)
+
 #### Infrastructure
 
 - [Docker Compose documentation](https://docs.docker.com/compose/)

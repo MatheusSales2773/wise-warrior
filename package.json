@@ -13,11 +13,13 @@
     "build": "npm run build --workspace apps/backend && npm run build --workspace apps/frontend",
     "test": "npm run test --workspace apps/backend && npm run test --workspace apps/frontend",
     "lint": "npm run lint --workspace apps/backend && npm run lint --workspace apps/frontend",
+    "lint:openapi": "redocly lint --extends minimal docs/api/openapi.yaml",
     "test:e2e": "./scripts/test-e2e.sh",
     "verify:m1": "npm run verify:m1 --workspace apps/frontend",
     "verify:m2": "npm run verify:m2 --workspace apps/frontend"
   },
   "devDependencies": {
+    "@redocly/cli": "2.53.2",
     "eslint": "9.39.5",
     "react": "19.2.3",
     "react-dom": "19.2.3"

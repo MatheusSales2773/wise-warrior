@@ -1,33 +1,26 @@
 import { UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
-import type { Connection, RowDataPacket } from 'mysql2/promise';
-import mysql from 'mysql2/promise';
+import type { RowDataPacket } from 'mysql2/promise';
 import { DataSource } from 'typeorm';
-import { createDatabaseOptions } from '../../config/database.config';
-import { AddSessionRefreshTokenHistory1788458460000 } from '../../migrations/1788458460000-add-session-refresh-token-history';
-import { CreateWiseSchema1788458400000 } from '../../migrations/1788458400000-create-wise-schema';
 import { Character } from '../progression/entities/character.entity';
 import { User } from '../users/entities/user.entity';
 import { AuthService } from './auth.service';
 import { Session } from './entities/session.entity';
 import { RefreshTokenHistory } from './entities/refresh-token-history.entity';
 import { sha256Hex } from '../../shared/security/hash.util';
+import {
+  APPLICATION_MIGRATIONS,
+  createIntegrationDatabase,
+  type IntegrationDatabase,
+} from '../../test/integration-database';
 
 type Row = RowDataPacket & Record<string, unknown>;
-
-function identifier(name: string): string {
-  if (!/^wise_auth_integration_[a-z0-9_]+$/.test(name)) {
-    throw new Error(`Unexpected database identifier: ${name}`);
-  }
-  return `\`${name}\``;
-}
 
 describe('AuthService refresh rotation against independent MySQL connections', () => {
   jest.setTimeout(30_000);
 
-  let admin: Connection | undefined;
-  let databaseName: string | undefined;
+  let database: IntegrationDatabase | undefined;
   let first: DataSource | undefined;
   let second: DataSource | undefined;
 
@@ -40,15 +33,7 @@ describe('AuthService refresh rotation against independent MySQL connections', (
         await first.destroy();
       }
     } finally {
-      try {
-        if (admin && databaseName) {
-          await admin.query(`DROP DATABASE IF EXISTS ${identifier(databaseName)}`);
-        }
-      } finally {
-        if (admin) {
-          await admin.end();
-        }
-      }
+      await database?.close();
     }
   });
 
@@ -57,31 +42,8 @@ describe('AuthService refresh rotation against independent MySQL connections', (
   }
 
   async function setup(): Promise<void> {
-    const host = process.env.TEST_DB_HOST ?? 'localhost';
-    const port = Number(process.env.TEST_DB_PORT ?? 3306);
-    const username = process.env.TEST_DB_ADMIN_USERNAME ?? 'root';
-    const password = process.env.TEST_DB_ADMIN_PASSWORD ?? 'change-me-root';
-    databaseName = `wise_auth_integration_${process.pid}_${Date.now()}`;
-    admin = await mysql.createConnection({ host, port, user: username, password });
-    await admin.query(`CREATE DATABASE ${identifier(databaseName)}`);
-
-    const options = createDatabaseOptions({
-      NODE_ENV: 'test',
-      DB_HOST: host,
-      DB_PORT: port,
-      DB_USERNAME: username,
-      DB_PASSWORD: password,
-      DB_DATABASE: databaseName,
-    });
-    const migrationOptions = {
-      ...options,
-      database: databaseName,
-      migrations: [
-        CreateWiseSchema1788458400000,
-        AddSessionRefreshTokenHistory1788458460000,
-      ],
-      migrationsRun: false,
-    };
+    database = await createIntegrationDatabase('wise_auth_integration');
+    const migrationOptions = database.options(APPLICATION_MIGRATIONS);
     first = new DataSource(migrationOptions);
     await first.initialize();
     await first.runMigrations();
@@ -142,7 +104,7 @@ describe('AuthService refresh rotation against independent MySQL connections', (
     const historyRows = await rows(
       second!,
       `SELECT session_id, token_hash, consumed_at, retain_until
-       FROM ${identifier(databaseName!)}.session_refresh_token_history`,
+       FROM ${database!.identifier}.session_refresh_token_history`,
     );
     expect(historyRows).toEqual([
       expect.objectContaining({
@@ -157,7 +119,7 @@ describe('AuthService refresh rotation against independent MySQL connections', (
     );
     const revokedRows = await rows(
       first!,
-      `SELECT revoked_at, refresh_token_hash FROM ${identifier(databaseName!)}.sessions
+      `SELECT revoked_at, refresh_token_hash FROM ${database!.identifier}.sessions
        WHERE id = ?`,
       [seeded.sessionId],
     );
@@ -192,7 +154,7 @@ describe('AuthService refresh rotation against independent MySQL connections', (
     ).rejects.toBeInstanceOf(UnauthorizedException);
     const historyRows = await rows(
       first!,
-      `SELECT token_hash FROM ${identifier(databaseName!)}.session_refresh_token_history
+      `SELECT token_hash FROM ${database!.identifier}.session_refresh_token_history
        WHERE session_id = ?`,
       [seeded.sessionId],
     );
@@ -208,7 +170,7 @@ describe('AuthService refresh rotation against independent MySQL connections', (
     ).rejects.toBeInstanceOf(UnauthorizedException);
     const sessionRows = await rows(
       first!,
-      `SELECT revoked_at, refresh_token_hash FROM ${identifier(databaseName!)}.sessions
+      `SELECT revoked_at, refresh_token_hash FROM ${database!.identifier}.sessions
        WHERE id = ?`,
       [seeded.sessionId],
     );
@@ -229,7 +191,7 @@ describe('AuthService refresh rotation against independent MySQL connections', (
     await expect(authService(second!).refresh(seeded.token)).rejects.toThrow();
     const sessionRows = await rows(
       first!,
-      `SELECT refresh_token_hash, revoked_at FROM ${identifier(databaseName!)}.sessions
+      `SELECT refresh_token_hash, revoked_at FROM ${database!.identifier}.sessions
        WHERE id = ?`,
       [seeded.sessionId],
     );
@@ -241,7 +203,7 @@ describe('AuthService refresh rotation against independent MySQL connections', (
     );
     const historyRows = await rows(
       first!,
-      `SELECT COUNT(*) AS count FROM ${identifier(databaseName!)}.session_refresh_token_history
+      `SELECT COUNT(*) AS count FROM ${database!.identifier}.session_refresh_token_history
        WHERE session_id = ?`,
       [seeded.sessionId],
     );
