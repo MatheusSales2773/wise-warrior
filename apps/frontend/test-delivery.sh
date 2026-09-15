@@ -74,6 +74,8 @@ assert_contains "${root_body}" '<div id="root"></div>' 'SPA document'
 
 readonly -a spa_paths=(
   '/'
+  '/entrar'
+  '/cadastro'
   '/sessao'
   '/perfil'
   '/guilda'

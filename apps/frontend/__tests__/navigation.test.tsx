@@ -8,6 +8,9 @@ import { isDesktopLayout } from '@/design-system/tokens/layout';
 import { modalAnimationType, MoreMenu } from '@/design-system/navigation/MoreMenu';
 import { render } from '@testing-library/react-native';
 import { theme } from '@/design-system/tokens/theme';
+import { mockAuthState } from '../test-utils/auth-context';
+
+jest.mock('@/core/auth/auth-context', () => require('../test-utils/auth-context').createAuthContextMock());
 
 const originalPlatform = Platform.OS;
 const originalWindow = Dimensions.get('window');
@@ -24,6 +27,8 @@ async function setViewport(platform: 'web' | 'ios' | 'android', width: number) {
 }
 
 afterEach(async () => {
+  mockAuthState.logout.mockReset();
+  mockAuthState.logout.mockResolvedValue(undefined);
   Object.defineProperty(Platform, 'OS', { configurable: true, value: originalPlatform });
   await act(() => {
     Dimensions.set({ window: originalWindow, screen: originalScreen });
@@ -57,6 +62,11 @@ describe('adaptive application navigation', () => {
     await router;
 
     expect(screen.getByTestId('web-sidebar')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Sair' })).toBeTruthy();
+    expect(StyleSheet.flatten(screen.getByTestId('logout-button').props.style)).toMatchObject({
+      minHeight: theme.layout.touchTarget,
+      minWidth: theme.layout.touchTarget,
+    });
     expect(screen.queryByTestId('mobile-navigation')).toBeNull();
     const links = screen.getAllByRole('link');
     expect(links).toHaveLength(4);
@@ -182,6 +192,34 @@ describe('adaptive application navigation', () => {
     await waitFor(() => expect(screen.queryByTestId('more-modal')).toBeNull());
   });
 
+  it('shows Sair in the mobile Mais menu without changing future destinations', async () => {
+    await setViewport('android', 390);
+    const router = renderRouter('src/app', { initialUrl: '/guilda' });
+    await router;
+    await waitFor(() => expect(screen.getByTestId('mobile-navigation')).toBeTruthy());
+    await fireEvent.press(screen.getByRole('button', { name: 'Mais' }));
+
+    expect(screen.getByRole('button', { name: 'Sair' })).toBeTruthy();
+    for (const label of ['Mercado Arcano', 'Crônicas', 'Configuração']) {
+      expect(screen.getByLabelText(`${label}, indisponível, em breve`)).toBeTruthy();
+    }
+  });
+
+  it('replaces the route only after logout resolves', async () => {
+    await setViewport('ios', 1000);
+    const logout = jest.fn(() => Promise.resolve());
+    mockAuthState.logout = logout;
+    const router = renderRouter({
+      index: () => <AppNavigation bottomInset={0} isDesktop modalVisible={false} onModalVisibilityChange={jest.fn()} pathname="/sessao" />,
+      entrar: () => <></>,
+    }, { initialUrl: '/' });
+    await router;
+
+    await fireEvent.press(screen.getByRole('button', { name: 'Sair' }));
+    await waitFor(() => expect(router).toHavePathname('/entrar'));
+    expect(logout).toHaveBeenCalledTimes(1);
+  });
+
   it('closes the web modal with Escape and unregisters the listener', async () => {
     const listeners = new Map<string, (event: KeyboardEvent) => void>();
     const documentMock = {
@@ -194,7 +232,7 @@ describe('adaptive application navigation', () => {
     const onClose = jest.fn();
 
     try {
-      const view = await render(<MoreMenu bottomInset={34} onClose={onClose} visible />);
+      const view = await render(<MoreMenu bottomInset={34} onClose={onClose} onLogout={jest.fn(async () => undefined)} visible />);
       expect(StyleSheet.flatten(screen.getByTestId('more-sheet').props.style).paddingBottom).toBe(theme.space.controlInset + 34);
       listeners.get('keydown')?.({ key: 'Escape' } as KeyboardEvent);
       expect(onClose).toHaveBeenCalledTimes(1);

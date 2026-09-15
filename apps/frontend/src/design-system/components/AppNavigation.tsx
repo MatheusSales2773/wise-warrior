@@ -1,4 +1,6 @@
 import { useCallback, useRef } from 'react';
+import { useAuth } from '@/core/auth/auth-context';
+import { useRouter } from 'expo-router';
 import { AccessibilityInfo, findNodeHandle, Platform, type View } from 'react-native';
 import { MobileNavigation } from '../navigation/MobileNavigation';
 import { MoreMenu } from '../navigation/MoreMenu';
@@ -13,7 +15,14 @@ type AppNavigationProps = {
 };
 
 export function AppNavigation({ bottomInset, isDesktop, modalVisible, onModalVisibilityChange, pathname }: AppNavigationProps) {
+  const { logout } = useAuth();
+  const router = useRouter();
   const moreButtonRef = useRef<View>(null);
+
+  const handleLogout = useCallback(async () => {
+    await logout();
+    router.replace('/entrar');
+  }, [logout, router]);
 
   const openMore = useCallback(() => {
     onModalVisibilityChange(true);
@@ -26,7 +35,7 @@ export function AppNavigation({ bottomInset, isDesktop, modalVisible, onModalVis
     }, 0);
   }, [onModalVisibilityChange]);
 
-  if (isDesktop) return <WebSidebar pathname={pathname} />;
+  if (isDesktop) return <WebSidebar onLogout={handleLogout} pathname={pathname} />;
 
   return (
     <>
@@ -38,7 +47,7 @@ export function AppNavigation({ bottomInset, isDesktop, modalVisible, onModalVis
         pathname={pathname}
         ref={moreButtonRef}
       />
-      <MoreMenu bottomInset={bottomInset} onClose={closeMore} visible={modalVisible} />
+      <MoreMenu bottomInset={bottomInset} onClose={closeMore} onLogout={handleLogout} visible={modalVisible} />
     </>
   );
 }

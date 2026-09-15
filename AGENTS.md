@@ -32,6 +32,11 @@ Before implementing or changing code, tests, infrastructure, or configuration:
 - [React Native Web accessibility](https://necolas.github.io/react-native-web/docs/accessibility/)
 - [Expo SDK 57 documentation](https://docs.expo.dev/)
 - [Expo Router documentation](https://docs.expo.dev/router/introduction/)
+- [Expo Router protected routes](https://docs.expo.dev/router/advanced/protected/)
+- [Expo Router authentication](https://docs.expo.dev/router/advanced/authentication/)
+- [Expo SDK 57 SecureStore](https://docs.expo.dev/versions/v57.0.0/sdk/securestore/)
+- [Axios 1.x documentation](https://axios-http.com/docs/intro)
+- [TanStack Query v5 React Native](https://tanstack.com/query/latest/docs/framework/react/react-native)
 
 #### Testing
 
@@ -39,6 +44,9 @@ Before implementing or changing code, tests, infrastructure, or configuration:
 - [React Native Testing Library](https://oss.callstack.com/react-native-testing-library/)
 - [TypeScript ESLint legacy configuration](https://typescript-eslint.io/getting-started/legacy-eslint-setup/)
 - [Vitest 2 documentation](https://v2.vitest.dev/guide/)
+- [Playwright 1.63 installation](https://playwright.dev/docs/intro)
+- [Playwright 1.63 CI](https://playwright.dev/docs/ci)
+- [Playwright 1.63 authentication](https://playwright.dev/docs/auth)
 
 #### Infrastructure
 
@@ -58,3 +66,15 @@ Use the canonical labels `needs-triage`, `needs-info`, `ready-for-agent`, `ready
 ### Domain docs
 
 This is a single-context repository. The PRD and current ADR register live in `docs/PRD.md`; a root `CONTEXT.md` may be added later. See `docs/agents/domain.md`.
+
+
+# Codex project instructions
+
+For complex coding tasks, use the `astra-orchestrator` skill when its trigger conditions match.
+
+The root agent owns architecture, decomposition, integration, and final verification.
+Prefer specialized subagents for bounded exploration, implementation, testing, review, and technical research.
+
+Do not delegate trivial work merely for parallelism.
+Do not let multiple implementation agents edit the same files without explicit ownership boundaries.
+User instructions always take precedence over this orchestration policy.
