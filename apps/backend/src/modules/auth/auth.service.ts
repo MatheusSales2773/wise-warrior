@@ -180,7 +180,11 @@ export class AuthService {
   ): Promise<void> {
     const active = await sessions.find({
       where: { userId, revokedAt: IsNull() },
-      order: { lastUsedAt: 'ASC' },
+      order: {
+        lastUsedAt: 'ASC',
+        createdAt: 'ASC',
+        id: 'ASC',
+      },
     });
     const overLimit = active.length - this.maxSessionsPerUser + 1;
     if (overLimit > 0) {
