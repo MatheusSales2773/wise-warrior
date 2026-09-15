@@ -262,11 +262,18 @@ describe('AuthService.refresh', () => {
 });
 
 describe('AuthService.issueSession', () => {
-  it('persists only the hash of the issued secret and returns the session id', async () => {
-    const sessions = {
-      find: jest.fn().mockResolvedValue([]),
-      create: jest.fn((value: Record<string, unknown>) => ({ id: 'session-1', ...value })),
-      save: jest.fn(async (value: unknown) => value),
+  function issueSessionService(
+    sessions: Record<string, jest.Mock>,
+    user = { id: 'user-1', email: 'user@example.com' },
+  ) {
+    const users = { findOne: jest.fn().mockResolvedValue(user) };
+    const manager = {
+      getRepository: jest.fn((entity: unknown) => (entity === User ? users : sessions)),
+    };
+    const dataSource = {
+      transaction: jest.fn(async (callback: (transactionManager: typeof manager) => unknown) =>
+        callback(manager),
+      ),
     };
     const jwt = { sign: jest.fn(() => 'access-token') };
     const config = {
@@ -277,13 +284,23 @@ describe('AuthService.issueSession', () => {
       }),
     };
     const service = new AuthService(
-      {} as never,
+      users as never,
       {} as never,
       sessions as never,
       jwt as never,
       config as never,
-      {} as never,
+      dataSource as never,
     );
+    return { dataSource, manager, service, users };
+  }
+
+  it('persists only the hash of the issued secret and returns the session id', async () => {
+    const sessions = {
+      find: jest.fn().mockResolvedValue([]),
+      create: jest.fn((value: Record<string, unknown>) => ({ id: 'session-1', ...value })),
+      save: jest.fn(async (value: unknown) => value),
+    };
+    const { service, dataSource, manager, users } = issueSessionService(sessions);
 
     const result = await service.issueSession(
       { id: 'user-1', email: 'user@example.com' } as never,
@@ -300,6 +317,13 @@ describe('AuthService.issueSession', () => {
       }),
     );
     expect(JSON.stringify(persisted)).not.toContain(secret);
+    expect(dataSource.transaction).toHaveBeenCalledTimes(1);
+    expect(users.findOne).toHaveBeenCalledWith({
+      where: { id: 'user-1' },
+      select: ['id', 'email'],
+      lock: { mode: 'pessimistic_write' },
+    });
+    expect(manager.getRepository).toHaveBeenCalledWith(User);
   });
 
   it('keeps the existing five-session limit when issuing another session', async () => {
@@ -314,22 +338,7 @@ describe('AuthService.issueSession', () => {
       create: jest.fn((value: Record<string, unknown>) => ({ id: 'new-session', ...value })),
       save: jest.fn(async (value: unknown) => value),
     };
-    const jwt = { sign: jest.fn(() => 'access-token') };
-    const config = {
-      get: jest.fn((key: string) => {
-        if (key === 'JWT_REFRESH_TTL_DAYS') return 30;
-        if (key === 'MAX_SESSIONS_PER_USER') return 5;
-        return undefined;
-      }),
-    };
-    const service = new AuthService(
-      {} as never,
-      {} as never,
-      sessions as never,
-      jwt as never,
-      config as never,
-      {} as never,
-    );
+    const { service } = issueSessionService(sessions);
 
     const result = await service.issueSession(
       { id: 'user-1', email: 'user@example.com' } as never,

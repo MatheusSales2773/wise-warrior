@@ -202,6 +202,10 @@ npm run build --workspace apps/frontend
 
 # Somente os bundles Metro de Web, iOS e Android
 npm run export:bundles --workspace apps/frontend
+
+# Gate E2E Web da autenticação (Chromium + MySQL/Backend/NGINX descartáveis)
+npm run playwright:install --workspace apps/frontend
+npm run test:e2e
 ```
 
 Uma **exportação de bundle** transforma JavaScript/TypeScript e assets em saída
@@ -210,6 +214,14 @@ Uma **compilação nativa** usa Xcode ou Gradle por meio de `expo run:ios` ou
 `expo run:android` para gerar e instalar um aplicativo local. O **Expo Go** é
 opcional para uma verificação rápida enquanto o projeto usar apenas módulos
 compatíveis; ele não substitui a compilação nativa validada por este projeto.
+
+O gate E2E usa `docker-compose.e2e.yml` com um projeto Compose isolado, portas
+locais livres (ou as portas informadas por `E2E_BACKEND_PORT` e
+`E2E_FRONTEND_PORT`), banco sem volume persistente e migrations aplicadas pelo
+backend antes do health check. O script desmonta os serviços e volumes ao
+terminar; relatórios, traces, vídeos, screenshots e storage state ficam em
+diretórios ignorados pelo Git. O gateway local usa HTTPS com certificado
+efêmero para que o cookie `Secure` seja exercitado no navegador.
 
 #### Contrato público do design system M2
 

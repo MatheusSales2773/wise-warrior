@@ -1,16 +1,11 @@
 import type { INestApplication, LoggerService } from '@nestjs/common';
-import { ConfigModule } from '@nestjs/config';
 import { Test } from '@nestjs/testing';
-import { TypeOrmModule } from '@nestjs/typeorm';
 import type { Connection, RowDataPacket } from 'mysql2/promise';
 import mysql from 'mysql2/promise';
 import type { AddressInfo } from 'node:net';
 import { DataSource } from 'typeorm';
+import { AppModule } from '../../app.module';
 import { configureApp } from '../../app.setup';
-import { createDatabaseOptions } from '../../config/database.config';
-import { AddSessionRefreshTokenHistory1788458460000 } from '../../migrations/1788458460000-add-session-refresh-token-history';
-import { CreateWiseSchema1788458400000 } from '../../migrations/1788458400000-create-wise-schema';
-import { AuthModule } from './auth.module';
 
 type Row = RowDataPacket & Record<string, unknown>;
 
@@ -67,6 +62,12 @@ describe('Universal authentication security contract', () => {
   const previousEnvironment = {
     NODE_ENV: process.env.NODE_ENV,
     CORS_ORIGIN: process.env.CORS_ORIGIN,
+    DB_HOST: process.env.DB_HOST,
+    DB_PORT: process.env.DB_PORT,
+    DB_USERNAME: process.env.DB_USERNAME,
+    DB_PASSWORD: process.env.DB_PASSWORD,
+    DB_DATABASE: process.env.DB_DATABASE,
+    DB_MIGRATIONS_RUN: process.env.DB_MIGRATIONS_RUN,
     JWT_ACCESS_SECRET: process.env.JWT_ACCESS_SECRET,
     JWT_ACCESS_TTL: process.env.JWT_ACCESS_TTL,
     JWT_REFRESH_TTL_DAYS: process.env.JWT_REFRESH_TTL_DAYS,
@@ -103,39 +104,28 @@ describe('Universal authentication security contract', () => {
 
     process.env.NODE_ENV = 'test';
     process.env.CORS_ORIGIN = 'http://localhost:8081';
+    process.env.DB_HOST = host;
+    process.env.DB_PORT = String(port);
+    process.env.DB_USERNAME = username;
+    process.env.DB_PASSWORD = password;
+    process.env.DB_DATABASE = databaseName;
+    process.env.DB_MIGRATIONS_RUN = 'false';
     process.env.JWT_ACCESS_SECRET = 'integration-access-secret';
     process.env.JWT_ACCESS_TTL = '15m';
     process.env.JWT_REFRESH_TTL_DAYS = '30';
     process.env.MAX_SESSIONS_PER_USER = '5';
 
-    const databaseOptions = createDatabaseOptions({
-      NODE_ENV: 'test',
-      DB_HOST: host,
-      DB_PORT: port,
-      DB_USERNAME: username,
-      DB_PASSWORD: password,
-      DB_DATABASE: databaseName,
-    });
     const moduleRef = await Test.createTestingModule({
-      imports: [
-        ConfigModule.forRoot({ isGlobal: true, ignoreEnvFile: true }),
-        TypeOrmModule.forRoot({
-          ...databaseOptions,
-          database: databaseName,
-          migrations: [
-            CreateWiseSchema1788458400000,
-            AddSessionRefreshTokenHistory1788458460000,
-          ],
-          migrationsRun: true,
-        }),
-        AuthModule,
-      ],
+      imports: [AppModule],
     }).compile();
 
     app = moduleRef.createNestApplication({ logger });
     configureApp(app);
+    await app.init();
+    const initializedDataSource = app.get(DataSource);
+    dataSource = initializedDataSource;
+    await initializedDataSource.runMigrations();
     await app.listen(0, '127.0.0.1');
-    dataSource = app.get(DataSource);
     const address = app.getHttpServer().address() as AddressInfo;
     baseUrl = `http://127.0.0.1:${address.port}/api/v1`;
   });
@@ -309,6 +299,21 @@ describe('Universal authentication security contract', () => {
     );
     expect(webLogout.status).toBe(204);
     webResponseHeaders.push(headersFrom(webLogout));
+    const webLogoutReplay = await post(
+      '/auth/refresh',
+      {},
+      {
+        origin: 'http://localhost:8081',
+        cookie: `ww_refresh=${rotatedWebRefresh}`,
+      },
+    );
+    expect(webLogoutReplay.status).toBe(401);
+    const webRevokedRows = (await dataSource!.query(
+      `SELECT revoked_at FROM ${identifier(databaseName!)}.sessions WHERE id = ?`,
+      [webLoginBody.sessionId],
+    )) as Row[];
+    expect(webRevokedRows).toHaveLength(1);
+    expect(webRevokedRows[0]!.revoked_at).not.toBeNull();
 
     const nativeRegister = await post('/auth/native/register', {
       email: 'native-security@wise.app',
@@ -320,6 +325,7 @@ describe('Universal authentication security contract', () => {
     nativeResponseHeaders.push(headersFrom(nativeRegister));
     const nativeRegisterBody = (await nativeRegister.json()) as {
       refreshToken: string;
+      sessionId: string;
     };
     nativeResponseBodies.push(JSON.stringify(nativeRegisterBody));
     refreshTokens.push(nativeRegisterBody.refreshToken);
@@ -333,6 +339,7 @@ describe('Universal authentication security contract', () => {
     nativeResponseHeaders.push(headersFrom(nativeLogin));
     const nativeLoginBody = (await nativeLogin.json()) as {
       refreshToken: string;
+      sessionId: string;
     };
     nativeResponseBodies.push(JSON.stringify(nativeLoginBody));
     refreshTokens.push(nativeLoginBody.refreshToken);
@@ -344,6 +351,7 @@ describe('Universal authentication security contract', () => {
     nativeResponseHeaders.push(headersFrom(nativeRefresh));
     const nativeRefreshBody = (await nativeRefresh.json()) as {
       refreshToken: string;
+      sessionId: string;
     };
     nativeResponseBodies.push(JSON.stringify(nativeRefreshBody));
     refreshTokens.push(nativeRefreshBody.refreshToken);
@@ -353,6 +361,16 @@ describe('Universal authentication security contract', () => {
     });
     expect(nativeLogout.status).toBe(204);
     nativeResponseHeaders.push(headersFrom(nativeLogout));
+    const nativeLogoutReplay = await post('/auth/native/refresh', {
+      refreshToken: nativeRefreshBody.refreshToken,
+    });
+    expect(nativeLogoutReplay.status).toBe(401);
+    const nativeRevokedRows = (await dataSource!.query(
+      `SELECT revoked_at FROM ${identifier(databaseName!)}.sessions WHERE id = ?`,
+      [nativeRefreshBody.sessionId],
+    )) as Row[];
+    expect(nativeRevokedRows).toHaveLength(1);
+    expect(nativeRevokedRows[0]!.revoked_at).not.toBeNull();
 
     const serializedWebResponses = webResponseBodies.join('\n');
     const serializedResponses = [
@@ -416,6 +434,56 @@ describe('Universal authentication security contract', () => {
         String(row.password_hash).startsWith('$argon2id$'),
       ),
     ).toBe(true);
+  });
+
+  it('enforces the five-session limit across concurrent Web and native logins', async () => {
+    const email = `session-limit-${process.pid}@wise.app`;
+    const password = 'session-limit-password';
+    const registration = await post(
+      '/auth/register',
+      { email, password, displayName: 'Session Limit' },
+      { origin: 'http://localhost:8081' },
+    );
+    expect(registration.status).toBe(201);
+    const registrationBody = (await registration.json()) as { sessionId: string };
+
+    const loginResponses = await Promise.all([
+      post(
+        '/auth/login',
+        { email, password, deviceLabel: 'Wise Web' },
+        { origin: 'http://localhost:8081' },
+      ),
+      post(
+        '/auth/login',
+        { email, password, deviceLabel: 'Wise Web' },
+        { origin: 'http://localhost:8081' },
+      ),
+      post(
+        '/auth/login',
+        { email, password, deviceLabel: 'Wise Web' },
+        { origin: 'http://localhost:8081' },
+      ),
+      post('/auth/native/login', { email, password, deviceLabel: 'Wise iOS' }),
+      post('/auth/native/login', { email, password, deviceLabel: 'Wise Android' }),
+      post('/auth/native/login', { email, password, deviceLabel: 'Wise iOS' }),
+    ]);
+    expect(loginResponses.every((response) => response.status === 200)).toBe(true);
+
+    const userRows = (await dataSource!.query(
+      `SELECT id FROM ${identifier(databaseName!)}.users WHERE email = ?`,
+      [email],
+    )) as Row[];
+    expect(userRows).toHaveLength(1);
+    const sessionRows = (await dataSource!.query(
+      `SELECT id, revoked_at FROM ${identifier(databaseName!)}.sessions
+       WHERE user_id = ? ORDER BY created_at ASC`,
+      [String(userRows[0]!.id)],
+    )) as Row[];
+    const activeSessions = sessionRows.filter((row) => row.revoked_at === null);
+    expect(sessionRows).toHaveLength(7);
+    expect(activeSessions).toHaveLength(5);
+    expect(activeSessions.length).toBeLessThanOrEqual(5);
+    expect(sessionRows.find((row) => row.id === registrationBody.sessionId)?.revoked_at).not.toBeNull();
   });
 
   it('returns distinct conflict and backend-validation responses for registration', async () => {

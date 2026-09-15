@@ -19,6 +19,7 @@ import { createDatabaseOptions } from './config/database.config';
       useFactory: (config: ConfigService) =>
         createDatabaseOptions({
           NODE_ENV: config.get<string>('NODE_ENV'),
+          DB_MIGRATIONS_RUN: config.get<string>('DB_MIGRATIONS_RUN'),
           DB_HOST: config.get<string>('DB_HOST'),
           DB_PORT: config.get<string>('DB_PORT'),
           DB_USERNAME: config.get<string>('DB_USERNAME'),

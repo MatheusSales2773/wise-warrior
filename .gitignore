@@ -140,3 +140,13 @@ apps/frontend/*.apk
 apps/frontend/*.aab
 apps/frontend/*.ipa
 apps/frontend/.env*.local
+
+# Local secrets and browser-test artifacts
+.env
+**/.env
+**/playwright-report/
+**/test-results/
+**/blob-report/
+**/storage-state*.json
+**/.auth/
+**/.DS_Store

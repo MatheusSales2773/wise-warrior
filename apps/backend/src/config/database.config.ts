@@ -3,6 +3,7 @@ import type { MysqlConnectionOptions } from 'typeorm/driver/mysql/MysqlConnectio
 
 export interface DatabaseEnvironment {
   NODE_ENV?: string;
+  DB_MIGRATIONS_RUN?: string | boolean;
   DB_HOST?: string;
   DB_PORT?: string | number;
   DB_USERNAME?: string;
@@ -34,6 +35,9 @@ export function createDatabaseOptions(
   environment: DatabaseEnvironment = process.env,
 ): MySqlDatabaseOptions {
   const isProduction = environment.NODE_ENV === 'production';
+  const runMigrations = isProduction
+    || environment.DB_MIGRATIONS_RUN === true
+    || environment.DB_MIGRATIONS_RUN === 'true';
 
   return {
     type: 'mysql',
@@ -45,7 +49,7 @@ export function createDatabaseOptions(
     entities: getEntityPaths(),
     migrations: getMigrationPaths(),
     synchronize: false,
-    migrationsRun: isProduction,
+    migrationsRun: runMigrations,
     migrationsTableName: 'migrations',
     extra: { connectionLimit: 5 },
   };

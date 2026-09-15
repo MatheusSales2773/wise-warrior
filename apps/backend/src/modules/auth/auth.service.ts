@@ -130,7 +130,21 @@ export class AuthService {
 
   /** Cria uma nova sessão persistente por dispositivo (ADR-009), sem invalidar as demais. */
   async issueSession(user: User, device: DeviceMetadata): Promise<AuthTokens> {
-    return this.issueSessionWithRepository(user, device, this.sessions);
+    return this.dataSource.transaction(async (transactionalEntityManager) => {
+      const lockedUser = await transactionalEntityManager.getRepository(User).findOne({
+        where: { id: user.id },
+        select: ['id', 'email'],
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (!lockedUser) {
+        throw new UnauthorizedException('Usuário não encontrado');
+      }
+      return this.issueSessionWithRepository(
+        lockedUser,
+        device,
+        transactionalEntityManager.getRepository(Session),
+      );
+    });
   }
 
   private async issueSessionWithRepository(

@@ -44,6 +44,9 @@ Before implementing or changing code, tests, infrastructure, or configuration:
 - [React Native Testing Library](https://oss.callstack.com/react-native-testing-library/)
 - [TypeScript ESLint legacy configuration](https://typescript-eslint.io/getting-started/legacy-eslint-setup/)
 - [Vitest 2 documentation](https://v2.vitest.dev/guide/)
+- [Playwright 1.63 installation](https://playwright.dev/docs/intro)
+- [Playwright 1.63 CI](https://playwright.dev/docs/ci)
+- [Playwright 1.63 authentication](https://playwright.dev/docs/auth)
 
 #### Infrastructure
 
