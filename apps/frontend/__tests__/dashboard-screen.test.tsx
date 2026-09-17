@@ -3,6 +3,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { AccessibilityInfo, Platform } from 'react-native';
 import { DashboardScreen } from '@/features/dashboard/dashboard-screen';
 import { getMyProfile, getRecentStudySessions, type UserProfile, type RecentStudySession } from '@/features/dashboard/api';
+import { dashboardKeys } from '@/features/dashboard/queries';
 
 jest.mock('@/features/dashboard/api', () => ({
   getMyProfile: jest.fn(),
@@ -99,6 +100,44 @@ describe('DashboardScreen', () => {
     expect(mockedActivity).toHaveBeenCalledTimes(2);
     await act(async () => { resolveRetry([]); });
     await waitFor(() => expect(screen.getByTestId('dashboard-activity-empty')).toBeTruthy());
+  });
+
+  it('announces success after an isolated activity retry on iOS', async () => {
+    jest.replaceProperty(Platform, 'OS', 'ios');
+    const announce = jest.spyOn(AccessibilityInfo, 'announceForAccessibilityWithOptions').mockImplementation(() => {});
+    mockedProfile.mockResolvedValue(profile);
+    mockedActivity.mockResolvedValueOnce([session]);
+    await renderDashboard();
+    await waitFor(() => expect(screen.getByTestId('dashboard-activity')).toBeTruthy());
+
+    mockedActivity.mockRejectedValueOnce(new Error('activity offline'));
+    await act(async () => { fireEvent(screen.getByTestId('dashboard-scroll'), 'refresh'); });
+    await waitFor(() => expect(screen.getByTestId('dashboard-activity-refresh-error')).toBeTruthy());
+    announce.mockClear();
+
+    let resolveRetry!: (value: RecentStudySession[]) => void;
+    mockedActivity.mockReturnValue(new Promise((resolve) => { resolveRetry = resolve; }));
+    await act(() => { fireEvent.press(screen.getByRole('button', { name: 'Tentar novamente' })); });
+    await waitFor(() => expect(announce).toHaveBeenCalledWith('Atualizando dados', { queue: true }));
+    await act(async () => { resolveRetry([]); });
+    await waitFor(() => expect(announce).toHaveBeenCalledWith('Dados atualizados', { queue: true }));
+    expect(announce.mock.calls.filter(([message]) => message === 'Dados atualizados')).toHaveLength(1);
+    announce.mockRestore();
+  });
+
+  it('shows success after an external activity refetch completes', async () => {
+    mockedProfile.mockResolvedValue(profile);
+    mockedActivity.mockResolvedValueOnce([]);
+    const { client } = await renderDashboard();
+    await waitFor(() => expect(screen.getByTestId('dashboard-activity-empty')).toBeTruthy());
+
+    let resolveRefetch!: (value: RecentStudySession[]) => void;
+    mockedActivity.mockReturnValue(new Promise((resolve) => { resolveRefetch = resolve; }));
+    await act(() => { void client.invalidateQueries({ queryKey: dashboardKeys.recentActivity() }); });
+    await waitFor(() => expect(screen.getByText('Atualizando dados')).toBeTruthy());
+    await act(async () => { resolveRefetch([]); });
+    await waitFor(() => expect(screen.getByText('Dados atualizados')).toBeTruthy());
+    client.clear();
   });
 
   it('announces dashboard status changes once on iOS', async () => {

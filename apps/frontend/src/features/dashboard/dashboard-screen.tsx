@@ -38,6 +38,7 @@ export function DashboardScreen() {
   const { width } = useWindowDimensions();
   const [refreshSucceeded, setRefreshSucceeded] = useState(false);
   const refreshInFlight = useRef<Promise<void> | null>(null);
+  const refreshInProgress = useRef(false);
   const refreshing = profile.isRefetching || activity.isRefetching;
   const statusMessage = refreshing ? 'Atualizando dados' : refreshSucceeded ? 'Dados atualizados' : profile.isError || activity.isError ? 'Alguns dados não foram atualizados.' : null;
   const refresh = async () => {
@@ -49,6 +50,16 @@ export function DashboardScreen() {
     refreshInFlight.current = request;
     return request;
   };
+
+  useEffect(() => {
+    if (refreshing) {
+      refreshInProgress.current = true;
+      return;
+    }
+    if (!refreshInProgress.current) return;
+    refreshInProgress.current = false;
+    setRefreshSucceeded(!profile.isError && !activity.isError);
+  }, [activity.isError, profile.isError, refreshing]);
 
   useEffect(() => {
     if (!refreshSucceeded) return;
