@@ -14,6 +14,7 @@ export type StudySessionMode = 'solo' | 'guild';
 
 @Entity('study_sessions')
 @Index('IDX_study_sessions_user_id_started_at', ['userId', 'startedAt'])
+@Index('IDX_study_sessions_user_id_ended_at_id', ['userId', 'endedAt', 'id'])
 @Index('IDX_study_sessions_raid_id', ['raidId'])
 export class StudySession {
   @PrimaryGeneratedColumn('uuid')
