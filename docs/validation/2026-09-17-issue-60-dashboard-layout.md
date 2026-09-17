@@ -1,7 +1,7 @@
 # Validação da issue 60 — layout e acessibilidade do Dashboard
 
-**Data:** 17/09/2026  
-**Escopo:** composição responsiva e acessível do Dashboard universal  
+**Data:** 17/09/2026
+**Escopo:** composição responsiva e acessível do Dashboard universal
 **Branch:** `feat/issue-60-m4-dashboard`
 
 ## Comparação com a referência visual
