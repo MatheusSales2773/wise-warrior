@@ -1,16 +1,35 @@
 import { useQuery, type UseQueryResult } from '@tanstack/react-query';
-import { useEffect, useState } from 'react';
-import { Platform, StyleSheet, View, useWindowDimensions } from 'react-native';
+import { useEffect, useRef, useState } from 'react';
+import { AccessibilityInfo, Platform, StyleSheet, View, useWindowDimensions } from 'react-native';
 import { FeedbackMessage, ProgressBar, Screen, WiseButton, WiseCard, WiseText, isDesktopLayout, theme } from '@/design-system';
 import { formatDiscardReason, formatDuration, formatSessionDate, formatXp } from './formatters';
 import type { RecentStudySession } from './api';
 import { profileQueryOptions, recentActivityQueryOptions } from './queries';
 
 function ActivityCard({ query }: { query: UseQueryResult<RecentStudySession[]> }) {
-  if (query.isPending) return <WiseCard testID="dashboard-activity-loading"><WiseText variant="body">Carregando sessões recentes…</WiseText></WiseCard>;
-  if (query.isError && !query.data) return <WiseCard testID="dashboard-activity-error"><FeedbackMessage variant="error" title="Atividade indisponível" message="Não foi possível carregar suas sessões concluídas." /><WiseButton label="Tentar novamente" variant="secondary" onPress={() => void query.refetch()} /></WiseCard>;
-  if (!query.data?.length) return <WiseCard testID="dashboard-activity-empty"><WiseText variant="subtitle">Atividade recente</WiseText><WiseText variant="body">Nenhuma sessão concluída ainda. Suas sessões concluídas aparecerão aqui.</WiseText></WiseCard>;
-  return <WiseCard testID="dashboard-activity"><WiseText variant="subtitle">Atividade recente</WiseText>{query.data.slice(0, 5).map((session) => <View key={session.id} accessible style={styles.activityItem}><WiseText variant="label">{session.subject}</WiseText><WiseText variant="caption" color="textSecondary">{session.mode} · {formatSessionDate(session.endedAt)}</WiseText><WiseText variant="body">{formatDuration(session.durationValidSeconds)} · {formatXp(session.xpAwarded)} XP</WiseText>{session.discardedReason ? <WiseText variant="caption" color="feedbackDanger">{formatDiscardReason(session.discardedReason)}</WiseText> : null}</View>)}</WiseCard>;
+  const retryInFlight = useRef<Promise<unknown> | null>(null);
+  const retry = () => {
+    if (retryInFlight.current) return retryInFlight.current;
+    const request = query.refetch().finally(() => { retryInFlight.current = null; });
+    retryInFlight.current = request;
+    return request;
+  };
+
+  if (query.isPending && !query.data) return <WiseCard testID="dashboard-activity-loading"><WiseText variant="body">Carregando sessões recentes…</WiseText></WiseCard>;
+  if (query.isError && !query.data) return <WiseCard testID="dashboard-activity-error"><FeedbackMessage variant="error" title="Atividade indisponível" message="Não foi possível carregar suas sessões concluídas." /><WiseButton label="Tentar novamente" variant="secondary" loading={query.isRefetching} onPress={() => void retry()} /></WiseCard>;
+
+  const sessions = query.data ?? [];
+  return <WiseCard testID={sessions.length ? 'dashboard-activity' : 'dashboard-activity-empty'}>
+    <WiseText variant="subtitle">Atividade recente</WiseText>
+    {sessions.length ? sessions.slice(0, 5).map((session) => <View key={session.id} accessible style={styles.activityItem}>
+      <WiseText variant="label">{session.subject}</WiseText>
+      <WiseText variant="caption" color="textSecondary">{session.mode} · {formatSessionDate(session.endedAt)}</WiseText>
+      <WiseText variant="body">{formatDuration(session.durationValidSeconds)} · {formatXp(session.xpAwarded)} XP</WiseText>
+      {session.discardedReason ? <WiseText variant="caption" color="feedbackDanger">{formatDiscardReason(session.discardedReason)}</WiseText> : null}
+    </View>) : <WiseText variant="body">Nenhuma sessão concluída ainda. Suas sessões concluídas aparecerão aqui.</WiseText>}
+    {query.isRefetching ? <WiseText testID="dashboard-activity-refreshing" variant="caption" color="textSecondary">Atualizando atividade…</WiseText> : null}
+    {query.isError ? <View testID="dashboard-activity-refresh-error"><FeedbackMessage variant="error" title="Atividade desatualizada" message="Não foi possível atualizar suas sessões concluídas." /><WiseButton label="Tentar novamente" variant="secondary" loading={query.isRefetching} onPress={() => void retry()} /></View> : null}
+  </WiseCard>;
 }
 
 export function DashboardScreen() {
@@ -18,21 +37,41 @@ export function DashboardScreen() {
   const activity = useQuery(recentActivityQueryOptions());
   const { width } = useWindowDimensions();
   const [refreshSucceeded, setRefreshSucceeded] = useState(false);
+  const refreshInFlight = useRef<Promise<void> | null>(null);
+  const refreshInProgress = useRef(false);
   const refreshing = profile.isRefetching || activity.isRefetching;
+  const statusMessage = refreshing ? 'Atualizando dados' : refreshSucceeded ? 'Dados atualizados' : profile.isError || activity.isError ? 'Alguns dados não foram atualizados.' : null;
   const refresh = async () => {
+    if (refreshInFlight.current) return refreshInFlight.current;
     setRefreshSucceeded(false);
-    const results = await Promise.all([
-      profile.refetch(),
-      activity.refetch(),
-    ]);
-    setRefreshSucceeded(results.every((query) => !query.isError));
+    const request = Promise.all([profile.refetch(), activity.refetch()])
+      .then((results) => setRefreshSucceeded(results.every((query) => !query.isError)))
+      .finally(() => { refreshInFlight.current = null; });
+    refreshInFlight.current = request;
+    return request;
   };
+
+  useEffect(() => {
+    if (refreshing) {
+      refreshInProgress.current = true;
+      return;
+    }
+    if (!refreshInProgress.current) return;
+    refreshInProgress.current = false;
+    setRefreshSucceeded(!profile.isError && !activity.isError);
+  }, [activity.isError, profile.isError, refreshing]);
 
   useEffect(() => {
     if (!refreshSucceeded) return;
     const timeout = setTimeout(() => setRefreshSucceeded(false), 4_000);
     return () => clearTimeout(timeout);
   }, [refreshSucceeded]);
+
+  useEffect(() => {
+    if (Platform.OS === 'ios' && statusMessage) {
+      AccessibilityInfo.announceForAccessibilityWithOptions(statusMessage, { queue: true });
+    }
+  }, [statusMessage]);
 
   if (profile.isPending && !profile.data) {
     return (
@@ -56,7 +95,7 @@ export function DashboardScreen() {
   const desktop = isDesktopLayout(Platform.OS, width);
   const refreshProps = Platform.OS === 'web' ? {} : { refreshing, onRefresh: () => { void refresh(); } };
   return <Screen title="Acampamento" testID="dashboard" {...refreshProps}>
-    <View accessibilityLiveRegion="polite" style={styles.status}>{refreshing ? <WiseText variant="caption" color="textSecondary">Atualizando dados</WiseText> : refreshSucceeded ? <WiseText variant="caption" color="feedbackSuccess">Dados atualizados</WiseText> : profile.isError || activity.isError ? <WiseText variant="caption" color="feedbackDanger">Alguns dados não foram atualizados.</WiseText> : null}</View>
+    <View accessibilityLiveRegion="polite" style={styles.status}>{statusMessage ? <WiseText variant="caption" color={refreshing ? 'textSecondary' : refreshSucceeded ? 'feedbackSuccess' : 'feedbackDanger'}>{statusMessage}</WiseText> : null}</View>
     {Platform.OS === 'web' ? <WiseButton label="Atualizar dados" variant="secondary" loading={refreshing} onPress={() => void refresh()} /> : null}
     <View style={[styles.grid, desktop && styles.desktopGrid]}>
       <View style={styles.mainColumn}>
