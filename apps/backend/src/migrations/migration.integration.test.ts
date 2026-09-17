@@ -207,10 +207,35 @@ describe('TypeORM migrations against an empty MySQL schema', () => {
       );
     }
 
+    await database!.admin.query(
+      `INSERT INTO ${database!.identifier}.users
+       (id, email, password_hash, display_name, plan_tier)
+       VALUES (?, ?, ?, ?, ?)`,
+      ['00000000-0000-4000-8000-000000000001', 'explain@example.com', 'hash', 'Explain', 'free'],
+    );
+    await database!.admin.query(
+      `INSERT INTO ${database!.identifier}.study_sessions
+       (id, user_id, subject, mode, started_at, ended_at,
+        duration_valid_seconds, xp_awarded)
+       SELECT UUID(), ?, 'Explain', 'solo', NOW() - INTERVAL 2 HOUR,
+              NOW() - INTERVAL 1 HOUR, 3600, 10
+       FROM (SELECT 1 UNION ALL SELECT 2 UNION ALL SELECT 3 UNION ALL SELECT 4
+             UNION ALL SELECT 5 UNION ALL SELECT 6 UNION ALL SELECT 7 UNION ALL SELECT 8
+             UNION ALL SELECT 9 UNION ALL SELECT 10) a
+       CROSS JOIN (SELECT 1 UNION ALL SELECT 2 UNION ALL SELECT 3 UNION ALL SELECT 4
+                   UNION ALL SELECT 5 UNION ALL SELECT 6 UNION ALL SELECT 7 UNION ALL SELECT 8
+                   UNION ALL SELECT 9 UNION ALL SELECT 10) b
+       CROSS JOIN (SELECT 1 UNION ALL SELECT 2 UNION ALL SELECT 3 UNION ALL SELECT 4
+                   UNION ALL SELECT 5 UNION ALL SELECT 6 UNION ALL SELECT 7 UNION ALL SELECT 8
+                   UNION ALL SELECT 9 UNION ALL SELECT 10) c`,
+      ['00000000-0000-4000-8000-000000000001'],
+    );
+
     const explainRows = await rows(
       database!.admin,
-      `EXPLAIN SELECT id FROM ${database!.identifier}.study_sessions
-       FORCE INDEX (IDX_study_sessions_user_id_ended_at_id)
+      `EXPLAIN SELECT id, subject, mode, started_at, ended_at,
+                      duration_valid_seconds, xp_awarded, discarded_reason
+       FROM ${database!.identifier}.study_sessions
        WHERE user_id = ? AND ended_at IS NOT NULL
        ORDER BY ended_at DESC, id DESC LIMIT 5`,
       ['user-1'],

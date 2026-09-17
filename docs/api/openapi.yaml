@@ -58,6 +58,7 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/SessionTokenResponse" }
         "400": { $ref: "#/components/responses/BadRequest" }
+        "409": { $ref: "#/components/responses/Conflict" }
 
   /auth/login:
     post:
