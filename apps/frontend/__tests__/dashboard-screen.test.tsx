@@ -90,6 +90,24 @@ describe('DashboardScreen', () => {
     expect(screen.queryByText('Aprendiz')).toBeTruthy();
   });
 
+  it.each([320, 390])('keeps long dashboard content readable at %dpx with enlarged font settings', async (width) => {
+    const longDisplayName = 'Aventureiro com um nome deliberadamente longo para testar quebra de linha';
+    const longTitle = 'Guardião das bibliotecas e do raciocínio paciente';
+    const longSubject = 'Matemática aplicada, raciocínio lógico e resolução de problemas';
+    mockUseWindowDimensions.mockReturnValue({ width, height: 844, scale: 1, fontScale: 2 });
+    mockedProfile.mockResolvedValue({ ...profile, displayName: longDisplayName, title: longTitle });
+    mockedActivity.mockResolvedValue([{ ...session, subject: longSubject, durationValidSeconds: 45, discardedReason: 'too_short' }]);
+    await renderDashboard();
+
+    await waitFor(() => expect(screen.getByTestId('dashboard-activity')).toBeTruthy());
+    expect(screen.getByRole('header', { name: `Boas-vindas, ${longDisplayName}` })).toBeTruthy();
+    expect(screen.getByText(longTitle)).toBeTruthy();
+    expect(screen.getByText(longSubject)).toBeTruthy();
+    expect(screen.getByText('45 s · 25 XP')).toBeTruthy();
+    expect(screen.getByText('Sessão não contabilizada')).toBeTruthy();
+    expect(screen.getByText(longSubject).props.allowFontScaling).toBe(true);
+  });
+
   it('exposes each long activity item as one complete accessible announcement', async () => {
     const longSession = {
       ...session,
@@ -195,6 +213,20 @@ describe('DashboardScreen', () => {
     await waitFor(() => expect(screen.getByTestId('dashboard-activity-refresh-error')).toBeTruthy());
     expect(screen.getByText('Matemática')).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Tentar novamente' })).toBeTruthy();
+  });
+
+  it('announces a cached profile refresh failure and keeps the previous profile visible', async () => {
+    mockedProfile.mockResolvedValueOnce(profile);
+    mockedActivity.mockResolvedValue([]);
+    await renderDashboard();
+    await waitFor(() => expect(screen.getByTestId('dashboard-profile')).toBeTruthy());
+
+    mockedProfile.mockRejectedValueOnce(new Error('profile offline'));
+    await act(async () => { fireEvent.press(screen.getByRole('button', { name: 'Atualizar dados' })); });
+    await waitFor(() => expect(screen.getByTestId('dashboard-profile-refresh-error')).toBeTruthy());
+    expect(screen.getByText('Boas-vindas, Aventureiro')).toBeTruthy();
+    expect(screen.getByText('Progresso desatualizado')).toBeTruthy();
+    expect(screen.getByTestId('dashboard-partial-error').props['aria-live']).toBe('off');
   });
 
   it('single-flights repeated activity retries', async () => {

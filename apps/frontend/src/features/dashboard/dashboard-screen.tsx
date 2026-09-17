@@ -15,21 +15,40 @@ function CardContent({ children, testID }: PropsWithChildren<{ testID?: string }
 }
 
 function ActivityItem({ session }: { session: RecentStudySession }) {
+  const display = {
+    date: formatSessionDate(session.endedAt),
+    discarded: session.discardedReason ? formatDiscardReason(session.discardedReason) : null,
+    duration: formatDuration(session.durationValidSeconds),
+    mode: session.mode,
+    subject: session.subject,
+    xp: `${formatXp(session.xpAwarded)} XP`,
+  };
   const details = [
-    session.subject,
-    session.mode,
-    formatSessionDate(session.endedAt),
-    formatDuration(session.durationValidSeconds),
-    `${formatXp(session.xpAwarded)} XP`,
-    session.discardedReason ? formatDiscardReason(session.discardedReason) : null,
+    display.subject,
+    display.mode,
+    display.date,
+    display.duration,
+    display.xp,
+    display.discarded,
   ].filter(Boolean).join(' · ');
 
   return (
     <View accessible accessibilityLabel={`Sessão: ${details}`} key={session.id} style={styles.activityItem}>
-      <WiseText variant="label">{session.subject}</WiseText>
-      <WiseText color="textSecondary" variant="caption">{session.mode} · {formatSessionDate(session.endedAt)}</WiseText>
-      <WiseText variant="body">{formatDuration(session.durationValidSeconds)} · {formatXp(session.xpAwarded)} XP</WiseText>
-      {session.discardedReason ? <WiseText color="feedbackDanger" variant="caption">{formatDiscardReason(session.discardedReason)}</WiseText> : null}
+      <WiseText variant="label">{display.subject}</WiseText>
+      <WiseText color="textSecondary" variant="caption">{display.mode} · {display.date}</WiseText>
+      <WiseText variant="body">{display.duration} · {display.xp}</WiseText>
+      {display.discarded ? <WiseText color="feedbackDanger" variant="caption">{display.discarded}</WiseText> : null}
+    </View>
+  );
+}
+
+function ProfileRefreshError({ query }: { query: UseQueryResult<unknown> }) {
+  if (!query.isError || !query.data) return null;
+
+  return (
+    <View style={styles.inlineError} testID="dashboard-profile-refresh-error">
+      <FeedbackMessage message="Não foi possível atualizar seu progresso." title="Progresso desatualizado" variant="error" />
+      <WiseButton label="Tentar novamente" loading={query.isRefetching} onPress={() => void query.refetch()} variant="secondary" />
     </View>
   );
 }
@@ -173,6 +192,7 @@ export function DashboardScreen() {
             {user.title ? <WiseText color="textSecondary" variant="body">{user.title}</WiseText> : null}
           </CardContent>
         </WiseCard>
+        <ProfileRefreshError query={profile} />
         <WiseCard accessibilityLabel="Progressão" role="region" testID="dashboard-progression" variant="elevated">
           <CardContent>
             <SectionHeading>Nível {user.level}</SectionHeading>
@@ -190,6 +210,7 @@ export function DashboardScreen() {
 const styles = StyleSheet.create({
   loading: { gap: theme.space.stackDefault, padding: theme.space.cardInset },
   errorContent: { gap: theme.space.stackDefault },
+  inlineError: { gap: theme.space.stackDefault },
   status: { minHeight: 20, marginBottom: theme.space.stackTight },
   partialError: { marginBottom: theme.space.stackTight },
   refreshAction: { alignSelf: 'flex-start', marginBottom: theme.space.sectionGap },

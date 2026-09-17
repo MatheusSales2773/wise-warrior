@@ -11,6 +11,20 @@ A referência `docs/Wise Warrior _standalone_.html` foi consultada nos estilos
 uma lateral estreita para atividade, um hero com ornamento dourado e linhas
 divisórias discretas entre itens.
 
+## Matriz versionada e documentação consultada
+
+As decisões usam as versões instaladas no workspace: React Native `0.86.3`,
+React Native Web `0.21.2`, Expo `57.0.23`, React `19.2.3`, TanStack Query
+`5.102.8`, Jest `29.7.0` e React Native Testing Library `14.0.1`. Foram
+consultadas as referências oficiais de [acessibilidade do React Native
+0.86](https://reactnative.dev/docs/0.86/accessibility), [`RefreshControl`
+0.86](https://reactnative.dev/docs/0.86/refreshcontrol), [acessibilidade do
+React Native Web](https://necolas.github.io/react-native-web/docs/accessibility/),
+[TanStack Query para React Native](https://tanstack.com/query/latest/docs/framework/react/react-native)
+e [Expo SDK 57](https://docs.expo.dev/versions/v57.0.0/). Elas confirmam o
+`refreshing` controlado, `accessibilityValue`/`accessibilityLiveRegion`, a
+necessidade de foco Web e a integração de foco por `AppState` já existente.
+
 As adaptações para o Dashboard real são:
 
 - os tokens existentes de índigo, ouro, pergaminho, Cinzel e Inter permanecem
@@ -35,8 +49,14 @@ As adaptações para o Dashboard real são:
 - `git diff --check` — passando.
 
 Os testes cobrem 320/390 px, Web larga, iOS/Android em largura grande,
-ausência de título, conteúdo longo, ordem semântica, safe area, `ProgressBar`
-com role/nome/valor, loading busy, erros parciais, refresh e ação Web.
+ausência de título, conteúdo longo com fonte ampliada, ordem semântica, safe
+area, `ProgressBar` com role/nome/valor, loading busy, erros parciais —
+incluindo falha de atualização do perfil com cache —, refresh e ação Web.
+
+As cores são os tokens já auditados no gate M2: texto primário/secundário em
+cards, preenchimento da progressão e feedback de erro/sucesso atendem aos
+limiares WCAG AA documentados em
+[`2026-09-05-m2-universal-gate.md`](2026-09-05-m2-universal-gate.md).
 
 ## QA manual universal
 
