@@ -186,6 +186,7 @@ describe('TypeORM migrations against an empty MySQL schema', () => {
     );
     for (const expected of [
       ['study_sessions', 'IDX_study_sessions_user_id_started_at', 'user_id,started_at'],
+      ['study_sessions', 'IDX_study_sessions_user_id_ended_at_id', 'user_id,ended_at,id'],
       ['raid_contributions', 'IDX_raid_contributions_raid_id_user_id', 'raid_id,user_id'],
       ['sessions', 'IDX_sessions_user_id', 'user_id'],
       [
@@ -205,6 +206,16 @@ describe('TypeORM migrations against an empty MySQL schema', () => {
         ]),
       );
     }
+
+    const explainRows = await rows(
+      database!.admin,
+      `EXPLAIN SELECT id FROM ${database!.identifier}.study_sessions
+       FORCE INDEX (IDX_study_sessions_user_id_ended_at_id)
+       WHERE user_id = ? AND ended_at IS NOT NULL
+       ORDER BY ended_at DESC, id DESC LIMIT 5`,
+      ['user-1'],
+    );
+    expect(explainRows[0]?.key).toBe('IDX_study_sessions_user_id_ended_at_id');
 
     const foreignKeyRows = await rows(
       database!.admin,
@@ -282,6 +293,7 @@ describe('TypeORM migrations against an empty MySQL schema', () => {
     expect(migrationRows.map((row) => row.name)).toEqual([
       'CreateWiseSchema1788458400000',
       'AddSessionRefreshTokenHistory1788458460000',
+      'AddStudySessionRecentIndex1788458520000',
     ]);
 
     await dataSource.undoLastMigration();
@@ -292,6 +304,17 @@ describe('TypeORM migrations against an empty MySQL schema', () => {
       [database!.name],
     );
     expect(remainingRows.map((row) => row.TABLE_NAME)).toEqual(
+      expectedTables.slice().sort(),
+    );
+
+    await dataSource.undoLastMigration();
+    const afterHistoryRevertRows = await rows(
+      database!.admin,
+      `SELECT TABLE_NAME FROM information_schema.TABLES
+       WHERE TABLE_SCHEMA = ? AND TABLE_NAME <> 'migrations' ORDER BY TABLE_NAME`,
+      [database!.name],
+    );
+    expect(afterHistoryRevertRows.map((row) => row.TABLE_NAME)).toEqual(
       expectedTables
         .filter((tableName) => tableName !== 'session_refresh_token_history')
         .sort(),

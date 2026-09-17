@@ -20,6 +20,7 @@ const mockRepo = {
   save: jest.fn(),
   create: jest.fn((data) => data),
   findOne: jest.fn(),
+  find: jest.fn(),
   createQueryBuilder: jest.fn(),
 };
 
@@ -139,6 +140,41 @@ describe('SessionsService', () => {
       await expect(service.complete('user-1', 'session-4')).rejects.toThrow(
         BadRequestException,
       );
+    });
+  });
+
+  describe('recent', () => {
+    it('returns only the public fields of up to five ended sessions', async () => {
+      mockRepo.find.mockResolvedValue([
+        {
+          id: 'session-1', userId: 'user-1', subject: 'Cálculo', mode: 'solo',
+          startedAt: new Date('2026-01-01T10:00:00Z'), endedAt: new Date('2026-01-01T10:25:00Z'),
+          durationValidSeconds: 1500, xpAwarded: 25, discardedReason: null,
+          lastHeartbeatAt: new Date(), raidId: 'internal-raid',
+        },
+      ]);
+
+      const result = await service.recent('user-1');
+      expect(result).toEqual([
+        expect.objectContaining({
+          id: 'session-1', subject: 'Cálculo', mode: 'solo',
+          startedAt: new Date('2026-01-01T10:00:00Z'), endedAt: new Date('2026-01-01T10:25:00Z'),
+          durationValidSeconds: 1500, xpAwarded: 25, discardedReason: null,
+        }),
+      ]);
+      expect(Object.keys(result[0]!)).toEqual([
+        'id', 'subject', 'mode', 'startedAt', 'endedAt', 'durationValidSeconds', 'xpAwarded', 'discardedReason',
+      ]);
+      expect(mockRepo.find).toHaveBeenCalledWith({
+        where: { userId: 'user-1', endedAt: expect.anything() },
+        order: { endedAt: 'DESC', id: 'DESC' },
+        take: 5,
+      });
+    });
+
+    it('returns an empty list when there is no ended activity', async () => {
+      mockRepo.find.mockResolvedValue([]);
+      await expect(service.recent('user-1')).resolves.toEqual([]);
     });
   });
 });

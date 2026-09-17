@@ -58,7 +58,6 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/SessionTokenResponse" }
         "400": { $ref: "#/components/responses/BadRequest" }
-        "409": { $ref: "#/components/responses/Conflict" }
 
   /auth/login:
     post:
@@ -306,6 +305,22 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/StudySession" }
         "400": { $ref: "#/components/responses/BadRequest" }
+
+  /sessions/recent:
+    get:
+      summary: Lista as últimas sessões encerradas do usuário autenticado
+      operationId: listRecentStudySessions
+      tags: [Sessions]
+      responses:
+        "200":
+          description: Até cinco sessões encerradas, da mais recente para a mais antiga
+          content:
+            application/json:
+              schema:
+                type: array
+                maxItems: 5
+                items: { $ref: "#/components/schemas/RecentStudySession" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
 
   /sessions/{id}/heartbeat:
     patch:
@@ -580,6 +595,21 @@ components:
         mode: { type: string, enum: [solo, guild] }
         startedAt: { type: string, format: date-time }
         endedAt: { type: [string, "null"], format: date-time }
+        durationValidSeconds: { type: integer, minimum: 0 }
+        xpAwarded: { type: integer, minimum: 0 }
+        discardedReason:
+          type: [string, "null"]
+          enum: [continuous-session-exceeds-limit, daily-limit-exceeded, null]
+
+    RecentStudySession:
+      type: object
+      required: [id, subject, mode, startedAt, endedAt, durationValidSeconds, xpAwarded, discardedReason]
+      properties:
+        id: { type: string, format: uuid }
+        subject: { type: string }
+        mode: { type: string, enum: [solo, guild] }
+        startedAt: { type: string, format: date-time }
+        endedAt: { type: string, format: date-time }
         durationValidSeconds: { type: integer, minimum: 0 }
         xpAwarded: { type: integer, minimum: 0 }
         discardedReason:

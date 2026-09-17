@@ -4,10 +4,12 @@ import type { DataSourceOptions } from 'typeorm';
 import { createDatabaseOptions } from '../config/database.config';
 import { AddSessionRefreshTokenHistory1788458460000 } from '../migrations/1788458460000-add-session-refresh-token-history';
 import { CreateWiseSchema1788458400000 } from '../migrations/1788458400000-create-wise-schema';
+import { AddStudySessionRecentIndex1788458520000 } from '../migrations/1788458520000-add-study-session-recent-index';
 
 export const APPLICATION_MIGRATIONS: NonNullable<DataSourceOptions['migrations']> = [
   CreateWiseSchema1788458400000,
   AddSessionRefreshTokenHistory1788458460000,
+  AddStudySessionRecentIndex1788458520000,
 ];
 
 export interface IntegrationDatabase {

@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Get,
   HttpCode,
   HttpStatus,
   Param,
@@ -18,6 +19,12 @@ import { StartSessionDto } from './dto/start-session.dto';
 @UseGuards(JwtAuthGuard)
 export class SessionsController {
   constructor(private readonly sessions: SessionsService) {}
+
+  @Get('recent')
+  @HttpCode(HttpStatus.OK)
+  recent(@CurrentUser() user: JwtPayload) {
+    return this.sessions.recent(user.sub);
+  }
 
   @Post()
   @HttpCode(HttpStatus.CREATED)

@@ -4,13 +4,14 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { IsNull, Not, Repository } from 'typeorm';
 import { StudySession } from './entities/study-session.entity';
 import { StartSessionDto } from './dto/start-session.dto';
 import { validateSessionDuration } from './domain/session-validator';
 import { xpForDuration } from './domain/xp-rate';
 import { ProgressionService } from '../progression/progression.service';
 import { RaidsService } from '../raids/raids.service';
+import { RecentSessionResponseDto } from './dto/recent-session-response.dto';
 
 @Injectable()
 export class SessionsService {
@@ -36,6 +37,25 @@ export class SessionsService {
         lastHeartbeatAt: now,
       }),
     );
+  }
+
+  async recent(userId: string): Promise<RecentSessionResponseDto[]> {
+    const sessions = await this.studySessions.find({
+      where: { userId, endedAt: Not(IsNull()) },
+      order: { endedAt: 'DESC', id: 'DESC' },
+      take: 5,
+    });
+
+    return sessions.map((session) => ({
+      id: session.id,
+      subject: session.subject,
+      mode: session.mode,
+      startedAt: session.startedAt,
+      endedAt: session.endedAt as Date,
+      durationValidSeconds: session.durationValidSeconds,
+      xpAwarded: session.xpAwarded,
+      discardedReason: session.discardedReason ?? null,
+    }));
   }
 
   /**
