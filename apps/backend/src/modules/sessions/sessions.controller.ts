@@ -15,6 +15,7 @@ import type { JwtPayload } from '../auth/strategies/jwt.strategy';
 import { SessionsService } from './sessions.service';
 import { StartSessionDto } from './dto/start-session.dto';
 import type { RecentSessionResponseDto } from './dto/recent-session-response.dto';
+import type { SessionMetricsResponseDto } from './dto/session-metrics-response.dto';
 
 @Controller('sessions')
 @UseGuards(JwtAuthGuard)
@@ -25,6 +26,12 @@ export class SessionsController {
   @HttpCode(HttpStatus.OK)
   recent(@CurrentUser() user: JwtPayload): Promise<RecentSessionResponseDto[]> {
     return this.sessions.recent(user.sub);
+  }
+
+  @Get('metrics')
+  @HttpCode(HttpStatus.OK)
+  metrics(@CurrentUser() user: JwtPayload): Promise<SessionMetricsResponseDto> {
+    return this.sessions.metrics(user.sub);
   }
 
   @Post()

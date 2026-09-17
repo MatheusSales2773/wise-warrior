@@ -23,6 +23,26 @@ export type RecentStudySession = {
   discardedReason: string | null;
 };
 
+export type CadenceDay = {
+  date: string;
+  sessionCount: number;
+  validSeconds: number;
+  intensity: 0 | 1 | 2 | 3 | 4;
+};
+
+export type SessionMetrics = {
+  currentStreakDays: number;
+  longestStreakDays: number;
+  sessionsToday: number;
+  dailyGoal: number;
+  validSecondsToday: number;
+  cadence: {
+    windowStart: string;
+    windowEnd: string;
+    days: CadenceDay[];
+  };
+};
+
 export async function getMyProfile({ signal }: { signal?: AbortSignal } = {}): Promise<UserProfile> {
   const response = await getAuthenticatedHttpClient().get<UserProfile>('/users/me', { signal });
   return response.data;
@@ -30,5 +50,10 @@ export async function getMyProfile({ signal }: { signal?: AbortSignal } = {}): P
 
 export async function getRecentStudySessions({ signal }: { signal?: AbortSignal } = {}): Promise<RecentStudySession[]> {
   const response = await getAuthenticatedHttpClient().get<RecentStudySession[]>('/sessions/recent', { signal });
+  return response.data;
+}
+
+export async function getSessionMetrics({ signal }: { signal?: AbortSignal } = {}): Promise<SessionMetrics> {
+  const response = await getAuthenticatedHttpClient().get<SessionMetrics>('/sessions/metrics', { signal });
   return response.data;
 }

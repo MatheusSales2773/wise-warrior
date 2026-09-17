@@ -1,6 +1,6 @@
 import { getAuthenticatedHttpClient } from '@/core/api/api-client';
 import { ApiError } from '@/core/api/api-error';
-import { getMyProfile, getRecentStudySessions } from '@/features/dashboard/api';
+import { getMyProfile, getRecentStudySessions, getSessionMetrics } from '@/features/dashboard/api';
 
 jest.mock('@/core/api/api-client', () => ({
   getAuthenticatedHttpClient: jest.fn(),
@@ -13,8 +13,10 @@ describe('dashboard API', () => {
     const signal = new AbortController().signal;
     await getMyProfile({ signal });
     await getRecentStudySessions({ signal });
+    await getSessionMetrics({ signal });
     expect(get).toHaveBeenNthCalledWith(1, '/users/me', { signal });
     expect(get).toHaveBeenNthCalledWith(2, '/sessions/recent', { signal });
+    expect(get).toHaveBeenNthCalledWith(3, '/sessions/metrics', { signal });
   });
 
   it.each([
@@ -27,6 +29,7 @@ describe('dashboard API', () => {
 
     await expect(getMyProfile()).rejects.toBe(error);
     await expect(getRecentStudySessions()).rejects.toBe(error);
+    await expect(getSessionMetrics()).rejects.toBe(error);
   });
 
   it('uses the M3 authenticated-client recovery after a 401 and returns its replay', async () => {
