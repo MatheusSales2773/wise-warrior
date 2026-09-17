@@ -43,9 +43,14 @@ As adaptações para o Dashboard real são:
 ## Evidência automatizada
 
 - `npm test --workspace apps/frontend -- --runInBand __tests__/dashboard-screen.test.tsx`
-  — 21 testes passando;
+  — 24 testes passando;
 - `npm run typecheck --workspace apps/frontend` — passando;
 - `npm run lint --workspace apps/frontend` — passando;
+- `npm test` — 14 suítes/116 testes do backend e 32 suítes/331 testes do
+  frontend passando;
+- `npm run build --workspace apps/frontend` — export Web passando;
+- `npm run export:bundles --workspace apps/frontend` — bundles Web, iOS e
+  Android exportados;
 - `git diff --check` — passando.
 
 Os testes cobrem 320/390 px, Web larga, iOS/Android em largura grande,
