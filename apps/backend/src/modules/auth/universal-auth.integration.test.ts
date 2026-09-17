@@ -508,6 +508,57 @@ describe('Universal authentication security contract', () => {
     expect(typeof profile.nextLevelXp).toBe('number');
   });
 
+  it('returns a safe HTTP failure when persisted character level diverges from XP', async () => {
+    const xpTotal = 1_501;
+    const registration = await post(
+      '/auth/register',
+      {
+        email: 'inconsistent-profile@wise.app',
+        password: 'inconsistent-profile-password',
+        displayName: 'Inconsistent Profile',
+      },
+      { origin: 'http://localhost:8081' },
+    );
+    expect(registration.status).toBe(201);
+    const registrationBody = (await registration.json()) as {
+      accessToken: string;
+    };
+    const userRows = (await dataSource!.query(
+      `SELECT id FROM ${database!.identifier}.users WHERE email = ?`,
+      ['inconsistent-profile@wise.app'],
+    )) as Row[];
+    expect(userRows).toHaveLength(1);
+
+    await dataSource!.query(
+      `UPDATE ${database!.identifier}.characters
+       SET level = ?, xp_total = ?
+       WHERE user_id = ?`,
+      [3, xpTotal, String(userRows[0]!.id)],
+    );
+
+    const profileResponse = await get('/users/me', {
+      authorization: `Bearer ${registrationBody.accessToken}`,
+      origin: 'http://localhost:8081',
+    });
+    expect(profileResponse.status).toBe(500);
+    expect(profileResponse.headers.get('content-type')).toContain(
+      'application/problem+json',
+    );
+    const profile = (await profileResponse.json()) as Record<string, unknown>;
+
+    expect(profile).toEqual({
+      type: 'https://wise.app/errors/500',
+      title: 'InternalServerError',
+      status: 500,
+      detail: 'Erro interno inesperado',
+      instance: '/api/v1/users/me',
+    });
+    expect(JSON.stringify(profile)).not.toContain(String(xpTotal));
+    expect(JSON.stringify(profile)).not.toContain(
+      'nível persistido inconsistente com xpTotal',
+    );
+  });
+
   it('enforces the five-session limit across concurrent Web and native logins', async () => {
     const email = `session-limit-${process.pid}@wise.app`;
     const password = 'session-limit-password';

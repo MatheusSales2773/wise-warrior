@@ -53,13 +53,13 @@ describe('UsersService', () => {
     });
     mockProgression.getCharacterSnapshot.mockResolvedValue({
       xpTotal,
-      level: 3,
+      level: 2,
       title: 'Scholar',
     });
     mockProgression.getProjection.mockReturnValue({
-      level: 3,
+      level: 2,
       levelStartXp: 1_414,
-      nextLevelXp: 2_000,
+      nextLevelXp: 2_598,
     });
 
     await expect(service.getProfile('user-1')).resolves.toEqual({
@@ -67,10 +67,10 @@ describe('UsersService', () => {
       email: 'hero@wise.app',
       displayName: 'Hero',
       planTier: 'premium',
-      level: 3,
+      level: 2,
       xpTotal,
       levelStartXp: 1_414,
-      nextLevelXp: 2_000,
+      nextLevelXp: 2_598,
       title: 'Scholar',
     });
     expect(mockProgression.getCharacterSnapshot).toHaveBeenCalledWith('user-1');

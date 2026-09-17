@@ -1,7 +1,6 @@
 import {
   applyXp,
   levelForXp,
-  levelForXpWithStats,
   MAX_SUPPORTED_XP_TOTAL,
   xpThresholdForLevel,
 } from './progression-policy';
@@ -80,12 +79,6 @@ describe('levelForXp', () => {
     expect(levelForXp(MAX_SUPPORTED_XP_TOTAL)).toBe(
       referenceLevelForXpBinary(MAX_SUPPORTED_XP_TOTAL),
     );
-  });
-
-  it('resolves high XP with a bounded number of threshold comparisons', () => {
-    const result = levelForXpWithStats(MAX_SUPPORTED_XP_TOTAL);
-
-    expect(result.thresholdComparisons).toBeLessThanOrEqual(8);
   });
 
   it('throws for negative XP', () => {

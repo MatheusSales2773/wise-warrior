@@ -117,6 +117,22 @@ describe('ProgressionService', () => {
     );
   });
 
+  it.each([-1, 1.5, NaN, Infinity])(
+    'rejects invalid XP gain %p before persistence or notification',
+    async (xpGained) => {
+      mockCharacterRepo.findOne.mockResolvedValue({
+        userId: 'user-1',
+        xpTotal: 100,
+        level: 1,
+      });
+
+      await expect(service.awardXp('user-1', xpGained)).rejects.toThrow();
+
+      expect(mockCharacterRepo.save).not.toHaveBeenCalled();
+      expect(mockRealtimeGateway.emitToUser).not.toHaveBeenCalled();
+    },
+  );
+
   it('emits notification:levelup when XP crosses a threshold', async () => {
     const threshold = xpThresholdForLevel(2);
     mockCharacterRepo.findOne.mockResolvedValue({
