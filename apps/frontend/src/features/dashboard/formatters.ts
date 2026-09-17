@@ -16,3 +16,7 @@ export function formatDiscardReason(reason: string | null): string {
   if (!reason) return '';
   return 'Sessão não contabilizada';
 }
+
+export function formatCadenceDate(value: string): string {
+  return new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: '2-digit', timeZone: 'UTC' }).format(new Date(`${value}T00:00:00Z`));
+}

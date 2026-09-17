@@ -16,6 +16,7 @@ describe('createDatabaseOptions', () => {
 
     expect(production.synchronize).toBe(false);
     expect(production.migrationsRun).toBe(true);
+    expect(production.timezone).toBe('Z');
     expect(development.synchronize).toBe(false);
     expect(development.migrationsRun).toBe(false);
     expect(test.synchronize).toBe(false);

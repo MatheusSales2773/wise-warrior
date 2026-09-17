@@ -1,4 +1,4 @@
-import { formatDiscardReason, formatDuration, formatSessionDate, formatXp } from '@/features/dashboard/formatters';
+import { formatCadenceDate, formatDiscardReason, formatDuration, formatSessionDate, formatXp } from '@/features/dashboard/formatters';
 
 describe('dashboard formatters', () => {
   it('formats values for pt-BR without inventing units', () => {
@@ -7,6 +7,7 @@ describe('dashboard formatters', () => {
     expect(formatDuration(125)).toBe('2 min');
     expect(formatDiscardReason('HEARTBEAT_TIMEOUT')).toBe('Sessão não contabilizada');
     expect(formatDiscardReason(null)).toBe('');
+    expect(formatCadenceDate('2026-01-02')).toBe('02/01');
   });
 
   it('formats an absolute local date and time', () => {

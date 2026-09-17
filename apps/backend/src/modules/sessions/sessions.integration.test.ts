@@ -81,4 +81,75 @@ describe('recent study sessions against MySQL', () => {
     ]);
     expect(await service.recent('00000000-0000-4000-8000-000000000003')).toEqual([]);
   });
+
+  it('returns metrics from valid ended sessions and excludes discarded sessions', async () => {
+    database = await createIntegrationDatabase('wise_sessions_metrics_integration');
+    dataSource = new DataSource(database.options(APPLICATION_MIGRATIONS));
+    await dataSource.initialize();
+    await dataSource.runMigrations();
+
+    const userId = '00000000-0000-4000-8000-000000000031';
+    await dataSource.getRepository(User).insert([
+      { id: userId, email: 'metrics@example.com', passwordHash: 'hash', displayName: 'Metrics', planTier: 'free' },
+      { id: '00000000-0000-4000-8000-000000000036', email: 'other-metrics@example.com', passwordHash: 'hash', displayName: 'Other', planTier: 'free' },
+    ]);
+    const anchor = new Date('2026-09-17T12:00:00.000Z');
+    const today = anchor.toISOString().slice(0, 10);
+    const dateAtNoon = (offset: number) => {
+      const date = new Date(`${today}T12:00:00Z`);
+      date.setUTCDate(date.getUTCDate() + offset);
+      return date;
+    };
+    const windowStart = new Date('2026-07-24T00:00:00.000Z');
+    const dayBeforeWindow = new Date('2026-07-23T23:59:59.000Z');
+    await dataSource.getRepository(StudySession).insert([
+      ...[-1, 0].map((offset, index) => ({
+        id: `00000000-0000-4000-8000-${String(32 + index).padStart(12, '0')}`,
+        userId, subject: `Valid ${offset}`, mode: 'solo' as const,
+        startedAt: dateAtNoon(offset), endedAt: dateAtNoon(offset),
+        durationValidSeconds: offset === 0 ? 1200 : 600, xpAwarded: 10,
+      })),
+      {
+        id: '00000000-0000-4000-8000-000000000034', userId, subject: 'Discarded', mode: 'solo',
+        startedAt: dateAtNoon(0), endedAt: dateAtNoon(0), durationValidSeconds: 9999,
+        xpAwarded: 0, discardedReason: 'daily-limit-exceeded',
+      },
+      {
+        id: '00000000-0000-4000-8000-000000000037', userId, subject: 'Active', mode: 'solo',
+        startedAt: dateAtNoon(0), endedAt: null, durationValidSeconds: 0, xpAwarded: 0,
+      },
+      {
+        id: '00000000-0000-4000-8000-000000000038', userId, subject: 'Window start', mode: 'solo',
+        startedAt: windowStart, endedAt: windowStart, durationValidSeconds: 300, xpAwarded: 5,
+      },
+      {
+        id: '00000000-0000-4000-8000-000000000039', userId, subject: 'Outside window', mode: 'solo',
+        startedAt: dayBeforeWindow, endedAt: dayBeforeWindow, durationValidSeconds: 300, xpAwarded: 5,
+      },
+      {
+        id: '00000000-0000-4000-8000-000000000035', userId: '00000000-0000-4000-8000-000000000036',
+        subject: 'Other user', mode: 'solo', startedAt: dateAtNoon(0), endedAt: dateAtNoon(0),
+        durationValidSeconds: 9999, xpAwarded: 10,
+      },
+    ]);
+
+    const service = new SessionsService(
+      dataSource.getRepository(StudySession),
+      {} as ProgressionService,
+      {} as RaidsService,
+    );
+    const result = await service.metrics(userId, anchor);
+
+    expect(result.sessionsToday).toBe(1);
+    expect(result.validSecondsToday).toBe(1200);
+    expect(result.currentStreakDays).toBe(2);
+    expect(result.longestStreakDays).toBe(2);
+    expect(result.cadence.days).toHaveLength(56);
+    expect(result.cadence.days[0]).toEqual({
+      date: '2026-07-24', sessionCount: 1, validSeconds: 300, intensity: 1,
+    });
+    expect(result.cadence.days.at(-1)).toEqual({
+      date: today, sessionCount: 1, validSeconds: 1200, intensity: 1,
+    });
+  });
 });

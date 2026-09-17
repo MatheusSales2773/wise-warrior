@@ -3,7 +3,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { AccessibilityInfo, Platform } from 'react-native';
 import { theme } from '@/design-system';
 import { DashboardScreen } from '@/features/dashboard/dashboard-screen';
-import { getMyProfile, getRecentStudySessions, type UserProfile, type RecentStudySession } from '@/features/dashboard/api';
+import { getMyProfile, getRecentStudySessions, getSessionMetrics, type UserProfile, type RecentStudySession, type SessionMetrics } from '@/features/dashboard/api';
 import { dashboardKeys } from '@/features/dashboard/queries';
 
 const mockUseWindowDimensions = jest.fn(() => ({ width: 1024, height: 768, scale: 1, fontScale: 1 }));
@@ -20,6 +20,7 @@ jest.mock('react-native', () => {
 jest.mock('@/features/dashboard/api', () => ({
   getMyProfile: jest.fn(),
   getRecentStudySessions: jest.fn(),
+  getSessionMetrics: jest.fn(),
 }));
 
 const profile: UserProfile = {
@@ -30,15 +31,29 @@ const session: RecentStudySession = {
   id: 'session-1', subject: 'Matemática', mode: 'foco', startedAt: '2026-09-16T18:00:00Z',
   endedAt: '2026-09-16T18:25:00Z', durationValidSeconds: 1500, xpAwarded: 25, discardedReason: null,
 };
+const cadenceStart = new Date('2026-07-24T00:00:00.000Z');
+const metrics: SessionMetrics = {
+  currentStreakDays: 4, longestStreakDays: 9, sessionsToday: 2, dailyGoal: 4, validSecondsToday: 3_600,
+  cadence: { windowStart: '2026-07-24', windowEnd: '2026-09-17', days: Array.from({ length: 56 }, (_, index) => {
+    const date = new Date(cadenceStart);
+    date.setUTCDate(date.getUTCDate() + index);
+    return { date: date.toISOString().slice(0, 10), sessionCount: index % 3, validSeconds: (index % 3) * 900, intensity: (index % 5) as 0 | 1 | 2 | 3 | 4 };
+  }) },
+};
 
 const mockedProfile = getMyProfile as jest.MockedFunction<typeof getMyProfile>;
 const mockedActivity = getRecentStudySessions as jest.MockedFunction<typeof getRecentStudySessions>;
+const mockedMetrics = getSessionMetrics as jest.MockedFunction<typeof getSessionMetrics>;
 
 async function renderDashboard() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
   const view = await render(<QueryClientProvider client={client}><DashboardScreen /></QueryClientProvider>);
   return { ...view, client };
 }
+
+beforeEach(() => {
+  mockedMetrics.mockResolvedValue(metrics);
+});
 
 afterEach(() => {
   jest.clearAllMocks();
@@ -148,6 +163,8 @@ describe('DashboardScreen', () => {
     expect(screen.getByTestId('dashboard-main-column').children.filter((child) => typeof child !== 'string').map((child) => 'props' in child ? child.props.testID : undefined)).toEqual([
       'dashboard-profile',
       'dashboard-progression',
+      'dashboard-metrics',
+      'dashboard-cadence',
     ]);
   });
 
@@ -185,6 +202,45 @@ describe('DashboardScreen', () => {
     expect(screen.getByRole('progressbar', { name: 'Progresso para o nível 4' }).props.accessibilityValue).toEqual({ min: 100, max: 200, now: 150 });
     expect(screen.getByText('Matemática')).toBeTruthy();
     expect(screen.getByText('Sessão não contabilizada')).toBeTruthy();
+  });
+
+  it('renders the streak metrics and 56-cell cadence card with accessible summaries', async () => {
+    mockedProfile.mockResolvedValue(profile);
+    mockedActivity.mockResolvedValue([]);
+    await renderDashboard();
+
+    await waitFor(() => expect(screen.getByTestId('dashboard-cadence')).toBeTruthy());
+    expect(screen.getByText('4 dias')).toBeTruthy();
+    expect(screen.getByText('2 / 4')).toBeTruthy();
+    expect(screen.getByText(/60 min de foco válido/)).toBeTruthy();
+    expect(screen.getByText(/Período: 24\/07 a 17\/09/)).toBeTruthy();
+    expect(screen.getAllByTestId(/^dashboard-cadence-cell-/)).toHaveLength(56);
+    expect(screen.getByTestId('dashboard-cadence-cell-0').props).toEqual(expect.objectContaining({ accessible: true, accessibilityRole: 'image', role: 'img', 'aria-label': expect.stringContaining('24/07') }));
+    expect(screen.getByTestId('dashboard-cadence-cell-55').props['aria-label']).toContain('17/09');
+  });
+
+  it('keeps metrics loading and error states independent from profile and activity', async () => {
+    mockedProfile.mockResolvedValue(profile);
+    mockedActivity.mockResolvedValue([]);
+    mockedMetrics.mockRejectedValue(new Error('metrics offline'));
+    await renderDashboard();
+    await waitFor(() => expect(screen.getByTestId('dashboard-metrics-error')).toBeTruthy());
+    expect(screen.getByTestId('dashboard-profile')).toBeTruthy();
+    expect(screen.getByTestId('dashboard-activity-empty')).toBeTruthy();
+  });
+
+  it('keeps cached metrics visible when a background refresh fails', async () => {
+    mockedProfile.mockResolvedValue(profile);
+    mockedActivity.mockResolvedValue([]);
+    mockedMetrics.mockResolvedValueOnce(metrics);
+    await renderDashboard();
+    await waitFor(() => expect(screen.getByTestId('dashboard-metrics')).toBeTruthy());
+
+    mockedMetrics.mockRejectedValueOnce(new Error('metrics offline'));
+    await fireEvent.press(screen.getByRole('button', { name: 'Atualizar dados' }));
+    await waitFor(() => expect(screen.getByTestId('dashboard-metrics-refresh-error')).toBeTruthy());
+    expect(screen.getByText('4 dias')).toBeTruthy();
+    expect(screen.getByText('Métricas desatualizadas')).toBeTruthy();
   });
 
   it('shows empty activity and keeps profile visible when activity fails after profile succeeds', async () => {

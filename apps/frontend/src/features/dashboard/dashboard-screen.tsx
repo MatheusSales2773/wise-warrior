@@ -2,9 +2,9 @@ import { useQuery, type UseQueryResult } from '@tanstack/react-query';
 import { useEffect, useRef, useState, type PropsWithChildren } from 'react';
 import { AccessibilityInfo, Platform, StyleSheet, View, useWindowDimensions } from 'react-native';
 import { FeedbackMessage, ProgressBar, Screen, WiseButton, WiseCard, WiseText, isDesktopLayout, theme } from '@/design-system';
-import { formatDiscardReason, formatDuration, formatSessionDate, formatXp } from './formatters';
-import type { RecentStudySession } from './api';
-import { profileQueryOptions, recentActivityQueryOptions } from './queries';
+import { formatCadenceDate, formatDiscardReason, formatDuration, formatSessionDate, formatXp } from './formatters';
+import type { CadenceDay, RecentStudySession, SessionMetrics } from './api';
+import { profileQueryOptions, recentActivityQueryOptions, sessionMetricsQueryOptions } from './queries';
 
 function SectionHeading({ children }: PropsWithChildren) {
   return <WiseText accessibilityRole="header" aria-level={2} variant="subtitle">{children}</WiseText>;
@@ -105,20 +105,108 @@ function ActivityCard({ query }: { query: UseQueryResult<RecentStudySession[]> }
   );
 }
 
+function MetricsCard({ query }: { query: UseQueryResult<SessionMetrics> }) {
+  const retryInFlight = useRef<Promise<unknown> | null>(null);
+  const retry = () => {
+    if (retryInFlight.current) return retryInFlight.current;
+    const request = query.refetch().finally(() => { retryInFlight.current = null; });
+    retryInFlight.current = request;
+    return request;
+  };
+  if (query.isPending && !query.data) {
+    return <WiseCard accessibilityLabel="Métricas de sessões" role="region" testID="dashboard-metrics-loading"><CardContent><SectionHeading>Ritmo de treino</SectionHeading><WiseText variant="body">Carregando suas métricas…</WiseText></CardContent></WiseCard>;
+  }
+  if (query.isError && !query.data) {
+    return <WiseCard accessibilityLabel="Métricas de sessões" role="region" testID="dashboard-metrics-error"><CardContent><SectionHeading>Ritmo de treino</SectionHeading><FeedbackMessage message="Não foi possível carregar suas métricas de treino." title="Métricas indisponíveis" variant="error" /><WiseButton label="Tentar novamente" loading={query.isRefetching} onPress={() => void retry()} variant="secondary" /></CardContent></WiseCard>;
+  }
+
+  const metrics = query.data;
+  if (!metrics) return null;
+  const goal = Math.max(0, metrics.dailyGoal);
+  return <View style={styles.metricsGrid} testID="dashboard-metrics">
+    <WiseCard accessibilityLabel={`Streak: ${metrics.currentStreakDays} dias; recorde pessoal de ${metrics.longestStreakDays} dias`} role="region" style={styles.metricCard} testID="dashboard-streak" variant="elevated">
+      <CardContent>
+        <SectionHeading>Streak</SectionHeading>
+        <MetricValue label="Sequência atual" value={formatDayCount(metrics.currentStreakDays)} />
+        <WiseText color="textSecondary" variant="caption">Recorde pessoal: {formatDayCount(metrics.longestStreakDays)}</WiseText>
+      </CardContent>
+    </WiseCard>
+    <WiseCard accessibilityLabel={`Sessões hoje: ${metrics.sessionsToday}${goal ? ` de ${goal}` : ''}; ${formatDuration(metrics.validSecondsToday)} de foco válido`} role="region" style={styles.metricCard} testID="dashboard-sessions" variant="default">
+      <CardContent>
+        <SectionHeading>Sessões hoje</SectionHeading>
+        <MetricValue label="Sessões concluídas" value={`${metrics.sessionsToday}${goal ? ` / ${goal}` : ''}`} />
+        <WiseText color="textSecondary" variant="caption">{formatDuration(metrics.validSecondsToday)} de foco válido</WiseText>
+      </CardContent>
+    </WiseCard>
+    <View style={styles.metricsStatus}>
+      {query.isRefetching ? <WiseText color="textSecondary" testID="dashboard-metrics-refreshing" variant="caption">Atualizando métricas…</WiseText> : null}
+      {query.isError ? <View testID="dashboard-metrics-refresh-error"><FeedbackMessage message="Não foi possível atualizar suas métricas de treino." title="Métricas desatualizadas" variant="error" /><WiseButton label="Tentar novamente" loading={query.isRefetching} onPress={() => void retry()} variant="secondary" /></View> : null}
+    </View>
+  </View>;
+}
+
+function MetricValue({ label, value }: { label: string; value: string }) {
+  return <View accessible accessibilityLabel={`${label}: ${value}`} style={styles.metricValue}>
+    <WiseText color="accentHighlight" variant="display">{value}</WiseText>
+    <WiseText color="textSecondary" variant="caption">{label}</WiseText>
+  </View>;
+}
+
+function formatDayCount(value: number): string {
+  return `${value} ${value === 1 ? 'dia' : 'dias'}`;
+}
+
+function cadenceCellLabel(day: CadenceDay): string {
+  return `${formatCadenceDate(day.date)}: ${day.sessionCount} ${day.sessionCount === 1 ? 'sessão' : 'sessões'}, ${formatDuration(day.validSeconds)} válidos`;
+}
+
+function CadenceCard({ metrics }: { metrics: SessionMetrics }) {
+  const days = metrics.cadence.days.slice(-56);
+  const cells = Array.from({ length: 56 }, (_, index) => days[index] ?? { date: '', sessionCount: 0, validSeconds: 0, intensity: 0 as const });
+  return <WiseCard accessibilityLabel="Cadência do guerreiro" role="region" testID="dashboard-cadence">
+    <CardContent>
+      <SectionHeading>Cadência do guerreiro</SectionHeading>
+      <WiseText color="textSecondary" variant="body">Cada marca representa um dia de prática. Constância transforma esforço em domínio.</WiseText>
+      <WiseText color="textSecondary" variant="caption">Período: {formatCadenceDate(metrics.cadence.windowStart)} a {formatCadenceDate(metrics.cadence.windowEnd)} · {days.filter((day) => day.sessionCount > 0).length} dias com treino</WiseText>
+      <View style={styles.cadenceGrid} testID="dashboard-cadence-grid">
+        {[0, 1, 2, 3].map((row) => <View key={row} style={styles.cadenceRow}>{cells.slice(row * 14, row * 14 + 14).map((day, index) => {
+          const label = day.date ? cadenceCellLabel(day) : 'Dia sem dados';
+          return <View
+            accessible
+            accessibilityLabel={label}
+            accessibilityRole="image"
+            aria-label={label}
+            key={`${day.date || 'empty'}-${index}`}
+            role="img"
+            style={[styles.cadenceCell, styles[`cadenceIntensity${day.intensity}` as keyof typeof styles] as object]}
+            testID={`dashboard-cadence-cell-${row * 14 + index}`}
+          />;
+        })}</View>)}
+      </View>
+      <View style={styles.legend}>
+        <WiseText color="textSecondary" variant="caption">Menos foco</WiseText>
+        {[0, 1, 2, 3, 4].map((intensity) => <View key={intensity} accessible={false} importantForAccessibility="no" style={[styles.legendCell, styles[`cadenceIntensity${intensity}` as keyof typeof styles] as object]} />)}
+        <WiseText color="textSecondary" variant="caption">Foco profundo</WiseText>
+      </View>
+    </CardContent>
+  </WiseCard>;
+}
+
 export function DashboardScreen() {
   const profile = useQuery(profileQueryOptions());
   const activity = useQuery(recentActivityQueryOptions());
+  const metrics = useQuery(sessionMetricsQueryOptions());
   const { width } = useWindowDimensions();
   const [refreshSucceeded, setRefreshSucceeded] = useState(false);
   const refreshInFlight = useRef<Promise<void> | null>(null);
   const refreshInProgress = useRef(false);
-  const refreshing = profile.isRefetching || activity.isRefetching;
+  const refreshing = profile.isRefetching || activity.isRefetching || metrics.isRefetching;
   const statusMessage = refreshing ? 'Atualizando dados' : refreshSucceeded ? 'Dados atualizados' : null;
-  const partialErrorMessage = profile.isError || activity.isError ? 'Alguns dados não foram atualizados.' : null;
+  const partialErrorMessage = profile.isError || activity.isError || metrics.isError ? 'Alguns dados não foram atualizados.' : null;
   const refresh = async () => {
     if (refreshInFlight.current) return refreshInFlight.current;
     setRefreshSucceeded(false);
-    const request = Promise.all([profile.refetch(), activity.refetch()])
+    const request = Promise.all([profile.refetch(), activity.refetch(), metrics.refetch()])
       .then((results) => setRefreshSucceeded(results.every((query) => !query.isError)))
       .finally(() => { refreshInFlight.current = null; });
     refreshInFlight.current = request;
@@ -132,8 +220,8 @@ export function DashboardScreen() {
     }
     if (!refreshInProgress.current) return;
     refreshInProgress.current = false;
-    setRefreshSucceeded(!profile.isError && !activity.isError);
-  }, [activity.isError, profile.isError, refreshing]);
+    setRefreshSucceeded(!profile.isError && !activity.isError && !metrics.isError);
+  }, [activity.isError, metrics.isError, profile.isError, refreshing]);
 
   useEffect(() => {
     if (!refreshSucceeded) return;
@@ -201,6 +289,8 @@ export function DashboardScreen() {
             <WiseText color="textSecondary" variant="caption">{formatXp(user.xpTotal - user.levelStartXp)} XP no nível · faltam {formatXp(user.nextLevelXp - user.xpTotal)} XP</WiseText>
           </CardContent>
         </WiseCard>
+        <MetricsCard query={metrics} />
+        {metrics.data ? <CadenceCard metrics={metrics.data} /> : null}
       </View>
       <View style={styles.sideColumn} testID="dashboard-side-column"><ActivityCard query={activity} /></View>
     </View>
@@ -221,4 +311,18 @@ const styles = StyleSheet.create({
   cardContent: { minWidth: 0, padding: theme.space.cardInset, gap: theme.space.stackTight },
   activityItem: { minWidth: 0, borderTopColor: theme.color.borderSoft, borderTopWidth: theme.border.standard, gap: theme.space.inlineHairline, paddingVertical: theme.space.stackTight },
   activityRefreshError: { gap: theme.space.stackDefault, marginTop: theme.space.stackTight },
+  metricsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: theme.space.sectionGap },
+  metricCard: { flexBasis: 220, flexGrow: 1, minWidth: 0 },
+  metricsStatus: { flexBasis: '100%' },
+  metricValue: { minWidth: 0, gap: theme.space.inlineHairline },
+  cadenceGrid: { gap: theme.space.inlineTight, width: '100%' },
+  cadenceRow: { flexDirection: 'row', gap: theme.space.inlineTight, width: '100%' },
+  cadenceCell: { aspectRatio: 1, flex: 1, minWidth: 0, borderRadius: theme.radius.detail, borderWidth: theme.border.standard, borderColor: theme.color.borderSubtle },
+  cadenceIntensity0: { backgroundColor: theme.color.surfaceInset },
+  cadenceIntensity1: { backgroundColor: theme.color.accentMuted },
+  cadenceIntensity2: { backgroundColor: theme.color.accentMuted, borderColor: theme.color.accentPrimary },
+  cadenceIntensity3: { backgroundColor: theme.color.accentPrimary, borderColor: theme.color.accentHighlight },
+  cadenceIntensity4: { backgroundColor: theme.color.accentHighlight, borderColor: theme.color.textPrimary },
+  legend: { alignItems: 'center', flexDirection: 'row', flexWrap: 'wrap', gap: theme.space.inlineTight },
+  legendCell: { height: 12, width: 12, borderRadius: theme.radius.detail, borderWidth: theme.border.standard },
 });

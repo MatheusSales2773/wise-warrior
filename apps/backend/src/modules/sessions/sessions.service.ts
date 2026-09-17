@@ -12,6 +12,8 @@ import { xpForDuration } from './domain/xp-rate';
 import { ProgressionService } from '../progression/progression.service';
 import { RaidsService } from '../raids/raids.service';
 import { RecentSessionResponseDto } from './dto/recent-session-response.dto';
+import { SessionMetricsResponseDto } from './dto/session-metrics-response.dto';
+import { buildCadence, calculateStreaks, type SessionActivityDay } from './domain/session-metrics';
 
 @Injectable()
 export class SessionsService {
@@ -56,6 +58,59 @@ export class SessionsService {
       xpAwarded: session.xpAwarded,
       discardedReason: session.discardedReason ?? null,
     }));
+  }
+
+  /**
+   * Returns dashboard metrics using one UTC anchor for all calendar
+   * boundaries. This keeps a request deterministic even when it crosses
+   * midnight and avoids depending on the MySQL session timezone.
+   */
+  async metrics(userId: string, now: Date = new Date()): Promise<SessionMetricsResponseDto> {
+    const today = utcDateKey(now);
+    const windowStart = previousDay(today, 55);
+    const windowEndExclusive = nextDay(today);
+
+    const cadenceRows = await this.studySessions
+      .createQueryBuilder('session')
+      .select("DATE_FORMAT(session.endedAt, '%Y-%m-%d')", 'date')
+      .addSelect('COUNT(session.id)', 'sessionCount')
+      .addSelect('COALESCE(SUM(session.durationValidSeconds), 0)', 'validSeconds')
+      .where('session.userId = :userId', { userId })
+      .andWhere('session.endedAt >= :windowStart', { windowStart: utcDayStart(windowStart) })
+      .andWhere('session.endedAt < :windowEndExclusive', { windowEndExclusive: utcDayStart(windowEndExclusive) })
+      .andWhere('session.discardedReason IS NULL')
+      .groupBy("DATE_FORMAT(session.endedAt, '%Y-%m-%d')")
+      .getRawMany<{ date: string; sessionCount: string; validSeconds: string }>();
+
+    const historicalRows = await this.studySessions
+      .createQueryBuilder('session')
+      .select("DATE_FORMAT(session.endedAt, '%Y-%m-%d')", 'date')
+      .where('session.userId = :userId', { userId })
+      .andWhere('session.endedAt IS NOT NULL')
+      .andWhere('session.discardedReason IS NULL')
+      .groupBy("DATE_FORMAT(session.endedAt, '%Y-%m-%d')")
+      .orderBy('date', 'ASC')
+      .getRawMany<{ date: string }>();
+
+    const activity: SessionActivityDay[] = cadenceRows.map((row) => ({
+      date: row.date,
+      sessionCount: Number(row.sessionCount),
+      validSeconds: Number(row.validSeconds),
+    }));
+    const streaks = calculateStreaks(historicalRows.map((row) => row.date), today);
+    const cadence = buildCadence(activity, previousDay(today, 55), today).map((day) => ({
+      ...day,
+      intensity: Math.min(day.sessionCount, 4) as 0 | 1 | 2 | 3 | 4,
+    }));
+    const todayActivity = activity.find((day) => day.date === today);
+
+    return {
+      ...streaks,
+      sessionsToday: todayActivity?.sessionCount ?? 0,
+      dailyGoal: 4,
+      validSecondsToday: todayActivity?.validSeconds ?? 0,
+      cadence: { windowStart, windowEnd: today, days: cadence },
+    };
   }
 
   /**
@@ -136,4 +191,24 @@ export class SessionsService {
 
     return Number(row?.total ?? 0);
   }
+}
+
+function previousDay(date: string, days: number): string {
+  const value = utcDayStart(date);
+  value.setUTCDate(value.getUTCDate() - days);
+  return value.toISOString().slice(0, 10);
+}
+
+function nextDay(date: string): string {
+  const value = utcDayStart(date);
+  value.setUTCDate(value.getUTCDate() + 1);
+  return value.toISOString().slice(0, 10);
+}
+
+function utcDateKey(value: Date): string {
+  return value.toISOString().slice(0, 10);
+}
+
+function utcDayStart(date: string): Date {
+  return new Date(`${date}T00:00:00.000Z`);
 }

@@ -323,6 +323,19 @@ paths:
                 items: { $ref: "#/components/schemas/RecentStudySession" }
         "401": { $ref: "#/components/responses/Unauthorized" }
 
+  /sessions/metrics:
+    get:
+      summary: Retorna métricas de consistência de estudo do usuário autenticado
+      operationId: getStudySessionMetrics
+      tags: [Sessions]
+      responses:
+        "200":
+          description: Sequência atual, maior sequência histórica e cadência dos últimos 56 dias
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SessionMetrics" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
   /sessions/{id}/heartbeat:
     patch:
       summary: Pulso periódico do servidor (RN-ANTIFRAUDE — nunca o cliente marca o tempo)
@@ -616,6 +629,40 @@ components:
         discardedReason:
           type: [string, "null"]
           enum: [continuous-session-exceeds-limit, daily-limit-exceeded, null]
+
+    SessionMetrics:
+      type: object
+      description: Métricas calculadas no calendário UTC; sessões ativas ou descartadas não são contabilizadas.
+      required: [currentStreakDays, longestStreakDays, sessionsToday, dailyGoal, validSecondsToday, cadence]
+      properties:
+        currentStreakDays: { type: integer, minimum: 0 }
+        longestStreakDays: { type: integer, minimum: 0 }
+        sessionsToday: { type: integer, minimum: 0 }
+        dailyGoal: { type: integer, const: 4 }
+        validSecondsToday: { type: integer, minimum: 0 }
+        cadence: { $ref: "#/components/schemas/SessionMetricsCadence" }
+
+    SessionMetricsCadence:
+      type: object
+      description: Janela inclusiva de 56 dias consecutivos no calendário UTC.
+      required: [windowStart, windowEnd, days]
+      properties:
+        windowStart: { type: string, format: date }
+        windowEnd: { type: string, format: date }
+        days:
+          type: array
+          minItems: 56
+          maxItems: 56
+          items: { $ref: "#/components/schemas/SessionMetricsCadenceDay" }
+
+    SessionMetricsCadenceDay:
+      type: object
+      required: [date, sessionCount, validSeconds, intensity]
+      properties:
+        date: { type: string, format: date }
+        sessionCount: { type: integer, minimum: 0 }
+        validSeconds: { type: integer, minimum: 0 }
+        intensity: { type: integer, enum: [0, 1, 2, 3, 4] }
 
     CreateGuildRequest:
       type: object
