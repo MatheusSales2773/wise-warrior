@@ -3,6 +3,7 @@ import type { ReactNode } from 'react';
 import {
   KeyboardAvoidingView,
   Platform,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   View,
@@ -15,7 +16,11 @@ import { screenGutter } from '../tokens/layout';
 import { theme } from '../tokens/theme';
 import { WiseText, type WiseTextVariant } from './WiseText';
 
-export type ScreenProps = {
+type ScreenRefreshProps =
+  | { refreshing?: never; onRefresh?: never }
+  | { refreshing: boolean; onRefresh: () => void };
+
+export type ScreenProps = ScreenRefreshProps & {
   avoidKeyboard?: boolean;
   children?: ReactNode;
   contentContainerStyle?: StyleProp<ViewStyle>;
@@ -42,6 +47,8 @@ export function Screen({
   keyboardVerticalOffset = 0,
   scrollable = true,
   safeAreaEdges,
+  refreshing,
+  onRefresh,
   style,
   testID,
   title,
@@ -68,6 +75,7 @@ export function Screen({
       contentContainerStyle={[styles.scrollContent, contentContainerStyle]}
       contentInsetAdjustmentBehavior="never"
       keyboardShouldPersistTaps="handled"
+      refreshControl={refreshing !== undefined && onRefresh ? <RefreshControl refreshing={refreshing} onRefresh={onRefresh} /> : undefined}
       style={styles.flex}
       testID={testID ? `${testID}-scroll` : 'screen-scroll'}
     >

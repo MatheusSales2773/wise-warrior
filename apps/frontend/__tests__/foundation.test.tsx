@@ -6,11 +6,11 @@ jest.mock('@/core/auth/auth-context', () => require('../test-utils/auth-context'
 
 describe('Expo foundation routes', () => {
   it.each([
-    ['/', 'Acampamento', 'Seu painel de progresso está em preparação.'],
+    ['/', 'Acampamento', 'Carregando seu painel…'],
     ['/sessao', 'Forja', 'Sua sessão de estudo está em preparação.'],
     ['/perfil', 'Personagem', 'Seu perfil está em preparação.'],
     ['/guilda', 'Guilda', 'Sua guilda está em preparação.'],
-  ])('resolves %s directly with its honest placeholder', async (pathname, title, message) => {
+  ])('resolves %s directly with its initial state', async (pathname, title, message) => {
     const router = renderRouter('src/app', { initialUrl: pathname });
     await router;
 
