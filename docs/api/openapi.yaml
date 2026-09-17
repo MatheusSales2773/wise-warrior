@@ -522,14 +522,34 @@ components:
 
     UserProfile:
       type: object
-      required: [id, email, displayName, planTier, level, xpTotal, title]
+      description: >
+        A projeção mantém a coerência do progresso: levelStartXp <= xpTotal <
+        nextLevelXp.
+      required: [id, email, displayName, planTier, level, levelStartXp, nextLevelXp, xpTotal, title]
       properties:
         id: { type: string, format: uuid }
         email: { type: string, format: email }
         displayName: { type: string }
         planTier: { type: string, enum: [free, premium] }
         level: { type: integer, minimum: 1 }
-        xpTotal: { type: integer, minimum: 0 }
+        levelStartXp:
+          type: integer
+          format: int64
+          minimum: 0
+          maximum: 9007199254740991
+          description: Experiência inicial do nível atual, representada como inteiro seguro em JavaScript.
+        nextLevelXp:
+          type: integer
+          format: int64
+          minimum: 0
+          maximum: 9007199254740991
+          description: Experiência necessária para alcançar o próximo nível, representada como inteiro seguro em JavaScript.
+        xpTotal:
+          type: integer
+          format: int64
+          minimum: 0
+          maximum: 9000000000000000
+          description: Experiência total acumulada.
         title: { type: [string, "null"] }
 
     SessionSummary:

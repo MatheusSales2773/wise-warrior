@@ -11,6 +11,19 @@
  */
 
 const XP_BASE = 500;
+const MAX_LEVEL_ADJUSTMENTS = 4;
+export const MAX_SUPPORTED_XP_TOTAL = 9_000_000_000_000_000;
+
+export function validateXpTotal(xpTotal: number, fieldName = 'xpTotal'): void {
+  if (
+    !Number.isFinite(xpTotal) ||
+    !Number.isSafeInteger(xpTotal) ||
+    xpTotal < 0 ||
+    xpTotal > MAX_SUPPORTED_XP_TOTAL
+  ) {
+    throw new Error(`${fieldName} deve ser um inteiro seguro não negativo`);
+  }
+}
 
 export function xpThresholdForLevel(level: number): number {
   if (level <= 1) {
@@ -20,15 +33,31 @@ export function xpThresholdForLevel(level: number): number {
 }
 
 export function levelForXp(xpTotal: number): number {
-  if (xpTotal < 0) {
-    throw new Error('xpTotal não pode ser negativo');
+  validateXpTotal(xpTotal);
+
+  let candidateLevel = Math.max(
+    1,
+    Math.floor((xpTotal / XP_BASE) ** (2 / 3)),
+  );
+
+  for (let adjustment = 0; adjustment < MAX_LEVEL_ADJUSTMENTS; adjustment += 1) {
+    if (
+      candidateLevel > 1 &&
+      xpThresholdForLevel(candidateLevel) > xpTotal
+    ) {
+      candidateLevel -= 1;
+      continue;
+    }
+
+    if (xpThresholdForLevel(candidateLevel + 1) <= xpTotal) {
+      candidateLevel += 1;
+      continue;
+    }
+
+    return candidateLevel;
   }
 
-  let level = 1;
-  while (xpTotal >= xpThresholdForLevel(level + 1)) {
-    level += 1;
-  }
-  return level;
+  throw new Error('não foi possível resolver o nível de XP');
 }
 
 export interface XpApplicationResult {
@@ -42,8 +71,10 @@ export function applyXp(
   currentXpTotal: number,
   xpGained: number,
 ): XpApplicationResult {
-  if (xpGained < 0) {
-    throw new Error('xpGained não pode ser negativo');
+  validateXpTotal(currentXpTotal, 'currentXpTotal');
+  validateXpTotal(xpGained, 'xpGained');
+  if (currentXpTotal > MAX_SUPPORTED_XP_TOTAL - xpGained) {
+    throw new Error('total de XP excede o limite suportado');
   }
 
   const previousLevel = levelForXp(currentXpTotal);

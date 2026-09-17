@@ -6,6 +6,7 @@ import {
   PrimaryGeneratedColumn,
 } from 'typeorm';
 import { User } from '../../users/entities/user.entity';
+import { xpTotalTransformer } from '../xp-total.transformer';
 
 @Entity('characters')
 export class Character {
@@ -22,7 +23,12 @@ export class Character {
   @Column({ default: 1 })
   level: number;
 
-  @Column({ name: 'xp_total', type: 'bigint', default: 0 })
+  @Column({
+    name: 'xp_total',
+    type: 'bigint',
+    default: 0,
+    transformer: xpTotalTransformer,
+  })
   xpTotal: number;
 
   @Column({ nullable: true })
