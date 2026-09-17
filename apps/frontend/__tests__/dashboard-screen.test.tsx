@@ -1,6 +1,6 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { Platform } from 'react-native';
+import { AccessibilityInfo, Platform } from 'react-native';
 import { DashboardScreen } from '@/features/dashboard/dashboard-screen';
 import { getMyProfile, getRecentStudySessions, type UserProfile, type RecentStudySession } from '@/features/dashboard/api';
 
@@ -68,6 +68,84 @@ describe('DashboardScreen', () => {
     mockedActivity.mockResolvedValue([]);
     await fireEvent.press(screen.getByRole('button', { name: 'Tentar novamente' }));
     await waitFor(() => expect(screen.getByTestId('dashboard-activity-empty')).toBeTruthy());
+  });
+
+  it('keeps cached activity and offers retry when a background refresh fails', async () => {
+    mockedProfile.mockResolvedValue(profile);
+    mockedActivity.mockResolvedValueOnce([session]);
+    await renderDashboard();
+    await waitFor(() => expect(screen.getByTestId('dashboard-activity')).toBeTruthy());
+
+    mockedActivity.mockRejectedValueOnce(new Error('activity offline'));
+    await act(async () => {
+      fireEvent.press(screen.getByRole('button', { name: 'Atualizar dados' }));
+    });
+    await waitFor(() => expect(screen.getByTestId('dashboard-activity-refresh-error')).toBeTruthy());
+    expect(screen.getByText('Matemática')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Tentar novamente' })).toBeTruthy();
+  });
+
+  it('single-flights repeated activity retries', async () => {
+    mockedProfile.mockResolvedValue(profile);
+    mockedActivity.mockRejectedValueOnce(new Error('activity offline'));
+    await renderDashboard();
+    await waitFor(() => expect(screen.getByTestId('dashboard-activity-error')).toBeTruthy());
+
+    let resolveRetry!: (value: RecentStudySession[]) => void;
+    mockedActivity.mockReturnValue(new Promise((resolve) => { resolveRetry = resolve; }));
+    const retryButton = screen.getByRole('button', { name: 'Tentar novamente' });
+    await act(() => { fireEvent.press(retryButton); });
+    await act(() => { fireEvent.press(retryButton); });
+    expect(mockedActivity).toHaveBeenCalledTimes(2);
+    await act(async () => { resolveRetry([]); });
+    await waitFor(() => expect(screen.getByTestId('dashboard-activity-empty')).toBeTruthy());
+  });
+
+  it('announces dashboard status changes once on iOS', async () => {
+    jest.replaceProperty(Platform, 'OS', 'ios');
+    const announce = jest.spyOn(AccessibilityInfo, 'announceForAccessibilityWithOptions').mockImplementation(() => {});
+    mockedProfile.mockResolvedValue(profile);
+    mockedActivity.mockResolvedValue([]);
+    await renderDashboard();
+    await waitFor(() => expect(screen.getByTestId('dashboard-activity-empty')).toBeTruthy());
+    announce.mockClear();
+
+    let resolveProfile!: (value: UserProfile) => void;
+    let resolveActivity!: (value: RecentStudySession[]) => void;
+    mockedProfile.mockReturnValue(new Promise((resolve) => { resolveProfile = resolve; }));
+    mockedActivity.mockReturnValue(new Promise((resolve) => { resolveActivity = resolve; }));
+    await act(async () => { fireEvent(screen.getByTestId('dashboard-scroll'), 'refresh'); });
+    await waitFor(() => expect(announce).toHaveBeenCalledWith('Atualizando dados', { queue: true }));
+    await act(async () => { resolveProfile(profile); resolveActivity([]); });
+    await waitFor(() => expect(announce).toHaveBeenCalledWith('Dados atualizados', { queue: true }));
+    expect(announce.mock.calls.filter(([message]) => message === 'Atualizando dados')).toHaveLength(1);
+    announce.mockRestore();
+  });
+
+  it('does not start duplicate requests while a manual refresh is pending', async () => {
+    jest.replaceProperty(Platform, 'OS', 'web');
+    mockedProfile.mockResolvedValue(profile);
+    mockedActivity.mockResolvedValue([]);
+    await renderDashboard();
+    await waitFor(() => expect(screen.getByTestId('dashboard-activity-empty')).toBeTruthy());
+
+    let resolveProfile!: (value: UserProfile) => void;
+    let resolveActivity!: (value: RecentStudySession[]) => void;
+    mockedProfile.mockReturnValue(new Promise((resolve) => { resolveProfile = resolve; }));
+    mockedActivity.mockReturnValue(new Promise((resolve) => { resolveActivity = resolve; }));
+    await act(() => {
+      fireEvent.press(screen.getByRole('button', { name: 'Atualizar dados' }));
+    });
+    await act(() => {
+      fireEvent.press(screen.getByRole('button', { name: 'Atualizar dados' }));
+    });
+    expect(mockedProfile).toHaveBeenCalledTimes(2);
+    expect(mockedActivity).toHaveBeenCalledTimes(2);
+    await act(async () => {
+      resolveProfile(profile);
+      resolveActivity([]);
+    });
+    await waitFor(() => expect(screen.getByText('Dados atualizados')).toBeTruthy());
   });
 
   it('displays loading state before the initial profile response', async () => {
