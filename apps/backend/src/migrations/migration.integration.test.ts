@@ -238,7 +238,7 @@ describe('TypeORM migrations against an empty MySQL schema', () => {
        FROM ${database!.identifier}.study_sessions
        WHERE user_id = ? AND ended_at IS NOT NULL
        ORDER BY ended_at DESC, id DESC LIMIT 5`,
-      ['user-1'],
+      ['00000000-0000-4000-8000-000000000001'],
     );
     expect(explainRows[0]?.key).toBe('IDX_study_sessions_user_id_ended_at_id');
 
