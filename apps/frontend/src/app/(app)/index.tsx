@@ -1,5 +1,3 @@
-import { PlaceholderScreen } from '@/design-system/components/PlaceholderScreen';
+import { DashboardScreen } from '@/features/dashboard/dashboard-screen';
 
-export default function CampScreen() {
-  return <PlaceholderScreen message="Seu painel de progresso está em preparação." title="Acampamento" />;
-}
+export default function CampScreen() { return <DashboardScreen />; }
