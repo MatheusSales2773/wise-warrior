@@ -31,9 +31,12 @@ NestJS](https://docs.nestjs.com/security/authentication), [Passport no
 NestJS](https://docs.nestjs.com/recipes/passport), [TypeORM Repository e
 transações](https://typeorm.io/docs/advanced-topics/transactions/), [JWT
 `@nestjs/jwt`](https://github.com/nestjs/jwt), [passport-jwt](https://github.com/mikenicholson/passport-jwt)
-e [Socket.IO 4](https://socket.io/docs/v4/). Para a linguagem e o banco, foram
+e [Socket.IO 4](https://socket.io/docs/v4/), incluindo [middlewares de
+autenticação](https://socket.io/docs/v4/middlewares/). Para a linguagem e o banco, foram
 consultados a [documentação do TypeScript](https://www.typescriptlang.org/docs/)
 e o [manual de referência do MySQL 8.0](https://dev.mysql.com/doc/refman/8.0/en/).
+Os testes seguem a [documentação do Jest 29.7](https://jestjs.io/docs/29.7/getting-started),
+com assertions assíncronas e integração isolada.
 
 O desenho segue o ADR-009 em `docs/PRD.md`: `Session` representa a credencial
 persistente de um navegador/aplicativo, enquanto `sub` continua sendo a

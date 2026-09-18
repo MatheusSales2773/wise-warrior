@@ -1,15 +1,20 @@
 import type { ConfigService } from '@nestjs/config';
 import type { JwtService } from '@nestjs/jwt';
-import type { Socket } from 'socket.io';
+import type { Server, Socket } from 'socket.io';
 import type { JwtStrategy } from '../auth/strategies/jwt.strategy';
 import { RealtimeGateway } from './realtime.gateway';
 
-function client(): Socket {
+type Middleware = (
+  client: Socket,
+  next: (error?: Error) => void,
+) => void | Promise<void>;
+
+function client(token?: string): Socket {
   return {
     data: {},
     disconnect: jest.fn(),
     join: jest.fn(),
-    handshake: { auth: {}, query: {} },
+    handshake: { auth: token ? { token } : {}, query: {} },
   } as unknown as Socket;
 }
 
@@ -38,22 +43,39 @@ describe('RealtimeGateway authentication', () => {
     };
   }
 
-  it('rejects a connection without a bearer identity', async () => {
+  function middlewareFor(gateway: RealtimeGateway): Middleware {
+    let middleware: Middleware | undefined;
+    const server = {
+      use: jest.fn((registered: Middleware) => {
+        middleware = registered;
+      }),
+    } as unknown as Server;
+    gateway.afterInit(server);
+    if (!middleware) {
+      throw new Error('Realtime authentication middleware was not registered');
+    }
+    return middleware;
+  }
+
+  it('rejects a connection without a bearer identity before connection handlers run', async () => {
     const { gateway, jwt } = createGateway();
     const socket = client();
+    const next = jest.fn();
 
-    await gateway.handleConnection(socket);
+    await middlewareFor(gateway)(socket, next);
 
-    expect(socket.disconnect).toHaveBeenCalledTimes(1);
+    expect(next).toHaveBeenCalledWith(expect.any(Error));
     expect(jwt.verify).not.toHaveBeenCalled();
+    expect(socket.join).not.toHaveBeenCalled();
   });
 
   it('uses the authenticated user and Session identity for the user room', async () => {
     const { gateway, jwt, jwtStrategy } = createGateway();
-    const socket = client();
-    socket.handshake.auth = { token: 'access-token' };
+    const socket = client('access-token');
+    const next = jest.fn();
 
-    await gateway.handleConnection(socket);
+    await middlewareFor(gateway)(socket, next);
+    gateway.handleConnection(socket);
 
     expect(jwt.verify).toHaveBeenCalledWith('access-token', {
       secret: 'access-secret',
@@ -63,6 +85,7 @@ describe('RealtimeGateway authentication', () => {
       email: 'user@example.com',
       sessionId: 'session-1',
     });
+    expect(next).toHaveBeenCalledWith();
     expect(socket.data).toEqual({
       userId: 'user-1',
       sessionId: 'session-1',
@@ -71,15 +94,16 @@ describe('RealtimeGateway authentication', () => {
     expect(socket.disconnect).not.toHaveBeenCalled();
   });
 
-  it('disconnects when the shared JWT strategy rejects the Session', async () => {
+  it('rejects a revoked Session before the Socket.IO connection is accepted', async () => {
     const { gateway, jwtStrategy } = createGateway();
-    const socket = client();
-    socket.handshake.auth = { token: 'revoked-access-token' };
+    const socket = client('revoked-access-token');
+    const next = jest.fn();
     (jwtStrategy.validate as jest.Mock).mockRejectedValue(new Error('revoked'));
 
-    await gateway.handleConnection(socket);
+    await middlewareFor(gateway)(socket, next);
 
-    expect(socket.disconnect).toHaveBeenCalledTimes(1);
+    expect(next).toHaveBeenCalledWith(expect.any(Error));
     expect(socket.join).not.toHaveBeenCalled();
+    expect(socket.disconnect).not.toHaveBeenCalled();
   });
 });

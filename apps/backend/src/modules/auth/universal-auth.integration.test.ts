@@ -3,12 +3,10 @@ import { JwtService } from '@nestjs/jwt';
 import { Test } from '@nestjs/testing';
 import type { RowDataPacket } from 'mysql2/promise';
 import type { AddressInfo } from 'node:net';
-import type { Socket } from 'socket.io';
 import { DataSource } from 'typeorm';
 import { AppModule } from '../../app.module';
 import { configureApp } from '../../app.setup';
 import { createIntegrationDatabase, type IntegrationDatabase } from '../../test/integration-database';
-import { RealtimeGateway } from '../realtime/realtime.gateway';
 
 type Row = RowDataPacket & Record<string, unknown>;
 
@@ -196,15 +194,6 @@ describe('Universal authentication security contract', () => {
     });
   }
 
-  function socketWithToken(token: string): Socket {
-    return {
-      data: {},
-      disconnect: jest.fn(),
-      handshake: { auth: { token }, query: {} },
-      join: jest.fn(),
-    } as unknown as Socket;
-  }
-
   function exerciseSocketIoTransport(
     token: string,
     expectation: 'connected' | 'rejected',
@@ -245,8 +234,12 @@ describe('Universal authentication security contract', () => {
         if (expectation === 'connected' && message.startsWith('40')) {
           finish();
         }
-        if (expectation === 'rejected' && message.startsWith('41')) {
-          finish();
+        if (expectation === 'rejected') {
+          if (message.startsWith('40')) {
+            finish(new Error('Rejected Socket.IO token received a connect packet'));
+          } else if (message.startsWith('41') || message.startsWith('44')) {
+            finish();
+          }
         }
       });
       socket.addEventListener('close', () => {
@@ -730,12 +723,6 @@ describe('Universal authentication security contract', () => {
       }),
     ).resolves.toHaveProperty('status', 200);
 
-    const realtime = app!.get(RealtimeGateway);
-    const activeSocket = socketWithToken(refreshBody.accessToken);
-    await realtime.handleConnection(activeSocket);
-    expect(activeSocket.join).toHaveBeenCalledWith(`user:${userAId}`);
-    expect(activeSocket.data.sessionId).toBe(loginBody.sessionId);
-    expect(activeSocket.disconnect).not.toHaveBeenCalled();
     await exerciseSocketIoTransport(refreshBody.accessToken, 'connected');
 
     const registrationB = await post('/auth/register', userB, { origin });
@@ -777,10 +764,6 @@ describe('Universal authentication security contract', () => {
       origin,
     });
     expect(revokedAccessResponse.status).toBe(401);
-    const revokedSocket = socketWithToken(loginBody.accessToken);
-    await realtime.handleConnection(revokedSocket);
-    expect(revokedSocket.disconnect).toHaveBeenCalledTimes(1);
-    expect(revokedSocket.join).not.toHaveBeenCalled();
     await exerciseSocketIoTransport(loginBody.accessToken, 'rejected');
     const registrationStillActive = await get('/users/me', {
       authorization: `Bearer ${registrationBody.accessToken}`,

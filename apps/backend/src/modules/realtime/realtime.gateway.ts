@@ -1,4 +1,5 @@
 import {
+  OnGatewayInit,
   OnGatewayConnection,
   OnGatewayDisconnect,
   WebSocketGateway,
@@ -19,7 +20,7 @@ import type { JwtPayload } from '../auth/strategies/jwt.strategy';
  */
 @Injectable()
 @WebSocketGateway()
-export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect {
+export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGatewayDisconnect {
   private readonly logger = new Logger(RealtimeGateway.name);
 
   @WebSocketServer()
@@ -31,13 +32,34 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
     private readonly jwtStrategy: JwtStrategy,
   ) {}
 
-  async handleConnection(client: Socket): Promise<void> {
+  afterInit(server: Server): void {
+    server.use((client, next) => {
+      return this.authenticate(client, next);
+    });
+  }
+
+  handleConnection(client: Socket): void {
+    if (
+      typeof client.data?.userId !== 'string' ||
+      typeof client.data?.sessionId !== 'string'
+    ) {
+      client.disconnect();
+      return;
+    }
+
+    client.join(`user:${client.data.userId}`);
+  }
+
+  private async authenticate(
+    client: Socket,
+    next: (error?: Error) => void,
+  ): Promise<void> {
     const token =
       (client.handshake.auth?.token as string | undefined) ??
       (client.handshake.query?.token as string | undefined);
 
     if (!token) {
-      client.disconnect();
+      next(new Error('Unauthorized'));
       return;
     }
 
@@ -48,9 +70,9 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
       const identity = await this.jwtStrategy.validate(payload);
       client.data.userId = identity.sub;
       client.data.sessionId = identity.sessionId;
-      client.join(`user:${identity.sub}`);
+      next();
     } catch {
-      client.disconnect();
+      next(new Error('Unauthorized'));
     }
   }
 
