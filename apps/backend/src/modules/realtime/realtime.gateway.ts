@@ -8,6 +8,8 @@ import { Injectable, Logger } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import type { Server, Socket } from 'socket.io';
+import { JwtStrategy } from '../auth/strategies/jwt.strategy';
+import type { JwtPayload } from '../auth/strategies/jwt.strategy';
 
 /**
  * Gateway único de tempo real. Toda conexão autenticada entra automaticamente
@@ -26,9 +28,10 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
   constructor(
     private readonly jwt: JwtService,
     private readonly config: ConfigService,
+    private readonly jwtStrategy: JwtStrategy,
   ) {}
 
-  handleConnection(client: Socket): void {
+  async handleConnection(client: Socket): Promise<void> {
     const token =
       (client.handshake.auth?.token as string | undefined) ??
       (client.handshake.query?.token as string | undefined);
@@ -39,11 +42,13 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
     }
 
     try {
-      const payload = this.jwt.verify<{ sub: string }>(token, {
+      const payload = this.jwt.verify<JwtPayload>(token, {
         secret: this.config.get('JWT_ACCESS_SECRET'),
       });
-      client.data.userId = payload.sub;
-      client.join(`user:${payload.sub}`);
+      const identity = await this.jwtStrategy.validate(payload);
+      client.data.userId = identity.sub;
+      client.data.sessionId = identity.sessionId;
+      client.join(`user:${identity.sub}`);
     } catch {
       client.disconnect();
     }

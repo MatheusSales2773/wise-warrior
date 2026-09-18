@@ -62,6 +62,7 @@ function serviceWithTransaction(
     ),
     dataSource,
     manager,
+    jwt,
   };
 }
 
@@ -81,7 +82,7 @@ describe('AuthService.refresh', () => {
     const userRepository = {
       findOne: jest.fn().mockResolvedValue({ id: 'user-1', email: 'user@example.com' }),
     };
-    const { service, dataSource, manager } = serviceWithTransaction(
+    const { service, dataSource, manager, jwt } = serviceWithTransaction(
       sessionRepository,
       historyRepository,
       userRepository,
@@ -111,6 +112,10 @@ describe('AuthService.refresh', () => {
       where: { id: 'user-1' },
       select: ['id', 'email'],
     });
+    expect(jwt.sign).toHaveBeenLastCalledWith(
+      { sub: 'user-1', email: 'user@example.com', sessionId: 'session-1' },
+      expect.any(Object),
+    );
   });
 
   it('commits family revocation before returning unauthorized for a retained replay', async () => {
@@ -291,7 +296,7 @@ describe('AuthService.issueSession', () => {
       config as never,
       dataSource as never,
     );
-    return { dataSource, manager, service, users };
+    return { dataSource, manager, service, users, jwt };
   }
 
   it('persists only the hash of the issued secret and returns the session id', async () => {
@@ -300,7 +305,7 @@ describe('AuthService.issueSession', () => {
       create: jest.fn((value: Record<string, unknown>) => ({ id: 'session-1', ...value })),
       save: jest.fn(async (value: unknown) => value),
     };
-    const { service, dataSource, manager, users } = issueSessionService(sessions);
+    const { service, dataSource, manager, users, jwt } = issueSessionService(sessions);
 
     const result = await service.issueSession(
       { id: 'user-1', email: 'user@example.com' } as never,
@@ -324,6 +329,10 @@ describe('AuthService.issueSession', () => {
       lock: { mode: 'pessimistic_write' },
     });
     expect(manager.getRepository).toHaveBeenCalledWith(User);
+    expect(jwt.sign).toHaveBeenCalledWith(
+      { sub: 'user-1', email: 'user@example.com', sessionId: 'session-1' },
+      expect.any(Object),
+    );
   });
 
   it('keeps the existing five-session limit when issuing another session', async () => {
@@ -406,11 +415,11 @@ describe('AuthService.register', () => {
       dataSource as never,
     );
 
-    return { service, users, characters, sessions, dataSource };
+    return { service, users, characters, sessions, dataSource, jwt };
   }
 
   it('persists User, Character and Session atomically with only a password hash', async () => {
-    const { service, users, characters, sessions, dataSource } = registrationService();
+    const { service, users, characters, sessions, dataSource, jwt } = registrationService();
 
     const tokens = await service.register({
       email: 'hero@wise.app',
@@ -431,6 +440,10 @@ describe('AuthService.register', () => {
       refreshToken: expect.stringMatching(/^session-1\.[a-f0-9]{64}$/),
       sessionId: 'session-1',
     });
+    expect(jwt.sign).toHaveBeenCalledWith(
+      { sub: 'user-1', email: 'hero@wise.app', sessionId: 'session-1' },
+      expect.any(Object),
+    );
     expect(dataSource.transaction).toHaveBeenCalledTimes(1);
   });
 
