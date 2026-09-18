@@ -1,11 +1,14 @@
 import type { INestApplication, LoggerService } from '@nestjs/common';
+import { JwtService } from '@nestjs/jwt';
 import { Test } from '@nestjs/testing';
 import type { RowDataPacket } from 'mysql2/promise';
 import type { AddressInfo } from 'node:net';
+import type { Socket } from 'socket.io';
 import { DataSource } from 'typeorm';
 import { AppModule } from '../../app.module';
 import { configureApp } from '../../app.setup';
 import { createIntegrationDatabase, type IntegrationDatabase } from '../../test/integration-database';
+import { RealtimeGateway } from '../realtime/realtime.gateway';
 
 type Row = RowDataPacket & Record<string, unknown>;
 
@@ -159,6 +162,10 @@ describe('Universal authentication security contract', () => {
     return fetch(`${baseUrl}${path}`, { headers });
   }
 
+  function remove(path: string, headers: Record<string, string> = {}): Promise<Response> {
+    return fetch(`${baseUrl}${path}`, { method: 'DELETE', headers });
+  }
+
   function refreshTokenFromCookie(response: Response): string {
     const cookie = response.headers.get('set-cookie') ?? '';
     const match = /ww_refresh=([^;]+)/.exec(cookie);
@@ -172,6 +179,21 @@ describe('Universal authentication security contract', () => {
     const headers: Array<[string, string]> = [];
     response.headers.forEach((value, name) => headers.push([name, value]));
     return headers;
+  }
+
+  function accessClaims(accessToken: string): Record<string, unknown> {
+    const decoded = app!.get(JwtService).decode(accessToken);
+    if (!decoded || typeof decoded !== 'object' || Array.isArray(decoded)) {
+      throw new Error('Access token did not decode to an object');
+    }
+    return decoded as Record<string, unknown>;
+  }
+
+  function signAccessToken(payload: Record<string, unknown>): string {
+    return app!.get(JwtService).sign(payload, {
+      secret: 'integration-access-secret',
+      expiresIn: '15m',
+    });
   }
 
   it('keeps plaintext passwords and refresh credentials out of Web responses, logs and MySQL', async () => {
@@ -557,6 +579,175 @@ describe('Universal authentication security contract', () => {
     expect(JSON.stringify(profile)).not.toContain(
       'nível persistido inconsistente com xpTotal',
     );
+  });
+
+  it('propagates and enforces Session identity through the real authentication contract', async () => {
+    const origin = 'http://localhost:8081';
+    const userA = {
+      email: `session-identity-a-${process.pid}@wise.app`,
+      password: 'session-identity-password',
+      displayName: 'Session Identity A',
+    };
+    const userB = {
+      email: `session-identity-b-${process.pid}@wise.app`,
+      password: 'session-identity-password',
+      displayName: 'Session Identity B',
+    };
+
+    const registration = await post('/auth/register', userA, { origin });
+    expect(registration.status).toBe(201);
+    const registrationBody = (await registration.json()) as {
+      accessToken: string;
+      sessionId: string;
+    };
+    const registrationClaims = accessClaims(registrationBody.accessToken);
+    const userRows = (await dataSource!.query(
+      `SELECT id FROM ${database!.identifier}.users WHERE email = ?`,
+      [userA.email],
+    )) as Row[];
+    expect(userRows).toHaveLength(1);
+    const userAId = String(userRows[0]!.id);
+    expect(registrationClaims).toEqual(
+      expect.objectContaining({
+        sub: userAId,
+        email: userA.email,
+        sessionId: registrationBody.sessionId,
+      }),
+    );
+
+    const login = await post(
+      '/auth/login',
+      { email: userA.email, password: userA.password },
+      { origin },
+    );
+    expect(login.status).toBe(200);
+    const loginBody = (await login.json()) as {
+      accessToken: string;
+      sessionId: string;
+    };
+    expect(loginBody.sessionId).not.toBe(registrationBody.sessionId);
+    expect(accessClaims(loginBody.accessToken)).toEqual(
+      expect.objectContaining({
+        sub: userAId,
+        email: userA.email,
+        sessionId: loginBody.sessionId,
+      }),
+    );
+
+    const loginRefreshToken = refreshTokenFromCookie(login);
+    const refresh = await post(
+      '/auth/refresh',
+      {},
+      { origin, cookie: `ww_refresh=${loginRefreshToken}` },
+    );
+    expect(refresh.status).toBe(200);
+    const refreshBody = (await refresh.json()) as {
+      accessToken: string;
+      sessionId: string;
+    };
+    expect(refreshBody.sessionId).toBe(loginBody.sessionId);
+    expect(accessClaims(refreshBody.accessToken)).toEqual(
+      expect.objectContaining({
+        sub: userAId,
+        email: userA.email,
+        sessionId: loginBody.sessionId,
+      }),
+    );
+    await expect(
+      get('/users/me', {
+        authorization: `Bearer ${refreshBody.accessToken}`,
+        origin,
+      }),
+    ).resolves.toHaveProperty('status', 200);
+
+    const realtime = app!.get(RealtimeGateway);
+    const activeSocket = {
+      data: {},
+      disconnect: jest.fn(),
+      handshake: { auth: { token: refreshBody.accessToken }, query: {} },
+      join: jest.fn(),
+    } as unknown as Socket;
+    await realtime.handleConnection(activeSocket);
+    expect(activeSocket.join).toHaveBeenCalledWith(`user:${userAId}`);
+    expect(activeSocket.data.sessionId).toBe(loginBody.sessionId);
+    expect(activeSocket.disconnect).not.toHaveBeenCalled();
+
+    const registrationB = await post('/auth/register', userB, { origin });
+    expect(registrationB.status).toBe(201);
+    const registrationBBody = (await registrationB.json()) as {
+      accessToken: string;
+      sessionId: string;
+    };
+    const registrationBClaims = accessClaims(registrationBBody.accessToken);
+    expect(registrationBClaims.sessionId).toBe(registrationBBody.sessionId);
+    expect(registrationBClaims.sub).not.toBe(userAId);
+
+    const legacyToken = signAccessToken({ sub: userAId, email: userA.email });
+    const legacyResponse = await get('/users/me', {
+      authorization: `Bearer ${legacyToken}`,
+      origin,
+    });
+    expect(legacyResponse.status).toBe(401);
+
+    const crossedSessionToken = signAccessToken({
+      sub: userAId,
+      email: userA.email,
+      sessionId: registrationBBody.sessionId,
+    });
+    const crossedSessionResponse = await get('/users/me', {
+      authorization: `Bearer ${crossedSessionToken}`,
+      'x-session-id': registrationBBody.sessionId,
+      origin,
+    });
+    expect(crossedSessionResponse.status).toBe(401);
+
+    const revokeLogin = await remove(
+      `/users/me/sessions/${loginBody.sessionId}`,
+      { authorization: `Bearer ${registrationBody.accessToken}`, origin },
+    );
+    expect(revokeLogin.status).toBe(204);
+    const revokedAccessResponse = await get('/users/me', {
+      authorization: `Bearer ${loginBody.accessToken}`,
+      origin,
+    });
+    expect(revokedAccessResponse.status).toBe(401);
+    const revokedSocket = {
+      data: {},
+      disconnect: jest.fn(),
+      handshake: { auth: { token: loginBody.accessToken }, query: {} },
+      join: jest.fn(),
+    } as unknown as Socket;
+    await realtime.handleConnection(revokedSocket);
+    expect(revokedSocket.disconnect).toHaveBeenCalledTimes(1);
+    expect(revokedSocket.join).not.toHaveBeenCalled();
+    const registrationStillActive = await get('/users/me', {
+      authorization: `Bearer ${registrationBody.accessToken}`,
+      origin,
+    });
+    expect(registrationStillActive.status).toBe(200);
+
+    const revokeAll = await remove('/users/me/sessions', {
+      authorization: `Bearer ${registrationBody.accessToken}`,
+      origin,
+    });
+    expect(revokeAll.status).toBe(204);
+    const revokedAllResponse = await get('/users/me', {
+      authorization: `Bearer ${registrationBody.accessToken}`,
+      origin,
+    });
+    expect(revokedAllResponse.status).toBe(401);
+    const userBStillActive = await get('/users/me', {
+      authorization: `Bearer ${registrationBBody.accessToken}`,
+      origin,
+    });
+    expect(userBStillActive.status).toBe(200);
+
+    const revokedRefresh = await post(
+      '/auth/refresh',
+      {},
+      { origin, cookie: `ww_refresh=${loginRefreshToken}` },
+    );
+    expect(revokedRefresh.status).toBe(401);
   });
 
   it('enforces the five-session limit across concurrent Web and native logins', async () => {
