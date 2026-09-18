@@ -55,6 +55,7 @@ Before implementing or changing code, tests, infrastructure, or configuration:
 #### Infrastructure
 
 - [Docker Compose documentation](https://docs.docker.com/compose/)
+- [GitHub Actions workflow syntax](https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax)
 - [nginx documentation](https://nginx.org/en/docs/)
 
 ## Agent skills

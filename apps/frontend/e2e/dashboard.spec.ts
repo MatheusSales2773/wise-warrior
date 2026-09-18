@@ -20,7 +20,9 @@ test.describe('painel web', () => {
     const recentResponse = page.waitForResponse(apiGet('/sessions/recent'));
     await registerThroughUi(page);
 
-    expect((await recentResponse).status()).toBe(200);
+    const recent = await recentResponse;
+    expect(recent.status()).toBe(200);
+    expect(await recent.json()).toEqual([]);
     await expect(page.getByTestId('dashboard-profile')).toContainText('Boas-vindas, Guerreiro E2E');
     await expect(page.getByTestId('dashboard-progression')).toContainText('Nível 1');
     await expect(page.getByTestId('dashboard-progression')).toContainText('0 XP total');
