@@ -196,6 +196,76 @@ describe('Universal authentication security contract', () => {
     });
   }
 
+  function socketWithToken(token: string): Socket {
+    return {
+      data: {},
+      disconnect: jest.fn(),
+      handshake: { auth: { token }, query: {} },
+      join: jest.fn(),
+    } as unknown as Socket;
+  }
+
+  function exerciseSocketIoTransport(
+    token: string,
+    expectation: 'connected' | 'rejected',
+  ): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const endpoint = new URL(baseUrl);
+      endpoint.protocol = 'ws:';
+      endpoint.pathname = '/socket.io/';
+      endpoint.search = new URLSearchParams({
+        EIO: '4',
+        transport: 'websocket',
+        token,
+      }).toString();
+      const socket = new WebSocket(endpoint);
+      let settled = false;
+      const timeout = setTimeout(() => {
+        if (settled) return;
+        settled = true;
+        socket.close();
+        reject(new Error(`Socket.IO transport did not ${expectation}`));
+      }, 5_000);
+
+      const finish = (error?: Error) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timeout);
+        socket.close();
+        if (error) {
+          reject(error);
+        } else {
+          resolve();
+        }
+      };
+
+      socket.addEventListener('open', () => socket.send('40'));
+      socket.addEventListener('message', (event) => {
+        const message = String(event.data);
+        if (expectation === 'connected' && message.startsWith('40')) {
+          finish();
+        }
+        if (expectation === 'rejected' && message.startsWith('41')) {
+          finish();
+        }
+      });
+      socket.addEventListener('close', () => {
+        if (expectation === 'rejected') {
+          finish();
+        } else if (!settled) {
+          finish(new Error('Socket.IO transport closed before connect'));
+        }
+      });
+      socket.addEventListener('error', () => {
+        if (expectation === 'rejected') {
+          finish();
+        } else {
+          finish(new Error('Socket.IO transport failed during connect'));
+        }
+      });
+    });
+  }
+
   it('keeps plaintext passwords and refresh credentials out of Web responses, logs and MySQL', async () => {
     const webPassword = 'web-password-secret';
     const nativePassword = 'native-password-secret';
@@ -661,16 +731,12 @@ describe('Universal authentication security contract', () => {
     ).resolves.toHaveProperty('status', 200);
 
     const realtime = app!.get(RealtimeGateway);
-    const activeSocket = {
-      data: {},
-      disconnect: jest.fn(),
-      handshake: { auth: { token: refreshBody.accessToken }, query: {} },
-      join: jest.fn(),
-    } as unknown as Socket;
+    const activeSocket = socketWithToken(refreshBody.accessToken);
     await realtime.handleConnection(activeSocket);
     expect(activeSocket.join).toHaveBeenCalledWith(`user:${userAId}`);
     expect(activeSocket.data.sessionId).toBe(loginBody.sessionId);
     expect(activeSocket.disconnect).not.toHaveBeenCalled();
+    await exerciseSocketIoTransport(refreshBody.accessToken, 'connected');
 
     const registrationB = await post('/auth/register', userB, { origin });
     expect(registrationB.status).toBe(201);
@@ -711,15 +777,11 @@ describe('Universal authentication security contract', () => {
       origin,
     });
     expect(revokedAccessResponse.status).toBe(401);
-    const revokedSocket = {
-      data: {},
-      disconnect: jest.fn(),
-      handshake: { auth: { token: loginBody.accessToken }, query: {} },
-      join: jest.fn(),
-    } as unknown as Socket;
+    const revokedSocket = socketWithToken(loginBody.accessToken);
     await realtime.handleConnection(revokedSocket);
     expect(revokedSocket.disconnect).toHaveBeenCalledTimes(1);
     expect(revokedSocket.join).not.toHaveBeenCalled();
+    await exerciseSocketIoTransport(loginBody.accessToken, 'rejected');
     const registrationStillActive = await get('/users/me', {
       authorization: `Bearer ${registrationBody.accessToken}`,
       origin,
