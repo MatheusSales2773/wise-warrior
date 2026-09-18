@@ -18,9 +18,11 @@ export function ProgressBar({ minimumValue = 0, maximumValue = 100, value, indet
     opacity.setValue(1);
     // Do not start a zero-duration loop when motion is disabled.
     if (!indeterminate || duration === 0) return;
+    // React Native's test renderer has no native view to attach the driver to.
+    const useNativeDriver = process.env.NODE_ENV !== 'test';
     const animation = Animated.loop(Animated.sequence([
-      Animated.timing(opacity, { toValue: theme.progress.indeterminateDimOpacity, duration, useNativeDriver: true, isInteraction: false }),
-      Animated.timing(opacity, { toValue: 1, duration, useNativeDriver: true, isInteraction: false }),
+      Animated.timing(opacity, { toValue: theme.progress.indeterminateDimOpacity, duration, useNativeDriver, isInteraction: false }),
+      Animated.timing(opacity, { toValue: 1, duration, useNativeDriver, isInteraction: false }),
     ]));
     animation.start();
     return () => animation.stop();
