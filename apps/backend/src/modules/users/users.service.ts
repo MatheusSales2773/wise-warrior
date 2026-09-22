@@ -4,7 +4,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { EntityManager, Repository } from 'typeorm';
 import { User } from './entities/user.entity';
 import { ProgressionService } from '../progression/progression.service';
 import { CosmeticItem } from './entities/cosmetic-item.entity';
@@ -32,6 +32,15 @@ export class UsersService {
     private readonly cosmeticItems: Repository<CosmeticItem>,
     private readonly progression: ProgressionService,
   ) {}
+
+  /** Serializes work for a user inside the caller's transaction, including the first insert. */
+  async lockForUpdate(userId: string, manager: EntityManager): Promise<boolean> {
+    const user = await manager.getRepository(User).findOne({
+      where: { id: userId },
+      lock: { mode: 'pessimistic_write' },
+    });
+    return user !== null;
+  }
 
   async getProfile(userId: string): Promise<UserProfile> {
     const user = await this.users.findOne({ where: { id: userId } });

@@ -15,6 +15,7 @@ export type HttpResponse<T> = {
 
 export type HttpRequestOptions = {
   signal?: AbortSignal;
+  headers?: Record<string, string>;
   /** Requests marked as auth/public never start the session recovery flow. */
   requestKind?: 'auth' | 'public';
 };
@@ -314,8 +315,8 @@ export function createHttpClient(config: HttpClientConfig = {}): HttpClient {
     async get<T>(url: string, options?: HttpRequestOptions): Promise<HttpResponse<T>> {
       try {
         const response = options?.signal
-          ? await instance.get<T>(url, { signal: options.signal })
-          : await instance.get<T>(url);
+          ? await instance.get<T>(url, { signal: options.signal, headers: options.headers })
+          : await instance.get<T>(url, { headers: options?.headers });
         return { status: response.status, data: response.data };
       } catch (error) {
         throw toApiError(error);
@@ -324,8 +325,8 @@ export function createHttpClient(config: HttpClientConfig = {}): HttpClient {
     async post<T>(url: string, body?: unknown, options?: HttpRequestOptions): Promise<HttpResponse<T>> {
       try {
         const response = options?.signal
-          ? await instance.post<T>(url, body, { signal: options.signal })
-          : await instance.post<T>(url, body);
+          ? await instance.post<T>(url, body, { signal: options.signal, headers: options.headers })
+          : await instance.post<T>(url, body, { headers: options?.headers });
         return { status: response.status, data: response.data };
       } catch (error) {
         throw toApiError(error);

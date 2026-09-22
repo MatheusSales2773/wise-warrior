@@ -291,11 +291,16 @@ paths:
 
   /sessions:
     post:
-      summary: Inicia uma sessão de estudo (timer Pomodoro)
+      summary: Inicia uma Study Session solo
       operationId: startStudySession
       tags: [Sessions]
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 128 }
       requestBody:
-        required: true
+        required: false
         content:
           application/json:
             schema: { $ref: "#/components/schemas/StartSessionRequest" }
@@ -304,8 +309,24 @@ paths:
           description: Sessão iniciada
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/StudySession" }
+              schema: { $ref: "#/components/schemas/StudySessionSnapshot" }
         "400": { $ref: "#/components/responses/BadRequest" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /sessions/active:
+    get:
+      summary: Consulta a Study Session ativa desta conta
+      operationId: getActiveStudySession
+      tags: [Sessions]
+      responses:
+        "200":
+          description: Snapshot ativo; canControl indica se esta Session autenticada pode controlá-lo
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/StudySessionSnapshot" }
+        "204": { description: Nenhuma Study Session ativa }
+        "401": { $ref: "#/components/responses/Unauthorized" }
 
   /sessions/recent:
     get:
@@ -593,11 +614,32 @@ components:
 
     StartSessionRequest:
       type: object
-      required: [subject, mode]
+      additionalProperties: false
       properties:
-        subject: { type: string, maxLength: 80 }
+        plannedDurationSeconds: { type: integer, enum: [900, 1500, 3000], default: 1500 }
+
+    StudySessionSnapshot:
+      type: object
+      required: [id, mode, state, plannedDurationSeconds, startedAt, pausedTotalSeconds, durationValidSeconds, remainingSeconds, serverNow, version, xpAwarded, canControl]
+      properties:
+        id: { type: string, format: uuid }
         mode: { type: string, enum: [solo, guild] }
-        raidId: { type: string, format: uuid, description: "Obrigatório quando mode = guild" }
+        subject: { type: [string, "null"] }
+        state: { type: string, enum: [running, paused, completed, stopped_early, cancelled, discarded] }
+        plannedDurationSeconds: { type: integer, enum: [900, 1500, 3000] }
+        startedAt: { type: string, format: date-time }
+        runDeadlineAt: { type: [string, "null"], format: date-time }
+        pausedAt: { type: [string, "null"], format: date-time }
+        pausedTotalSeconds: { type: integer, minimum: 0 }
+        durationValidSeconds: { type: integer, minimum: 0 }
+        remainingSeconds: { type: integer, minimum: 0 }
+        serverNow: { type: string, format: date-time }
+        version: { type: integer, minimum: 1 }
+        endedAt: { type: [string, "null"], format: date-time }
+        xpAwarded: { type: integer, minimum: 0 }
+        terminalReason: { type: [string, "null"] }
+        discardedReason: { type: [string, "null"] }
+        canControl: { type: boolean }
 
     StudySession:
       type: object
@@ -605,7 +647,7 @@ components:
       properties:
         id: { type: string, format: uuid }
         userId: { type: string, format: uuid }
-        subject: { type: string }
+        subject: { type: [string, "null"] }
         mode: { type: string, enum: [solo, guild] }
         startedAt: { type: string, format: date-time }
         endedAt: { type: [string, "null"], format: date-time }
@@ -620,7 +662,7 @@ components:
       required: [id, subject, mode, startedAt, endedAt, durationValidSeconds, xpAwarded, discardedReason]
       properties:
         id: { type: string, format: uuid }
-        subject: { type: string }
+        subject: { type: [string, "null"] }
         mode: { type: string, enum: [solo, guild] }
         startedAt: { type: string, format: date-time }
         endedAt: { type: string, format: date-time }

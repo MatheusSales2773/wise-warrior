@@ -19,7 +19,12 @@ export default defineConfig({
   projects: [
     {
       name: 'chromium',
-      use: { ...devices['Desktop Chrome'] },
+      use: {
+        ...devices['Desktop Chrome'],
+        ...(process.env.E2E_CHROMIUM_EXECUTABLE_PATH
+          ? { launchOptions: { executablePath: process.env.E2E_CHROMIUM_EXECUTABLE_PATH } }
+          : {}),
+      },
     },
   ],
 });

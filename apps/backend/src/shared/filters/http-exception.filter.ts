@@ -24,6 +24,8 @@ export class HttpExceptionFilter implements ExceptionFilter {
       : HttpStatus.INTERNAL_SERVER_ERROR;
 
     const body = isHttpException ? exception.getResponse() : null;
+    const problemType = typeof body === 'object' && body !== null && 'type' in body && typeof body.type === 'string'
+      ? body.type : `https://wise.app/errors/${status}`;
     const detail =
       typeof body === 'string'
         ? body
@@ -31,7 +33,7 @@ export class HttpExceptionFilter implements ExceptionFilter {
           'Erro interno inesperado';
 
     response.status(status).contentType('application/problem+json').json({
-      type: `https://wise.app/errors/${status}`,
+      type: problemType,
       title: isHttpException ? exception.name : 'InternalServerError',
       status,
       detail: Array.isArray(detail) ? detail.join('; ') : detail,
