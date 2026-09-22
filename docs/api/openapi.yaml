@@ -328,6 +328,68 @@ paths:
         "204": { description: Nenhuma Study Session ativa }
         "401": { $ref: "#/components/responses/Unauthorized" }
 
+  /sessions/{id}/pause:
+    post:
+      summary: Pausa uma Study Session em andamento
+      description: >
+        A transição é confirmada pelo servidor e retorna o snapshot canônico.
+        Reenvios com a mesma chave retornam a resposta original; uma versão
+        obsoleta retorna conflito sem alterar a sessão.
+      operationId: pauseStudySession
+      tags: [Sessions]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 128 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/StudySessionTransitionRequest" }
+      responses:
+        "200":
+          description: Snapshot confirmado no estado paused
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/StudySessionSnapshot" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  /sessions/{id}/resume:
+    post:
+      summary: Retoma uma Study Session pausada
+      description: >
+        Retoma do tempo restante congelado pelo servidor e retorna um novo
+        prazo canônico. Reenvios com a mesma chave retornam a resposta
+        original; uma versão obsoleta retorna conflito sem alterar a sessão.
+      operationId: resumeStudySession
+      tags: [Sessions]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 128 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/StudySessionTransitionRequest" }
+      responses:
+        "200":
+          description: Snapshot confirmado no estado running
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/StudySessionSnapshot" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
   /sessions/recent:
     get:
       summary: Lista as últimas sessões encerradas do usuário autenticado
@@ -617,6 +679,13 @@ components:
       additionalProperties: false
       properties:
         plannedDurationSeconds: { type: integer, enum: [900, 1500, 3000], default: 1500 }
+
+    StudySessionTransitionRequest:
+      type: object
+      required: [expectedVersion]
+      additionalProperties: false
+      properties:
+        expectedVersion: { type: integer, minimum: 1 }
 
     StudySessionSnapshot:
       type: object

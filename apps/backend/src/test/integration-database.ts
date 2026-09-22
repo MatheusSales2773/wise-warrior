@@ -6,12 +6,14 @@ import { AddSessionRefreshTokenHistory1788458460000 } from '../migrations/178845
 import { CreateWiseSchema1788458400000 } from '../migrations/1788458400000-create-wise-schema';
 import { AddStudySessionRecentIndex1788458520000 } from '../migrations/1788458520000-add-study-session-recent-index';
 import { AddCanonicalStudySessionStart1788458760000 } from '../migrations/1788458760000-add-canonical-study-session-start';
+import { AddStudySessionPauseResume1788458880000 } from '../migrations/1788458880000-add-study-session-pause-resume';
 
 export const APPLICATION_MIGRATIONS: NonNullable<DataSourceOptions['migrations']> = [
   CreateWiseSchema1788458400000,
   AddSessionRefreshTokenHistory1788458460000,
   AddStudySessionRecentIndex1788458520000,
   AddCanonicalStudySessionStart1788458760000,
+  AddStudySessionPauseResume1788458880000,
 ];
 
 export interface IntegrationDatabase {

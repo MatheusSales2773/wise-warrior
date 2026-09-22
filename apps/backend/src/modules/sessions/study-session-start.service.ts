@@ -5,6 +5,8 @@ import { StudySession } from './entities/study-session.entity';
 import type { StudySessionState } from './entities/study-session.entity';
 import type { StartSessionDto } from './dto/start-session.dto';
 import { isStudySessionPreset } from './domain/study-session-presets';
+import { getStudySessionTime } from './domain/study-session-time';
+import { isValidIdempotencyKey } from './domain/idempotency-key';
 
 export type StudySessionSnapshot = {
   id: string;
@@ -35,18 +37,20 @@ type ReceiptRow = {
 
 export function studySessionSnapshot(session: StudySession, authSessionId: string, now: Date): StudySessionSnapshot {
   const deadline = session.runDeadlineAt ?? null;
+  const state = session.state ?? 'running';
+  const time = getStudySessionTime({ ...session, state }, now);
   return {
     id: session.id,
     mode: session.mode,
     subject: session.subject,
-    state: session.state ?? 'running',
+    state,
     plannedDurationSeconds: session.plannedDurationSeconds ?? 1500,
     startedAt: session.startedAt,
     runDeadlineAt: deadline,
     pausedAt: session.pausedAt ?? null,
-    pausedTotalSeconds: session.pausedTotalSeconds ?? 0,
-    durationValidSeconds: session.durationValidSeconds ?? 0,
-    remainingSeconds: deadline ? Math.max(0, Math.ceil((deadline.getTime() - now.getTime()) / 1000)) : 0,
+    pausedTotalSeconds: time.pausedTotalSeconds,
+    durationValidSeconds: time.durationValidSeconds,
+    remainingSeconds: deadline ? time.remainingSeconds : 0,
     serverNow: now,
     version: session.version ?? 1,
     endedAt: session.endedAt ?? null,
@@ -54,6 +58,22 @@ export function studySessionSnapshot(session: StudySession, authSessionId: strin
     terminalReason: session.terminalReason ?? null,
     discardedReason: session.discardedReason ?? null,
     canControl: session.initiatingSessionId === authSessionId,
+  };
+}
+
+export function deserializeStudySessionSnapshot(
+  value: StudySessionSnapshot | string,
+  canControl?: boolean,
+): StudySessionSnapshot {
+  const original = typeof value === 'string' ? JSON.parse(value) as StudySessionSnapshot : value;
+  return {
+    ...original,
+    startedAt: new Date(original.startedAt),
+    runDeadlineAt: original.runDeadlineAt ? new Date(original.runDeadlineAt) : null,
+    pausedAt: original.pausedAt ? new Date(original.pausedAt) : null,
+    serverNow: new Date(original.serverNow),
+    endedAt: original.endedAt ? new Date(original.endedAt) : null,
+    canControl: canControl ?? original.canControl,
   };
 }
 
@@ -76,7 +96,7 @@ export class StudySessionStartService {
     if (!isStudySessionPreset(plannedDurationSeconds)) {
       throw new BadRequestException('Duração de foco inválida');
     }
-    if (!idempotencyKey || idempotencyKey.length > 128 || !/^[\x21-\x7e]+$/.test(idempotencyKey)) {
+    if (!isValidIdempotencyKey(idempotencyKey)) {
       throw new BadRequestException('Idempotency-Key é obrigatório e deve conter de 1 a 128 caracteres ASCII visíveis');
     }
 
@@ -96,18 +116,10 @@ export class StudySessionStartService {
             message: 'Idempotency-Key já foi usada com outra duração',
           });
         }
-        const original = typeof receipt.response_json === 'string'
-          ? JSON.parse(receipt.response_json) as StudySessionSnapshot
-          : receipt.response_json;
-        return {
-          ...original,
-          startedAt: new Date(original.startedAt),
-          runDeadlineAt: original.runDeadlineAt ? new Date(original.runDeadlineAt) : null,
-          pausedAt: original.pausedAt ? new Date(original.pausedAt) : null,
-          serverNow: new Date(original.serverNow),
-          endedAt: original.endedAt ? new Date(original.endedAt) : null,
-          canControl: receipt.initiating_session_id === authSessionId,
-        };
+        return deserializeStudySessionSnapshot(
+          receipt.response_json,
+          receipt.initiating_session_id === authSessionId,
+        );
       }
 
       const active = await manager.getRepository(StudySession).findOne({

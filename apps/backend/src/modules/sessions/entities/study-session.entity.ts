@@ -42,7 +42,7 @@ export class StudySession {
   @Column({ name: 'raid_id', type: 'varchar', length: '36', nullable: true })
   raidId?: string | null;
 
-  @CreateDateColumn({ name: 'started_at' })
+  @CreateDateColumn({ name: 'started_at', type: 'datetime', precision: 6 })
   startedAt: Date;
 
   @Column({ name: 'ended_at', type: 'datetime', nullable: true })
@@ -62,6 +62,9 @@ export class StudySession {
 
   @Column({ name: 'paused_total_seconds', type: 'int', default: 0 })
   pausedTotalSeconds: number;
+
+  @Column({ name: 'paused_total_milliseconds', type: 'bigint', unsigned: true, default: 0 })
+  pausedTotalMilliseconds?: number | string;
 
   @Column({ type: 'int', default: 1 })
   version: number;

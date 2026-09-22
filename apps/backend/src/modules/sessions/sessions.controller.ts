@@ -18,6 +18,8 @@ import type { JwtPayload } from '../auth/strategies/jwt.strategy';
 import { SessionsService } from './sessions.service';
 import { StartSessionDto } from './dto/start-session.dto';
 import { StudySessionStartService } from './study-session-start.service';
+import { StudySessionTransitionService } from './study-session-transition.service';
+import { StudySessionTransitionDto } from './dto/study-session-transition.dto';
 import type { RecentSessionResponseDto } from './dto/recent-session-response.dto';
 import type { SessionMetricsResponseDto } from './dto/session-metrics-response.dto';
 
@@ -27,6 +29,7 @@ export class SessionsController {
   constructor(
     private readonly sessions: SessionsService,
     private readonly studySessionStart: StudySessionStartService,
+    private readonly studySessionTransitions: StudySessionTransitionService,
   ) {}
 
   @Get('active')
@@ -59,6 +62,28 @@ export class SessionsController {
     @Headers('idempotency-key') idempotencyKey?: string,
   ) {
     return this.studySessionStart.start(user.sub, user.sessionId, dto, idempotencyKey);
+  }
+
+  @Post(':id/pause')
+  @HttpCode(HttpStatus.OK)
+  pause(
+    @CurrentUser() user: JwtPayload,
+    @Param('id') id: string,
+    @Body() dto: StudySessionTransitionDto,
+    @Headers('idempotency-key') idempotencyKey?: string,
+  ) {
+    return this.studySessionTransitions.pause(user.sub, user.sessionId, id, dto, idempotencyKey);
+  }
+
+  @Post(':id/resume')
+  @HttpCode(HttpStatus.OK)
+  resume(
+    @CurrentUser() user: JwtPayload,
+    @Param('id') id: string,
+    @Body() dto: StudySessionTransitionDto,
+    @Headers('idempotency-key') idempotencyKey?: string,
+  ) {
+    return this.studySessionTransitions.resume(user.sub, user.sessionId, id, dto, idempotencyKey);
   }
 
   @Patch(':id/heartbeat')
