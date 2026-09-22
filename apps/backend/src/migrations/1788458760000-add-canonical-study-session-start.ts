@@ -1,5 +1,8 @@
 import { MigrationInterface, QueryRunner } from 'typeorm';
 
+const SESSION_ROLLBACK_ARCHIVE = 'study_session_m5_downgrade_archive';
+const RECEIPTS_ROLLBACK_ARCHIVE = 'study_session_start_receipts_downgrade_archive';
+
 export class AddCanonicalStudySessionStart1788458760000 implements MigrationInterface {
   name = 'AddCanonicalStudySessionStart1788458760000';
 
@@ -19,7 +22,23 @@ export class AddCanonicalStudySessionStart1788458760000 implements MigrationInte
     await queryRunner.query(`UPDATE study_sessions
       SET state = IF(ended_at IS NULL, 'discarded', IF(discarded_reason IS NULL, 'completed', 'discarded')),
           terminal_reason = IF(ended_at IS NULL, 'legacy-session-without-owner', NULL),
-          ended_at = COALESCE(ended_at, NOW(3))`);
+          ended_at = COALESCE(ended_at, NOW(3))
+      WHERE state IS NULL`);
+    if (await this.tableExists(queryRunner, SESSION_ROLLBACK_ARCHIVE)) {
+      await queryRunner.query(`INSERT IGNORE INTO study_sessions
+        (id, user_id, subject, mode, raid_id, started_at, ended_at, last_heartbeat_at,
+         duration_valid_seconds, xp_awarded, discarded_reason, planned_duration_seconds,
+         state, run_deadline_at, paused_at, paused_total_seconds, version, terminal_reason,
+         initiating_session_id)
+        SELECT archived.id, archived.user_id, archived.subject, archived.mode, archived.raid_id,
+          archived.started_at, archived.ended_at, archived.last_heartbeat_at,
+          archived.duration_valid_seconds, archived.xp_awarded, archived.discarded_reason,
+          archived.planned_duration_seconds, archived.state, archived.run_deadline_at,
+          archived.paused_at, archived.paused_total_seconds, archived.version,
+          archived.terminal_reason, archived.initiating_session_id
+        FROM ${SESSION_ROLLBACK_ARCHIVE} archived
+        INNER JOIN users ON users.id = archived.user_id`);
+    }
     await queryRunner.query(`ALTER TABLE study_sessions
       ADD active_user_id varchar(36)
         GENERATED ALWAYS AS (CASE WHEN state IN ('running', 'paused') THEN user_id ELSE NULL END) VIRTUAL,
@@ -30,21 +49,55 @@ export class AddCanonicalStudySessionStart1788458760000 implements MigrationInte
       CONSTRAINT FK_active_study_sessions_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
       CONSTRAINT FK_active_study_sessions_study FOREIGN KEY (study_session_id) REFERENCES study_sessions(id) ON DELETE CASCADE
     ) ENGINE=InnoDB`);
-    await queryRunner.query(`CREATE TABLE study_session_start_receipts (
-      user_id varchar(36) NOT NULL,
-      idempotency_key varchar(128) NOT NULL,
-      planned_duration_seconds int NOT NULL,
-      initiating_session_id varchar(36) NOT NULL,
-      response_json json NOT NULL,
-      PRIMARY KEY (user_id, idempotency_key),
-      CONSTRAINT FK_study_session_start_receipts_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-    ) ENGINE=InnoDB`);
+    await queryRunner.query(`INSERT IGNORE INTO active_study_sessions (user_id, study_session_id)
+      SELECT user_id, id FROM study_sessions WHERE state IN ('running', 'paused')`);
+    if (!(await this.tableExists(queryRunner, 'study_session_start_receipts'))) {
+      await this.createStartReceiptsTable(queryRunner);
+    }
+    if (await this.tableExists(queryRunner, RECEIPTS_ROLLBACK_ARCHIVE)) {
+      await queryRunner.query(`INSERT IGNORE INTO study_session_start_receipts
+        (user_id, idempotency_key, planned_duration_seconds, initiating_session_id, response_json)
+        SELECT archived.user_id, archived.idempotency_key, archived.planned_duration_seconds,
+          archived.initiating_session_id, archived.response_json
+        FROM ${RECEIPTS_ROLLBACK_ARCHIVE} archived
+        INNER JOIN users ON users.id = archived.user_id`);
+      await queryRunner.query(`DROP TABLE ${RECEIPTS_ROLLBACK_ARCHIVE}`);
+    }
+    if (await this.tableExists(queryRunner, SESSION_ROLLBACK_ARCHIVE)) {
+      await queryRunner.query(`DROP TABLE ${SESSION_ROLLBACK_ARCHIVE}`);
+    }
   }
 
   public async down(queryRunner: QueryRunner): Promise<void> {
     const [{ count }] = await queryRunner.query('SELECT COUNT(*) AS count FROM study_sessions WHERE subject IS NULL') as [{ count: number | string }];
     if (Number(count) > 0) {
-      throw new Error('Cannot revert Study Session schema while sessions without a subject exist');
+      if (!(await this.tableExists(queryRunner, SESSION_ROLLBACK_ARCHIVE))) {
+        await queryRunner.query(`CREATE TABLE ${SESSION_ROLLBACK_ARCHIVE} LIKE study_sessions`);
+        await queryRunner.query(`ALTER TABLE ${SESSION_ROLLBACK_ARCHIVE}
+          DROP INDEX UQ_study_sessions_active_user, DROP COLUMN active_user_id`);
+      }
+      await queryRunner.query(`INSERT IGNORE INTO ${SESSION_ROLLBACK_ARCHIVE}
+        (id, user_id, subject, mode, raid_id, started_at, ended_at, last_heartbeat_at,
+         duration_valid_seconds, xp_awarded, discarded_reason, planned_duration_seconds,
+         state, run_deadline_at, paused_at, paused_total_seconds, version, terminal_reason,
+         initiating_session_id)
+        SELECT id, user_id, subject, mode, raid_id, started_at, ended_at, last_heartbeat_at,
+          duration_valid_seconds, xp_awarded, discarded_reason, planned_duration_seconds,
+          state, run_deadline_at, paused_at, paused_total_seconds, version, terminal_reason,
+          initiating_session_id
+        FROM study_sessions WHERE subject IS NULL`);
+      await queryRunner.query('DELETE FROM study_sessions WHERE subject IS NULL');
+    }
+
+    const [{ receiptCount }] = await queryRunner.query('SELECT COUNT(*) AS receiptCount FROM study_session_start_receipts') as [{ receiptCount: number | string }];
+    if (Number(receiptCount) > 0) {
+      if (!(await this.tableExists(queryRunner, RECEIPTS_ROLLBACK_ARCHIVE))) {
+        await queryRunner.query(`CREATE TABLE ${RECEIPTS_ROLLBACK_ARCHIVE} LIKE study_session_start_receipts`);
+      }
+      await queryRunner.query(`INSERT IGNORE INTO ${RECEIPTS_ROLLBACK_ARCHIVE}
+        (user_id, idempotency_key, planned_duration_seconds, initiating_session_id, response_json)
+        SELECT user_id, idempotency_key, planned_duration_seconds, initiating_session_id, response_json
+        FROM study_session_start_receipts`);
     }
     await queryRunner.query('DROP TABLE study_session_start_receipts');
     await queryRunner.query('DROP TABLE active_study_sessions');
@@ -59,5 +112,25 @@ export class AddCanonicalStudySessionStart1788458760000 implements MigrationInte
       DROP COLUMN terminal_reason,
       DROP COLUMN initiating_session_id`);
     await queryRunner.query('ALTER TABLE study_sessions MODIFY subject varchar(255) NOT NULL');
+  }
+
+  private async createStartReceiptsTable(queryRunner: QueryRunner): Promise<void> {
+    await queryRunner.query(`CREATE TABLE study_session_start_receipts (
+      user_id varchar(36) NOT NULL,
+      idempotency_key varchar(128) NOT NULL,
+      planned_duration_seconds int NOT NULL,
+      initiating_session_id varchar(36) NOT NULL,
+      response_json json NOT NULL,
+      PRIMARY KEY (user_id, idempotency_key),
+      CONSTRAINT FK_study_session_start_receipts_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    ) ENGINE=InnoDB`);
+  }
+
+  private async tableExists(queryRunner: QueryRunner, tableName: string): Promise<boolean> {
+    const [{ count }] = await queryRunner.query(
+      'SELECT COUNT(*) AS count FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = ?',
+      [tableName],
+    ) as [{ count: number | string }];
+    return Number(count) > 0;
   }
 }

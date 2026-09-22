@@ -383,6 +383,8 @@ export class CreateWiseSchema1788458400000 implements MigrationInterface {
   }
 
   public async down(queryRunner: QueryRunner): Promise<void> {
+    await queryRunner.query('DROP TABLE IF EXISTS study_session_start_receipts_downgrade_archive');
+    await queryRunner.query('DROP TABLE IF EXISTS study_session_m5_downgrade_archive');
     for (const table of [
       'guild_chat_messages',
       'raid_contributions',
