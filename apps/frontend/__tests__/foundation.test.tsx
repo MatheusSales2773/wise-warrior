@@ -1,10 +1,15 @@
 import { fireEvent, renderRouter, screen, waitFor } from 'expo-router/testing-library';
 import { StyleSheet } from 'react-native';
+import { queryClient } from '../src/core/query/query-runtime';
 import { theme } from '../src/design-system/tokens/theme';
 
 jest.mock('@/core/auth/auth-context', () => require('../test-utils/auth-context').createAuthContextMock());
 
 describe('Expo foundation routes', () => {
+  beforeEach(() => {
+    queryClient.clear();
+  });
+
   it.each([
     ['/', 'Acampamento', 'Carregando seu painel…'],
     ['/sessao', 'Forja', 'Buscando sua sessão ativa…'],
