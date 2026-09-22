@@ -1,18 +1,15 @@
 import { expect, test, type Page } from '@playwright/test';
 import { apiGet, apiUrl, registerThroughUi, uniqueCredentials } from './helpers/auth';
 
-async function createAndCompleteSession(page: Page, accessToken: string, subject: string): Promise<void> {
-  const headers = { Authorization: `Bearer ${accessToken}` };
-  const started = await page.request.post(`${apiUrl}/sessions`, { data: { subject, mode: 'solo' }, headers });
+async function startSession(page: Page, accessToken: string): Promise<string> {
+  const headers = {
+    Authorization: `Bearer ${accessToken}`,
+    'Idempotency-Key': `e2e-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+  };
+  const started = await page.request.post(`${apiUrl}/sessions`, { data: { plannedDurationSeconds: 1500 }, headers });
   expect(started.ok()).toBe(true);
   const session = (await started.json()) as { id: string };
-  await new Promise((resolve) => setTimeout(resolve, 1_100));
-  const completed = await page.request.post(`${apiUrl}/sessions/${session.id}/complete`, { headers });
-  expect(completed.ok()).toBe(true);
-  expect(await completed.json()).toEqual(expect.objectContaining({
-    id: session.id,
-    endedAt: expect.any(String),
-  }));
+  return session.id;
 }
 
 test.describe('painel web', () => {
@@ -31,30 +28,33 @@ test.describe('painel web', () => {
     );
   });
 
-  test('atualiza a atividade depois de criar e concluir uma sessão pela API', async ({ page }) => {
+  test('mantém a atividade recente vazia durante uma sessão ativa', async ({ page }) => {
     const registered = await registerThroughUi(page);
-    const subject = `Estudo E2E ${Date.now()}`;
-    await createAndCompleteSession(page, registered.accessToken, subject);
+    await startSession(page, registered.accessToken);
 
     await page.getByRole('button', { name: 'Atualizar dados' }).click();
-    await expect(page.getByTestId('dashboard-activity')).toContainText(subject);
-    await expect(page.getByTestId('dashboard-activity')).toContainText('solo');
+    await expect(page.getByTestId('dashboard-activity-empty')).toBeVisible();
   });
 
-  test('isola a atividade ao sair e cadastrar uma segunda conta', async ({ page }) => {
+  test('isola a sessão ativa ao sair e cadastrar uma segunda conta', async ({ page }) => {
     const first = await registerThroughUi(page, uniqueCredentials(), 'Primeiro Guerreiro');
-    const subject = `Sessão da primeira conta ${Date.now()}`;
-    await createAndCompleteSession(page, first.accessToken, subject);
-    await page.getByRole('button', { name: 'Atualizar dados' }).click();
-    await expect(page.getByTestId('dashboard-activity')).toContainText(subject);
+    const sessionId = await startSession(page, first.accessToken);
+    const firstActive = await page.request.get(`${apiUrl}/sessions/active`, {
+      headers: { Authorization: `Bearer ${first.accessToken}` },
+    });
+    expect(firstActive.ok()).toBe(true);
+    expect(await firstActive.json()).toEqual(expect.objectContaining({ id: sessionId }));
 
     await page.getByRole('button', { name: 'Sair' }).click();
     await expect(page).toHaveURL(/\/entrar(?:[/?#]|$)/);
-    await registerThroughUi(page, uniqueCredentials(), 'Segundo Guerreiro');
+    const second = await registerThroughUi(page, uniqueCredentials(), 'Segundo Guerreiro');
 
     await expect(page.getByTestId('dashboard-profile')).toContainText('Boas-vindas, Segundo Guerreiro');
     await expect(page.getByTestId('dashboard-activity-empty')).toBeVisible();
-    await expect(page.getByText(subject)).toHaveCount(0);
+    const secondActive = await page.request.get(`${apiUrl}/sessions/active`, {
+      headers: { Authorization: `Bearer ${second.accessToken}` },
+    });
+    expect(secondActive.status()).toBe(204);
   });
 
   test('preserva o perfil quando sessões recentes falham parcialmente', async ({ page }) => {

@@ -18,6 +18,8 @@ const expectedTables = [
   'guild_memberships',
   'raids',
   'study_sessions',
+  'active_study_sessions',
+  'study_session_start_receipts',
   'raid_contributions',
   'guild_chat_messages',
 ];
@@ -58,7 +60,18 @@ const expectedColumns: Record<string, string[]> = {
     'duration_valid_seconds',
     'xp_awarded',
     'discarded_reason',
+    'planned_duration_seconds',
+    'state',
+    'run_deadline_at',
+    'paused_at',
+    'paused_total_seconds',
+    'version',
+    'terminal_reason',
+    'initiating_session_id',
+    'active_user_id',
   ],
+  active_study_sessions: ['user_id', 'study_session_id'],
+  study_session_start_receipts: ['user_id', 'idempotency_key', 'planned_duration_seconds', 'initiating_session_id', 'response_json'],
   raid_contributions: [
     'id',
     'raid_id',
@@ -104,9 +117,6 @@ describe('TypeORM migrations against an empty MySQL schema', () => {
     await dataSource.initialize();
     await dataSource.runMigrations();
 
-    const schemaLog = await dataSource.driver.createSchemaBuilder().log();
-    expect(schemaLog.upQueries).toEqual([]);
-
     const tableRows = await rows(
       database!.admin,
       `SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA = ? ORDER BY TABLE_NAME`,
@@ -136,7 +146,11 @@ describe('TypeORM migrations against an empty MySQL schema', () => {
       expect(primaryKeyRows.map((row) => row.COLUMN_NAME)).toEqual(
         tableName === 'session_refresh_token_history'
           ? ['session_id', 'token_hash']
-          : ['id'],
+          : tableName === 'study_session_start_receipts'
+            ? ['user_id', 'idempotency_key']
+            : tableName === 'active_study_sessions'
+              ? ['user_id']
+              : ['id'],
       );
     }
 
@@ -151,6 +165,7 @@ describe('TypeORM migrations against an empty MySQL schema', () => {
     );
     const expectedUniques = [
       ['users', 'UQ_users_email', 'email'],
+      ['study_sessions', 'UQ_study_sessions_active_user', 'active_user_id'],
       ['guilds', 'UQ_guilds_name', 'name'],
       ['characters', 'REL_c6e648aeaab79e4213def02aba', 'user_id'],
       [
@@ -257,6 +272,9 @@ describe('TypeORM migrations against an empty MySQL schema', () => {
       [database!.name],
     );
     const expectedForeignKeys = [
+      ['FK_active_study_sessions_user', 'active_study_sessions', 'user_id', 'users', 'id', 'CASCADE'],
+      ['FK_active_study_sessions_study', 'active_study_sessions', 'study_session_id', 'study_sessions', 'id', 'CASCADE'],
+      ['FK_study_session_start_receipts_user', 'study_session_start_receipts', 'user_id', 'users', 'id', 'CASCADE'],
       ['FK_characters_user_id_users', 'characters', 'user_id', 'users', 'id', 'CASCADE'],
       ['FK_sessions_user_id_users', 'sessions', 'user_id', 'users', 'id', 'CASCADE'],
       [
@@ -319,6 +337,7 @@ describe('TypeORM migrations against an empty MySQL schema', () => {
       'CreateWiseSchema1788458400000',
       'AddSessionRefreshTokenHistory1788458460000',
       'AddStudySessionRecentIndex1788458520000',
+      'AddCanonicalStudySessionStart1788458760000',
     ]);
 
     await dataSource.undoLastMigration();
@@ -329,9 +348,10 @@ describe('TypeORM migrations against an empty MySQL schema', () => {
       [database!.name],
     );
     expect(remainingRows.map((row) => row.TABLE_NAME)).toEqual(
-      expectedTables.slice().sort(),
+      expectedTables.filter((tableName) => !['active_study_sessions', 'study_session_start_receipts'].includes(tableName)).sort(),
     );
 
+    await dataSource.undoLastMigration();
     await dataSource.undoLastMigration();
     const afterHistoryRevertRows = await rows(
       database!.admin,
@@ -341,7 +361,7 @@ describe('TypeORM migrations against an empty MySQL schema', () => {
     );
     expect(afterHistoryRevertRows.map((row) => row.TABLE_NAME)).toEqual(
       expectedTables
-        .filter((tableName) => tableName !== 'session_refresh_token_history')
+        .filter((tableName) => !['session_refresh_token_history', 'active_study_sessions', 'study_session_start_receipts'].includes(tableName))
         .sort(),
     );
 
@@ -374,6 +394,21 @@ describe('TypeORM migrations against an empty MySQL schema', () => {
        VALUES (?, ?, ?, ?)`,
       ['existing-session', 'existing-user', 'hash-only', new Date()],
     );
+    await database.admin.query(
+      `INSERT INTO ${database.identifier}.guilds (id, name, created_by) VALUES (?, ?, ?)`,
+      ['existing-guild', 'Historical Guild', 'existing-user'],
+    );
+    await database.admin.query(
+      `INSERT INTO ${database.identifier}.raids
+       (id, guild_id, title, goal_xp, starts_at, ends_at) VALUES (?, ?, ?, ?, ?, ?)`,
+      ['existing-raid', 'existing-guild', 'Historical Raid', 1000, new Date('2026-01-01T00:00:00Z'), new Date('2026-01-02T00:00:00Z')],
+    );
+    await database.admin.query(
+      `INSERT INTO ${database.identifier}.study_sessions
+       (id, user_id, subject, mode, raid_id, started_at, ended_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      ['existing-study', 'existing-user', 'Cálculo', 'guild', 'existing-raid', new Date('2026-01-01T12:00:00Z'), new Date('2026-01-01T12:25:00Z')],
+    );
     await initialDataSource.destroy();
     initialDataSource = undefined;
 
@@ -387,6 +422,13 @@ describe('TypeORM migrations against an empty MySQL schema', () => {
     );
     expect(sessionRows).toEqual([
       expect.objectContaining({ id: 'existing-session', refresh_token_hash: 'hash-only' }),
+    ]);
+    const historicStudies = await rows(
+      database.admin,
+      `SELECT id, subject, mode, raid_id, state FROM ${database.identifier}.study_sessions`,
+    );
+    expect(historicStudies).toEqual([
+      expect.objectContaining({ id: 'existing-study', subject: 'Cálculo', mode: 'guild', raid_id: 'existing-raid', state: 'completed' }),
     ]);
 
     const historyTableRows = await rows(

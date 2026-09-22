@@ -11,6 +11,7 @@ import { User } from '../../users/entities/user.entity';
 import { Raid } from '../../raids/entities/raid.entity';
 
 export type StudySessionMode = 'solo' | 'guild';
+export type StudySessionState = 'running' | 'paused' | 'completed' | 'stopped_early' | 'cancelled' | 'discarded';
 
 @Entity('study_sessions')
 @Index('IDX_study_sessions_user_id_started_at', ['userId', 'startedAt'])
@@ -27,8 +28,8 @@ export class StudySession {
   @Column({ name: 'user_id', type: 'varchar', length: '36' })
   userId: string;
 
-  @Column()
-  subject: string;
+  @Column({ type: 'varchar', nullable: true })
+  subject: string | null;
 
   @Column({ type: 'varchar' })
   mode: StudySessionMode;
@@ -46,6 +47,30 @@ export class StudySession {
 
   @Column({ name: 'ended_at', type: 'datetime', nullable: true })
   endedAt?: Date | null;
+
+  @Column({ name: 'planned_duration_seconds', type: 'int', nullable: true })
+  plannedDurationSeconds?: number | null;
+
+  @Column({ type: 'varchar', length: 24, nullable: true })
+  state?: StudySessionState | null;
+
+  @Column({ name: 'run_deadline_at', type: 'datetime', precision: 3, nullable: true })
+  runDeadlineAt?: Date | null;
+
+  @Column({ name: 'paused_at', type: 'datetime', precision: 3, nullable: true })
+  pausedAt?: Date | null;
+
+  @Column({ name: 'paused_total_seconds', type: 'int', default: 0 })
+  pausedTotalSeconds: number;
+
+  @Column({ type: 'int', default: 1 })
+  version: number;
+
+  @Column({ name: 'terminal_reason', type: 'varchar', length: 120, nullable: true })
+  terminalReason?: string | null;
+
+  @Column({ name: 'initiating_session_id', type: 'varchar', length: 36, nullable: true })
+  initiatingSessionId?: string | null;
 
   @Column({ name: 'last_heartbeat_at', type: 'datetime', nullable: true })
   lastHeartbeatAt?: Date | null;

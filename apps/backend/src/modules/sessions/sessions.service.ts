@@ -1,12 +1,12 @@
 import {
   BadRequestException,
+  ConflictException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { IsNull, Not, Repository } from 'typeorm';
 import { StudySession } from './entities/study-session.entity';
-import { StartSessionDto } from './dto/start-session.dto';
 import { validateSessionDuration } from './domain/session-validator';
 import { xpForDuration } from './domain/xp-rate';
 import { ProgressionService } from '../progression/progression.service';
@@ -24,7 +24,7 @@ export class SessionsService {
     private readonly raids: RaidsService,
   ) {}
 
-  async start(userId: string, dto: StartSessionDto): Promise<StudySession> {
+  async start(userId: string, dto: { subject: string; mode: 'solo' | 'guild'; raidId?: string }): Promise<StudySession> {
     if (dto.mode === 'guild' && !dto.raidId) {
       throw new BadRequestException('raidId é obrigatório no modo guild');
     }
@@ -117,14 +117,20 @@ export class SessionsService {
    * Heartbeat periódico (UC03/S01) — o servidor, nunca o cliente, é quem
    * carimba o tempo. Isso é o que torna a validação antifraude possível.
    */
-  async heartbeat(userId: string, sessionId: string): Promise<void> {
+  async heartbeat(userId: string, sessionId: string, authSessionId?: string): Promise<void> {
     const session = await this.loadOwnedActiveSession(userId, sessionId);
+    if (session.state && session.initiatingSessionId !== authSessionId) {
+      throw new ConflictException('Study Session iniciada em outra Session autenticada');
+    }
     session.lastHeartbeatAt = new Date();
     await this.studySessions.save(session);
   }
 
   async complete(userId: string, sessionId: string): Promise<StudySession> {
     const session = await this.loadOwnedActiveSession(userId, sessionId);
+    if (session.state) {
+      throw new ConflictException('Conclusão canônica indisponível nesta etapa da Study Session');
+    }
     const endedAt = new Date();
     const priorDailySeconds = await this.sumValidSecondsToday(userId, sessionId);
 
