@@ -1,11 +1,10 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef, useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import { Screen, WiseButton, WiseCard, WiseText, theme } from '@/design-system';
-import { getActiveStudySession, startStudySession, STUDY_SESSION_PRESETS, type PlannedDurationSeconds } from './api';
+import { startStudySession, STUDY_SESSION_PRESETS, type PlannedDurationSeconds } from './api';
+import { activeStudySessionQueryKey, useActiveStudySession } from './queries';
 import { formatRemainingTime, remainingStudySeconds } from './timer';
-
-const activeKey = ['study-session', 'active'] as const;
 
 function newIdempotencyKey(): string {
   return globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -16,12 +15,12 @@ export function StudySessionScreen() {
   const [selected, setSelected] = useState<PlannedDurationSeconds>(1500);
   const [now, setNow] = useState(0);
   const pendingKey = useRef<string | null>(null);
-  const active = useQuery({ queryKey: activeKey, queryFn: ({ signal }) => getActiveStudySession(signal), staleTime: 0, retry: false });
+  const active = useActiveStudySession();
   const start = useMutation({
     mutationFn: ({ duration, key }: { duration: PlannedDurationSeconds; key: string }) => startStudySession(duration, key),
     onSuccess(snapshot) {
       pendingKey.current = null;
-      queryClient.setQueryData(activeKey, snapshot);
+      queryClient.setQueryData(activeStudySessionQueryKey, snapshot);
     },
     onError() {
       void active.refetch();
