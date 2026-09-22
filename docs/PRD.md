@@ -1,9 +1,9 @@
 # Wise — PRD (Product Requirements Document)
 
-**Versão:** 1.2
+**Versão:** 1.3
 **Branch:** `dev/phase-1`
 **Autor:** Assistente técnico (Claude Code), a partir da síntese dos documentos orientadores do Grupo 2
-**Data:** 21/08/2026 (v1.0) — 21/08/2026 (v1.1) — 03/09/2026 (v1.2, frontend universal)
+**Data:** 21/08/2026 (v1.0) — 21/08/2026 (v1.1) — 03/09/2026 (v1.2, frontend universal) — 17/09/2026 (v1.3, repriorização da Fase 1)
 **Status:** Decisões de escopo e arquitetura fechadas; migração universal pendente de execução
 
 ### Registro de decisões fechadas em 21/08/2026
@@ -116,8 +116,8 @@ O usuário pediu que as informações se propaguem "no mesmo ambiente" por um si
 | **Must** | Cadastro/login (JWT access+refresh) | `auth` | Base de tudo |
 | **Must** | Timer Pomodoro com registro de sessão | `sessions` | Diferencial crítico (Documento de Visão) |
 | **Must** | Cálculo de XP e nível | `progression` | Fórmula já definida no UC04 |
-| **Must** | Guildas (criar/entrar) + ranking interno | `guilds` | Diferencial crítico |
-| **Must** | Raids semanais com meta coletiva | `raids` | Diferencial crítico |
+| **Must** | Guildas (criar/entrar) + ranking interno | `guilds` | Obrigatória na Fase 1; participação opcional e posterior ao núcleo de Study Session |
+| **Must** | Raids semanais com meta coletiva | `raids` | Obrigatória na Fase 1; implementada depois de Guilda e antes de Perfil |
 | **Must** | Validação server-side de sessão (antifraude) | `sessions`/`progression` | Gap da seção 3.5 |
 | **Must** | Sessões persistentes multi-dispositivo (login em vários dispositivos, revogação, fanout de eventos) | `auth` | ADR-009 — pedido explícito do usuário |
 | **Must** | Frontend universal Web, iOS e Android | frontend `shared` | ADR-008 revisado — aplicação Expo única |
@@ -129,6 +129,28 @@ O usuário pediu que as informações se propaguem "no mesmo ambiente" por um si
 | **Won't (nesta fase)** | Companheiro/mascote RPG com XP próprio | `progression` (sub-feature) | ADR-004 — adiado para Fase 2 |
 | **Won't (nesta fase)** | Cobrança/assinatura premium (gateway de pagamento) | — | ADR-007 — fora do horizonte técnico da Fase 1 |
 | **Won't (nesta fase)** | Parcerias educacionais / integrações externas | — | Modelo de negócio, não requisito técnico do MVP |
+
+### 6.1 Sequenciamento da Fase 1 após a M4
+
+A classificação `Must` expressa o conteúdo obrigatório da Fase 1, não a ordem de
+implementação nem a obrigatoriedade de participação do usuário. O fluxo individual
+de Study Session precede as capacidades sociais. A ordem validada é:
+
+1. Study Session essencial: solo, online e em primeiro plano, sem matéria, com
+   presets de 15/25/50 minutos e 25 minutos selecionados inicialmente;
+2. matéria da Study Session;
+3. controle multidispositivo da Study Session;
+4. resiliência em background e offline;
+5. Pomodoro completo;
+6. Guilda;
+7. Raid;
+8. Perfil.
+
+A Study Session essencial já inclui pausa e retomada online, exclusividade global,
+estados canônicos, comandos idempotentes, cancelamento antes de cinco minutos,
+encerramento antecipado com XP proporcional e conclusão automática enquanto o
+aplicativo estiver ativo. Controle entre dispositivos, matéria e resiliência não
+fazem parte desse primeiro corte.
 
 ---
 

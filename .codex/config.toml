@@ -16,7 +16,7 @@
 #   agents.max_concurrent_threads_per_session
 
 # Root / orchestrator
-model = "gpt-5.6-luna"
+model = "gpt-6-luna"
 model_reasoning_effort = "max"
 
 # Safe interactive defaults. Change if your workflow needs otherwise.
