@@ -28,7 +28,7 @@ enabled = true
 
 # Number of child agent threads Codex may keep open concurrently.
 # Keep this low on Plus: every concurrent subagent re-reads its own context.
-max_concurrent_threads_per_session = 4
+max_concurrent_threads_per_session = 2
 
 # Default for any spawned subagent that does not explicitly choose a model.
 default_subagent_model = "gpt-6-sol"
