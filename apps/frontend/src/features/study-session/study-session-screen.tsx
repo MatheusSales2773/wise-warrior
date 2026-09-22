@@ -4,6 +4,7 @@ import { Pressable, StyleSheet, View } from 'react-native';
 import { Screen, WiseButton, WiseCard, WiseText, theme } from '@/design-system';
 import { getActiveStudySession, startStudySession, STUDY_SESSION_PRESETS, type PlannedDurationSeconds } from './api';
 import { formatRemainingTime, remainingStudySeconds } from './timer';
+import { useStudySessionHeartbeat } from './use-study-session-heartbeat';
 
 const activeKey = ['study-session', 'active'] as const;
 
@@ -29,6 +30,7 @@ export function StudySessionScreen() {
   });
 
   const snapshot = active.data;
+  useStudySessionHeartbeat(snapshot ?? undefined);
   const clockOffset = snapshot ? new Date(snapshot.serverNow).getTime() - snapshot.receivedAtMs : 0;
   useEffect(() => {
     if (!snapshot || snapshot.state !== 'running') return;

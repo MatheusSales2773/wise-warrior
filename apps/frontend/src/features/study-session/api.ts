@@ -37,3 +37,7 @@ export async function startStudySession(plannedDurationSeconds: PlannedDurationS
   );
   return { ...response.data, receivedAtMs: Date.now() };
 }
+
+export async function heartbeatStudySession(id: string, signal?: AbortSignal): Promise<void> {
+  await getAuthenticatedHttpClient().patch(`/sessions/${id}/heartbeat`, undefined, { signal });
+}

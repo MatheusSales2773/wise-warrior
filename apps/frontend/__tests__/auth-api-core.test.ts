@@ -12,6 +12,7 @@ import {
   setAuthenticationSnapshot,
   shouldSendBrowserCredentials,
   type HttpClient,
+  type HttpClientWithPatch,
   type HttpResponse,
 } from '@/core/api/api-client';
 import { ApiError, isApiError, isCancelled, toApiError } from '@/core/api/api-error';
@@ -186,6 +187,39 @@ describe('http client configuration', () => {
       ]);
       expect(recover).toHaveBeenCalledTimes(1);
       expect(getCalls).toHaveBeenCalledTimes(4);
+    } finally {
+      removeRecovery();
+    }
+  });
+
+  it('restores once and retries protected PATCH requests rejected with 401', async () => {
+    let restored = false;
+    const patchCalls = jest.fn();
+    const transport: HttpClientWithPatch = {
+      get: async <T,>() => ({ status: 204, data: undefined as T }),
+      post: async <T,>() => ({ status: 204, data: undefined as T }),
+      patch: async <T,>() => {
+        patchCalls();
+        if (!restored) {
+          throw { isAxiosError: true, response: { status: 401, data: {} } };
+        }
+        return { status: 204, data: undefined as T };
+      },
+    };
+    const recover = jest.fn(async () => {
+      restored = true;
+      return true;
+    });
+    const removeRecovery = setAuthenticationRecovery(recover);
+
+    try {
+      const client = createSessionAwareHttpClient(transport);
+      await expect(client.patch('/sessions/study-1/heartbeat')).resolves.toEqual({
+        status: 204,
+        data: undefined,
+      });
+      expect(recover).toHaveBeenCalledTimes(1);
+      expect(patchCalls).toHaveBeenCalledTimes(2);
     } finally {
       removeRecovery();
     }
