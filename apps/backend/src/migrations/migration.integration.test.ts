@@ -20,6 +20,7 @@ const expectedTables = [
   'study_sessions',
   'active_study_sessions',
   'study_session_start_receipts',
+  'study_session_transition_receipts',
   'raid_contributions',
   'guild_chat_messages',
 ];
@@ -65,6 +66,7 @@ const expectedColumns: Record<string, string[]> = {
     'run_deadline_at',
     'paused_at',
     'paused_total_seconds',
+    'paused_total_milliseconds',
     'version',
     'terminal_reason',
     'initiating_session_id',
@@ -72,6 +74,7 @@ const expectedColumns: Record<string, string[]> = {
   ],
   active_study_sessions: ['user_id', 'study_session_id'],
   study_session_start_receipts: ['user_id', 'idempotency_key', 'planned_duration_seconds', 'initiating_session_id', 'response_json'],
+  study_session_transition_receipts: ['user_id', 'study_session_id', 'idempotency_key', 'action', 'expected_version', 'response_json', 'created_at'],
   raid_contributions: [
     'id',
     'raid_id',
@@ -147,6 +150,8 @@ describe('TypeORM migrations against an empty MySQL schema', () => {
         tableName === 'session_refresh_token_history'
           ? ['session_id', 'token_hash']
           : tableName === 'study_session_start_receipts'
+            ? ['user_id', 'idempotency_key']
+          : tableName === 'study_session_transition_receipts'
             ? ['user_id', 'idempotency_key']
             : tableName === 'active_study_sessions'
               ? ['user_id']
@@ -275,6 +280,8 @@ describe('TypeORM migrations against an empty MySQL schema', () => {
       ['FK_active_study_sessions_user', 'active_study_sessions', 'user_id', 'users', 'id', 'CASCADE'],
       ['FK_active_study_sessions_study', 'active_study_sessions', 'study_session_id', 'study_sessions', 'id', 'CASCADE'],
       ['FK_study_session_start_receipts_user', 'study_session_start_receipts', 'user_id', 'users', 'id', 'CASCADE'],
+      ['FK_study_session_transition_receipts_user', 'study_session_transition_receipts', 'user_id', 'users', 'id', 'CASCADE'],
+      ['FK_study_session_transition_receipts_study', 'study_session_transition_receipts', 'study_session_id', 'study_sessions', 'id', 'CASCADE'],
       ['FK_characters_user_id_users', 'characters', 'user_id', 'users', 'id', 'CASCADE'],
       ['FK_sessions_user_id_users', 'sessions', 'user_id', 'users', 'id', 'CASCADE'],
       [
@@ -338,6 +345,7 @@ describe('TypeORM migrations against an empty MySQL schema', () => {
       'AddSessionRefreshTokenHistory1788458460000',
       'AddStudySessionRecentIndex1788458520000',
       'AddCanonicalStudySessionStart1788458760000',
+      'AddStudySessionPauseResume1788458880000',
     ]);
 
     await dataSource.undoLastMigration();
@@ -348,7 +356,18 @@ describe('TypeORM migrations against an empty MySQL schema', () => {
       [database!.name],
     );
     expect(remainingRows.map((row) => row.TABLE_NAME)).toEqual(
-      expectedTables.filter((tableName) => !['active_study_sessions', 'study_session_start_receipts'].includes(tableName)).sort(),
+      expectedTables.filter((tableName) => tableName !== 'study_session_transition_receipts').sort(),
+    );
+
+    await dataSource.undoLastMigration();
+    const afterCanonicalRevertRows = await rows(
+      database!.admin,
+      `SELECT TABLE_NAME FROM information_schema.TABLES
+       WHERE TABLE_SCHEMA = ? AND TABLE_NAME <> 'migrations' ORDER BY TABLE_NAME`,
+      [database!.name],
+    );
+    expect(afterCanonicalRevertRows.map((row) => row.TABLE_NAME)).toEqual(
+      expectedTables.filter((tableName) => !['active_study_sessions', 'study_session_start_receipts', 'study_session_transition_receipts'].includes(tableName)).sort(),
     );
 
     await dataSource.undoLastMigration();
@@ -361,7 +380,7 @@ describe('TypeORM migrations against an empty MySQL schema', () => {
     );
     expect(afterHistoryRevertRows.map((row) => row.TABLE_NAME)).toEqual(
       expectedTables
-        .filter((tableName) => !['session_refresh_token_history', 'active_study_sessions', 'study_session_start_receipts'].includes(tableName))
+        .filter((tableName) => !['session_refresh_token_history', 'active_study_sessions', 'study_session_start_receipts', 'study_session_transition_receipts'].includes(tableName))
         .sort(),
     );
 
@@ -469,6 +488,7 @@ describe('TypeORM migrations against an empty MySQL schema', () => {
     );
 
     await dataSource.undoLastMigration();
+    await dataSource.undoLastMigration();
     const downgradedHistory = await rows(
       database.admin,
       `SELECT id, subject, mode, raid_id FROM ${database.identifier}.study_sessions ORDER BY id`,
@@ -527,6 +547,7 @@ describe('TypeORM migrations against an empty MySQL schema', () => {
     );
     expect(leftoverArchives).toHaveLength(0);
 
+    await dataSource.undoLastMigration();
     await dataSource.undoLastMigration();
     await dataSource.undoLastMigration();
     await dataSource.undoLastMigration();

@@ -38,6 +38,36 @@ export async function startStudySession(plannedDurationSeconds: PlannedDurationS
   return { ...response.data, receivedAtMs: Date.now() };
 }
 
+export function pauseStudySession(
+  id: string,
+  expectedVersion: number,
+  idempotencyKey: string,
+): Promise<StudySessionSnapshot> {
+  return transitionStudySession(id, 'pause', expectedVersion, idempotencyKey);
+}
+
+export function resumeStudySession(
+  id: string,
+  expectedVersion: number,
+  idempotencyKey: string,
+): Promise<StudySessionSnapshot> {
+  return transitionStudySession(id, 'resume', expectedVersion, idempotencyKey);
+}
+
+async function transitionStudySession(
+  id: string,
+  action: 'pause' | 'resume',
+  expectedVersion: number,
+  idempotencyKey: string,
+): Promise<StudySessionSnapshot> {
+  const response = await getAuthenticatedHttpClient().post<StudySessionSnapshot>(
+    `/sessions/${id}/${action}`,
+    { expectedVersion },
+    { headers: { 'Idempotency-Key': idempotencyKey } },
+  );
+  return { ...response.data, receivedAtMs: Date.now() };
+}
+
 export async function heartbeatStudySession(id: string, signal?: AbortSignal): Promise<void> {
   await getAuthenticatedHttpClient().patch(`/sessions/${id}/heartbeat`, undefined, { signal });
 }
