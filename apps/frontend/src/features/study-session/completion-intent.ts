@@ -66,6 +66,17 @@ export function getCompletionIntentForSession(
   return retainedIntent;
 }
 
+export function markCompletionIntentReadyAtSnapshot(
+  snapshot: StudySessionSnapshot,
+): StudySessionCompletionIntent | null {
+  const intent = getCompletionIntentForSnapshot(snapshot);
+  if (!intent || intent.status !== 'waiting') return null;
+
+  intent.snapshot = snapshot;
+  intent.retryReady = true;
+  return intent;
+}
+
 export function submitCompletionIntent(
   intent: StudySessionCompletionIntent,
 ): Promise<StudySessionSnapshot> {

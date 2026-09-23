@@ -182,6 +182,44 @@ it('waits for a fresh zero projection after an early conflict and preserves the 
   view.unmount();
 });
 
+it('reuses the waiting intent after a failed reconciliation and a successful manual refresh', async () => {
+  const zeroSnapshot = atZero();
+  const refreshedSnapshot: StudySessionSnapshot = {
+    ...zeroSnapshot,
+    remainingSeconds: 12,
+    runDeadlineAt: new Date(mockedNow + 12_000).toISOString(),
+    receivedAtMs: mockedNow + 1,
+  };
+  getActive
+    .mockResolvedValueOnce(zeroSnapshot)
+    .mockRejectedValueOnce(new Error('temporary network failure'))
+    .mockResolvedValueOnce(refreshedSnapshot);
+  complete.mockRejectedValueOnce({
+    response: { status: 409, data: { type: 'https://wise.app/errors/study-session-completion-too-early' } },
+  }).mockResolvedValueOnce(completed(refreshedSnapshot));
+  const { view } = await renderStudySession();
+
+  await view.findByTestId('study-session-completion-refresh');
+  const originalRequest = completionRequest();
+  expect(complete).toHaveBeenCalledTimes(1);
+  expect(getActive).toHaveBeenCalledTimes(2);
+
+  await fireEvent.press(view.getByRole('button', { name: 'Atualizar estado' }));
+  await waitFor(() => expect(getActive).toHaveBeenCalledTimes(3));
+  await waitFor(() => {
+    expect(view.getByTestId('study-session-timer').props.accessibilityLabel).toContain('0 minutos e 13 segundos');
+  });
+
+  await act(async () => {
+    mockedNow += 12_001;
+    studySessionTimerTick?.();
+  });
+  await waitFor(() => expect(complete).toHaveBeenCalledTimes(2));
+  expect(completionRequest(1)).toEqual(originalRequest);
+  await view.findByText('Sessão concluída');
+  view.unmount();
+});
+
 it('does not auto-complete in the background and reconciles on return', async () => {
   const zeroSnapshot = atZero();
   appActive.mockReturnValue(false);

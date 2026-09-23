@@ -25,6 +25,7 @@ import {
   getCompletionIntentForSnapshot,
   getOrCreateCompletionIntent,
   getRetainedCompletionIntent,
+  markCompletionIntentReadyAtSnapshot,
   newIdempotencyKey,
   submitCompletionIntent,
   syncCompletionIntentWithSnapshot,
@@ -77,6 +78,15 @@ export function StudySessionScreen() {
   const wasApplicationActive = useRef(applicationActive);
   const active = useActiveStudySession();
   const refetchActive = active.refetch;
+  const refreshActive = useCallback(async () => {
+    const result = await refetchActive();
+    if (!result.isError && result.status === 'success' && result.data) {
+      syncCompletionIntentWithSnapshot(result.data);
+      const readyIntent = markCompletionIntentReadyAtSnapshot(result.data);
+      if (readyIntent) setCompletionIntentState(readyIntent);
+    }
+    return result;
+  }, [refetchActive]);
   const activeSnapshot = active.data;
   const retainedCompletionIntent = activeSnapshot
     ? getCompletionIntentForSnapshot(activeSnapshot)
@@ -117,18 +127,7 @@ export function StudySessionScreen() {
       .catch(async () => {
         setCompletionIntentState(intent);
         if (intent.status === 'waiting') {
-          const refreshed = await refetchActive();
-          const canonicalSnapshot = refreshed.data;
-          if (
-            canonicalSnapshot
-            && canonicalSnapshot.id === intent.request.id
-            && canonicalSnapshot.version === intent.request.expectedVersion
-            && canonicalSnapshot.state === 'running'
-            && canonicalSnapshot.canControl
-          ) {
-            intent.snapshot = canonicalSnapshot;
-            intent.retryReady = true;
-          }
+          await refreshActive();
           setNow(Date.now());
           setCompletionIntentState(intent);
           return;
@@ -138,14 +137,14 @@ export function StudySessionScreen() {
             id: intent.request.id,
             version: intent.request.expectedVersion,
           });
-          await refetchActive();
+          await refreshActive();
           setCompletionIntentState(intent);
         }
       })
       .finally(() => {
         if (observedCompletionPromise.current === promise) observedCompletionPromise.current = null;
       });
-  }, [refetchActive, settleTerminalResult]);
+  }, [refreshActive, settleTerminalResult]);
 
   const executeCompletion = useCallback((intent: StudySessionCompletionIntent) => {
     setCompletionIntentState(intent);
@@ -164,7 +163,7 @@ export function StudySessionScreen() {
       queryClient.setQueryData(activeStudySessionQueryKey, snapshot);
     },
     onError() {
-      void active.refetch();
+      void refreshActive();
     },
   });
   const transition = useMutation({
@@ -188,7 +187,7 @@ export function StudySessionScreen() {
     onError(error) {
       if (isVersionConflict(error)) {
         setRetryTransition(null);
-        void active.refetch();
+        void refreshActive();
       }
     },
   });
@@ -204,6 +203,11 @@ export function StudySessionScreen() {
   }, [activeSnapshot]);
 
   useEffect(() => {
+    if (!activeSnapshot || !active.isFetchedAfterMount || active.isFetching || active.isError) return;
+    markCompletionIntentReadyAtSnapshot(activeSnapshot);
+  }, [active.dataUpdatedAt, active.isError, active.isFetchedAfterMount, active.isFetching, activeSnapshot]);
+
+  useEffect(() => {
     if (completionIntent?.status === 'pending' && completionIntent.promise) {
       observeCompletion(completionIntent);
     }
@@ -217,7 +221,7 @@ export function StudySessionScreen() {
     requiresForegroundRefresh.current = true;
     setForegroundSyncPending(true);
     let mounted = true;
-    void refetchActive().finally(() => {
+    void refreshActive().finally(() => {
       if (mounted) {
         setNow(Date.now());
         requiresForegroundRefresh.current = false;
@@ -225,7 +229,7 @@ export function StudySessionScreen() {
       }
     });
     return () => { mounted = false; };
-  }, [applicationActive, refetchActive]);
+  }, [applicationActive, refreshActive]);
 
   useEffect(() => {
     if (snapshotState !== 'running' || !applicationActive) return;
@@ -340,14 +344,14 @@ export function StudySessionScreen() {
         {active.isError && !snapshot ? (
           <WiseCard testID="study-session-load-error">
             <WiseText variant="body">Não foi possível consultar sua sessão. Verifique a conexão.</WiseText>
-            <WiseButton label="Tentar novamente" onPress={() => void active.refetch()} variant="secondary" />
+            <WiseButton label="Tentar novamente" onPress={() => void refreshActive()} variant="secondary" />
           </WiseCard>
         ) : null}
         {snapshot && !snapshot.canControl ? (
           <WiseCard testID="study-session-remote-conflict">
             <WiseText variant="subtitle">Foco em outro dispositivo</WiseText>
             <WiseText variant="body">Já existe uma sessão ativa nesta conta. Volte ao dispositivo que a iniciou para acompanhá-la.</WiseText>
-            <WiseButton label="Atualizar estado" onPress={() => void active.refetch()} variant="secondary" />
+            <WiseButton label="Atualizar estado" onPress={() => void refreshActive()} variant="secondary" />
           </WiseCard>
         ) : null}
         {displayedTerminalResult ? (
@@ -401,7 +405,7 @@ export function StudySessionScreen() {
             ) : completionWaiting && (!activeSnapshot || active.isError) && !active.isFetching ? (
               <WiseButton
                 label="Atualizar estado"
-                onPress={() => void active.refetch()}
+                onPress={() => void refreshActive()}
                 variant="secondary"
                 testID="study-session-completion-refresh"
               />
@@ -410,7 +414,7 @@ export function StudySessionScreen() {
                 label={active.isFetching ? 'Atualizando estado…' : 'Atualizar estado'}
                 loading={active.isFetching}
                 disabled={active.isFetching}
-                onPress={() => void active.refetch()}
+                onPress={() => void refreshActive()}
                 variant="secondary"
                 testID="study-session-completion-refresh"
               />
@@ -432,7 +436,7 @@ export function StudySessionScreen() {
                   loading={(transition.isPending && pendingAction !== 'stop') || refreshingCanonicalSnapshot}
                   disabled={transition.isPending || refreshingCanonicalSnapshot || completionPending}
                   onPress={() => needsCanonicalRefresh
-                    ? void active.refetch()
+                    ? void refreshActive()
                     : changeSessionState(snapshot.state === 'paused' ? 'resume' : 'pause')}
                   testID={snapshot.state === 'paused' ? 'study-session-resume' : 'study-session-pause'}
                 />
