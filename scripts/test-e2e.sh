@@ -93,6 +93,9 @@ cleanup() {
   local status=$?
   if [[ "${status}" -ne 0 ]]; then
     capture_failure_diagnostics
+    printf 'E2E Compose diagnostics:\n' >&2
+    cat "${repository_root}/apps/frontend/test-results/compose-ps.txt" \
+      "${repository_root}/apps/frontend/test-results/compose-logs.txt" >&2 || true
   fi
   COMPOSE_PROJECT_NAME="${compose_project}" docker compose \
     --file "${compose_file}" \
