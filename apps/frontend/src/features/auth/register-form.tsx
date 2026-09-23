@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react';
-import { StyleSheet, TextInput, View } from 'react-native';
+import { StyleSheet, Text, TextInput, View } from 'react-native';
 import { useAuth } from '@/core/auth/auth-context';
-import { FeedbackMessage, WiseButton, WiseField, theme } from '@/design-system';
+import { FeedbackMessage, WiseButton, WiseField, WiseText, theme } from '@/design-system';
 import { AuthNavigationLink } from './components/AuthNavigationLink';
 import { AuthPasswordField } from './components/AuthPasswordField';
 import { AuthShell } from './components/AuthShell';
@@ -61,11 +61,15 @@ export function RegisterForm() {
 
   return (
     <AuthShell
-      description="Escolha seu nome, fortaleça sua presença e transforme cada minuto de concentração em progresso visível."
+      description="Escolha seu nome e comece a registrar cada sessão de foco a partir de hoje."
       eyebrow="Uma nova jornada começa"
       title="Crie seu personagem"
     >
       <View aria-busy={submitting} style={styles.form}>
+        <View style={styles.formHead}>
+          <WiseText accessibilityRole="header" variant="subtitle">Forje seu personagem</WiseText>
+          <WiseText color="textTertiary" variant="body">Um novo caminho começa com uma decisão.</WiseText>
+        </View>
         <WiseField
           ref={nameRef}
           autoCapitalize="words"
@@ -129,6 +133,10 @@ export function RegisterForm() {
           value={passwordConfirmation}
         />
         {formError ? <FeedbackMessage message={formError} title="Erro" variant="error" /> : null}
+        <View style={styles.metaRow}>
+          <WiseText color="accentPrimary" variant="caption">✦</WiseText>
+          <Text style={styles.meta}>A confirmação fica apenas neste ritual</Text>
+        </View>
         <WiseButton
           label="Criar personagem"
           loading={submitting}
@@ -145,4 +153,7 @@ export function RegisterForm() {
 
 const styles = StyleSheet.create({
   form: { gap: theme.space.stackDefault },
+  formHead: { alignItems: 'center', gap: theme.space.inlineHairline, marginBottom: theme.space.inlineTight },
+  metaRow: { flexDirection: 'row', alignItems: 'center', gap: theme.space.inlineTight },
+  meta: { fontFamily: 'Inter-Medium', color: theme.color.textTertiary, fontSize: 11 },
 });

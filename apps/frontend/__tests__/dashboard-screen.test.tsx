@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react-native';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { AccessibilityInfo, Platform } from 'react-native';
 import { theme } from '@/design-system';
@@ -62,6 +62,55 @@ afterEach(() => {
 });
 
 describe('DashboardScreen', () => {
+  it('presents the prototype progression with a visible level percentage', async () => {
+    mockedProfile.mockResolvedValue(profile);
+    mockedActivity.mockResolvedValue([]);
+    await renderDashboard();
+
+    await waitFor(() => expect(screen.getByTestId('dashboard-progression')).toBeTruthy());
+    expect(screen.getByRole('header', { name: 'Progressão' })).toBeTruthy();
+    expect(screen.getByText('50%')).toBeTruthy();
+  });
+
+  it('offers refresh inside the welcome card on iOS', async () => {
+    jest.replaceProperty(Platform, 'OS', 'ios');
+    mockedProfile.mockResolvedValue(profile);
+    mockedActivity.mockResolvedValue([]);
+    await renderDashboard();
+
+    const welcome = await screen.findByTestId('dashboard-profile');
+    expect(within(welcome).getByRole('button', { name: 'Atualizar dados' })).toBeTruthy();
+  });
+
+  it('offers a direct focus action from Acampamento', async () => {
+    mockedProfile.mockResolvedValue(profile);
+    mockedActivity.mockResolvedValue([]);
+    await renderDashboard();
+
+    await screen.findByTestId('dashboard-profile');
+    expect(screen.getByRole('link', { name: 'Iniciar foco' })).toBeTruthy();
+  });
+
+  it('shows the guild preview and its navigation beside recent activity', async () => {
+    mockedProfile.mockResolvedValue(profile);
+    mockedActivity.mockResolvedValue([]);
+    await renderDashboard();
+
+    await screen.findByTestId('dashboard-activity-empty');
+    expect(screen.getByTestId('dashboard-guild-preview')).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'Entrar na Guilda' })).toBeTruthy();
+  });
+
+  it('uses the prototype metric titles without repeating the streak label', async () => {
+    mockedProfile.mockResolvedValue(profile);
+    mockedActivity.mockResolvedValue([]);
+    await renderDashboard();
+
+    await screen.findByTestId('dashboard-streak');
+    expect(screen.getByRole('header', { name: 'Sequência atual' })).toBeTruthy();
+    expect(screen.queryByText('Streak')).toBeNull();
+  });
+
   it('uses the AppShell safe-area contract and keeps the loading progressbar queryable', async () => {
     mockedProfile.mockReturnValue(new Promise(() => undefined));
     mockedActivity.mockReturnValue(new Promise(() => undefined));

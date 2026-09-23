@@ -286,6 +286,7 @@ it('shows a visible keyboard focus ring on duration presets', async () => {
     getActive.mockResolvedValue(null);
     const { view } = await renderStudySession();
     await view.findByTestId('study-session-setup');
+    await fireEvent.press(view.getByRole('button', { name: 'Configurar duração' }));
     const preset = view.getByRole('radio', { name: '15 minutos' });
     await fireEvent(preset, 'focus');
     expect(StyleSheet.flatten(preset.props.style)).toMatchObject({

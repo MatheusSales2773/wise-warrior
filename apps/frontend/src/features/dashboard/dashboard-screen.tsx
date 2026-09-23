@@ -1,13 +1,28 @@
 import { useQuery, type UseQueryResult } from '@tanstack/react-query';
+import { LinearGradient } from 'expo-linear-gradient';
+import { Link } from 'expo-router';
 import { useEffect, useRef, useState, type PropsWithChildren } from 'react';
-import { AccessibilityInfo, Platform, StyleSheet, View, useWindowDimensions } from 'react-native';
+import { AccessibilityInfo, Platform, Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import Svg, { Defs, RadialGradient, Rect, Stop } from 'react-native-svg';
 import { FeedbackMessage, ProgressBar, Screen, WiseButton, WiseCard, WiseText, isDesktopLayout, theme } from '@/design-system';
 import { formatCadenceDate, formatDiscardReason, formatDuration, formatSessionDate, formatXp } from './formatters';
 import type { CadenceDay, RecentStudySession, SessionMetrics } from './api';
 import { profileQueryOptions, recentActivityQueryOptions, sessionMetricsQueryOptions } from './queries';
 
 function SectionHeading({ children }: PropsWithChildren) {
-  return <WiseText accessibilityRole="header" aria-level={2} variant="subtitle">{children}</WiseText>;
+  return <Text accessibilityRole="header" aria-level={2} style={styles.sectionHeading}>{children}</Text>;
+}
+
+function DashboardGlow({ hero = false }: { hero?: boolean }) {
+  return <Svg aria-hidden pointerEvents="none" style={StyleSheet.absoluteFill} width="100%" height="100%">
+    <Defs>
+      <RadialGradient id={hero ? 'dashboardHeroGlow' : 'dashboardPageGlow'} cx={hero ? '80%' : '20%'} cy={hero ? '50%' : '0%'} r={hero ? '65%' : '85%'}>
+        <Stop offset="0" stopColor={theme.color.accentPrimary} stopOpacity={hero ? '0.2' : '0.09'} />
+        <Stop offset="1" stopColor={theme.color.accentPrimary} stopOpacity="0" />
+      </RadialGradient>
+    </Defs>
+    <Rect width="100%" height="100%" fill={`url(#${hero ? 'dashboardHeroGlow' : 'dashboardPageGlow'})`} />
+  </Svg>;
 }
 
 function CardContent({ children, testID }: PropsWithChildren<{ testID?: string }>) {
@@ -126,31 +141,24 @@ function MetricsCard({ query }: { query: UseQueryResult<SessionMetrics> }) {
   if (!metrics) return null;
   const goal = Math.max(0, metrics.dailyGoal);
   return <View style={styles.metricsGrid} testID="dashboard-metrics">
-    <WiseCard accessibilityLabel={`Streak: ${metrics.currentStreakDays} dias; recorde pessoal de ${metrics.longestStreakDays} dias`} role="region" style={styles.metricCard} testID="dashboard-streak" variant="elevated">
-      <CardContent>
-        <SectionHeading>Streak</SectionHeading>
-        <MetricValue label="Sequência atual" value={formatDayCount(metrics.currentStreakDays)} />
-        <WiseText color="textSecondary" variant="caption">Recorde pessoal: {formatDayCount(metrics.longestStreakDays)}</WiseText>
-      </CardContent>
+    <WiseCard accessibilityLabel={`Streak: ${metrics.currentStreakDays} dias; recorde pessoal de ${metrics.longestStreakDays} dias`} role="region" style={styles.metricCard} testID="dashboard-streak">
+      <View style={styles.metricContent}>
+        <SectionHeading>Sequência atual</SectionHeading>
+        <Text style={styles.metricBig}>{formatDayCount(metrics.currentStreakDays)}</Text>
+        <Text style={styles.metricTrend}>Recorde pessoal: {formatDayCount(metrics.longestStreakDays)}</Text>
+      </View>
     </WiseCard>
     <WiseCard accessibilityLabel={`Sessões hoje: ${metrics.sessionsToday}${goal ? ` de ${goal}` : ''}; ${formatDuration(metrics.validSecondsToday)} de foco válido`} role="region" style={styles.metricCard} testID="dashboard-sessions" variant="default">
-      <CardContent>
+      <View style={styles.metricContent}>
         <SectionHeading>Sessões hoje</SectionHeading>
-        <MetricValue label="Sessões elegíveis" value={`${metrics.sessionsToday}${goal ? ` / ${goal}` : ''}`} />
-        <WiseText color="textSecondary" variant="caption">{formatDuration(metrics.validSecondsToday)} de foco válido</WiseText>
-      </CardContent>
+        <Text style={styles.metricBig}>{metrics.sessionsToday}{goal ? ` / ${goal}` : ''}</Text>
+        <Text style={styles.metricTrend}>{formatDuration(metrics.validSecondsToday)} de foco válido</Text>
+      </View>
     </WiseCard>
     <View style={styles.metricsStatus}>
       {query.isRefetching ? <WiseText color="textSecondary" testID="dashboard-metrics-refreshing" variant="caption">Atualizando métricas…</WiseText> : null}
       {query.isError ? <View testID="dashboard-metrics-refresh-error"><FeedbackMessage message="Não foi possível atualizar suas métricas de treino." title="Métricas desatualizadas" variant="error" /><WiseButton label="Tentar novamente" loading={query.isRefetching} onPress={() => void retry()} variant="secondary" /></View> : null}
     </View>
-  </View>;
-}
-
-function MetricValue({ label, value }: { label: string; value: string }) {
-  return <View accessible accessibilityLabel={`${label}: ${value}`} style={styles.metricValue}>
-    <WiseText color="accentHighlight" variant="display">{value}</WiseText>
-    <WiseText color="textSecondary" variant="caption">{label}</WiseText>
   </View>;
 }
 
@@ -282,23 +290,37 @@ export function DashboardScreen() {
   if (!user) return null;
   const desktop = isDesktopLayout(Platform.OS, width);
   const refreshProps = Platform.OS === 'web' ? {} : { refreshing, onRefresh: () => { void refresh(); } };
-  return <Screen safeAreaEdges={[]} title="Acampamento" testID="dashboard" {...refreshProps}>
-    <View testID="dashboard-status" accessibilityLiveRegion="polite" aria-live="polite" aria-atomic style={styles.status}>{statusMessage ? <WiseText variant="caption" color={refreshing ? 'textSecondary' : 'feedbackSuccess'}>{statusMessage}</WiseText> : null}</View>
+  return <Screen backgroundOverlay={<DashboardGlow />} safeAreaEdges={[]} title="Acampamento" testID="dashboard" {...refreshProps}>
     {partialErrorMessage ? <View accessibilityLiveRegion="none" aria-live="off" style={styles.partialError} testID="dashboard-partial-error"><WiseText color="feedbackDanger" variant="caption">{partialErrorMessage}</WiseText></View> : null}
-    {Platform.OS === 'web' ? <View style={styles.refreshAction}><WiseButton label="Atualizar dados" loading={refreshing} onPress={() => void refresh()} variant="secondary" /></View> : null}
     <View testID="dashboard-grid" style={[styles.grid, desktop && styles.desktopGrid]}>
       <View testID="dashboard-main-column" style={styles.mainColumn}>
-        <WiseCard accessibilityLabel="Resumo de perfil" role="region" testID="dashboard-profile" variant="ornamented">
+        <WiseCard accessibilityLabel="Resumo de perfil" role="region" style={styles.heroCard} testID="dashboard-profile">
+          <DashboardGlow hero />
           <CardContent testID="dashboard-profile-content">
-            <SectionHeading>Boas-vindas, {user.displayName}</SectionHeading>
-            {user.title ? <WiseText color="textSecondary" variant="body">{user.title}</WiseText> : null}
+            <View style={styles.heroRow}>
+              <View style={styles.heroCopy}>
+                <View style={styles.heroGreetingRow}>
+                  <Text style={styles.heroGreeting}>✦</Text>
+                  <Text accessibilityRole="header" aria-level={2} style={styles.heroGreeting}>Boas-vindas, {user.displayName}</Text>
+                </View>
+                <Text style={styles.heroTitle}>{user.title || 'Sua jornada começa aqui'}</Text>
+                <View testID="dashboard-status" accessibilityLiveRegion="polite" aria-live="polite" aria-atomic style={styles.status}>{statusMessage ? <WiseText variant="caption" color={refreshing ? 'textSecondary' : 'feedbackSuccess'}>{statusMessage}</WiseText> : null}</View>
+              </View>
+              <WiseButton label="Atualizar dados" loading={refreshing} onPress={() => void refresh()} variant="ghost" />
+            </View>
           </CardContent>
         </WiseCard>
         <ProfileRefreshError query={profile} />
-        <WiseCard accessibilityLabel="Progressão" role="region" testID="dashboard-progression" variant="elevated">
+        <WiseCard accessibilityLabel="Progressão" role="region" testID="dashboard-progression">
           <CardContent>
-            <SectionHeading>Nível {user.level}</SectionHeading>
-            <WiseText variant="body">{formatXp(user.xpTotal)} XP total</WiseText>
+            <View style={styles.progressionHeading}>
+              <SectionHeading>Progressão</SectionHeading>
+              <WiseText color="accentHighlight" variant="mono">Nível {user.level}</WiseText>
+            </View>
+            <View style={styles.progressionTotals}>
+              <WiseText variant="body">{formatXp(user.xpTotal)} XP total</WiseText>
+              <WiseText color="accentHighlight" variant="mono">{Math.round(((user.xpTotal - user.levelStartXp) / Math.max(1, user.nextLevelXp - user.levelStartXp)) * 100)}%</WiseText>
+            </View>
             <ProgressBar accessibilityLabel={`Progresso para o nível ${user.level + 1}`} maximumValue={user.nextLevelXp} minimumValue={user.levelStartXp} testID="dashboard-progress" value={user.xpTotal} />
             <WiseText color="textSecondary" variant="caption">{formatXp(user.xpTotal - user.levelStartXp)} XP no nível · faltam {formatXp(user.nextLevelXp - user.xpTotal)} XP</WiseText>
           </CardContent>
@@ -306,7 +328,28 @@ export function DashboardScreen() {
         <MetricsCard query={metrics} />
         {metrics.data ? <CadenceCard metrics={metrics.data} /> : null}
       </View>
-      <View style={styles.sideColumn} testID="dashboard-side-column"><ActivityCard query={activity} /></View>
+      <View style={styles.sideColumn} testID="dashboard-side-column">
+        <ActivityCard query={activity} />
+        <WiseCard accessibilityLabel="Guilda" role="region" testID="dashboard-guild-preview">
+          <CardContent>
+            <Text style={styles.guildEyebrow}>✦ GUILDA</Text>
+            <SectionHeading>Sua guilda</SectionHeading>
+            <WiseText color="textSecondary" variant="body">Sua guilda está em preparação.</WiseText>
+            <Link asChild href="/guilda">
+              <Pressable accessibilityRole="link" accessibilityLabel="Entrar na Guilda" style={styles.guildAction}>
+                <WiseText color="accentHighlight" variant="label">Entrar na Guilda →</WiseText>
+              </Pressable>
+            </Link>
+          </CardContent>
+        </WiseCard>
+        <Link asChild href="/sessao">
+          <Pressable accessibilityRole="link" accessibilityLabel="Iniciar foco" style={styles.focusAction}>
+            <LinearGradient colors={[theme.color.accentPrimary, theme.color.accentMuted]} style={styles.focusGradient}>
+              <WiseText color="backgroundCanvas" variant="label">Iniciar foco</WiseText>
+            </LinearGradient>
+          </Pressable>
+        </Link>
+      </View>
     </View>
   </Screen>;
 }
@@ -315,20 +358,34 @@ const styles = StyleSheet.create({
   loading: { gap: theme.space.stackDefault, padding: theme.space.cardInset },
   errorContent: { gap: theme.space.stackDefault },
   inlineError: { gap: theme.space.stackDefault },
-  status: { minHeight: 20, marginBottom: theme.space.stackTight },
+  status: { minHeight: 16 },
   partialError: { marginBottom: theme.space.stackTight },
-  refreshAction: { alignSelf: 'flex-start', marginBottom: theme.space.sectionGap },
+  heroCard: { borderColor: theme.color.borderEmphasis },
+  heroRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: theme.space.controlInset },
+  heroCopy: { minWidth: 0, flexGrow: 1, gap: theme.space.inlineHairline },
+  heroGreetingRow: { flexDirection: 'row', flexWrap: 'wrap', gap: theme.space.inlineHairline },
+  heroGreeting: { fontFamily: 'Cinzel-SemiBold', fontSize: 10, letterSpacing: 2.2, textTransform: 'uppercase', color: theme.color.accentPrimary },
+  heroTitle: { fontFamily: 'Cinzel-SemiBold', fontSize: 26, lineHeight: 34, color: theme.color.textPrimary },
   grid: { width: '100%', flexDirection: 'column', gap: theme.space.sectionGap },
   desktopGrid: { flexDirection: 'row', alignItems: 'flex-start' },
   mainColumn: { flex: 2, minWidth: 0, gap: theme.space.sectionGap },
-  sideColumn: { flex: 1, minWidth: 0 },
+  sideColumn: { flex: 1, minWidth: 0, gap: theme.space.sectionGap },
+  focusAction: { minHeight: theme.layout.touchTarget, borderRadius: theme.radius.control, borderWidth: 1, borderColor: theme.color.accentHighlight, overflow: 'hidden' },
+  focusGradient: { minHeight: theme.layout.touchTarget, alignItems: 'center', justifyContent: 'center', paddingHorizontal: theme.space.controlInset },
   cardContent: { minWidth: 0, padding: theme.space.cardInset, gap: theme.space.stackTight },
+  sectionHeading: { fontFamily: 'Cinzel-SemiBold', fontSize: 13, lineHeight: 20, letterSpacing: 2, textTransform: 'uppercase', color: theme.color.textPrimary },
+  progressionHeading: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: theme.space.inlineTight },
+  progressionTotals: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: theme.space.inlineTight },
   activityItem: { minWidth: 0, borderTopColor: theme.color.borderSoft, borderTopWidth: theme.border.standard, gap: theme.space.inlineHairline, paddingVertical: theme.space.stackTight },
   activityRefreshError: { gap: theme.space.stackDefault, marginTop: theme.space.stackTight },
+  guildEyebrow: { fontFamily: 'Cinzel-SemiBold', fontSize: 10, letterSpacing: 2, color: theme.color.accentPrimary },
+  guildAction: { minHeight: theme.layout.touchTarget, justifyContent: 'center', borderWidth: 1, borderColor: theme.color.borderEmphasis, borderRadius: theme.radius.control, alignItems: 'center' },
   metricsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: theme.space.sectionGap },
   metricCard: { flexBasis: 220, flexGrow: 1, minWidth: 0 },
+  metricContent: { padding: theme.space.stackDefault, gap: theme.space.inlineHairline },
+  metricBig: { fontFamily: 'Cinzel-Bold', fontSize: 28, lineHeight: 36, color: theme.color.accentHighlight },
+  metricTrend: { fontFamily: 'JetBrainsMono-Medium', fontSize: 11, lineHeight: 16, color: theme.color.textSecondary },
   metricsStatus: { flexBasis: '100%' },
-  metricValue: { minWidth: 0, gap: theme.space.inlineHairline },
   cadenceGrid: { gap: theme.space.inlineTight, width: '100%' },
   cadenceRow: { flexDirection: 'row', gap: theme.space.inlineTight, width: '100%' },
   cadenceCell: { aspectRatio: 1, flex: 1, minWidth: 0, borderRadius: theme.radius.detail, borderWidth: theme.border.standard, borderColor: theme.color.borderSubtle },

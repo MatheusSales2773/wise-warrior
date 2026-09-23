@@ -35,6 +35,22 @@ async function renderLogin(service: AuthService) {
 describe('LoginForm', () => {
   afterEach(() => jest.restoreAllMocks());
 
+  it('shows the prototype brand and focus quotation beside the form', async () => {
+    await renderLogin(serviceDouble(async () => ({ sessionId: 's' })));
+
+    expect(screen.getByText('Wise')).toBeTruthy();
+    expect(screen.getByText('“O foco é forjado, uma sessão de cada vez.”')).toBeTruthy();
+    expect(screen.getByText('Códice do Guerreiro · I')).toBeTruthy();
+  });
+
+  it('introduces the grimório and explains how focus progress is kept', async () => {
+    await renderLogin(serviceDouble(async () => ({ sessionId: 's' })));
+
+    expect(screen.getByRole('header', { name: 'Abra seu grimório' })).toBeTruthy();
+    expect(screen.getByText('Seus registros de foco aguardam por você.')).toBeTruthy();
+    expect(screen.getByText('Seu progresso permanece protegido no grimório')).toBeTruthy();
+  });
+
   it('renders the accessible fields, CTA and password toggle without the authenticated shell', async () => {
     await renderLogin(serviceDouble(async () => ({ sessionId: 's' })));
 
