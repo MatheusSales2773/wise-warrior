@@ -1,0 +1,32 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "overused-font",
+        "value": "inter",
+        "createdAt": "2026-08-27T19:37:57.012Z",
+        "reason": "Documentação de Interface (Quadro 2) e o design plan do time especificam Inter como fonte de corpo/UI ao lado de Cinzel (display) e JetBrains Mono (stats) — pareamento deliberado do sistema de design do projeto, não default genérico."
+      },
+      {
+        "rule": "codex-grid-background",
+        "value": "*",
+        "files": [
+          "apps/frontend/src/features/auth/auth-pages.css"
+        ],
+        "createdAt": "2026-08-27T19:38:03.518Z",
+        "reason": "Hairline grid em .auth-page::after roda a ~0.008 de alfa efetivo, mascarado por gradiente radial (vinheta, não cobre a tela) — textura de pergaminho/grimório especificada na Documentação de Interface e no design plan das telas de auth, confirmada visualmente nos screenshots renderizados; não é grid de blueprint."
+      },
+      {
+        "rule": "dark-glow",
+        "value": "*",
+        "files": [
+          "docs/Wise - Standalone Prototype.html"
+        ],
+        "createdAt": "2026-09-17T00:00:00.000Z",
+        "reason": "var(--accent-glow) já existia no CSS do protótipo standalone original (bundle decodificado desta mesma sessão) como o halo dourado do tema 'grimório' — usado em .bar-fill, .stat-tile, .xp-toast, timer ring etc. antes desta edição. Mantido por consistência com a fonte visual de referência do time (mesma paleta usada em apps/frontend/src/design-system/tokens/theme.ts); não é glow genérico introduzido agora."
+      }
+    ]
+  }
+}
