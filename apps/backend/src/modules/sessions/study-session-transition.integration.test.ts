@@ -1,5 +1,5 @@
 import { ConflictException } from '@nestjs/common';
-import { DataSource } from 'typeorm';
+import { DataSource, type EntityManager } from 'typeorm';
 import { Character } from '../progression/entities/character.entity';
 import { MAX_SUPPORTED_XP_TOTAL } from '../progression/domain/progression-policy';
 import { ProgressionService } from '../progression/progression.service';
@@ -209,8 +209,19 @@ describe('Study Session transitions against MySQL', () => {
 
   it('awards one proportional reward at 300 seconds and returns the same receipt on retry', async () => {
     now = new Date(now.getTime() + 300_000);
+    const runTransaction = dataSource!.transaction.bind(dataSource!) as (
+      callback: (manager: EntityManager) => Promise<unknown>,
+    ) => Promise<unknown>;
+    const transactionSpy = jest.spyOn(dataSource!, 'transaction').mockImplementation(
+      (async (callback: (manager: EntityManager) => Promise<unknown>) => runTransaction(async (manager) => {
+        const result = await callback(manager);
+        expect(realtime.emitToUser).not.toHaveBeenCalled();
+        return result;
+      })) as never,
+    );
 
     const result = await transition('stop', 1, 'stop-at-300');
+    transactionSpy.mockRestore();
     const stoppedAt = now;
     now = new Date(now.getTime() + 5_000);
     const replay = await transition('stop', 1, 'stop-at-300');
