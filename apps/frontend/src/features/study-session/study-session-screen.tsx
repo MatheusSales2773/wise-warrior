@@ -1,5 +1,5 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { AccessibilityInfo, Platform, Pressable, StyleSheet, View } from 'react-native';
 import { Screen, WiseButton, WiseCard, WiseText, theme } from '@/design-system';
 import { controlStyles } from '@/design-system/components/control-styles';
@@ -18,8 +18,21 @@ import { activeStudySessionQueryKey, useActiveStudySession } from './queries';
 import { formatRemainingTime, remainingStudySeconds } from './timer';
 import { FeedbackMessage } from '@/design-system/components/FeedbackMessage';
 import { dashboardKeys } from '@/features/dashboard/queries';
+import {
+  clearCompletionIntent,
+  completionIntentCanRetryAt,
+  getCompletionIntentForSession,
+  getCompletionIntentForSnapshot,
+  getOrCreateCompletionIntent,
+  getRetainedCompletionIntent,
+  newIdempotencyKey,
+  submitCompletionIntent,
+  syncCompletionIntentWithSnapshot,
+  type StudySessionCompletionIntent,
+} from './completion-intent';
+import { useStudySessionAppActive } from './use-study-session-app-active';
 
-type TransitionAction = StudySessionTransitionAction;
+type TransitionAction = Exclude<StudySessionTransitionAction, 'complete'>;
 type TransitionCommand = StudySessionTransitionRequest & { action: TransitionAction };
 
 const TRANSITION_HANDLERS: Record<TransitionAction, (command: StudySessionTransitionRequest) => Promise<StudySessionSnapshot>> = {
@@ -44,10 +57,6 @@ function isVersionConflict(error: unknown): boolean {
     && (responseData as { type?: unknown }).type === STUDY_SESSION_VERSION_CONFLICT;
 }
 
-function newIdempotencyKey(): string {
-  return globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-}
-
 export function StudySessionScreen() {
   const queryClient = useQueryClient();
   const [selected, setSelected] = useState<PlannedDurationSeconds>(1500);
@@ -55,14 +64,103 @@ export function StudySessionScreen() {
   const [now, setNow] = useState(0);
   const [retryTransition, setRetryTransition] = useState<TransitionCommand | null>(null);
   const [terminalResult, setTerminalResult] = useState<StudySessionSnapshot | null>(null);
+  const [completionIntentState, setCompletionIntentState] = useState<StudySessionCompletionIntent | null>(
+    () => getRetainedCompletionIntent(),
+  );
+  const [completionConflictVersion, setCompletionConflictVersion] = useState<{ id: string; version: number } | null>(null);
+  const [foregroundSyncPending, setForegroundSyncPending] = useState(false);
   const pendingKey = useRef<string | null>(null);
   const announcedStatus = useRef<string | null>(null);
+  const observedCompletionPromise = useRef<Promise<StudySessionSnapshot> | null>(null);
+  const requiresForegroundRefresh = useRef(false);
+  const applicationActive = useStudySessionAppActive();
+  const wasApplicationActive = useRef(applicationActive);
   const active = useActiveStudySession();
+  const refetchActive = active.refetch;
+  const activeSnapshot = active.data;
+  const retainedCompletionIntent = activeSnapshot
+    ? getCompletionIntentForSnapshot(activeSnapshot)
+    : getRetainedCompletionIntent();
+  const completionIntent = retainedCompletionIntent
+    ?? (completionIntentState?.status === 'conflict'
+      && (!activeSnapshot || (
+        completionIntentState.request.id === activeSnapshot.id
+        && completionIntentState.request.expectedVersion === activeSnapshot.version
+      ))
+      ? completionIntentState
+      : null);
+  const snapshot = activeSnapshot ?? completionIntent?.snapshot ?? null;
+  const completionResult = completionIntent?.result ?? null;
+  const displayedTerminalResult = completionResult ?? terminalResult;
+
+  const settleTerminalResult = useCallback(async (result: StudySessionSnapshot) => {
+    setTerminalResult(result);
+    await queryClient.cancelQueries({ queryKey: activeStudySessionQueryKey });
+    queryClient.setQueryData(activeStudySessionQueryKey, null);
+    await Promise.allSettled([
+      queryClient.invalidateQueries({ queryKey: dashboardKeys.profile() }),
+      queryClient.invalidateQueries({ queryKey: dashboardKeys.recentActivity() }),
+      queryClient.invalidateQueries({ queryKey: dashboardKeys.metrics() }),
+    ]);
+  }, [queryClient]);
+
+  const observeCompletion = useCallback((intent: StudySessionCompletionIntent) => {
+    const promise = intent.promise;
+    if (!promise) return;
+    if (observedCompletionPromise.current === promise) return;
+    observedCompletionPromise.current = promise;
+    void promise
+      .then((result) => {
+        setCompletionIntentState(intent);
+        void settleTerminalResult(result);
+      })
+      .catch(async () => {
+        setCompletionIntentState(intent);
+        if (intent.status === 'waiting') {
+          const refreshed = await refetchActive();
+          const canonicalSnapshot = refreshed.data;
+          if (
+            canonicalSnapshot
+            && canonicalSnapshot.id === intent.request.id
+            && canonicalSnapshot.version === intent.request.expectedVersion
+            && canonicalSnapshot.state === 'running'
+            && canonicalSnapshot.canControl
+          ) {
+            intent.snapshot = canonicalSnapshot;
+            intent.retryReady = true;
+          }
+          setNow(Date.now());
+          setCompletionIntentState(intent);
+          return;
+        }
+        if (intent.status === 'conflict') {
+          setCompletionConflictVersion({
+            id: intent.request.id,
+            version: intent.request.expectedVersion,
+          });
+          await refetchActive();
+          setCompletionIntentState(intent);
+        }
+      })
+      .finally(() => {
+        if (observedCompletionPromise.current === promise) observedCompletionPromise.current = null;
+      });
+  }, [refetchActive, settleTerminalResult]);
+
+  const executeCompletion = useCallback((intent: StudySessionCompletionIntent) => {
+    setCompletionIntentState(intent);
+    setCompletionConflictVersion(null);
+    submitCompletionIntent(intent);
+    observeCompletion(intent);
+  }, [observeCompletion]);
+
   const start = useMutation({
     mutationFn: ({ duration, key }: { duration: PlannedDurationSeconds; key: string }) => startStudySession(duration, key),
     onSuccess(snapshot) {
       pendingKey.current = null;
       setTerminalResult(null);
+      clearCompletionIntent();
+      setCompletionIntentState(null);
       queryClient.setQueryData(activeStudySessionQueryKey, snapshot);
     },
     onError() {
@@ -74,16 +172,13 @@ export function StudySessionScreen() {
     async onSuccess(nextSnapshot, command) {
       setRetryTransition(null);
       if (command.action === 'stop') {
-        setTerminalResult(nextSnapshot);
-        await queryClient.cancelQueries({ queryKey: activeStudySessionQueryKey });
-        queryClient.setQueryData(activeStudySessionQueryKey, null);
-        await Promise.allSettled([
-          queryClient.invalidateQueries({ queryKey: dashboardKeys.profile() }),
-          queryClient.invalidateQueries({ queryKey: dashboardKeys.recentActivity() }),
-          queryClient.invalidateQueries({ queryKey: dashboardKeys.metrics() }),
-        ]);
+        clearCompletionIntent();
+        setCompletionIntentState(null);
+        await settleTerminalResult(nextSnapshot);
         return;
       }
+      syncCompletionIntentWithSnapshot(nextSnapshot);
+      setCompletionIntentState(getCompletionIntentForSession(nextSnapshot.id));
       const currentSnapshot = queryClient.getQueryData<StudySessionSnapshot | null>(activeStudySessionQueryKey);
       if (!currentSnapshot || currentSnapshot.version <= nextSnapshot.version) {
         setNow(nextSnapshot.receivedAtMs);
@@ -98,16 +193,83 @@ export function StudySessionScreen() {
     },
   });
 
-  const snapshot = active.data;
+  const completionPending = completionIntent?.status === 'pending';
+  const completionRetryAvailable = completionIntent?.status === 'retry';
+  const completionWaiting = completionIntent?.status === 'waiting';
   const snapshotId = snapshot?.id;
   const snapshotState = snapshot?.state;
   const clockOffset = snapshot ? new Date(snapshot.serverNow).getTime() - snapshot.receivedAtMs : 0;
   useEffect(() => {
-    if (snapshotState !== 'running') return;
+    if (activeSnapshot) syncCompletionIntentWithSnapshot(activeSnapshot);
+  }, [activeSnapshot]);
+
+  useEffect(() => {
+    if (completionIntent?.status === 'pending' && completionIntent.promise) {
+      observeCompletion(completionIntent);
+    }
+  }, [completionIntent, activeSnapshot, observeCompletion]);
+
+  useEffect(() => {
+    const returnedToForeground = applicationActive && !wasApplicationActive.current;
+    wasApplicationActive.current = applicationActive;
+    if (!returnedToForeground) return;
+
+    requiresForegroundRefresh.current = true;
+    setForegroundSyncPending(true);
+    let mounted = true;
+    void refetchActive().finally(() => {
+      if (mounted) {
+        setNow(Date.now());
+        requiresForegroundRefresh.current = false;
+        setForegroundSyncPending(false);
+      }
+    });
+    return () => { mounted = false; };
+  }, [applicationActive, refetchActive]);
+
+  useEffect(() => {
+    if (snapshotState !== 'running' || !applicationActive) return;
     const interval = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(interval);
-  }, [snapshotId, snapshotState]);
-  const remaining = snapshot ? now === 0 ? snapshot.remainingSeconds : remainingStudySeconds(snapshot, now, clockOffset) : selected;
+  }, [snapshotId, snapshotState, applicationActive]);
+
+  const projectedRemaining = snapshot
+    ? now === 0 ? snapshot.remainingSeconds : remainingStudySeconds(snapshot, now, clockOffset)
+    : selected;
+  const remaining = completionPending || completionRetryAvailable || (completionWaiting && !activeSnapshot)
+    ? 0
+    : projectedRemaining;
+
+  useEffect(() => {
+    if (
+      !activeSnapshot
+      || !activeSnapshot.canControl
+      || activeSnapshot.state !== 'running'
+      || !applicationActive
+      || active.isFetching
+      || foregroundSyncPending
+      || requiresForegroundRefresh.current
+      || projectedRemaining > 0
+      || (completionConflictVersion?.id === activeSnapshot.id
+        && completionConflictVersion.version === activeSnapshot.version)
+    ) return;
+
+    const intent = getOrCreateCompletionIntent(activeSnapshot);
+    if (intent.status === 'ready'
+      || (completionIntentCanRetryAt(intent, activeSnapshot) && projectedRemaining <= 0)
+      || (intent.status === 'pending' && intent.promise)) {
+      queueMicrotask(() => executeCompletion(intent));
+    }
+  }, [
+    activeSnapshot,
+    active.isFetching,
+    applicationActive,
+    completionConflictVersion,
+    foregroundSyncPending,
+    projectedRemaining,
+    executeCompletion,
+  ]);
+
   const pendingAction = transition.variables?.action;
   const validFocusSeconds = snapshot?.state === 'running'
     ? Math.max(snapshot.durationValidSeconds, snapshot.plannedDurationSeconds - remaining)
@@ -116,12 +278,26 @@ export function StudySessionScreen() {
   const pendingNonStopAction = pendingAction && pendingAction !== 'stop' ? pendingAction : null;
   const retryAvailable = Boolean(retryTransition && transition.isError && !transition.isPending);
   const versionConflict = isVersionConflict(transition.error);
+  const completionStateConflict = completionIntent?.status === 'conflict'
+    || Boolean(completionConflictVersion
+      && snapshot?.id === completionConflictVersion.id
+      && snapshot.version === completionConflictVersion.version);
+  const completionOwnsControls = completionPending
+    || completionRetryAvailable
+    || completionStateConflict
+    || (completionWaiting && (!activeSnapshot || active.isFetching || projectedRemaining <= 0));
   const needsCanonicalRefresh = versionConflict && (
     !snapshot || snapshot.version <= (transition.variables?.expectedVersion ?? 0)
   );
   const refreshingCanonicalSnapshot = needsCanonicalRefresh && active.isFetching;
-  const sessionStatus = transition.isPending
-    ? `${pendingAction ? TRANSITION_COPY[pendingAction].status : 'Atualizando sessão.'} Os controles estão ocupados até a confirmação.`
+  const sessionStatus = completionPending
+    ? 'Confirmando conclusão…'
+    : completionWaiting
+      ? 'Sincronizando o prazo para confirmar a conclusão.'
+      : completionRetryAvailable
+        ? 'A conclusão ainda não foi confirmada. Tente novamente com segurança.'
+        : transition.isPending
+          ? `${pendingAction ? TRANSITION_COPY[pendingAction].status : 'Atualizando sessão.'} Os controles estão ocupados até a confirmação.`
     : refreshingCanonicalSnapshot
       ? 'A sessão mudou. Atualizando o estado canônico.'
       : needsCanonicalRefresh
@@ -174,39 +350,78 @@ export function StudySessionScreen() {
             <WiseButton label="Atualizar estado" onPress={() => void active.refetch()} variant="secondary" />
           </WiseCard>
         ) : null}
-        {terminalResult ? (
+        {displayedTerminalResult ? (
           <WiseCard testID="study-session-result">
             <WiseText accessibilityLiveRegion="polite" aria-live="polite" variant="subtitle">
-              {terminalResult.state === 'cancelled'
-                ? 'Sessão cancelada'
-                : terminalResult.state === 'stopped_early'
-                  ? 'Sessão encerrada antecipadamente'
-                  : 'Sessão encerrada'}
+              {displayedTerminalResult.state === 'discarded'
+                ? 'Sessão não contabilizada'
+                : displayedTerminalResult.state === 'completed'
+                  ? 'Sessão concluída'
+                  : displayedTerminalResult.state === 'cancelled'
+                    ? 'Sessão cancelada'
+                    : displayedTerminalResult.state === 'stopped_early'
+                      ? 'Sessão encerrada antecipadamente'
+                      : 'Sessão encerrada'}
             </WiseText>
-            <WiseText variant="body">Foco válido: {formatRemainingTime(terminalResult.durationValidSeconds)}</WiseText>
-            <WiseText variant="body">XP confirmado: {terminalResult.xpAwarded}</WiseText>
+            <WiseText variant="body">Foco válido: {formatRemainingTime(displayedTerminalResult.durationValidSeconds)}</WiseText>
+            <WiseText variant="body">XP confirmado: {displayedTerminalResult.xpAwarded}</WiseText>
+            {displayedTerminalResult.state === 'discarded' ? (
+              <WiseText color="textSecondary" variant="body">
+                {displayedTerminalResult.discardedReason === 'continuous-session-exceeds-limit'
+                  ? 'A duração ultrapassou o limite de foco permitido.'
+                  : 'O limite diário de foco foi atingido.'}
+              </WiseText>
+            ) : null}
             <WiseButton
               label="Nova sessão"
-              onPress={() => { pendingKey.current = null; setTerminalResult(null); }}
+              onPress={() => {
+                pendingKey.current = null;
+                clearCompletionIntent();
+                setCompletionIntentState(null);
+                setTerminalResult(null);
+              }}
               size="large"
               testID="study-session-new"
             />
           </WiseCard>
         ) : null}
-        {snapshot?.canControl ? (
+        {snapshot?.canControl && !displayedTerminalResult ? (
           <WiseCard testID="study-session-active">
             <WiseText variant="subtitle">{snapshot.state === 'paused' ? 'Sessão pausada' : 'Sessão em andamento'}</WiseText>
             <WiseText accessibilityLiveRegion="none" aria-live="off" accessibilityLabel={`Tempo restante: ${Math.floor(remaining / 60)} minutos e ${remaining % 60} segundos. Sessão ${snapshot.state === 'paused' ? 'pausada' : 'em andamento'}.`} style={styles.timer} testID="study-session-timer" variant="display">{formatRemainingTime(remaining)}</WiseText>
             <WiseText color="textSecondary" variant="body">Foco de {snapshot.plannedDurationSeconds / 60} minutos iniciado. Seu tempo é confirmado pelo servidor.</WiseText>
             <WiseText accessibilityLiveRegion="polite" aria-live="polite" testID="study-session-state" variant="body">{sessionStatus}</WiseText>
-            {retryAvailable && retryTransition ? (
+            {completionRetryAvailable && completionIntent ? (
+              <WiseButton
+                label="Tentar confirmar novamente"
+                onPress={() => executeCompletion(completionIntent)}
+                variant="secondary"
+                testID="study-session-completion-retry"
+              />
+            ) : completionWaiting && (!activeSnapshot || active.isError) && !active.isFetching ? (
+              <WiseButton
+                label="Atualizar estado"
+                onPress={() => void active.refetch()}
+                variant="secondary"
+                testID="study-session-completion-refresh"
+              />
+            ) : completionStateConflict ? (
+              <WiseButton
+                label={active.isFetching ? 'Atualizando estado…' : 'Atualizar estado'}
+                loading={active.isFetching}
+                disabled={active.isFetching}
+                onPress={() => void active.refetch()}
+                variant="secondary"
+                testID="study-session-completion-refresh"
+              />
+            ) : retryAvailable && retryTransition ? (
               <WiseButton
                 label={`Tentar ${TRANSITION_COPY[retryTransition.action].action} novamente`}
                 onPress={retryLastTransition}
                 variant="secondary"
                 testID="study-session-transition-retry"
               />
-            ) : (
+            ) : !completionOwnsControls ? (
               <View style={styles.controls}>
                 <WiseButton
                   label={transition.isPending && pendingNonStopAction
@@ -215,7 +430,7 @@ export function StudySessionScreen() {
                         ? refreshingCanonicalSnapshot ? 'Atualizando estado…' : 'Atualizar estado'
                         : snapshot.state === 'paused' ? 'Retomar sessão' : 'Pausar sessão'}
                   loading={(transition.isPending && pendingAction !== 'stop') || refreshingCanonicalSnapshot}
-                  disabled={transition.isPending || refreshingCanonicalSnapshot}
+                  disabled={transition.isPending || refreshingCanonicalSnapshot || completionPending}
                   onPress={() => needsCanonicalRefresh
                     ? void active.refetch()
                     : changeSessionState(snapshot.state === 'paused' ? 'resume' : 'pause')}
@@ -224,13 +439,13 @@ export function StudySessionScreen() {
                 <WiseButton
                   label={transition.isPending && pendingAction === 'stop' ? TRANSITION_COPY.stop.button : stopLabel}
                   loading={transition.isPending && pendingAction === 'stop'}
-                  disabled={transition.isPending || refreshingCanonicalSnapshot}
+                  disabled={transition.isPending || refreshingCanonicalSnapshot || completionPending}
                   onPress={() => changeSessionState('stop')}
                   variant="secondary"
                   testID="study-session-stop"
                 />
               </View>
-            )}
+            ) : null}
             {transition.isError ? (
               <FeedbackMessage
                 variant="error"
@@ -245,9 +460,27 @@ export function StudySessionScreen() {
                 testID="study-session-transition-error"
               />
             ) : null}
+            {completionRetryAvailable ? (
+              <FeedbackMessage
+                variant="error"
+                title="Não foi possível confirmar a conclusão."
+                message="O último snapshot continua visível. Tente novamente para recuperar o resultado usando a mesma confirmação."
+                testID="study-session-completion-error"
+              />
+            ) : null}
+            {completionStateConflict ? (
+              <FeedbackMessage
+                variant="error"
+                title="A sessão mudou antes da conclusão."
+                message={active.isFetching
+                  ? 'Atualizando o snapshot canônico da sessão.'
+                  : 'Atualize o estado para continuar com a versão confirmada pelo servidor.'}
+                testID="study-session-completion-conflict"
+              />
+            ) : null}
           </WiseCard>
         ) : null}
-        {!terminalResult && !active.isPending && !active.isError && !snapshot ? (
+        {!displayedTerminalResult && !active.isPending && !active.isError && !snapshot ? (
           <WiseCard testID="study-session-setup">
             <WiseText variant="subtitle">Quanto tempo você vai focar?</WiseText>
             <View style={styles.presets}>

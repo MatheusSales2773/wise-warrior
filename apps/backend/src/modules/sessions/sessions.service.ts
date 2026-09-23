@@ -166,6 +166,12 @@ export class SessionsService {
     return session;
   }
 
+  async usesCanonicalStudySessionState(userId: string, sessionId: string): Promise<boolean> {
+    const session = await this.studySessions.findOne({ where: { id: sessionId, userId } });
+    if (!session) throw new NotFoundException('Sessão não encontrada');
+    return session.state !== null && session.state !== undefined;
+  }
+
   private async loadOwnedActiveSession(
     userId: string,
     sessionId: string,

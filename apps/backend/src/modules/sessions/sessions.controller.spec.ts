@@ -72,4 +72,36 @@ describe('SessionsController start and restore contract', () => {
       dto: { expectedVersion: 1 }, idempotencyKey: 'stop-1',
     });
   });
+
+  it('routes canonical completion through the atomic transition service', async () => {
+    const snapshot = { id: 'study-1', state: 'completed', version: 2 };
+    const sessions = {
+      usesCanonicalStudySessionState: jest.fn().mockResolvedValue(true),
+      complete: jest.fn(),
+    } as unknown as SessionsService;
+    const transitions = { complete: jest.fn().mockResolvedValue(snapshot) } as unknown as StudySessionTransitionService;
+    const controller = new SessionsController(sessions, {} as never, transitions);
+
+    await expect(controller.complete(user, 'study-1', { expectedVersion: 1 }, 'complete-1')).resolves.toBe(snapshot);
+    expect(sessions.usesCanonicalStudySessionState).toHaveBeenCalledWith('user-1', 'study-1');
+    expect(sessions.complete).not.toHaveBeenCalled();
+    expect(transitions.complete).toHaveBeenCalledWith({
+      userId: 'user-1', authSessionId: 'device-1', studySessionId: 'study-1',
+      dto: { expectedVersion: 1 }, idempotencyKey: 'complete-1',
+    });
+  });
+
+  it('preserves the legacy completion path for records without canonical state', async () => {
+    const legacySession = { id: 'legacy-study' };
+    const sessions = {
+      usesCanonicalStudySessionState: jest.fn().mockResolvedValue(false),
+      complete: jest.fn().mockResolvedValue(legacySession),
+    } as unknown as SessionsService;
+    const transitions = { complete: jest.fn() } as unknown as StudySessionTransitionService;
+    const controller = new SessionsController(sessions, {} as never, transitions);
+
+    await expect(controller.complete(user, 'legacy-study')).resolves.toBe(legacySession);
+    expect(sessions.complete).toHaveBeenCalledWith('user-1', 'legacy-study');
+    expect(transitions.complete).not.toHaveBeenCalled();
+  });
 });

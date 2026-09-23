@@ -5,7 +5,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { DataSource } from 'typeorm';
+import { DataSource, type EntityManager } from 'typeorm';
 import { ProgressionService } from '../progression/progression.service';
 import { StudySession } from './entities/study-session.entity';
 import type { StudySessionSnapshot } from './study-session-start.service';
@@ -13,6 +13,7 @@ import { deserializeStudySessionSnapshot, studySessionSnapshot } from './study-s
 import { StudySessionTransitionDto } from './dto/study-session-transition.dto';
 import { isValidIdempotencyKey } from './domain/idempotency-key';
 import {
+  applyStudySessionComplete,
   applyStudySessionStop,
   applyStudySessionTransition,
   StudySessionTransitionPolicyError,
@@ -26,7 +27,7 @@ export type StudySessionTransitionContext = {
   userId: string;
   authSessionId: string;
   studySessionId: string;
-  dto: StudySessionTransitionDto;
+  dto?: StudySessionTransitionDto;
   idempotencyKey: string | undefined;
 };
 
@@ -38,6 +39,7 @@ const TRANSITION_VERBS: Record<StudySessionCommandAction, string> = {
   pause: 'pausar',
   resume: 'retomar',
   stop: 'encerrar',
+  complete: 'concluir',
 };
 
 type TransitionReceiptRow = {
@@ -54,6 +56,7 @@ const problemTypes = {
   transitionNotAllowed: 'https://wise.app/errors/study-session-transition-not-allowed',
   notControllable: 'https://wise.app/errors/study-session-not-controllable',
   deadlinePassed: 'https://wise.app/errors/study-session-deadline-passed',
+  completionTooEarly: 'https://wise.app/errors/study-session-completion-too-early',
 };
 
 @Injectable()
@@ -74,6 +77,10 @@ export class StudySessionTransitionService {
 
   stop(command: StudySessionTransitionContext): Promise<StudySessionSnapshot> {
     return this.transition({ ...command, action: 'stop' });
+  }
+
+  complete(command: StudySessionTransitionContext): Promise<StudySessionSnapshot> {
+    return this.transition({ ...command, action: 'complete' });
   }
 
   private async transition(
@@ -145,33 +152,49 @@ export class StudySessionTransitionService {
 
       const now = this.clock.now();
       let stopResult: ReturnType<typeof applyStudySessionStop> | null = null;
+      let completionResult: ReturnType<typeof applyStudySessionComplete> | null = null;
       try {
         if (action === 'stop') {
           stopResult = applyStudySessionStop(session, now);
+        } else if (action === 'complete') {
+          const priorDailySeconds = session.state === 'running'
+            && session.runDeadlineAt
+            && now.getTime() >= session.runDeadlineAt.getTime()
+            ? await this.sumEligibleFocusSecondsToday(manager, userId, studySessionId, now)
+            : 0;
+          completionResult = applyStudySessionComplete(session, now, priorDailySeconds);
         } else {
           applyStudySessionTransition(session, action, now);
         }
       } catch (error) {
         if (!(error instanceof StudySessionTransitionPolicyError)) throw error;
         const expired = error.reason === 'deadline-passed';
+        const tooEarly = error.reason === 'completion-too-early';
         throw new ConflictException({
-          type: expired ? problemTypes.deadlinePassed : problemTypes.transitionNotAllowed,
-          message: expired
-            ? 'O prazo canônico da Study Session já terminou'
-            : `Não é possível ${TRANSITION_VERBS[action]} a Study Session no estado atual`,
+          type: tooEarly
+            ? problemTypes.completionTooEarly
+            : expired
+              ? problemTypes.deadlinePassed
+              : problemTypes.transitionNotAllowed,
+          message: tooEarly
+            ? 'O prazo canônico da Study Session ainda não foi alcançado'
+            : expired
+              ? 'O prazo canônico da Study Session já terminou'
+              : `Não é possível ${TRANSITION_VERBS[action]} a Study Session no estado atual`,
         });
       }
 
       const saved = await sessions.save(session);
       const snapshot = studySessionSnapshot(saved, authSessionId, now);
       let progressionResult: XpApplicationResult | null = null;
-      if (stopResult) {
+      const terminalXpAwarded = stopResult?.xpAwarded ?? completionResult?.xpAwarded ?? 0;
+      if (stopResult || completionResult) {
         await manager.query(
           'DELETE FROM active_study_sessions WHERE user_id = ? AND study_session_id = ?',
           [userId, studySessionId],
         );
-        if (stopResult.xpAwarded > 0) {
-          progressionResult = await this.progression.awardXpInTransaction(manager, userId, stopResult.xpAwarded);
+        if (terminalXpAwarded > 0) {
+          progressionResult = await this.progression.awardXpInTransaction(manager, userId, terminalXpAwarded);
         }
       }
       await manager.query(
@@ -180,12 +203,35 @@ export class StudySessionTransitionService {
          VALUES (?, ?, ?, ?, ?, ?)`,
         [userId, studySessionId, idempotencyKey, action, dto.expectedVersion, JSON.stringify(snapshot)],
       );
-      return { snapshot, xpGained: stopResult?.xpAwarded ?? 0, progressionResult };
+      return { snapshot, xpGained: terminalXpAwarded, progressionResult };
     });
 
     if (result.progressionResult) {
       this.progression.publishAwardedXp(userId, result.xpGained, result.progressionResult);
     }
     return result.snapshot;
+  }
+
+  private async sumEligibleFocusSecondsToday(
+    manager: EntityManager,
+    userId: string,
+    excludeStudySessionId: string,
+    endedAt: Date,
+  ): Promise<number> {
+    const startOfDay = new Date(endedAt);
+    startOfDay.setHours(0, 0, 0, 0);
+
+    const row = await manager
+      .getRepository(StudySession)
+      .createQueryBuilder('session')
+      .select('COALESCE(SUM(session.durationValidSeconds), 0)', 'total')
+      .where('session.userId = :userId', { userId })
+      .andWhere('session.id != :excludeStudySessionId', { excludeStudySessionId })
+      .andWhere('session.endedAt >= :startOfDay', { startOfDay })
+      .andWhere('session.discardedReason IS NULL')
+      .andWhere("(session.state IS NULL OR session.state IN ('completed', 'stopped_early'))")
+      .getRawOne<{ total: string }>();
+
+    return Number(row?.total ?? 0);
   }
 }

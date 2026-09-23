@@ -18,12 +18,12 @@ export type StudySessionSnapshot = {
   version: number;
   endedAt: string | null;
   xpAwarded: number;
-  terminalReason: 'manual-stop' | 'legacy-session-without-owner' | null;
+  terminalReason: 'manual-stop' | 'auto-complete' | 'legacy-session-without-owner' | null;
   discardedReason: string | null;
   canControl: boolean;
   receivedAtMs: number;
 };
-export type StudySessionTransitionAction = 'pause' | 'resume' | 'stop';
+export type StudySessionTransitionAction = 'pause' | 'resume' | 'stop' | 'complete';
 export type StudySessionTransitionRequest = {
   id: string;
   expectedVersion: number;
@@ -54,6 +54,10 @@ export function resumeStudySession(command: StudySessionTransitionRequest): Prom
 
 export function stopStudySession(command: StudySessionTransitionRequest): Promise<StudySessionSnapshot> {
   return transitionStudySession({ ...command, action: 'stop' });
+}
+
+export function completeStudySession(command: StudySessionTransitionRequest): Promise<StudySessionSnapshot> {
+  return transitionStudySession({ ...command, action: 'complete' });
 }
 
 async function transitionStudySession(

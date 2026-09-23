@@ -126,7 +126,21 @@ export class SessionsController {
 
   @Post(':id/complete')
   @HttpCode(HttpStatus.OK)
-  complete(@CurrentUser() user: JwtPayload, @Param('id') id: string) {
-    return this.sessions.complete(user.sub, id);
+  async complete(
+    @CurrentUser() user: JwtPayload,
+    @Param('id') id: string,
+    @Body() dto?: StudySessionTransitionDto,
+    @Headers('idempotency-key') idempotencyKey?: string,
+  ) {
+    if (!await this.sessions.usesCanonicalStudySessionState(user.sub, id)) {
+      return this.sessions.complete(user.sub, id);
+    }
+    return this.studySessionTransitions.complete({
+      userId: user.sub,
+      authSessionId: user.sessionId,
+      studySessionId: id,
+      dto,
+      idempotencyKey,
+    });
   }
 }

@@ -18,7 +18,7 @@ const getActive = getActiveStudySession as jest.MockedFunction<typeof getActiveS
 const heartbeat = heartbeatStudySession as jest.MockedFunction<typeof heartbeatStudySession>;
 const start = startStudySession as jest.MockedFunction<typeof startStudySession>;
 let heartbeatTick: (() => void) | undefined;
-let appStateListener: ((state: AppStateStatus) => void) | undefined;
+let appStateListeners: Array<(state: AppStateStatus) => void>;
 let heartbeatIntervalId: ReturnType<typeof setInterval> | undefined;
 const snapshot: StudySessionSnapshot = {
   id: 'study-1', mode: 'solo', subject: null, state: 'running', plannedDurationSeconds: 1500,
@@ -43,10 +43,10 @@ async function renderStudySession() {
 
 beforeEach(() => {
   heartbeatTick = undefined;
-  appStateListener = undefined;
+  appStateListeners = [];
   heartbeatIntervalId = undefined;
   jest.spyOn(AppState, 'addEventListener').mockImplementation(((_event, listener) => {
-    appStateListener = listener as (state: AppStateStatus) => void;
+    appStateListeners.push(listener as (state: AppStateStatus) => void);
     return { remove: jest.fn() };
   }) as typeof AppState.addEventListener);
   const originalSetInterval = global.setInterval;
@@ -56,7 +56,8 @@ beforeEach(() => {
       heartbeatIntervalId = 123 as unknown as ReturnType<typeof setInterval>;
       return heartbeatIntervalId;
     }
-    return delay === 1000 ? 0 as unknown as ReturnType<typeof setInterval> : originalSetInterval(callback, delay);
+    if (delay === 1000) return 0 as unknown as ReturnType<typeof setInterval>;
+    return originalSetInterval(callback, delay);
   }) as typeof setInterval);
   jest.spyOn(global, 'clearInterval');
 });
@@ -98,12 +99,12 @@ it('restores a controllable session and only informs about a remote session', as
   heartbeatTick?.();
   await waitFor(() => expect(heartbeat).toHaveBeenCalledTimes(3));
 
-  await act(async () => { appStateListener?.('background'); });
+  await act(async () => { appStateListeners.forEach((listener) => listener('background')); });
   expect(clearInterval).toHaveBeenCalledWith(heartbeatIntervalId);
   heartbeatTick?.();
   expect(heartbeat).toHaveBeenCalledTimes(3);
 
-  await act(async () => { appStateListener?.('active'); });
+  await act(async () => { appStateListeners.forEach((listener) => listener('active')); });
   await waitFor(() => expect(heartbeat).toHaveBeenCalledTimes(4));
   view.unmount();
 
