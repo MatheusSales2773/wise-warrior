@@ -26,14 +26,7 @@ export function getRetainedCompletionIntent(): StudySessionCompletionIntent | nu
 
 export function syncCompletionIntentWithSnapshot(snapshot: StudySessionSnapshot | null | undefined): void {
   if (!retainedIntent || !snapshot) return;
-  if (
-    retainedIntent.request.id !== snapshot.id
-    || retainedIntent.request.expectedVersion !== snapshot.version
-    || snapshot.state !== 'running'
-    || !snapshot.canControl
-  ) {
-    retainedIntent = null;
-  }
+  if (!matchesActiveControllableSession(retainedIntent, snapshot)) retainedIntent = null;
 }
 
 export function getOrCreateCompletionIntent(
@@ -61,14 +54,9 @@ export function getOrCreateCompletionIntent(
 export function getCompletionIntentForSnapshot(
   snapshot: StudySessionSnapshot | null | undefined,
 ): StudySessionCompletionIntent | null {
-  if (
-    !snapshot
-    || retainedIntent?.request.id !== snapshot.id
-    || retainedIntent.request.expectedVersion !== snapshot.version
-    || snapshot.state !== 'running'
-    || !snapshot.canControl
-  ) return null;
-  return retainedIntent;
+  return snapshot && retainedIntent && matchesActiveControllableSession(retainedIntent, snapshot)
+    ? retainedIntent
+    : null;
 }
 
 export function getCompletionIntentForSession(
@@ -137,4 +125,14 @@ function isProblemType(error: unknown, expectedType: string): boolean {
   return typeof responseData === 'object'
     && responseData !== null
     && (responseData as { type?: unknown }).type === expectedType;
+}
+
+function matchesActiveControllableSession(
+  intent: StudySessionCompletionIntent,
+  snapshot: StudySessionSnapshot,
+): boolean {
+  return intent.request.id === snapshot.id
+    && intent.request.expectedVersion === snapshot.version
+    && snapshot.state === 'running'
+    && snapshot.canControl;
 }
