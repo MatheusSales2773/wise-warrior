@@ -14,8 +14,9 @@ export type UserProfile = {
 
 export type RecentStudySession = {
   id: string;
-  subject: string;
+  subject: string | null;
   mode: string;
+  state: 'running' | 'paused' | 'completed' | 'stopped_early' | 'cancelled' | 'discarded' | null;
   startedAt: string;
   endedAt: string;
   durationValidSeconds: number;

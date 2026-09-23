@@ -72,7 +72,13 @@ export class SessionsController {
     @Body() dto: StudySessionTransitionDto,
     @Headers('idempotency-key') idempotencyKey?: string,
   ) {
-    return this.studySessionTransitions.pause(user.sub, user.sessionId, id, dto, idempotencyKey);
+    return this.studySessionTransitions.pause({
+      userId: user.sub,
+      authSessionId: user.sessionId,
+      studySessionId: id,
+      dto,
+      idempotencyKey,
+    });
   }
 
   @Post(':id/resume')
@@ -83,7 +89,30 @@ export class SessionsController {
     @Body() dto: StudySessionTransitionDto,
     @Headers('idempotency-key') idempotencyKey?: string,
   ) {
-    return this.studySessionTransitions.resume(user.sub, user.sessionId, id, dto, idempotencyKey);
+    return this.studySessionTransitions.resume({
+      userId: user.sub,
+      authSessionId: user.sessionId,
+      studySessionId: id,
+      dto,
+      idempotencyKey,
+    });
+  }
+
+  @Post(':id/stop')
+  @HttpCode(HttpStatus.OK)
+  stop(
+    @CurrentUser() user: JwtPayload,
+    @Param('id') id: string,
+    @Body() dto: StudySessionTransitionDto,
+    @Headers('idempotency-key') idempotencyKey?: string,
+  ) {
+    return this.studySessionTransitions.stop({
+      userId: user.sub,
+      authSessionId: user.sessionId,
+      studySessionId: id,
+      dto,
+      idempotencyKey,
+    });
   }
 
   @Patch(':id/heartbeat')

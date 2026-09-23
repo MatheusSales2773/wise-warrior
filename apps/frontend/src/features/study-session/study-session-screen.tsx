@@ -7,20 +7,31 @@ import {
   pauseStudySession,
   resumeStudySession,
   startStudySession,
+  stopStudySession,
   STUDY_SESSION_PRESETS,
   type PlannedDurationSeconds,
   type StudySessionSnapshot,
+  type StudySessionTransitionAction,
+  type StudySessionTransitionRequest,
 } from './api';
 import { activeStudySessionQueryKey, useActiveStudySession } from './queries';
 import { formatRemainingTime, remainingStudySeconds } from './timer';
 import { FeedbackMessage } from '@/design-system/components/FeedbackMessage';
+import { dashboardKeys } from '@/features/dashboard/queries';
 
-type TransitionAction = 'pause' | 'resume';
-type TransitionCommand = {
-  id: string;
-  action: TransitionAction;
-  expectedVersion: number;
-  idempotencyKey: string;
+type TransitionAction = StudySessionTransitionAction;
+type TransitionCommand = StudySessionTransitionRequest & { action: TransitionAction };
+
+const TRANSITION_HANDLERS: Record<TransitionAction, (command: StudySessionTransitionRequest) => Promise<StudySessionSnapshot>> = {
+  pause: pauseStudySession,
+  resume: resumeStudySession,
+  stop: stopStudySession,
+};
+
+const TRANSITION_COPY: Record<TransitionAction, { status: string; action: string; button: string }> = {
+  pause: { status: 'Pausando sessão.', action: 'pausar', button: 'Pausando sessão…' },
+  resume: { status: 'Retomando sessão.', action: 'retomar', button: 'Retomando sessão…' },
+  stop: { status: 'Encerrando sessão.', action: 'encerrar', button: 'Encerrando sessão…' },
 };
 
 const STUDY_SESSION_VERSION_CONFLICT = 'https://wise.app/errors/study-session-version-conflict';
@@ -43,6 +54,7 @@ export function StudySessionScreen() {
   const [focusedDuration, setFocusedDuration] = useState<PlannedDurationSeconds | null>(null);
   const [now, setNow] = useState(0);
   const [retryTransition, setRetryTransition] = useState<TransitionCommand | null>(null);
+  const [terminalResult, setTerminalResult] = useState<StudySessionSnapshot | null>(null);
   const pendingKey = useRef<string | null>(null);
   const announcedStatus = useRef<string | null>(null);
   const active = useActiveStudySession();
@@ -50,6 +62,7 @@ export function StudySessionScreen() {
     mutationFn: ({ duration, key }: { duration: PlannedDurationSeconds; key: string }) => startStudySession(duration, key),
     onSuccess(snapshot) {
       pendingKey.current = null;
+      setTerminalResult(null);
       queryClient.setQueryData(activeStudySessionQueryKey, snapshot);
     },
     onError() {
@@ -57,11 +70,20 @@ export function StudySessionScreen() {
     },
   });
   const transition = useMutation({
-    mutationFn: (command: TransitionCommand) => command.action === 'pause'
-      ? pauseStudySession(command.id, command.expectedVersion, command.idempotencyKey)
-      : resumeStudySession(command.id, command.expectedVersion, command.idempotencyKey),
-    onSuccess(nextSnapshot) {
+    mutationFn: ({ action, ...request }: TransitionCommand) => TRANSITION_HANDLERS[action](request),
+    async onSuccess(nextSnapshot, command) {
       setRetryTransition(null);
+      if (command.action === 'stop') {
+        setTerminalResult(nextSnapshot);
+        await queryClient.cancelQueries({ queryKey: activeStudySessionQueryKey });
+        queryClient.setQueryData(activeStudySessionQueryKey, null);
+        await Promise.allSettled([
+          queryClient.invalidateQueries({ queryKey: dashboardKeys.profile() }),
+          queryClient.invalidateQueries({ queryKey: dashboardKeys.recentActivity() }),
+          queryClient.invalidateQueries({ queryKey: dashboardKeys.metrics() }),
+        ]);
+        return;
+      }
       const currentSnapshot = queryClient.getQueryData<StudySessionSnapshot | null>(activeStudySessionQueryKey);
       if (!currentSnapshot || currentSnapshot.version <= nextSnapshot.version) {
         setNow(nextSnapshot.receivedAtMs);
@@ -87,6 +109,11 @@ export function StudySessionScreen() {
   }, [snapshotId, snapshotState]);
   const remaining = snapshot ? now === 0 ? snapshot.remainingSeconds : remainingStudySeconds(snapshot, now, clockOffset) : selected;
   const pendingAction = transition.variables?.action;
+  const validFocusSeconds = snapshot?.state === 'running'
+    ? Math.max(snapshot.durationValidSeconds, snapshot.plannedDurationSeconds - remaining)
+    : snapshot?.durationValidSeconds ?? 0;
+  const stopLabel = validFocusSeconds < 300 ? 'Cancelar sessão' : 'Encerrar antecipadamente';
+  const pendingNonStopAction = pendingAction && pendingAction !== 'stop' ? pendingAction : null;
   const retryAvailable = Boolean(retryTransition && transition.isError && !transition.isPending);
   const versionConflict = isVersionConflict(transition.error);
   const needsCanonicalRefresh = versionConflict && (
@@ -94,9 +121,7 @@ export function StudySessionScreen() {
   );
   const refreshingCanonicalSnapshot = needsCanonicalRefresh && active.isFetching;
   const sessionStatus = transition.isPending
-    ? pendingAction === 'pause'
-      ? 'Pausando sessão. Os controles estão ocupados até a confirmação.'
-      : 'Retomando sessão. Os controles estão ocupados até a confirmação.'
+    ? `${pendingAction ? TRANSITION_COPY[pendingAction].status : 'Atualizando sessão.'} Os controles estão ocupados até a confirmação.`
     : refreshingCanonicalSnapshot
       ? 'A sessão mudou. Atualizando o estado canônico.'
       : needsCanonicalRefresh
@@ -119,7 +144,7 @@ export function StudySessionScreen() {
   };
 
   const changeSessionState = (action: TransitionAction) => {
-    if (!snapshot?.canControl || transition.isPending) return;
+    if (!snapshot?.canControl || transition.isPending || retryAvailable || refreshingCanonicalSnapshot) return;
     const command = retryTransition?.id === snapshot.id && retryTransition.action === action
       ? retryTransition
       : { id: snapshot.id, action, expectedVersion: snapshot.version, idempotencyKey: newIdempotencyKey() };
@@ -149,6 +174,25 @@ export function StudySessionScreen() {
             <WiseButton label="Atualizar estado" onPress={() => void active.refetch()} variant="secondary" />
           </WiseCard>
         ) : null}
+        {terminalResult ? (
+          <WiseCard testID="study-session-result">
+            <WiseText accessibilityLiveRegion="polite" aria-live="polite" variant="subtitle">
+              {terminalResult.state === 'cancelled'
+                ? 'Sessão cancelada'
+                : terminalResult.state === 'stopped_early'
+                  ? 'Sessão encerrada antecipadamente'
+                  : 'Sessão encerrada'}
+            </WiseText>
+            <WiseText variant="body">Foco válido: {formatRemainingTime(terminalResult.durationValidSeconds)}</WiseText>
+            <WiseText variant="body">XP confirmado: {terminalResult.xpAwarded}</WiseText>
+            <WiseButton
+              label="Nova sessão"
+              onPress={() => { pendingKey.current = null; setTerminalResult(null); }}
+              size="large"
+              testID="study-session-new"
+            />
+          </WiseCard>
+        ) : null}
         {snapshot?.canControl ? (
           <WiseCard testID="study-session-active">
             <WiseText variant="subtitle">{snapshot.state === 'paused' ? 'Sessão pausada' : 'Sessão em andamento'}</WiseText>
@@ -157,30 +201,40 @@ export function StudySessionScreen() {
             <WiseText accessibilityLiveRegion="polite" aria-live="polite" testID="study-session-state" variant="body">{sessionStatus}</WiseText>
             {retryAvailable && retryTransition ? (
               <WiseButton
-                label={`Tentar ${retryTransition.action === 'pause' ? 'pausar' : 'retomar'} novamente`}
+                label={`Tentar ${TRANSITION_COPY[retryTransition.action].action} novamente`}
                 onPress={retryLastTransition}
                 variant="secondary"
                 testID="study-session-transition-retry"
               />
             ) : (
-              <WiseButton
-                label={transition.isPending
-                  ? pendingAction === 'pause' ? 'Pausando sessão…' : 'Retomando sessão…'
-                  : needsCanonicalRefresh
-                    ? refreshingCanonicalSnapshot ? 'Atualizando estado…' : 'Atualizar estado'
-                    : snapshot.state === 'paused' ? 'Retomar sessão' : 'Pausar sessão'}
-                loading={transition.isPending || refreshingCanonicalSnapshot}
-                disabled={transition.isPending || refreshingCanonicalSnapshot}
-                onPress={() => needsCanonicalRefresh
-                  ? void active.refetch()
-                  : changeSessionState(snapshot.state === 'paused' ? 'resume' : 'pause')}
-                testID={snapshot.state === 'paused' ? 'study-session-resume' : 'study-session-pause'}
-              />
+              <View style={styles.controls}>
+                <WiseButton
+                  label={transition.isPending && pendingNonStopAction
+                    ? TRANSITION_COPY[pendingNonStopAction].button
+                      : needsCanonicalRefresh
+                        ? refreshingCanonicalSnapshot ? 'Atualizando estado…' : 'Atualizar estado'
+                        : snapshot.state === 'paused' ? 'Retomar sessão' : 'Pausar sessão'}
+                  loading={(transition.isPending && pendingAction !== 'stop') || refreshingCanonicalSnapshot}
+                  disabled={transition.isPending || refreshingCanonicalSnapshot}
+                  onPress={() => needsCanonicalRefresh
+                    ? void active.refetch()
+                    : changeSessionState(snapshot.state === 'paused' ? 'resume' : 'pause')}
+                  testID={snapshot.state === 'paused' ? 'study-session-resume' : 'study-session-pause'}
+                />
+                <WiseButton
+                  label={transition.isPending && pendingAction === 'stop' ? TRANSITION_COPY.stop.button : stopLabel}
+                  loading={transition.isPending && pendingAction === 'stop'}
+                  disabled={transition.isPending || refreshingCanonicalSnapshot}
+                  onPress={() => changeSessionState('stop')}
+                  variant="secondary"
+                  testID="study-session-stop"
+                />
+              </View>
             )}
             {transition.isError ? (
               <FeedbackMessage
                 variant="error"
-                title={versionConflict ? 'A sessão mudou desde a última confirmação.' : 'Não foi possível confirmar a transição'}
+                title={versionConflict ? 'A sessão mudou desde a última confirmação.' : 'Não foi possível confirmar a ação'}
                 message={versionConflict
                   ? needsCanonicalRefresh
                     ? active.isError && !active.isFetching
@@ -193,7 +247,7 @@ export function StudySessionScreen() {
             ) : null}
           </WiseCard>
         ) : null}
-        {!active.isPending && !active.isError && !snapshot ? (
+        {!terminalResult && !active.isPending && !active.isError && !snapshot ? (
           <WiseCard testID="study-session-setup">
             <WiseText variant="subtitle">Quanto tempo você vai focar?</WiseText>
             <View style={styles.presets}>
@@ -230,6 +284,7 @@ export function StudySessionScreen() {
 
 const styles = StyleSheet.create({
   layout: { width: '100%', maxWidth: 580, alignSelf: 'center', gap: theme.space.sectionGap },
+  controls: { gap: theme.space.stackDefault },
   presets: { flexDirection: 'row', flexWrap: 'wrap', gap: theme.space.stackTight, marginVertical: theme.space.sectionGap },
   preset: { minWidth: theme.layout.touchTarget, minHeight: theme.layout.touchTarget, paddingHorizontal: theme.space.cardInset, justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: theme.color.borderEmphasis, borderRadius: theme.radius.control },
   selected: { backgroundColor: theme.color.surfaceCardActive, borderColor: theme.color.accentPrimary },

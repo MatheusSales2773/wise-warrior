@@ -52,6 +52,7 @@ export class SessionsService {
       id: session.id,
       subject: session.subject,
       mode: session.mode,
+      state: session.state ?? null,
       startedAt: session.startedAt,
       endedAt: session.endedAt as Date,
       durationValidSeconds: session.durationValidSeconds,
@@ -79,6 +80,7 @@ export class SessionsService {
       .andWhere('session.endedAt >= :windowStart', { windowStart: utcDayStart(windowStart) })
       .andWhere('session.endedAt < :windowEndExclusive', { windowEndExclusive: utcDayStart(windowEndExclusive) })
       .andWhere('session.discardedReason IS NULL')
+      .andWhere("(session.state IS NULL OR session.state IN ('completed', 'stopped_early'))")
       .groupBy("DATE_FORMAT(session.endedAt, '%Y-%m-%d')")
       .getRawMany<{ date: string; sessionCount: string; validSeconds: string }>();
 
@@ -88,6 +90,7 @@ export class SessionsService {
       .where('session.userId = :userId', { userId })
       .andWhere('session.endedAt IS NOT NULL')
       .andWhere('session.discardedReason IS NULL')
+      .andWhere("(session.state IS NULL OR session.state IN ('completed', 'stopped_early'))")
       .groupBy("DATE_FORMAT(session.endedAt, '%Y-%m-%d')")
       .orderBy('date', 'ASC')
       .getRawMany<{ date: string }>();
@@ -193,6 +196,7 @@ export class SessionsService {
       .andWhere('session.id != :excludeSessionId', { excludeSessionId })
       .andWhere('session.endedAt >= :startOfDay', { startOfDay })
       .andWhere('session.discardedReason IS NULL')
+      .andWhere("(session.state IS NULL OR session.state IN ('completed', 'stopped_early'))")
       .getRawOne<{ total: string }>();
 
     return Number(row?.total ?? 0);

@@ -28,7 +28,7 @@ const profile: UserProfile = {
   level: 3, levelStartXp: 100, nextLevelXp: 200, xpTotal: 150, title: 'Aprendiz',
 };
 const session: RecentStudySession = {
-  id: 'session-1', subject: 'Matemática', mode: 'foco', startedAt: '2026-09-16T18:00:00Z',
+  id: 'session-1', subject: 'Matemática', mode: 'foco', state: 'completed', startedAt: '2026-09-16T18:00:00Z',
   endedAt: '2026-09-16T18:25:00Z', durationValidSeconds: 1500, xpAwarded: 25, discardedReason: null,
 };
 const cadenceStart = new Date('2026-07-24T00:00:00.000Z');
@@ -135,7 +135,7 @@ describe('DashboardScreen', () => {
 
     await waitFor(() => expect(screen.getByTestId('dashboard-activity')).toBeTruthy());
     expect(screen.queryByText('Aprendiz')).toBeNull();
-    expect(screen.getByLabelText(/Matemática aplicada e raciocínio lógico avançado.*foco.*25 min.*25 XP.*Sessão não contabilizada/)).toBeTruthy();
+    expect(screen.getByLabelText(/Concluída.*Matemática aplicada e raciocínio lógico avançado.*foco.*25 min.*25 XP.*Sessão não contabilizada/)).toBeTruthy();
     expect(screen.getByRole('progressbar', { name: 'Progresso para o nível 4', value: { min: 100, max: 200, now: 150 } })).toBeTruthy();
   });
 
@@ -202,6 +202,20 @@ describe('DashboardScreen', () => {
     expect(screen.getByRole('progressbar', { name: 'Progresso para o nível 4' }).props.accessibilityValue).toEqual({ min: 100, max: 200, now: 150 });
     expect(screen.getByText('Matemática')).toBeTruthy();
     expect(screen.getByText('Sessão não contabilizada')).toBeTruthy();
+  });
+
+  it('keeps a cancelled session in activity without rendering a subject placeholder', async () => {
+    mockedProfile.mockResolvedValue(profile);
+    mockedActivity.mockResolvedValue([{
+      ...session, subject: null, state: 'cancelled', durationValidSeconds: 299, xpAwarded: 0,
+    }]);
+    await renderDashboard();
+
+    await waitFor(() => expect(screen.getByTestId('dashboard-activity')).toBeTruthy());
+    expect(screen.getByText(/Cancelada · foco ·/)).toBeTruthy();
+    expect(screen.getByText('4 min · 0 XP')).toBeTruthy();
+    expect(screen.queryByText('null')).toBeNull();
+    expect(screen.queryByText('Sem matéria')).toBeNull();
   });
 
   it('renders the streak metrics and 56-cell cadence card with accessible summaries', async () => {

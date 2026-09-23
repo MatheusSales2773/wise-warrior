@@ -20,10 +20,12 @@ function ActivityItem({ session }: { session: RecentStudySession }) {
     discarded: session.discardedReason ? formatDiscardReason(session.discardedReason) : null,
     duration: formatDuration(session.durationValidSeconds),
     mode: session.mode,
+    status: formatSessionState(session.state),
     subject: session.subject,
     xp: `${formatXp(session.xpAwarded)} XP`,
   };
   const details = [
+    display.status,
     display.subject,
     display.mode,
     display.date,
@@ -34,8 +36,8 @@ function ActivityItem({ session }: { session: RecentStudySession }) {
 
   return (
     <View accessible accessibilityLabel={`Sessão: ${details}`} key={session.id} style={styles.activityItem}>
-      <WiseText variant="label">{display.subject}</WiseText>
-      <WiseText color="textSecondary" variant="caption">{display.mode} · {display.date}</WiseText>
+      {display.subject ? <WiseText variant="label">{display.subject}</WiseText> : null}
+      <WiseText color="textSecondary" variant="caption">{display.status ? `${display.status} · ` : ''}{display.mode} · {display.date}</WiseText>
       <WiseText variant="body">{display.duration} · {display.xp}</WiseText>
       {display.discarded ? <WiseText color="feedbackDanger" variant="caption">{display.discarded}</WiseText> : null}
     </View>
@@ -78,7 +80,7 @@ function ActivityCard({ query }: { query: UseQueryResult<RecentStudySession[]> }
       <WiseCard accessibilityLabel="Atividade recente" role="region" testID="dashboard-activity-error">
         <CardContent>
           <SectionHeading>Atividade recente</SectionHeading>
-          <FeedbackMessage message="Não foi possível carregar suas sessões concluídas." title="Atividade indisponível" variant="error" />
+          <FeedbackMessage message="Não foi possível carregar suas sessões recentes." title="Atividade indisponível" variant="error" />
           <WiseButton label="Tentar novamente" loading={query.isRefetching} onPress={() => void retry()} variant="secondary" />
         </CardContent>
       </WiseCard>
@@ -92,7 +94,7 @@ function ActivityCard({ query }: { query: UseQueryResult<RecentStudySession[]> }
         <SectionHeading>Atividade recente</SectionHeading>
         {sessions.length
           ? sessions.slice(0, 5).map((session) => <ActivityItem key={session.id} session={session} />)
-          : <WiseText variant="body">Nenhuma sessão concluída ainda. Suas sessões concluídas aparecerão aqui.</WiseText>}
+          : <WiseText variant="body">Nenhuma sessão encerrada ainda. Suas sessões encerradas aparecerão aqui.</WiseText>}
         {query.isRefetching ? <WiseText color="textSecondary" testID="dashboard-activity-refreshing" variant="caption">Atualizando atividade…</WiseText> : null}
         {query.isError ? (
           <View style={styles.activityRefreshError} testID="dashboard-activity-refresh-error">
@@ -134,7 +136,7 @@ function MetricsCard({ query }: { query: UseQueryResult<SessionMetrics> }) {
     <WiseCard accessibilityLabel={`Sessões hoje: ${metrics.sessionsToday}${goal ? ` de ${goal}` : ''}; ${formatDuration(metrics.validSecondsToday)} de foco válido`} role="region" style={styles.metricCard} testID="dashboard-sessions" variant="default">
       <CardContent>
         <SectionHeading>Sessões hoje</SectionHeading>
-        <MetricValue label="Sessões concluídas" value={`${metrics.sessionsToday}${goal ? ` / ${goal}` : ''}`} />
+        <MetricValue label="Sessões elegíveis" value={`${metrics.sessionsToday}${goal ? ` / ${goal}` : ''}`} />
         <WiseText color="textSecondary" variant="caption">{formatDuration(metrics.validSecondsToday)} de foco válido</WiseText>
       </CardContent>
     </WiseCard>
@@ -154,6 +156,18 @@ function MetricValue({ label, value }: { label: string; value: string }) {
 
 function formatDayCount(value: number): string {
   return `${value} ${value === 1 ? 'dia' : 'dias'}`;
+}
+
+function formatSessionState(state: RecentStudySession['state']): string {
+  switch (state) {
+    case 'completed': return 'Concluída';
+    case 'stopped_early': return 'Encerrada antecipadamente';
+    case 'cancelled': return 'Cancelada';
+    case 'discarded': return 'Descartada';
+    case 'paused': return 'Pausada';
+    case 'running': return 'Em andamento';
+    default: return '';
+  }
 }
 
 function cadenceCellLabel(day: CadenceDay): string {

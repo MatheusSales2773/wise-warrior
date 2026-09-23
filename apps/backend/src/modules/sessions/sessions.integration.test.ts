@@ -55,6 +55,11 @@ describe('recent study sessions against MySQL', () => {
         id: '00000000-0000-4000-8000-000000000022', userId: '00000000-0000-4000-8000-000000000002', subject: 'Other user', mode: 'solo',
         startedAt: new Date(endedAt.getTime() - 3600000), endedAt, durationValidSeconds: 3600, xpAwarded: 10,
       },
+      {
+        id: '00000000-0000-4000-8000-000000000023', userId: '00000000-0000-4000-8000-000000000001', subject: null, mode: 'solo',
+        startedAt: new Date(endedAt.getTime() - 299_000), endedAt: new Date(endedAt.getTime() + 1_000),
+        state: 'cancelled', durationValidSeconds: 299, xpAwarded: 0,
+      },
     ]);
 
     const service = new SessionsService(
@@ -66,12 +71,13 @@ describe('recent study sessions against MySQL', () => {
 
     expect(result).toHaveLength(5);
     expect(result.map((session) => session.id)).toEqual([
+      '00000000-0000-4000-8000-000000000023',
       '00000000-0000-4000-8000-000000000021',
       '00000000-0000-4000-8000-000000000015',
       '00000000-0000-4000-8000-000000000014',
       '00000000-0000-4000-8000-000000000013',
-      '00000000-0000-4000-8000-000000000012',
     ]);
+    expect(result[0]).toMatchObject({ subject: null, state: 'cancelled', durationValidSeconds: 299, xpAwarded: 0 });
     expect(result.some((session) => session.subject === 'Active')).toBe(false);
     expect((await service.recent('00000000-0000-4000-8000-000000000001')).find((session) => session.subject === 'Discarded')).toEqual(
       expect.objectContaining({ xpAwarded: 0, discardedReason: 'continuous-session-exceeds-limit' }),
@@ -110,6 +116,16 @@ describe('recent study sessions against MySQL', () => {
         durationValidSeconds: offset === 0 ? 1200 : 600, xpAwarded: 10,
       })),
       {
+        id: '00000000-0000-4000-8000-000000000040', userId, subject: null, mode: 'solo',
+        startedAt: dateAtNoon(0), endedAt: dateAtNoon(0), durationValidSeconds: 180,
+        xpAwarded: 30, state: 'stopped_early',
+      },
+      {
+        id: '00000000-0000-4000-8000-000000000041', userId, subject: null, mode: 'solo',
+        startedAt: dateAtNoon(-2), endedAt: dateAtNoon(-2), durationValidSeconds: 299,
+        xpAwarded: 0, state: 'cancelled',
+      },
+      {
         id: '00000000-0000-4000-8000-000000000034', userId, subject: 'Discarded', mode: 'solo',
         startedAt: dateAtNoon(0), endedAt: dateAtNoon(0), durationValidSeconds: 9999,
         xpAwarded: 0, discardedReason: 'daily-limit-exceeded',
@@ -140,8 +156,8 @@ describe('recent study sessions against MySQL', () => {
     );
     const result = await service.metrics(userId, anchor);
 
-    expect(result.sessionsToday).toBe(1);
-    expect(result.validSecondsToday).toBe(1200);
+    expect(result.sessionsToday).toBe(2);
+    expect(result.validSecondsToday).toBe(1380);
     expect(result.currentStreakDays).toBe(2);
     expect(result.longestStreakDays).toBe(2);
     expect(result.cadence.days).toHaveLength(56);
@@ -149,7 +165,7 @@ describe('recent study sessions against MySQL', () => {
       date: '2026-07-24', sessionCount: 1, validSeconds: 300, intensity: 1,
     });
     expect(result.cadence.days.at(-1)).toEqual({
-      date: today, sessionCount: 1, validSeconds: 1200, intensity: 1,
+      date: today, sessionCount: 2, validSeconds: 1380, intensity: 2,
     });
   });
 });

@@ -43,7 +43,10 @@ describe('SessionsController start and restore contract', () => {
     const controller = new SessionsController({} as SessionsService, {} as never, transitions);
 
     await expect(controller.pause(user, 'study-1', { expectedVersion: 1 }, 'pause-1')).resolves.toBe(snapshot);
-    expect(transitions.pause).toHaveBeenCalledWith('user-1', 'device-1', 'study-1', { expectedVersion: 1 }, 'pause-1');
+    expect(transitions.pause).toHaveBeenCalledWith({
+      userId: 'user-1', authSessionId: 'device-1', studySessionId: 'study-1',
+      dto: { expectedVersion: 1 }, idempotencyKey: 'pause-1',
+    });
   });
 
   it('forwards the authenticated Session, expected version and idempotency key to resume', async () => {
@@ -52,6 +55,21 @@ describe('SessionsController start and restore contract', () => {
     const controller = new SessionsController({} as SessionsService, {} as never, transitions);
 
     await expect(controller.resume(user, 'study-1', { expectedVersion: 2 }, 'resume-1')).resolves.toBe(snapshot);
-    expect(transitions.resume).toHaveBeenCalledWith('user-1', 'device-1', 'study-1', { expectedVersion: 2 }, 'resume-1');
+    expect(transitions.resume).toHaveBeenCalledWith({
+      userId: 'user-1', authSessionId: 'device-1', studySessionId: 'study-1',
+      dto: { expectedVersion: 2 }, idempotencyKey: 'resume-1',
+    });
+  });
+
+  it('forwards the authenticated Session, expected version and idempotency key to stop', async () => {
+    const snapshot = { id: 'study-1', state: 'cancelled', version: 2 };
+    const transitions = { stop: jest.fn().mockResolvedValue(snapshot) } as unknown as StudySessionTransitionService;
+    const controller = new SessionsController({} as SessionsService, {} as never, transitions);
+
+    await expect(controller.stop(user, 'study-1', { expectedVersion: 1 }, 'stop-1')).resolves.toBe(snapshot);
+    expect(transitions.stop).toHaveBeenCalledWith({
+      userId: 'user-1', authSessionId: 'device-1', studySessionId: 'study-1',
+      dto: { expectedVersion: 1 }, idempotencyKey: 'stop-1',
+    });
   });
 });
