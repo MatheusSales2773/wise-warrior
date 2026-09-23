@@ -150,3 +150,5 @@ apps/frontend/.env*.local
 **/storage-state*.json
 **/.auth/
 **/.DS_Store
+
+temp
