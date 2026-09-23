@@ -19,8 +19,8 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  m3-quality:
-    name: M3 quality baseline
+  m5-quality:
+    name: M5 Study Session quality gate
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
@@ -63,96 +63,25 @@ jobs:
           npm --version
           npm ls --depth=0 --workspaces --include-workspace-root
           docker compose version
-
-      - name: Verify M3 quality baseline
-        run: npm run verify:m3:quality
-
-  m4-quality:
-    name: M4 Dashboard quality gate
-    needs: m3-quality
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    env:
-      EXPO_NO_DOTENV: 1
-      EXPO_PUBLIC_API_URL: https://api.ci.invalid/v1
-      TEST_DB_HOST: 127.0.0.1
-      TEST_DB_PORT: 3306
-      TEST_DB_ADMIN_USERNAME: root
-      TEST_DB_ADMIN_PASSWORD: root
-    services:
-      mysql:
-        image: mysql:8.0
-        env:
-          MYSQL_ROOT_PASSWORD: root
-        ports:
-          - 3306:3306
-        options: >-
-          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -proot"
-          --health-interval=10s
-          --health-timeout=5s
-          --health-retries=10
-          --health-start-period=20s
-    steps:
-      - name: Check out repository
-        uses: actions/checkout@v7
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v7
-        with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: package-lock.json
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Record resolved tool versions
-        run: |
-          node --version
-          npm --version
-          npm ls --depth=0 --workspaces --include-workspace-root
-          docker compose version
-
-      - name: Verify M4 Dashboard quality gate
-        run: npm run verify:m4:quality
-
-  web-e2e:
-    name: Web authentication and Dashboard E2E
-    needs: m4-quality
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    steps:
-      - name: Check out repository
-        uses: actions/checkout@v7
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v7
-        with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: package-lock.json
-
-      - name: Install dependencies
-        run: npm ci
-
       - name: Install Chromium
         working-directory: apps/frontend
         run: npm run playwright:install
 
-      - name: Run Web authentication and Dashboard E2E
+      - name: Verify M5 Study Session quality and Web E2E gate
         env:
           COMPOSE_PROJECT_NAME: wise-e2e-${{ github.run_id }}-${{ github.run_attempt }}
           E2E_BASE_URL: https://127.0.0.1:8443
           E2E_API_URL: https://127.0.0.1:8443/api/v1
           E2E_BACKEND_PORT: 3000
           E2E_FRONTEND_PORT: 8443
-        run: npm run test:e2e
+          E2E_DB_PORT: 3307
+        run: npm run verify:m5
 
       - name: Upload Playwright failure artifacts
         if: ${{ failure() }}
         uses: actions/upload-artifact@v4
         with:
-          name: playwright-m4-e2e-${{ github.run_id }}-${{ github.run_attempt }}
+          name: playwright-m5-e2e-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
             apps/frontend/playwright-report
             apps/frontend/test-results

@@ -12,6 +12,7 @@ import type { StudySessionSnapshot } from './study-session-start.service';
 import { deserializeStudySessionSnapshot, studySessionSnapshot } from './study-session-start.service';
 import { StudySessionTransitionDto } from './dto/study-session-transition.dto';
 import { isValidIdempotencyKey } from './domain/idempotency-key';
+import { rejectIfStudySessionCommandKeyUsed } from './study-session-command-keys';
 import {
   applyStudySessionComplete,
   applyStudySessionStop,
@@ -143,6 +144,8 @@ export class StudySessionTransitionService {
         };
       }
 
+      await rejectIfStudySessionCommandKeyUsed(manager, userId, idempotencyKey);
+
       if ((session.version ?? 1) !== dto.expectedVersion) {
         throw new ConflictException({
           type: problemTypes.versionConflict,
@@ -197,6 +200,10 @@ export class StudySessionTransitionService {
           progressionResult = await this.progression.awardXpInTransaction(manager, userId, terminalXpAwarded);
         }
       }
+      await manager.query(
+        'INSERT INTO study_session_command_keys (user_id, idempotency_key, command_kind) VALUES (?, ?, ?)',
+        [userId, idempotencyKey, action],
+      );
       await manager.query(
         `INSERT INTO study_session_transition_receipts
          (user_id, study_session_id, idempotency_key, action, expected_version, response_json)

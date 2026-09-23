@@ -89,6 +89,16 @@ describe('Study Session pause and resume timing', () => {
     expect(studySession.version).toBe(2);
   });
 
+  it('rejects resuming a running session without mutating its confirmed state', () => {
+    const studySession = session();
+    const before = { ...studySession };
+
+    expect(() => applyStudySessionTransition(studySession, 'resume', new Date(start.getTime() + 1_000))).toThrow(
+      new StudySessionTransitionPolicyError('invalid-state'),
+    );
+    expect(studySession).toEqual(before);
+  });
+
   it('cancels 299 valid seconds without XP and stops at 300 with complete-minute XP', () => {
     const cancelled = session();
     const stoppedEarly = session();
@@ -100,6 +110,14 @@ describe('Study Session pause and resume timing', () => {
       state: 'stopped_early', durationValidSeconds: 300, xpAwarded: 50,
     });
     expect(cancelled).toMatchObject({ endedAt: new Date(start.getTime() + 299_999), terminalReason: 'manual-stop', version: 2 });
+  });
+
+  it('does not round incomplete focus minutes up when awarding early-stop XP', () => {
+    const studySession = session();
+
+    expect(applyStudySessionStop(studySession, new Date(start.getTime() + 359_999))).toEqual({
+      state: 'stopped_early', durationValidSeconds: 359, xpAwarded: 50,
+    });
   });
 
   it('excludes multiple paused intervals and freezes the total when stopped while paused', () => {
@@ -171,6 +189,30 @@ describe('Study Session automatic completion timing', () => {
       discardedReason: null,
       version: 2,
     });
+  });
+
+  it('completes one millisecond after the canonical deadline without exceeding planned focus or XP', () => {
+    const studySession = plannedSession(900);
+    const endedAt = new Date(studySession.runDeadlineAt!.getTime() + 1);
+
+    expect(applyStudySessionComplete(studySession, endedAt, 0)).toEqual({
+      state: 'completed', durationValidSeconds: 900, xpAwarded: 150, discardedReason: null,
+    });
+    expect(studySession.endedAt).toEqual(endedAt);
+  });
+
+  it('keeps terminal sessions immutable under later stop and completion commands', () => {
+    const studySession = plannedSession(900);
+    applyStudySessionComplete(studySession, studySession.runDeadlineAt!, 0);
+    const completed = { ...studySession };
+
+    expect(() => applyStudySessionStop(studySession, new Date(studySession.runDeadlineAt!.getTime() + 1_000))).toThrow(
+      new StudySessionTransitionPolicyError('invalid-state'),
+    );
+    expect(() => applyStudySessionComplete(studySession, new Date(studySession.runDeadlineAt!.getTime() + 1_000), 0)).toThrow(
+      new StudySessionTransitionPolicyError('invalid-state'),
+    );
+    expect(studySession).toEqual(completed);
   });
 
   it('caps delayed confirmation at the planned focus duration', () => {

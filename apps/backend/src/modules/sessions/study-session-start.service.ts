@@ -7,6 +7,7 @@ import type { StartSessionDto } from './dto/start-session.dto';
 import { isStudySessionPreset } from './domain/study-session-presets';
 import { getStudySessionTime } from './domain/study-session-time';
 import { isValidIdempotencyKey } from './domain/idempotency-key';
+import { rejectIfStudySessionCommandKeyUsed } from './study-session-command-keys';
 
 export type StudySessionSnapshot = {
   id: string;
@@ -122,6 +123,8 @@ export class StudySessionStartService {
         );
       }
 
+      await rejectIfStudySessionCommandKeyUsed(manager, userId, idempotencyKey);
+
       const active = await manager.getRepository(StudySession).findOne({
         where: { userId, state: In(['running', 'paused']) },
       });
@@ -153,6 +156,10 @@ export class StudySessionStartService {
       const saved = await manager.getRepository(StudySession).save(studySession);
       const snapshot = studySessionSnapshot(saved, authSessionId, now);
       await manager.query('INSERT INTO active_study_sessions (user_id, study_session_id) VALUES (?, ?)', [userId, saved.id]);
+      await manager.query(
+        'INSERT INTO study_session_command_keys (user_id, idempotency_key, command_kind) VALUES (?, ?, ?)',
+        [userId, idempotencyKey, 'start'],
+      );
       await manager.query(
         'INSERT INTO study_session_start_receipts (user_id, idempotency_key, planned_duration_seconds, initiating_session_id, response_json) VALUES (?, ?, ?, ?, ?)',
         [userId, idempotencyKey, plannedDurationSeconds, authSessionId, JSON.stringify(snapshot)],
