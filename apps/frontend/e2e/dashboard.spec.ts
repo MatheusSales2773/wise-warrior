@@ -24,7 +24,7 @@ test.describe('painel web', () => {
     await expect(page.getByTestId('dashboard-progression')).toContainText('Nível 1');
     await expect(page.getByTestId('dashboard-progression')).toContainText('0 XP total');
     await expect(page.getByTestId('dashboard-activity-empty')).toContainText(
-      'Nenhuma sessão concluída ainda. Suas sessões concluídas aparecerão aqui.',
+      'Nenhuma sessão encerrada ainda. Suas sessões encerradas aparecerão aqui.',
     );
   });
 

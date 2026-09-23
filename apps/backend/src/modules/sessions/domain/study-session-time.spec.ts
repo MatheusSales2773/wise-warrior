@@ -1,4 +1,9 @@
-import { applyStudySessionTransition, getStudySessionTime, StudySessionTransitionPolicyError } from './study-session-time';
+import {
+  applyStudySessionStop,
+  applyStudySessionTransition,
+  getStudySessionTime,
+  StudySessionTransitionPolicyError,
+} from './study-session-time';
 
 describe('Study Session pause and resume timing', () => {
   const start = new Date('2026-09-22T12:00:00.000Z');
@@ -12,6 +17,9 @@ describe('Study Session pause and resume timing', () => {
     pausedTotalMilliseconds: 0,
     durationValidSeconds: 0,
     version: 1,
+    endedAt: null as Date | null,
+    terminalReason: null as string | null,
+    xpAwarded: 0,
   });
 
   it('freezes the remaining focus and excludes every paused interval across repeated cycles', () => {
@@ -75,5 +83,43 @@ describe('Study Session pause and resume timing', () => {
       new StudySessionTransitionPolicyError('invalid-state'),
     );
     expect(studySession.version).toBe(2);
+  });
+
+  it('cancels 299 valid seconds without XP and stops at 300 with complete-minute XP', () => {
+    const cancelled = session();
+    const stoppedEarly = session();
+
+    expect(applyStudySessionStop(cancelled, new Date(start.getTime() + 299_999))).toEqual({
+      state: 'cancelled', durationValidSeconds: 299, xpAwarded: 0,
+    });
+    expect(applyStudySessionStop(stoppedEarly, new Date(start.getTime() + 300_000))).toEqual({
+      state: 'stopped_early', durationValidSeconds: 300, xpAwarded: 50,
+    });
+    expect(cancelled).toMatchObject({ endedAt: new Date(start.getTime() + 299_999), terminalReason: 'manual-stop', version: 2 });
+  });
+
+  it('excludes multiple paused intervals and freezes the total when stopped while paused', () => {
+    const studySession = session();
+    applyStudySessionTransition(studySession, 'pause', new Date(start.getTime() + 300_250));
+    applyStudySessionTransition(studySession, 'resume', new Date(start.getTime() + 600_500));
+    applyStudySessionTransition(studySession, 'pause', new Date(start.getTime() + 900_750));
+
+    const stopped = applyStudySessionStop(studySession, new Date(start.getTime() + 1_500_000));
+
+    expect(stopped).toEqual({ state: 'stopped_early', durationValidSeconds: 600, xpAwarded: 100 });
+    expect(studySession).toMatchObject({
+      state: 'stopped_early', pausedAt: null, pausedTotalMilliseconds: 899_500,
+      pausedTotalSeconds: 899, durationValidSeconds: 600, version: 5,
+    });
+  });
+
+  it('rejects stopping at the full deadline and leaves the session unchanged', () => {
+    const studySession = session();
+    const before = { ...studySession };
+
+    expect(() => applyStudySessionStop(studySession, studySession.runDeadlineAt!)).toThrow(
+      new StudySessionTransitionPolicyError('deadline-passed'),
+    );
+    expect(studySession).toEqual(before);
   });
 });

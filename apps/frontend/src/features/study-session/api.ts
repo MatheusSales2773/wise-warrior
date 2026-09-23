@@ -54,9 +54,17 @@ export function resumeStudySession(
   return transitionStudySession(id, 'resume', expectedVersion, idempotencyKey);
 }
 
+export function stopStudySession(
+  id: string,
+  expectedVersion: number,
+  idempotencyKey: string,
+): Promise<StudySessionSnapshot> {
+  return transitionStudySession(id, 'stop', expectedVersion, idempotencyKey);
+}
+
 async function transitionStudySession(
   id: string,
-  action: 'pause' | 'resume',
+  action: 'pause' | 'resume' | 'stop',
   expectedVersion: number,
   idempotencyKey: string,
 ): Promise<StudySessionSnapshot> {

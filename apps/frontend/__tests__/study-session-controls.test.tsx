@@ -7,20 +7,24 @@ import {
   getActiveStudySession,
   pauseStudySession,
   resumeStudySession,
+  stopStudySession,
   type StudySessionSnapshot,
 } from '@/features/study-session/api';
+import { dashboardKeys } from '@/features/dashboard/queries';
 
 jest.mock('@/features/study-session/api', () => ({
   STUDY_SESSION_PRESETS: [900, 1500, 3000],
   getActiveStudySession: jest.fn(),
   pauseStudySession: jest.fn(),
   resumeStudySession: jest.fn(),
+  stopStudySession: jest.fn(),
   startStudySession: jest.fn(),
 }));
 
 const getActive = getActiveStudySession as jest.MockedFunction<typeof getActiveStudySession>;
 const pause = pauseStudySession as jest.MockedFunction<typeof pauseStudySession>;
 const resume = resumeStudySession as jest.MockedFunction<typeof resumeStudySession>;
+const stop = stopStudySession as jest.MockedFunction<typeof stopStudySession>;
 const snapshot: StudySessionSnapshot = {
   id: 'study-1', mode: 'solo', subject: null, state: 'running', plannedDurationSeconds: 1500,
   startedAt: '2026-09-22T12:00:00.000Z', runDeadlineAt: '2026-09-22T12:25:00.000Z',
@@ -30,14 +34,13 @@ const snapshot: StudySessionSnapshot = {
   receivedAtMs: new Date('2026-09-22T12:00:00.000Z').getTime(),
 };
 
-async function renderStudySession() {
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 }, mutations: { retry: false, gcTime: 0 } } });
+async function renderStudySession(client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 }, mutations: { retry: false, gcTime: 0 } } })) {
   const view = await render(
     <QueryClientProvider client={client}>
       <StudySessionScreen />
     </QueryClientProvider>,
   );
-  return { view };
+  return { view, client };
 }
 
 beforeEach(() => {
@@ -89,6 +92,96 @@ it('pauses and resumes from confirmed snapshots using accessible controls', asyn
   view.unmount();
 });
 
+it('stops with the projected label, shows the confirmed result, then offers a new session', async () => {
+  const cancelled: StudySessionSnapshot = {
+    ...snapshot, state: 'cancelled', endedAt: '2026-09-22T12:04:59.999Z',
+    durationValidSeconds: 299, remainingSeconds: 0, terminalReason: 'manual-stop', version: 2,
+    serverNow: '2026-09-22T12:04:59.999Z', receivedAtMs: new Date('2026-09-22T12:04:59.999Z').getTime(),
+  };
+  getActive.mockResolvedValue(snapshot);
+  stop.mockResolvedValue(cancelled);
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 30_000 }, mutations: { retry: false, gcTime: 0 } } });
+  client.setQueryData(dashboardKeys.profile(), { xpTotal: 0 });
+  client.setQueryData(dashboardKeys.recentActivity(), []);
+  client.setQueryData(dashboardKeys.metrics(), { sessionsToday: 0 });
+  const { view } = await renderStudySession(client);
+
+  await view.findByRole('button', { name: 'Cancelar sessão' });
+  await fireEvent.press(view.getByRole('button', { name: 'Cancelar sessão' }));
+  await waitFor(() => expect(stop).toHaveBeenCalledWith('study-1', 1, expect.any(String)));
+  await view.findByTestId('study-session-result');
+
+  expect(view.getByText('Sessão cancelada')).toBeTruthy();
+  expect(view.getByText('Foco válido: 04:59')).toBeTruthy();
+  expect(view.getByText('XP confirmado: 0')).toBeTruthy();
+  expect(view.queryByTestId('study-session-setup')).toBeNull();
+  expect(client.getQueryData(['study-session', 'active'])).toBeNull();
+  expect(client.getQueryState(dashboardKeys.profile())?.isInvalidated).toBe(true);
+  expect(client.getQueryState(dashboardKeys.recentActivity())?.isInvalidated).toBe(true);
+  expect(client.getQueryState(dashboardKeys.metrics())?.isInvalidated).toBe(true);
+  await fireEvent.press(view.getByRole('button', { name: 'Nova sessão' }));
+  await view.findByTestId('study-session-setup');
+  view.unmount();
+  client.clear();
+});
+
+it('shows the confirmed duration and proportional XP for an early stop', async () => {
+  const stoppedEarly: StudySessionSnapshot = {
+    ...snapshot, state: 'stopped_early', endedAt: '2026-09-22T12:05:00.000Z',
+    durationValidSeconds: 300, remainingSeconds: 0, terminalReason: 'manual-stop',
+    xpAwarded: 50, version: 2,
+  };
+  getActive.mockResolvedValue({
+    ...snapshot, remainingSeconds: 1200,
+    runDeadlineAt: '2026-09-22T12:20:00.000Z',
+    serverNow: '2026-09-22T12:05:00.000Z',
+    receivedAtMs: new Date('2026-09-22T12:05:00.000Z').getTime(),
+  });
+  stop.mockResolvedValue(stoppedEarly);
+  const { view } = await renderStudySession();
+
+  await fireEvent.press(await view.findByRole('button', { name: 'Encerrar antecipadamente' }));
+  await view.findByTestId('study-session-result');
+  expect(view.getByText('Sessão encerrada antecipadamente')).toBeTruthy();
+  expect(view.getByText('Foco válido: 05:00')).toBeTruthy();
+  expect(view.getByText('XP confirmado: 50')).toBeTruthy();
+  view.unmount();
+});
+
+it('projects the early-stop label from the server snapshot at the five-minute boundary', async () => {
+  getActive.mockResolvedValue({
+    ...snapshot, remainingSeconds: 1200,
+    runDeadlineAt: '2026-09-22T12:20:00.000Z',
+    serverNow: '2026-09-22T12:05:00.000Z',
+    receivedAtMs: new Date('2026-09-22T12:05:00.000Z').getTime(),
+  });
+  const { view } = await renderStudySession();
+
+  await view.findByRole('button', { name: 'Encerrar antecipadamente' });
+  view.unmount();
+});
+
+it('retries a stop after a lost response with the same idempotency key', async () => {
+  const cancelled: StudySessionSnapshot = {
+    ...snapshot, state: 'cancelled', endedAt: '2026-09-22T12:04:00.000Z',
+    durationValidSeconds: 240, remainingSeconds: 0, version: 2,
+  };
+  getActive.mockResolvedValue(snapshot);
+  stop.mockRejectedValueOnce(new Error('network timeout')).mockResolvedValueOnce(cancelled);
+  const { view } = await renderStudySession();
+
+  await view.findByRole('button', { name: 'Cancelar sessão' });
+  await fireEvent.press(view.getByRole('button', { name: 'Cancelar sessão' }));
+  await view.findByTestId('study-session-transition-error');
+  const originalCommand = stop.mock.calls[0];
+  await fireEvent.press(view.getByRole('button', { name: 'Tentar encerrar novamente' }));
+
+  await waitFor(() => expect(stop).toHaveBeenCalledTimes(2));
+  expect(stop.mock.calls[1]).toEqual(originalCommand);
+  await view.findByText('Sessão cancelada');
+  view.unmount();
+});
+
 it('keeps the last confirmed state and retries a failed transition with the same key', async () => {
   const paused: StudySessionSnapshot = {
     ...snapshot,
@@ -111,6 +204,7 @@ it('keeps the last confirmed state and retries a failed transition with the same
   await fireEvent.press(view.getByRole('button', { name: 'Pausar sessão' }));
   const busyButton = view.getByTestId('study-session-pause');
   expect(busyButton.props.accessibilityState).toMatchObject({ disabled: true, busy: true });
+  expect(view.getByTestId('study-session-stop').props.accessibilityState.disabled).toBe(true);
   expect(view.getByText('Pausando sessão. Os controles estão ocupados até a confirmação.')).toBeTruthy();
 
   await act(async () => rejectPause(new Error('network timeout')));

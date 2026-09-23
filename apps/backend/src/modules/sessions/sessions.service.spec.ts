@@ -141,6 +141,18 @@ describe('SessionsService', () => {
         BadRequestException,
       );
     });
+
+    it('uses only eligible states in the daily total for legacy completion validation', async () => {
+      mockRepo.findOne.mockResolvedValue({
+        id: 'legacy-session', userId: 'user-1', mode: 'solo', startedAt: new Date(Date.now() - 300_000), endedAt: null,
+      });
+      const dailyTotalQuery = queryBuilderReturning(1200);
+      mockRepo.createQueryBuilder.mockReturnValue(dailyTotalQuery);
+
+      await service.complete('user-1', 'legacy-session');
+
+      expect(dailyTotalQuery.andWhere).toHaveBeenCalledWith("(session.state IS NULL OR session.state IN ('completed', 'stopped_early'))");
+    });
   });
 
   describe('recent', () => {
@@ -158,12 +170,13 @@ describe('SessionsService', () => {
       expect(result).toEqual([
         expect.objectContaining({
           id: 'session-1', subject: 'Cálculo', mode: 'solo',
+          state: null,
           startedAt: new Date('2026-01-01T10:00:00Z'), endedAt: new Date('2026-01-01T10:25:00Z'),
           durationValidSeconds: 1500, xpAwarded: 25, discardedReason: null,
         }),
       ]);
       expect(Object.keys(result[0]!)).toEqual([
-        'id', 'subject', 'mode', 'startedAt', 'endedAt', 'durationValidSeconds', 'xpAwarded', 'discardedReason',
+        'id', 'subject', 'mode', 'state', 'startedAt', 'endedAt', 'durationValidSeconds', 'xpAwarded', 'discardedReason',
       ]);
       expect(mockRepo.find).toHaveBeenCalledWith({
         where: { userId: 'user-1', endedAt: expect.anything() },
@@ -219,6 +232,8 @@ describe('SessionsService', () => {
       );
       expect(cadenceBuilder.andWhere).toHaveBeenCalledWith('session.discardedReason IS NULL');
       expect(historicalBuilder.andWhere).toHaveBeenCalledWith('session.discardedReason IS NULL');
+      expect(cadenceBuilder.andWhere).toHaveBeenCalledWith("(session.state IS NULL OR session.state IN ('completed', 'stopped_early'))");
+      expect(historicalBuilder.andWhere).toHaveBeenCalledWith("(session.state IS NULL OR session.state IN ('completed', 'stopped_early'))");
     });
   });
 });

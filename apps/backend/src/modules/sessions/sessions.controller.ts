@@ -86,6 +86,17 @@ export class SessionsController {
     return this.studySessionTransitions.resume(user.sub, user.sessionId, id, dto, idempotencyKey);
   }
 
+  @Post(':id/stop')
+  @HttpCode(HttpStatus.OK)
+  stop(
+    @CurrentUser() user: JwtPayload,
+    @Param('id') id: string,
+    @Body() dto: StudySessionTransitionDto,
+    @Headers('idempotency-key') idempotencyKey?: string,
+  ) {
+    return this.studySessionTransitions.stop(user.sub, user.sessionId, id, dto, idempotencyKey);
+  }
+
   @Patch(':id/heartbeat')
   @HttpCode(HttpStatus.NO_CONTENT)
   async heartbeat(

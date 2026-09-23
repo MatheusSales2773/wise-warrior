@@ -6,23 +6,26 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { DataSource } from 'typeorm';
+import { ProgressionService } from '../progression/progression.service';
 import { StudySession } from './entities/study-session.entity';
 import type { StudySessionSnapshot } from './study-session-start.service';
 import { deserializeStudySessionSnapshot, studySessionSnapshot } from './study-session-start.service';
 import { StudySessionTransitionDto } from './dto/study-session-transition.dto';
 import { isValidIdempotencyKey } from './domain/idempotency-key';
 import {
+  applyStudySessionStop,
   applyStudySessionTransition,
   StudySessionTransitionPolicyError,
-  type StudySessionTransitionAction,
+  type StudySessionCommandAction,
 } from './domain/study-session-time';
+import type { XpApplicationResult } from '../progression/domain/progression-policy';
 
 export type StudySessionClock = { now(): Date };
 export const STUDY_SESSION_CLOCK = Symbol('STUDY_SESSION_CLOCK');
 
 type TransitionReceiptRow = {
   study_session_id: string;
-  action: StudySessionTransitionAction;
+  action: StudySessionCommandAction;
   expected_version: number | string;
   response_json: StudySessionSnapshot | string;
 };
@@ -41,6 +44,7 @@ export class StudySessionTransitionService {
   constructor(
     private readonly dataSource: DataSource,
     @Inject(STUDY_SESSION_CLOCK) private readonly clock: StudySessionClock,
+    private readonly progression: ProgressionService,
   ) {}
 
   pause(
@@ -63,11 +67,21 @@ export class StudySessionTransitionService {
     return this.transition(userId, authSessionId, studySessionId, 'resume', dto, idempotencyKey);
   }
 
+  stop(
+    userId: string,
+    authSessionId: string,
+    studySessionId: string,
+    dto: StudySessionTransitionDto,
+    idempotencyKey: string | undefined,
+  ): Promise<StudySessionSnapshot> {
+    return this.transition(userId, authSessionId, studySessionId, 'stop', dto, idempotencyKey);
+  }
+
   private async transition(
     userId: string,
     authSessionId: string,
     studySessionId: string,
-    action: StudySessionTransitionAction,
+    action: StudySessionCommandAction,
     dto: StudySessionTransitionDto,
     idempotencyKey: string | undefined,
   ): Promise<StudySessionSnapshot> {
@@ -84,7 +98,7 @@ export class StudySessionTransitionService {
       });
     }
 
-    return this.dataSource.transaction(async (manager) => {
+    const result = await this.dataSource.transaction(async (manager) => {
       // Match the user-first lock order used by start, serializing the per-user idempotency key scope.
       await manager.query('SELECT id FROM users WHERE id = ? FOR UPDATE', [userId]);
 
@@ -121,7 +135,11 @@ export class StudySessionTransitionService {
             message: 'Idempotency-Key já foi usada com outra transição',
           });
         }
-        return deserializeStudySessionSnapshot(receipt.response_json);
+        return {
+          snapshot: deserializeStudySessionSnapshot(receipt.response_json),
+          xpGained: 0,
+          progressionResult: null,
+        };
       }
 
       if ((session.version ?? 1) !== dto.expectedVersion) {
@@ -132,8 +150,13 @@ export class StudySessionTransitionService {
       }
 
       const now = this.clock.now();
+      let xpGained = 0;
       try {
-        applyStudySessionTransition(session, action, now);
+        if (action === 'stop') {
+          xpGained = applyStudySessionStop(session, now).xpAwarded;
+        } else {
+          applyStudySessionTransition(session, action, now);
+        }
       } catch (error) {
         if (!(error instanceof StudySessionTransitionPolicyError)) throw error;
         const expired = error.reason === 'deadline-passed';
@@ -141,19 +164,34 @@ export class StudySessionTransitionService {
           type: expired ? problemTypes.deadlinePassed : problemTypes.transitionNotAllowed,
           message: expired
             ? 'O prazo canônico da Study Session já terminou'
-            : `Não é possível ${action === 'pause' ? 'pausar' : 'retomar'} a Study Session no estado atual`,
+            : `Não é possível ${action === 'pause' ? 'pausar' : action === 'resume' ? 'retomar' : 'encerrar'} a Study Session no estado atual`,
         });
       }
 
       const saved = await sessions.save(session);
       const snapshot = studySessionSnapshot(saved, authSessionId, now);
+      let progressionResult: XpApplicationResult | null = null;
+      if (action === 'stop') {
+        await manager.query(
+          'DELETE FROM active_study_sessions WHERE user_id = ? AND study_session_id = ?',
+          [userId, studySessionId],
+        );
+        if (xpGained > 0) {
+          progressionResult = await this.progression.awardXpInTransaction(manager, userId, xpGained);
+        }
+      }
       await manager.query(
         `INSERT INTO study_session_transition_receipts
          (user_id, study_session_id, idempotency_key, action, expected_version, response_json)
          VALUES (?, ?, ?, ?, ?, ?)`,
         [userId, studySessionId, idempotencyKey, action, dto.expectedVersion, JSON.stringify(snapshot)],
       );
-      return snapshot;
+      return { snapshot, xpGained, progressionResult };
     });
+
+    if (result.progressionResult) {
+      this.progression.publishAwardedXp(userId, result.xpGained, result.progressionResult);
+    }
+    return result.snapshot;
   }
 }

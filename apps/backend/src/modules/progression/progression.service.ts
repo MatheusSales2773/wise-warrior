@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { type EntityManager, Repository } from 'typeorm';
 import { Character } from './entities/character.entity';
 import {
   applyXp,
@@ -72,11 +72,32 @@ export class ProgressionService {
       throw new NotFoundException('Personagem não encontrado para este usuário');
     }
 
-    const result = applyXp(character.xpTotal, xpGained);
-    character.xpTotal = result.newXpTotal;
-    character.level = result.newLevel;
-    await this.characters.save(character);
+    const result = await this.persistXp(this.characters, character, xpGained);
 
+    this.publishAwardedXp(userId, xpGained, result);
+
+    return result;
+  }
+
+  async awardXpInTransaction(
+    manager: EntityManager,
+    userId: string,
+    xpGained: number,
+  ): Promise<XpApplicationResult> {
+    const characters = manager.getRepository(Character);
+    const character = await characters
+      .createQueryBuilder('character')
+      .where('character.userId = :userId', { userId })
+      .setLock('pessimistic_write')
+      .getOne();
+    if (!character) {
+      throw new NotFoundException('Personagem não encontrado para este usuário');
+    }
+
+    return this.persistXp(characters, character, xpGained);
+  }
+
+  publishAwardedXp(userId: string, xpGained: number, result: XpApplicationResult): void {
     this.realtime.emitToUser(userId, 'progress:xpUpdated', {
       xpGained,
       xpTotal: result.newXpTotal,
@@ -89,7 +110,17 @@ export class ProgressionService {
         newLevel: result.newLevel,
       });
     }
+  }
 
+  private async persistXp(
+    characters: Repository<Character>,
+    character: Character,
+    xpGained: number,
+  ): Promise<XpApplicationResult> {
+    const result = applyXp(character.xpTotal, xpGained);
+    character.xpTotal = result.newXpTotal;
+    character.level = result.newLevel;
+    await characters.save(character);
     return result;
   }
 }

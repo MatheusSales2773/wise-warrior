@@ -1,5 +1,5 @@
 import { getAuthenticatedHttpClient } from '@/core/api/api-client';
-import { getActiveStudySession, heartbeatStudySession, pauseStudySession, resumeStudySession, startStudySession } from '@/features/study-session/api';
+import { getActiveStudySession, heartbeatStudySession, pauseStudySession, resumeStudySession, startStudySession, stopStudySession } from '@/features/study-session/api';
 
 jest.mock('@/core/api/api-client', () => ({ getAuthenticatedHttpClient: jest.fn() }));
 
@@ -49,5 +49,17 @@ it('sends resume with the expected version and preserves its idempotency key', a
   });
   expect(post).toHaveBeenCalledWith('/sessions/study-1/resume', { expectedVersion: 5 }, {
     headers: { 'Idempotency-Key': 'resume-retry-key' },
+  });
+});
+
+it('sends stop with the expected version and preserves its idempotency key', async () => {
+  const post = jest.fn().mockResolvedValue({ data: { id: 'study-1', state: 'cancelled' } });
+  (getAuthenticatedHttpClient as jest.Mock).mockReturnValue({ post });
+
+  await expect(stopStudySession('study-1', 6, 'stop-retry-key')).resolves.toMatchObject({
+    id: 'study-1', state: 'cancelled', receivedAtMs: expect.any(Number),
+  });
+  expect(post).toHaveBeenCalledWith('/sessions/study-1/stop', { expectedVersion: 6 }, {
+    headers: { 'Idempotency-Key': 'stop-retry-key' },
   });
 });
