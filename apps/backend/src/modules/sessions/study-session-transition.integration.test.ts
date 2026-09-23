@@ -199,7 +199,7 @@ describe('Study Session transitions against MySQL', () => {
     await expect(transition('pause', 1, 'pause-before-resume')).resolves.toEqual(paused);
     expect(paused.serverNow).not.toEqual(resumed.serverNow);
     expect(await dataSource!.getRepository(StudySession).findOneByOrFail({ id: studySessionId }))
-      .toMatchObject({ state: 'running', version: 3, durationValidSeconds: 360 });
+      .toMatchObject({ state: 'running', version: 3, pausedTotalSeconds: 60, durationValidSeconds: 300 });
     expect(await dataSource!.getRepository(Character).findOneByOrFail({ id: characterId }))
       .toMatchObject({ xpTotal: 0 });
   });
