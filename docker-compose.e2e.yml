@@ -1,6 +1,7 @@
 services:
   mysql:
     image: mysql:8.0
+    command: ["--log-bin-trust-function-creators=1"]
     environment:
       MYSQL_DATABASE: wise_e2e
       MYSQL_USER: wise
