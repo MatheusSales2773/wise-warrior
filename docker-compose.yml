@@ -1,6 +1,7 @@
 services:
   mysql:
     image: mysql:8.0
+    command: ["--log-bin-trust-function-creators=1"]
     restart: unless-stopped
     environment:
       MYSQL_DATABASE: ${DB_DATABASE:?DB_DATABASE is required}
