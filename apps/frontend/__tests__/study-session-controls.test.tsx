@@ -80,13 +80,13 @@ it('pauses and resumes from confirmed snapshots using accessible controls', asyn
 
   await view.findByTestId('study-session-active');
   await fireEvent.press(view.getByRole('button', { name: 'Pausar sessão' }));
-  await waitFor(() => expect(pause).toHaveBeenCalledWith('study-1', 1, expect.any(String)));
+  await waitFor(() => expect(pause).toHaveBeenCalledWith({ id: 'study-1', expectedVersion: 1, idempotencyKey: expect.any(String) }));
   await view.findByTestId('study-session-resume');
   expect(view.getByText('Sessão pausada. O contador está congelado.')).toBeTruthy();
   expect(view.getByTestId('study-session-timer').props.accessibilityLabel).toContain('20 minutos e 0 segundos');
 
   await fireEvent.press(view.getByRole('button', { name: 'Retomar sessão' }));
-  await waitFor(() => expect(resume).toHaveBeenCalledWith('study-1', 2, expect.any(String)));
+  await waitFor(() => expect(resume).toHaveBeenCalledWith({ id: 'study-1', expectedVersion: 2, idempotencyKey: expect.any(String) }));
   await view.findByTestId('study-session-pause');
   expect(view.getByText('Sessão em andamento. O contador está ativo.')).toBeTruthy();
   view.unmount();
@@ -108,7 +108,7 @@ it('stops with the projected label, shows the confirmed result, then offers a ne
 
   await view.findByRole('button', { name: 'Cancelar sessão' });
   await fireEvent.press(view.getByRole('button', { name: 'Cancelar sessão' }));
-  await waitFor(() => expect(stop).toHaveBeenCalledWith('study-1', 1, expect.any(String)));
+  await waitFor(() => expect(stop).toHaveBeenCalledWith({ id: 'study-1', expectedVersion: 1, idempotencyKey: expect.any(String) }));
   await view.findByTestId('study-session-result');
 
   expect(view.getByText('Sessão cancelada')).toBeTruthy();

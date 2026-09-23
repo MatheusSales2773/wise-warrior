@@ -23,6 +23,12 @@ export type StudySessionSnapshot = {
   canControl: boolean;
   receivedAtMs: number;
 };
+export type StudySessionTransitionAction = 'pause' | 'resume' | 'stop';
+export type StudySessionTransitionRequest = {
+  id: string;
+  expectedVersion: number;
+  idempotencyKey: string;
+};
 
 export async function getActiveStudySession(signal?: AbortSignal): Promise<StudySessionSnapshot | null> {
   const response = await getAuthenticatedHttpClient().get<StudySessionSnapshot>('/sessions/active', { signal });
@@ -38,35 +44,20 @@ export async function startStudySession(plannedDurationSeconds: PlannedDurationS
   return { ...response.data, receivedAtMs: Date.now() };
 }
 
-export function pauseStudySession(
-  id: string,
-  expectedVersion: number,
-  idempotencyKey: string,
-): Promise<StudySessionSnapshot> {
-  return transitionStudySession(id, 'pause', expectedVersion, idempotencyKey);
+export function pauseStudySession(command: StudySessionTransitionRequest): Promise<StudySessionSnapshot> {
+  return transitionStudySession({ ...command, action: 'pause' });
 }
 
-export function resumeStudySession(
-  id: string,
-  expectedVersion: number,
-  idempotencyKey: string,
-): Promise<StudySessionSnapshot> {
-  return transitionStudySession(id, 'resume', expectedVersion, idempotencyKey);
+export function resumeStudySession(command: StudySessionTransitionRequest): Promise<StudySessionSnapshot> {
+  return transitionStudySession({ ...command, action: 'resume' });
 }
 
-export function stopStudySession(
-  id: string,
-  expectedVersion: number,
-  idempotencyKey: string,
-): Promise<StudySessionSnapshot> {
-  return transitionStudySession(id, 'stop', expectedVersion, idempotencyKey);
+export function stopStudySession(command: StudySessionTransitionRequest): Promise<StudySessionSnapshot> {
+  return transitionStudySession({ ...command, action: 'stop' });
 }
 
 async function transitionStudySession(
-  id: string,
-  action: 'pause' | 'resume' | 'stop',
-  expectedVersion: number,
-  idempotencyKey: string,
+  { id, action, expectedVersion, idempotencyKey }: StudySessionTransitionRequest & { action: StudySessionTransitionAction },
 ): Promise<StudySessionSnapshot> {
   const response = await getAuthenticatedHttpClient().post<StudySessionSnapshot>(
     `/sessions/${id}/${action}`,

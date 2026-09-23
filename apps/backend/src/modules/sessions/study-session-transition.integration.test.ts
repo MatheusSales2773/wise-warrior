@@ -8,7 +8,8 @@ import { User } from '../users/entities/user.entity';
 import { UsersService } from '../users/users.service';
 import { StudySession } from './entities/study-session.entity';
 import { StudySessionStartService } from './study-session-start.service';
-import { StudySessionTransitionService } from './study-session-transition.service';
+import { StudySessionTransitionService, type StudySessionTransitionContext } from './study-session-transition.service';
+import type { StudySessionCommandAction } from './domain/study-session-time';
 import { APPLICATION_MIGRATIONS, createIntegrationDatabase, type IntegrationDatabase } from '../../test/integration-database';
 
 async function expectConflictType(promise: Promise<unknown>, type: string): Promise<void> {
@@ -34,6 +35,19 @@ describe('Study Session transitions against MySQL', () => {
   const authSessionId = '00000000-0000-4000-8000-000000000072';
   const studySessionId = '00000000-0000-4000-8000-000000000073';
   const characterId = '00000000-0000-4000-8000-000000000075';
+  const transition = (
+    action: StudySessionCommandAction,
+    expectedVersion: number,
+    idempotencyKey: string,
+    overrides: Partial<StudySessionTransitionContext> = {},
+  ) => service[action]({
+    userId,
+    authSessionId,
+    studySessionId,
+    dto: { expectedVersion },
+    idempotencyKey,
+    ...overrides,
+  });
 
   beforeEach(async () => {
     database = await createIntegrationDatabase('wise_study_transition');
@@ -77,13 +91,13 @@ describe('Study Session transitions against MySQL', () => {
 
   it('freezes focus at pause and restores the same remaining time on resume', async () => {
     now = new Date(now.getTime() + 300_000);
-    const paused = await service.pause(userId, authSessionId, studySessionId, { expectedVersion: 1 }, 'pause-once');
+    const paused = await transition('pause', 1, 'pause-once');
 
     expect(paused).toMatchObject({ state: 'paused', remainingSeconds: 1500, durationValidSeconds: 300, pausedTotalSeconds: 0, version: 2 });
     expect(paused.serverNow).toEqual(now);
 
     now = new Date(now.getTime() + 600_000);
-    const resumed = await service.resume(userId, authSessionId, studySessionId, { expectedVersion: 2 }, 'resume-once');
+    const resumed = await transition('resume', 2, 'resume-once');
 
     expect(resumed).toMatchObject({ state: 'running', remainingSeconds: 1500, durationValidSeconds: 300, pausedTotalSeconds: 600, version: 3, xpAwarded: 0 });
     expect(resumed.runDeadlineAt).toEqual(new Date('2026-09-22T12:40:00.000Z'));
@@ -93,17 +107,17 @@ describe('Study Session transitions against MySQL', () => {
 
   it('returns the original receipt for retries and rejects stale versions and key reuse', async () => {
     now = new Date(now.getTime() + 300_000);
-    const paused = await service.pause(userId, authSessionId, studySessionId, { expectedVersion: 1 }, 'pause-once');
+    const paused = await transition('pause', 1, 'pause-once');
     now = new Date(now.getTime() + 60_000);
 
-    const replay = await service.pause(userId, authSessionId, studySessionId, { expectedVersion: 1 }, 'pause-once');
+    const replay = await transition('pause', 1, 'pause-once');
     expect(replay).toEqual(paused);
     await expectConflictType(
-      service.resume(userId, authSessionId, studySessionId, { expectedVersion: 1 }, 'stale-resume'),
+      transition('resume', 1, 'stale-resume'),
       'https://wise.app/errors/study-session-version-conflict',
     );
     await expectConflictType(
-      service.resume(userId, authSessionId, studySessionId, { expectedVersion: 1 }, 'pause-once'),
+      transition('resume', 1, 'pause-once'),
       'https://wise.app/errors/idempotency-key-reused',
     );
 
@@ -130,7 +144,7 @@ describe('Study Session transitions against MySQL', () => {
       discardedReason: null,
     });
     await expectConflictType(
-      service.pause(userId, authSessionId, anotherStudySessionId, { expectedVersion: 1 }, 'pause-once'),
+      transition('pause', 1, 'pause-once', { studySessionId: anotherStudySessionId }),
       'https://wise.app/errors/idempotency-key-reused',
     );
 
@@ -141,8 +155,8 @@ describe('Study Session transitions against MySQL', () => {
   it('serializes concurrent pause commands so exactly one version change wins', async () => {
     now = new Date(now.getTime() + 300_000);
     const results = await Promise.allSettled([
-      service.pause(userId, authSessionId, studySessionId, { expectedVersion: 1 }, 'pause-first'),
-      service.pause(userId, authSessionId, studySessionId, { expectedVersion: 1 }, 'pause-second'),
+      transition('pause', 1, 'pause-first'),
+      transition('pause', 1, 'pause-second'),
     ]);
 
     expect(results.filter((result) => result.status === 'fulfilled')).toHaveLength(1);
@@ -162,8 +176,8 @@ describe('Study Session transitions against MySQL', () => {
   it('returns one original receipt for concurrent retries with the same user key', async () => {
     now = new Date(now.getTime() + 300_000);
     const responses = await Promise.all([
-      service.pause(userId, authSessionId, studySessionId, { expectedVersion: 1 }, 'concurrent-same-key'),
-      service.pause(userId, authSessionId, studySessionId, { expectedVersion: 1 }, 'concurrent-same-key'),
+      transition('pause', 1, 'concurrent-same-key'),
+      transition('pause', 1, 'concurrent-same-key'),
     ]);
 
     expect(responses[1]).toEqual(responses[0]);
@@ -178,7 +192,7 @@ describe('Study Session transitions against MySQL', () => {
   it('cancels at 299 valid seconds with zero XP and keeps the audit record', async () => {
     now = new Date(now.getTime() + 299_999);
 
-    const result = await service.stop(userId, authSessionId, studySessionId, { expectedVersion: 1 }, 'cancel-at-299');
+    const result = await transition('stop', 1, 'cancel-at-299');
 
     expect(result).toMatchObject({
       state: 'cancelled', durationValidSeconds: 299, xpAwarded: 0,
@@ -196,19 +210,19 @@ describe('Study Session transitions against MySQL', () => {
   it('awards one proportional reward at 300 seconds and returns the same receipt on retry', async () => {
     now = new Date(now.getTime() + 300_000);
 
-    const result = await service.stop(userId, authSessionId, studySessionId, { expectedVersion: 1 }, 'stop-at-300');
+    const result = await transition('stop', 1, 'stop-at-300');
     const stoppedAt = now;
     now = new Date(now.getTime() + 5_000);
-    const replay = await service.stop(userId, authSessionId, studySessionId, { expectedVersion: 1 }, 'stop-at-300');
+    const replay = await transition('stop', 1, 'stop-at-300');
 
     expect(result).toMatchObject({ state: 'stopped_early', durationValidSeconds: 300, xpAwarded: 50, remainingSeconds: 0, version: 2 });
     expect(replay).toEqual(result);
     await expectConflictType(
-      service.stop(userId, authSessionId, studySessionId, { expectedVersion: 2 }, 'stop-at-300'),
+      transition('stop', 2, 'stop-at-300'),
       'https://wise.app/errors/idempotency-key-reused',
     );
     await expectConflictType(
-      service.stop(userId, authSessionId, studySessionId, { expectedVersion: 1 }, 'stop-stale-version'),
+      transition('stop', 1, 'stop-stale-version'),
       'https://wise.app/errors/study-session-version-conflict',
     );
     expect(await dataSource!.getRepository(Character).findOneByOrFail({ id: characterId })).toMatchObject({ xpTotal: 50 });
@@ -234,14 +248,14 @@ describe('Study Session transitions against MySQL', () => {
 
   it('freezes valid focus and pause totals when stopped from a repeatedly paused session', async () => {
     now = new Date(now.getTime() + 200_000);
-    await service.pause(userId, authSessionId, studySessionId, { expectedVersion: 1 }, 'pause-first');
+    await transition('pause', 1, 'pause-first');
     now = new Date(now.getTime() + 600_000);
-    await service.resume(userId, authSessionId, studySessionId, { expectedVersion: 2 }, 'resume-first');
+    await transition('resume', 2, 'resume-first');
     now = new Date(now.getTime() + 100_000);
-    await service.pause(userId, authSessionId, studySessionId, { expectedVersion: 3 }, 'pause-second');
+    await transition('pause', 3, 'pause-second');
     now = new Date(now.getTime() + 300_000);
 
-    const result = await service.stop(userId, authSessionId, studySessionId, { expectedVersion: 4 }, 'stop-paused');
+    const result = await transition('stop', 4, 'stop-paused');
 
     expect(result).toMatchObject({
       state: 'stopped_early', durationValidSeconds: 300, pausedTotalSeconds: 900,
@@ -254,7 +268,7 @@ describe('Study Session transitions against MySQL', () => {
     await dataSource!.getRepository(Character).update(characterId, { xpTotal: MAX_SUPPORTED_XP_TOTAL });
     now = new Date(now.getTime() + 300_000);
 
-    await expect(service.stop(userId, authSessionId, studySessionId, { expectedVersion: 1 }, 'stop-overflow'))
+    await expect(transition('stop', 1, 'stop-overflow'))
       .rejects.toThrow('total de XP excede o limite suportado');
 
     expect(await dataSource!.getRepository(StudySession).findOneByOrFail({ id: studySessionId }))
@@ -270,7 +284,7 @@ describe('Study Session transitions against MySQL', () => {
     now = new Date(now.getTime() + 1_800_000);
 
     await expectConflictType(
-      service.stop(userId, authSessionId, studySessionId, { expectedVersion: 1 }, 'stop-at-deadline'),
+      transition('stop', 1, 'stop-at-deadline'),
       'https://wise.app/errors/study-session-deadline-passed',
     );
 
@@ -285,8 +299,8 @@ describe('Study Session transitions against MySQL', () => {
     now = new Date(now.getTime() + 300_000);
 
     const results = await Promise.all([
-      service.stop(userId, authSessionId, studySessionId, { expectedVersion: 1 }, 'stop-concurrent'),
-      service.stop(userId, authSessionId, studySessionId, { expectedVersion: 1 }, 'stop-concurrent'),
+      transition('stop', 1, 'stop-concurrent'),
+      transition('stop', 1, 'stop-concurrent'),
     ]);
 
     expect(results[1]).toEqual(results[0]);
@@ -300,19 +314,19 @@ describe('Study Session transitions against MySQL', () => {
     await dataSource!.getRepository(StudySession).update(studySessionId, { state: 'completed' });
 
     await expectConflictType(
-      service.pause(userId, authSessionId, studySessionId, { expectedVersion: 1 }, 'terminal-pause'),
+      transition('pause', 1, 'terminal-pause'),
       'https://wise.app/errors/study-session-transition-not-allowed',
     );
   });
 
   it('rejects stop from another authenticated Session and from a terminal state', async () => {
     await expectConflictType(
-      service.stop(userId, 'another-device', studySessionId, { expectedVersion: 1 }, 'wrong-device-stop'),
+      transition('stop', 1, 'wrong-device-stop', { authSessionId: 'another-device' }),
       'https://wise.app/errors/study-session-not-controllable',
     );
     await dataSource!.getRepository(StudySession).update(studySessionId, { state: 'completed' });
     await expectConflictType(
-      service.stop(userId, authSessionId, studySessionId, { expectedVersion: 1 }, 'terminal-stop'),
+      transition('stop', 1, 'terminal-stop'),
       'https://wise.app/errors/study-session-transition-not-allowed',
     );
   });

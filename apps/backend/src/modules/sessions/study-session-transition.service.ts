@@ -22,6 +22,23 @@ import type { XpApplicationResult } from '../progression/domain/progression-poli
 
 export type StudySessionClock = { now(): Date };
 export const STUDY_SESSION_CLOCK = Symbol('STUDY_SESSION_CLOCK');
+export type StudySessionTransitionContext = {
+  userId: string;
+  authSessionId: string;
+  studySessionId: string;
+  dto: StudySessionTransitionDto;
+  idempotencyKey: string | undefined;
+};
+
+type StudySessionTransitionCommand = StudySessionTransitionContext & {
+  action: StudySessionCommandAction;
+};
+
+const TRANSITION_VERBS: Record<StudySessionCommandAction, string> = {
+  pause: 'pausar',
+  resume: 'retomar',
+  stop: 'encerrar',
+};
 
 type TransitionReceiptRow = {
   study_session_id: string;
@@ -47,43 +64,20 @@ export class StudySessionTransitionService {
     private readonly progression: ProgressionService,
   ) {}
 
-  pause(
-    userId: string,
-    authSessionId: string,
-    studySessionId: string,
-    dto: StudySessionTransitionDto,
-    idempotencyKey: string | undefined,
-  ): Promise<StudySessionSnapshot> {
-    return this.transition(userId, authSessionId, studySessionId, 'pause', dto, idempotencyKey);
+  pause(command: StudySessionTransitionContext): Promise<StudySessionSnapshot> {
+    return this.transition({ ...command, action: 'pause' });
   }
 
-  resume(
-    userId: string,
-    authSessionId: string,
-    studySessionId: string,
-    dto: StudySessionTransitionDto,
-    idempotencyKey: string | undefined,
-  ): Promise<StudySessionSnapshot> {
-    return this.transition(userId, authSessionId, studySessionId, 'resume', dto, idempotencyKey);
+  resume(command: StudySessionTransitionContext): Promise<StudySessionSnapshot> {
+    return this.transition({ ...command, action: 'resume' });
   }
 
-  stop(
-    userId: string,
-    authSessionId: string,
-    studySessionId: string,
-    dto: StudySessionTransitionDto,
-    idempotencyKey: string | undefined,
-  ): Promise<StudySessionSnapshot> {
-    return this.transition(userId, authSessionId, studySessionId, 'stop', dto, idempotencyKey);
+  stop(command: StudySessionTransitionContext): Promise<StudySessionSnapshot> {
+    return this.transition({ ...command, action: 'stop' });
   }
 
   private async transition(
-    userId: string,
-    authSessionId: string,
-    studySessionId: string,
-    action: StudySessionCommandAction,
-    dto: StudySessionTransitionDto,
-    idempotencyKey: string | undefined,
+    { userId, authSessionId, studySessionId, action, dto, idempotencyKey }: StudySessionTransitionCommand,
   ): Promise<StudySessionSnapshot> {
     if (!isValidIdempotencyKey(idempotencyKey)) {
       throw new BadRequestException({
@@ -150,10 +144,10 @@ export class StudySessionTransitionService {
       }
 
       const now = this.clock.now();
-      let xpGained = 0;
+      let stopResult: ReturnType<typeof applyStudySessionStop> | null = null;
       try {
         if (action === 'stop') {
-          xpGained = applyStudySessionStop(session, now).xpAwarded;
+          stopResult = applyStudySessionStop(session, now);
         } else {
           applyStudySessionTransition(session, action, now);
         }
@@ -164,20 +158,20 @@ export class StudySessionTransitionService {
           type: expired ? problemTypes.deadlinePassed : problemTypes.transitionNotAllowed,
           message: expired
             ? 'O prazo canônico da Study Session já terminou'
-            : `Não é possível ${action === 'pause' ? 'pausar' : action === 'resume' ? 'retomar' : 'encerrar'} a Study Session no estado atual`,
+            : `Não é possível ${TRANSITION_VERBS[action]} a Study Session no estado atual`,
         });
       }
 
       const saved = await sessions.save(session);
       const snapshot = studySessionSnapshot(saved, authSessionId, now);
       let progressionResult: XpApplicationResult | null = null;
-      if (action === 'stop') {
+      if (stopResult) {
         await manager.query(
           'DELETE FROM active_study_sessions WHERE user_id = ? AND study_session_id = ?',
           [userId, studySessionId],
         );
-        if (xpGained > 0) {
-          progressionResult = await this.progression.awardXpInTransaction(manager, userId, xpGained);
+        if (stopResult.xpAwarded > 0) {
+          progressionResult = await this.progression.awardXpInTransaction(manager, userId, stopResult.xpAwarded);
         }
       }
       await manager.query(
@@ -186,7 +180,7 @@ export class StudySessionTransitionService {
          VALUES (?, ?, ?, ?, ?, ?)`,
         [userId, studySessionId, idempotencyKey, action, dto.expectedVersion, JSON.stringify(snapshot)],
       );
-      return { snapshot, xpGained, progressionResult };
+      return { snapshot, xpGained: stopResult?.xpAwarded ?? 0, progressionResult };
     });
 
     if (result.progressionResult) {
