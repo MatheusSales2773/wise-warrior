@@ -739,7 +739,7 @@ components:
         version: { type: integer, minimum: 1 }
         endedAt: { type: [string, "null"], format: date-time }
         xpAwarded: { type: integer, minimum: 0 }
-        terminalReason: { type: [string, "null"] }
+        terminalReason: { type: [string, "null"], enum: [manual-stop, legacy-session-without-owner, null] }
         discardedReason: { type: [string, "null"] }
         canControl: { type: boolean }
 

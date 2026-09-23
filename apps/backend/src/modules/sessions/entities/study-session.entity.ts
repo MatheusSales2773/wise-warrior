@@ -12,6 +12,7 @@ import { Raid } from '../../raids/entities/raid.entity';
 
 export type StudySessionMode = 'solo' | 'guild';
 export type StudySessionState = 'running' | 'paused' | 'completed' | 'stopped_early' | 'cancelled' | 'discarded';
+export type StudySessionTerminalReason = 'manual-stop' | 'legacy-session-without-owner';
 
 @Entity('study_sessions')
 @Index('IDX_study_sessions_user_id_started_at', ['userId', 'startedAt'])
@@ -70,7 +71,7 @@ export class StudySession {
   version: number;
 
   @Column({ name: 'terminal_reason', type: 'varchar', length: 120, nullable: true })
-  terminalReason?: string | null;
+  terminalReason?: StudySessionTerminalReason | null;
 
   @Column({ name: 'initiating_session_id', type: 'varchar', length: 36, nullable: true })
   initiatingSessionId?: string | null;

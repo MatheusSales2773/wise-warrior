@@ -2,7 +2,7 @@ import { BadRequestException, ConflictException, Injectable } from '@nestjs/comm
 import { DataSource, In } from 'typeorm';
 import { UsersService } from '../users/users.service';
 import { StudySession } from './entities/study-session.entity';
-import type { StudySessionState } from './entities/study-session.entity';
+import type { StudySessionState, StudySessionTerminalReason } from './entities/study-session.entity';
 import type { StartSessionDto } from './dto/start-session.dto';
 import { isStudySessionPreset } from './domain/study-session-presets';
 import { getStudySessionTime } from './domain/study-session-time';
@@ -24,7 +24,7 @@ export type StudySessionSnapshot = {
   version: number;
   endedAt: Date | null;
   xpAwarded: number;
-  terminalReason: string | null;
+  terminalReason: StudySessionTerminalReason | null;
   discardedReason: string | null;
   canControl: boolean;
 };

@@ -18,7 +18,7 @@ export type StudySessionSnapshot = {
   version: number;
   endedAt: string | null;
   xpAwarded: number;
-  terminalReason: string | null;
+  terminalReason: 'manual-stop' | 'legacy-session-without-owner' | null;
   discardedReason: string | null;
   canControl: boolean;
   receivedAtMs: number;

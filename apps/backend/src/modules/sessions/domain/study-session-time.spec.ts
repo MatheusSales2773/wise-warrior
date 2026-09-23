@@ -4,6 +4,7 @@ import {
   getStudySessionTime,
   StudySessionTransitionPolicyError,
 } from './study-session-time';
+import type { StudySessionTerminalReason } from '../entities/study-session.entity';
 
 describe('Study Session pause and resume timing', () => {
   const start = new Date('2026-09-22T12:00:00.000Z');
@@ -18,7 +19,7 @@ describe('Study Session pause and resume timing', () => {
     durationValidSeconds: 0,
     version: 1,
     endedAt: null as Date | null,
-    terminalReason: null as string | null,
+    terminalReason: null as StudySessionTerminalReason | null,
     xpAwarded: 0,
   });
 

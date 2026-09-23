@@ -1,4 +1,4 @@
-import type { StudySessionState } from '../entities/study-session.entity';
+import type { StudySessionState, StudySessionTerminalReason } from '../entities/study-session.entity';
 import { xpForDuration } from './xp-rate';
 
 const MILLISECONDS_PER_SECOND = 1000;
@@ -14,7 +14,7 @@ export type StudySessionTimeFields = {
   durationValidSeconds?: number | null;
   version?: number | null;
   endedAt?: Date | null;
-  terminalReason?: string | null;
+  terminalReason?: StudySessionTerminalReason | null;
   xpAwarded?: number | null;
 };
 
