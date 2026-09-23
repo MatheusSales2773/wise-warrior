@@ -370,6 +370,19 @@ describe('TypeORM migrations against an empty MySQL schema', () => {
     );
 
     await dataSource.undoLastMigration();
+    const afterPauseResumeRevertRows = await rows(
+      database!.admin,
+      `SELECT TABLE_NAME FROM information_schema.TABLES
+       WHERE TABLE_SCHEMA = ? AND TABLE_NAME <> 'migrations' ORDER BY TABLE_NAME`,
+      [database!.name],
+    );
+    expect(afterPauseResumeRevertRows.map((row) => row.TABLE_NAME)).toEqual(
+      expectedTables
+        .filter((tableName) => !['study_session_transition_receipts', 'study_session_command_keys'].includes(tableName))
+        .sort(),
+    );
+
+    await dataSource.undoLastMigration();
     const afterCanonicalRevertRows = await rows(
       database!.admin,
       `SELECT TABLE_NAME FROM information_schema.TABLES
@@ -377,10 +390,16 @@ describe('TypeORM migrations against an empty MySQL schema', () => {
       [database!.name],
     );
     expect(afterCanonicalRevertRows.map((row) => row.TABLE_NAME)).toEqual(
-      expectedTables.filter((tableName) => !['active_study_sessions', 'study_session_start_receipts', 'study_session_transition_receipts', 'study_session_command_keys'].includes(tableName)).sort(),
+      expectedTables
+        .filter((tableName) => ![
+          'active_study_sessions',
+          'study_session_start_receipts',
+          'study_session_transition_receipts',
+          'study_session_command_keys',
+        ].includes(tableName))
+        .sort(),
     );
 
-    await dataSource.undoLastMigration();
     await dataSource.undoLastMigration();
     await dataSource.undoLastMigration();
     const afterHistoryRevertRows = await rows(
@@ -604,6 +623,7 @@ describe('TypeORM migrations against an empty MySQL schema', () => {
        VALUES (?, ?, ?, ?, ?, CAST(? AS JSON))`,
       ['existing-user', 'solo-running', 'solo-transition-key', 'pause', 1, JSON.stringify({ id: 'solo-running', state: 'paused' })],
     );
+    await dataSource.undoLastMigration();
     await dataSource.undoLastMigration();
     await dataSource.undoLastMigration();
     const downgradedHistory = await rows(
