@@ -465,19 +465,88 @@ paths:
 
   /sessions/{id}/complete:
     post:
-      summary: Encerra a sessão e aplica a validação antifraude + XP
+      summary: Confirma a conclusão integral de uma Study Session canônica
+      description: >
+        A confirmação automática só é aceita quando o prazo canônico de foco
+        foi alcançado. O servidor limita o foco à duração planejada, aplica a
+        validação antifraude e atualiza sessão, progressão, referência ativa e
+        recibo idempotente em uma única transação. Repetir a mesma chave e
+        expectedVersion devolve o snapshot original. Registros legados sem
+        estado canônico preservam o comportamento anterior.
       operationId: completeStudySession
       tags: [Sessions]
       parameters:
         - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 128
+            pattern: '^[!-~]{1,128}$'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/StudySessionTransitionRequest" }
       responses:
         "200":
-          description: Resultado da sessão (pode ter sido descartada — ver discardedReason)
+          description: Snapshot terminal canônico completed ou discarded
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/StudySession" }
+              schema: { $ref: "#/components/schemas/StudySessionSnapshot" }
         "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: >
+            Conclusão precoce, versão obsoleta, transição inválida, Session sem
+            controle ou reutilização incompatível de Idempotency-Key.
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+              examples:
+                completionTooEarly:
+                  summary: O prazo canônico ainda não foi alcançado
+                  value:
+                    type: https://wise.app/errors/study-session-completion-too-early
+                    title: Conflict
+                    status: 409
+                    detail: O prazo canônico da Study Session ainda não foi alcançado
+                    instance: /sessions/{id}/complete
+                versionConflict:
+                  summary: A versão esperada está obsoleta
+                  value:
+                    type: https://wise.app/errors/study-session-version-conflict
+                    title: Conflict
+                    status: 409
+                    detail: A Study Session mudou desde a última confirmação
+                    instance: /sessions/{id}/complete
+                transitionNotAllowed:
+                  summary: O estado atual não permite conclusão
+                  value:
+                    type: https://wise.app/errors/study-session-transition-not-allowed
+                    title: Conflict
+                    status: 409
+                    detail: Não é possível concluir a Study Session no estado atual
+                    instance: /sessions/{id}/complete
+                notControllable:
+                  summary: A Session autenticada não iniciou o foco
+                  value:
+                    type: https://wise.app/errors/study-session-not-controllable
+                    title: Conflict
+                    status: 409
+                    detail: Esta Study Session só pode ser controlada pela Session que a iniciou
+                    instance: /sessions/{id}/complete
+                idempotencyKeyReused:
+                  summary: A chave já foi usada para outro comando
+                  value:
+                    type: https://wise.app/errors/idempotency-key-reused
+                    title: Conflict
+                    status: 409
+                    detail: Idempotency-Key já foi usada com outra transição
+                    instance: /sessions/{id}/complete
 
   /guilds:
     post:
@@ -739,7 +808,7 @@ components:
         version: { type: integer, minimum: 1 }
         endedAt: { type: [string, "null"], format: date-time }
         xpAwarded: { type: integer, minimum: 0 }
-        terminalReason: { type: [string, "null"], enum: [manual-stop, legacy-session-without-owner, null] }
+        terminalReason: { type: [string, "null"], enum: [manual-stop, auto-complete, legacy-session-without-owner, null] }
         discardedReason: { type: [string, "null"] }
         canControl: { type: boolean }
 

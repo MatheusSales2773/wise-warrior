@@ -2,6 +2,7 @@ import {
   MAX_CONTINUOUS_SESSION_SECONDS,
   MAX_DAILY_SECONDS,
   validateSessionDuration,
+  validateStudySessionFocusSeconds,
 } from './session-validator';
 
 const START = new Date('2026-08-21T10:00:00Z');
@@ -77,5 +78,22 @@ describe('validateSessionDuration', () => {
         priorDailySeconds: -1,
       }),
     ).toThrow();
+  });
+});
+
+describe('validateStudySessionFocusSeconds', () => {
+  it('validates focus seconds directly without wall-clock timestamps', () => {
+    expect(validateStudySessionFocusSeconds(900, 0)).toEqual({
+      durationSeconds: 900,
+      validSeconds: 900,
+      discardedReason: null,
+    });
+  });
+
+  it('applies continuous and daily limits to focus seconds', () => {
+    expect(validateStudySessionFocusSeconds(MAX_CONTINUOUS_SESSION_SECONDS + 1, 0).discardedReason)
+      .toBe('continuous-session-exceeds-limit');
+    expect(validateStudySessionFocusSeconds(900, MAX_DAILY_SECONDS - 899).discardedReason)
+      .toBe('daily-limit-exceeded');
   });
 });

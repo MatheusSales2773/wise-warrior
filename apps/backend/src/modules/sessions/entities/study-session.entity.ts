@@ -12,7 +12,7 @@ import { Raid } from '../../raids/entities/raid.entity';
 
 export type StudySessionMode = 'solo' | 'guild';
 export type StudySessionState = 'running' | 'paused' | 'completed' | 'stopped_early' | 'cancelled' | 'discarded';
-export type StudySessionTerminalReason = 'manual-stop' | 'legacy-session-without-owner';
+export type StudySessionTerminalReason = 'manual-stop' | 'auto-complete' | 'legacy-session-without-owner';
 
 @Entity('study_sessions')
 @Index('IDX_study_sessions_user_id_started_at', ['userId', 'startedAt'])

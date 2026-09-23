@@ -1,5 +1,6 @@
 import type { StudySessionState, StudySessionTerminalReason } from '../entities/study-session.entity';
 import { xpForDuration } from './xp-rate';
+import { validateStudySessionFocusSeconds, type DiscardReason } from './session-validator';
 
 const MILLISECONDS_PER_SECOND = 1000;
 
@@ -15,12 +16,13 @@ export type StudySessionTimeFields = {
   version?: number | null;
   endedAt?: Date | null;
   terminalReason?: StudySessionTerminalReason | null;
+  discardedReason?: string | null;
   xpAwarded?: number | null;
 };
 
 export type StudySessionTransitionAction = 'pause' | 'resume';
-export type StudySessionCommandAction = StudySessionTransitionAction | 'stop';
-export type StudySessionTransitionFailure = 'invalid-state' | 'deadline-passed';
+export type StudySessionCommandAction = StudySessionTransitionAction | 'stop' | 'complete';
+export type StudySessionTransitionFailure = 'invalid-state' | 'deadline-passed' | 'completion-too-early';
 
 export class StudySessionTransitionPolicyError extends Error {
   constructor(readonly reason: StudySessionTransitionFailure) {
@@ -41,7 +43,23 @@ export type StudySessionStopResult = {
   xpAwarded: number;
 };
 
+export type StudySessionCompletionResult = {
+  state: 'completed' | 'discarded';
+  durationValidSeconds: number;
+  xpAwarded: number;
+  discardedReason: DiscardReason | null;
+};
+
 export function getStudySessionTime(session: StudySessionTimeFields, now: Date): StudySessionTime {
+  if (isTerminalStudySessionState(session.state)) {
+    const pausedTotalMilliseconds = getRecordedPausedMilliseconds(session);
+    return {
+      remainingSeconds: 0,
+      durationValidSeconds: session.durationValidSeconds ?? 0,
+      pausedTotalSeconds: session.pausedTotalSeconds ?? Math.floor(pausedTotalMilliseconds / MILLISECONDS_PER_SECOND),
+    };
+  }
+
   const recordedPausedMilliseconds = getRecordedPausedMilliseconds(session);
   const currentPauseMilliseconds = session.state === 'paused' && session.pausedAt
     ? Math.max(0, now.getTime() - session.pausedAt.getTime())
@@ -148,6 +166,59 @@ export function applyStudySessionStop(
   session.version = (session.version ?? 1) + 1;
 
   return { state: nextState, durationValidSeconds: time.durationValidSeconds, xpAwarded };
+}
+
+export function applyStudySessionComplete(
+  session: StudySessionTimeFields,
+  now: Date,
+  priorDailySeconds: number,
+): StudySessionCompletionResult {
+  if (
+    session.state !== 'running'
+    || !session.plannedDurationSeconds
+    || !session.runDeadlineAt
+  ) {
+    throw new StudySessionTransitionPolicyError('invalid-state');
+  }
+
+  const time = getStudySessionTime(session, now);
+  const focusCandidateSeconds = Math.min(session.plannedDurationSeconds, time.durationValidSeconds);
+  if (
+    now.getTime() < session.runDeadlineAt.getTime()
+    || focusCandidateSeconds < session.plannedDurationSeconds
+  ) {
+    throw new StudySessionTransitionPolicyError('completion-too-early');
+  }
+
+  const validation = validateStudySessionFocusSeconds(focusCandidateSeconds, priorDailySeconds);
+  const discarded = validation.discardedReason !== null;
+  const totalPausedMilliseconds = getRecordedPausedMilliseconds(session);
+  const result: StudySessionCompletionResult = {
+    state: discarded ? 'discarded' : 'completed',
+    durationValidSeconds: discarded ? 0 : session.plannedDurationSeconds,
+    xpAwarded: discarded ? 0 : xpForDuration(session.plannedDurationSeconds),
+    discardedReason: validation.discardedReason,
+  };
+
+  session.state = result.state;
+  session.endedAt = now;
+  session.pausedAt = null;
+  session.pausedTotalMilliseconds = totalPausedMilliseconds;
+  session.pausedTotalSeconds = Math.floor(totalPausedMilliseconds / MILLISECONDS_PER_SECOND);
+  session.durationValidSeconds = result.durationValidSeconds;
+  session.xpAwarded = result.xpAwarded;
+  session.terminalReason = 'auto-complete';
+  session.discardedReason = result.discardedReason;
+  session.version = (session.version ?? 1) + 1;
+
+  return result;
+}
+
+function isTerminalStudySessionState(state: StudySessionState | null | undefined): boolean {
+  return state === 'completed'
+    || state === 'stopped_early'
+    || state === 'cancelled'
+    || state === 'discarded';
 }
 
 function getRecordedPausedMilliseconds(session: StudySessionTimeFields): number {
