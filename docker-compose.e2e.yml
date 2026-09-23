@@ -1,6 +1,7 @@
 services:
   mysql:
     image: mysql:8.0
+    command: ["--log-bin-trust-function-creators=1"]
     environment:
       MYSQL_DATABASE: wise_e2e
       MYSQL_USER: wise
@@ -22,6 +23,8 @@ services:
       timeout: 5s
       retries: 20
       start_period: 15s
+    ports:
+      - "127.0.0.1:${E2E_DB_PORT:?E2E_DB_PORT is required}:3306"
 
   backend:
     build:

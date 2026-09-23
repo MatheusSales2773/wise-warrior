@@ -168,4 +168,55 @@ describe('recent study sessions against MySQL', () => {
       date: today, sessionCount: 2, validSeconds: 1380, intensity: 2,
     });
   });
+
+  it('keeps all canonical terminal states auditable while counting only eligible focus', async () => {
+    database = await createIntegrationDatabase('wise_sessions_terminals');
+    dataSource = new DataSource(database.options(APPLICATION_MIGRATIONS));
+    await dataSource.initialize();
+    await dataSource.runMigrations();
+
+    const userId = '00000000-0000-4000-8000-000000000082';
+    await dataSource.getRepository(User).insert({
+      id: userId, email: 'terminal-states@example.com', passwordHash: 'hash',
+      displayName: 'Terminal States', planTier: 'free',
+    });
+    const sessionRepository = dataSource.getRepository(StudySession);
+    const endedAt = new Date('2026-09-23T12:00:00.000Z');
+    await sessionRepository.insert([
+      {
+        id: '00000000-0000-4000-8000-000000000083', userId, subject: null, mode: 'solo',
+        startedAt: new Date(endedAt.getTime() - 2_100_000), endedAt: new Date(endedAt.getTime() - 600_000),
+        state: 'completed', durationValidSeconds: 1500, xpAwarded: 250, discardedReason: null,
+      },
+      {
+        id: '00000000-0000-4000-8000-000000000084', userId, subject: null, mode: 'solo',
+        startedAt: new Date(endedAt.getTime() - 1_000_000), endedAt: new Date(endedAt.getTime() - 400_000),
+        state: 'stopped_early', durationValidSeconds: 600, xpAwarded: 100, discardedReason: null,
+      },
+      {
+        id: '00000000-0000-4000-8000-000000000085', userId, subject: null, mode: 'solo',
+        startedAt: new Date(endedAt.getTime() - 300_000), endedAt: new Date(endedAt.getTime() - 1_000),
+        state: 'cancelled', durationValidSeconds: 299, xpAwarded: 0, discardedReason: null,
+      },
+      {
+        id: '00000000-0000-4000-8000-000000000086', userId, subject: null, mode: 'solo',
+        startedAt: new Date(endedAt.getTime() - 900_000), endedAt,
+        state: 'discarded', durationValidSeconds: 0, xpAwarded: 0,
+        discardedReason: 'daily-limit-exceeded',
+      },
+    ]);
+
+    const service = new SessionsService(sessionRepository, {} as ProgressionService, {} as RaidsService);
+    const recent = await service.recent(userId);
+    expect(recent.map((session) => session.state)).toEqual([
+      'discarded', 'cancelled', 'stopped_early', 'completed',
+    ]);
+    expect(recent.every((session) => session.subject === null)).toBe(true);
+    expect(recent.find((session) => session.state === 'discarded'))
+      .toMatchObject({ xpAwarded: 0, discardedReason: 'daily-limit-exceeded' });
+
+    const metrics = await service.metrics(userId, endedAt);
+    expect(metrics).toMatchObject({ sessionsToday: 2, validSecondsToday: 2100 });
+    expect(metrics.cadence.days.at(-1)).toMatchObject({ sessionCount: 2, validSeconds: 2100 });
+  });
 });

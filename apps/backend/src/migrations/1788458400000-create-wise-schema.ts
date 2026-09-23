@@ -383,8 +383,7 @@ export class CreateWiseSchema1788458400000 implements MigrationInterface {
   }
 
   public async down(queryRunner: QueryRunner): Promise<void> {
-    await queryRunner.query('DROP TABLE IF EXISTS study_session_start_receipts_downgrade_archive');
-    await queryRunner.query('DROP TABLE IF EXISTS study_session_m5_downgrade_archive');
+    // These archives may hold M5 records that cannot be represented in the legacy schema.
     for (const table of [
       'guild_chat_messages',
       'raid_contributions',

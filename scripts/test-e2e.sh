@@ -20,6 +20,7 @@ port_is_available() {
 
 find_free_port() {
   local excluded="${1:-}"
+  local excluded_additional="${2:-}"
   local candidate
 
   while true; do
@@ -33,7 +34,9 @@ find_free_port() {
         server.close(() => process.exit(0));
       });
     ")"
-    if [[ "${candidate}" != "${excluded}" ]] && port_is_available "${candidate}"; then
+    if [[ "${candidate}" != "${excluded}" ]] \
+      && [[ "${candidate}" != "${excluded_additional}" ]] \
+      && port_is_available "${candidate}"; then
       printf '%s\n' "${candidate}"
       return 0
     fi
@@ -60,6 +63,14 @@ fi
 if [[ -n "${E2E_FRONTEND_PORT:-}" ]]; then
   validate_explicit_port "${frontend_port}"
 fi
+if [[ -n "${E2E_DB_PORT:-}" ]]; then
+  validate_explicit_port "${E2E_DB_PORT}"
+fi
+readonly database_port="${E2E_DB_PORT:-$(find_free_port "${backend_port}" "${frontend_port}")}"
+if [[ "${database_port}" == "${backend_port}" ]] || [[ "${database_port}" == "${frontend_port}" ]]; then
+  printf 'E2E backend, frontend, and database ports must be distinct.\n' >&2
+  exit 1
+fi
 
 readonly base_url="${E2E_BASE_URL:-https://127.0.0.1:${frontend_port}}"
 readonly api_url="${E2E_API_URL:-${base_url}/api/v1}"
@@ -82,6 +93,9 @@ cleanup() {
   local status=$?
   if [[ "${status}" -ne 0 ]]; then
     capture_failure_diagnostics
+    printf 'E2E Compose diagnostics:\n' >&2
+    cat "${repository_root}/apps/frontend/test-results/compose-ps.txt" \
+      "${repository_root}/apps/frontend/test-results/compose-logs.txt" >&2 || true
   fi
   COMPOSE_PROJECT_NAME="${compose_project}" docker compose \
     --file "${compose_file}" \
@@ -104,6 +118,7 @@ cd "${repository_root}"
 export COMPOSE_PROJECT_NAME="${compose_project}"
 export E2E_BACKEND_PORT="${backend_port}"
 export E2E_FRONTEND_PORT="${frontend_port}"
+export E2E_DB_PORT="${database_port}"
 export E2E_BASE_URL="${base_url}"
 export E2E_API_URL="${api_url}"
 export E2E_TLS_DIR="${tls_dir}"

@@ -189,6 +189,21 @@ describe('Study Session transitions against MySQL', () => {
     expect(receipts).toHaveLength(1);
   });
 
+  it('replays a transition snapshot after later transitions without refreshing its original fields', async () => {
+    now = new Date(now.getTime() + 300_000);
+    const paused = await transition('pause', 1, 'pause-before-resume');
+    now = new Date(now.getTime() + 60_000);
+    const resumed = await transition('resume', 2, 'resume-after-pause');
+    now = new Date(now.getTime() + 5_000);
+
+    await expect(transition('pause', 1, 'pause-before-resume')).resolves.toEqual(paused);
+    expect(paused.serverNow).not.toEqual(resumed.serverNow);
+    expect(await dataSource!.getRepository(StudySession).findOneByOrFail({ id: studySessionId }))
+      .toMatchObject({ state: 'running', version: 3, pausedTotalSeconds: 60, durationValidSeconds: 300 });
+    expect(await dataSource!.getRepository(Character).findOneByOrFail({ id: characterId }))
+      .toMatchObject({ xpTotal: 0 });
+  });
+
   it('rejects an early automatic completion, then atomically completes and replays the terminal snapshot', async () => {
     const deadline = new Date(now.getTime() + 1_500_000);
     await dataSource!.getRepository(StudySession).update(studySessionId, {
@@ -262,6 +277,39 @@ describe('Study Session transitions against MySQL', () => {
     expect(await dataSource!.getRepository(StudySession).findOneByOrFail({ id: studySessionId }))
       .toMatchObject({ state: 'completed', durationValidSeconds: 900, xpAwarded: 150, version: 2 });
     expect(await dataSource!.getRepository(Character).findOneByOrFail({ id: characterId })).toMatchObject({ xpTotal: 150 });
+    expect(await dataSource!.query('SELECT * FROM active_study_sessions WHERE user_id = ?', [userId])).toHaveLength(0);
+    expect(await dataSource!.query('SELECT * FROM study_session_transition_receipts WHERE user_id = ?', [userId])).toHaveLength(1);
+    expect(realtime.emitToUser).toHaveBeenCalledTimes(1);
+  });
+
+  it('serializes stop against automatic completion at the canonical deadline', async () => {
+    const deadline = new Date(now.getTime() + 900_000);
+    await dataSource!.getRepository(StudySession).update(studySessionId, {
+      plannedDurationSeconds: 900,
+      runDeadlineAt: deadline,
+    });
+    now = deadline;
+
+    const results = await Promise.allSettled([
+      transition('stop', 1, 'stop-at-completion-boundary'),
+      transition('complete', 1, 'complete-at-stop-boundary'),
+    ]);
+
+    const fulfilled = results.filter((result): result is PromiseFulfilledResult<Awaited<ReturnType<typeof service.complete>>> => result.status === 'fulfilled');
+    const rejected = results.find((result): result is PromiseRejectedResult => result.status === 'rejected');
+    expect(fulfilled).toHaveLength(1);
+    expect(fulfilled[0]!.value).toMatchObject({ state: 'completed', durationValidSeconds: 900, xpAwarded: 150, version: 2 });
+    expect(rejected?.reason).toBeInstanceOf(ConflictException);
+    const rejectionType = (rejected!.reason as ConflictException).getResponse() as { type: string };
+    expect([
+      'https://wise.app/errors/study-session-deadline-passed',
+      'https://wise.app/errors/study-session-version-conflict',
+    ]).toContain(rejectionType.type);
+    expect(await dataSource!.getRepository(StudySession).findOneByOrFail({ id: studySessionId }))
+      .toMatchObject({ state: 'completed', durationValidSeconds: 900, xpAwarded: 150, version: 2 });
+    expect(await dataSource!.getRepository(Character).findOneByOrFail({ id: characterId })).toMatchObject({ xpTotal: 150 });
+    expect(await dataSource!.query('SELECT * FROM active_study_sessions WHERE user_id = ?', [userId])).toHaveLength(0);
+    expect(await dataSource!.query('SELECT * FROM study_session_transition_receipts WHERE user_id = ?', [userId])).toHaveLength(1);
     expect(realtime.emitToUser).toHaveBeenCalledTimes(1);
   });
 
@@ -392,18 +440,43 @@ describe('Study Session transitions against MySQL', () => {
   });
 
   it('rolls back the session, active reference and receipt when progression cannot grant XP', async () => {
+    const studySessionBefore = await dataSource!.getRepository(StudySession).findOneByOrFail({ id: studySessionId });
+    const characterBefore = await dataSource!.getRepository(Character).findOneByOrFail({ id: characterId });
     await dataSource!.getRepository(Character).update(characterId, { xpTotal: MAX_SUPPORTED_XP_TOTAL });
+    const characterAtLimit = await dataSource!.getRepository(Character).findOneByOrFail({ id: characterId });
     now = new Date(now.getTime() + 300_000);
 
     await expect(transition('stop', 1, 'stop-overflow'))
       .rejects.toThrow('total de XP excede o limite suportado');
 
-    expect(await dataSource!.getRepository(StudySession).findOneByOrFail({ id: studySessionId }))
-      .toMatchObject({ state: 'running', version: 1, durationValidSeconds: 0, xpAwarded: 0, endedAt: null });
+    expect(await dataSource!.getRepository(StudySession).findOneByOrFail({ id: studySessionId })).toEqual(studySessionBefore);
     expect(await dataSource!.query('SELECT * FROM active_study_sessions WHERE user_id = ?', [userId])).toHaveLength(1);
     expect(await dataSource!.query('SELECT * FROM study_session_transition_receipts WHERE user_id = ?', [userId])).toHaveLength(0);
-    expect(await dataSource!.getRepository(Character).findOneByOrFail({ id: characterId }))
-      .toMatchObject({ xpTotal: MAX_SUPPORTED_XP_TOTAL });
+    expect(await dataSource!.query('SELECT * FROM study_session_command_keys WHERE user_id = ?', [userId])).toHaveLength(0);
+    expect(characterBefore.level).toBe(characterAtLimit.level);
+    expect(await dataSource!.getRepository(Character).findOneByOrFail({ id: characterId })).toEqual(characterAtLimit);
+    expect(realtime.emitToUser).not.toHaveBeenCalled();
+  });
+
+  it('rolls back automatic completion, XP, active reference and receipt when progression fails', async () => {
+    const deadline = new Date(now.getTime() + 900_000);
+    await dataSource!.getRepository(StudySession).update(studySessionId, {
+      plannedDurationSeconds: 900,
+      runDeadlineAt: deadline,
+    });
+    await dataSource!.getRepository(Character).update(characterId, { xpTotal: MAX_SUPPORTED_XP_TOTAL });
+    const studySessionBefore = await dataSource!.getRepository(StudySession).findOneByOrFail({ id: studySessionId });
+    const characterBefore = await dataSource!.getRepository(Character).findOneByOrFail({ id: characterId });
+    now = deadline;
+
+    await expect(transition('complete', 1, 'complete-overflow'))
+      .rejects.toThrow('total de XP excede o limite suportado');
+
+    expect(await dataSource!.getRepository(StudySession).findOneByOrFail({ id: studySessionId })).toEqual(studySessionBefore);
+    expect(await dataSource!.getRepository(Character).findOneByOrFail({ id: characterId })).toEqual(characterBefore);
+    expect(await dataSource!.query('SELECT * FROM active_study_sessions WHERE user_id = ?', [userId])).toHaveLength(1);
+    expect(await dataSource!.query('SELECT * FROM study_session_transition_receipts WHERE user_id = ?', [userId])).toHaveLength(0);
+    expect(await dataSource!.query('SELECT * FROM study_session_command_keys WHERE user_id = ?', [userId])).toHaveLength(0);
     expect(realtime.emitToUser).not.toHaveBeenCalled();
   });
 
@@ -435,6 +508,29 @@ describe('Study Session transitions against MySQL', () => {
     expect(await dataSource!.getRepository(Character).findOneByOrFail({ id: characterId })).toMatchObject({ xpTotal: 50 });
     expect(realtime.emitToUser).toHaveBeenCalledTimes(1);
     expect(await dataSource!.query('SELECT * FROM study_session_transition_receipts WHERE user_id = ?', [userId])).toHaveLength(1);
+  });
+
+  it('serializes concurrent stops with distinct keys into one terminal result and one XP grant', async () => {
+    now = new Date(now.getTime() + 300_000);
+
+    const results = await Promise.allSettled([
+      transition('stop', 1, 'stop-unique-a'),
+      transition('stop', 1, 'stop-unique-b'),
+    ]);
+
+    expect(results.filter((result) => result.status === 'fulfilled')).toHaveLength(1);
+    const rejected = results.find((result): result is PromiseRejectedResult => result.status === 'rejected');
+    expect(rejected?.reason).toBeInstanceOf(ConflictException);
+    expect((rejected!.reason as ConflictException).getResponse()).toMatchObject({
+      type: 'https://wise.app/errors/study-session-version-conflict',
+    });
+    expect(await dataSource!.getRepository(StudySession).findOneByOrFail({ id: studySessionId }))
+      .toMatchObject({ state: 'stopped_early', durationValidSeconds: 300, xpAwarded: 50, version: 2 });
+    expect(await dataSource!.getRepository(Character).findOneByOrFail({ id: characterId })).toMatchObject({ xpTotal: 50 });
+    expect(await dataSource!.query('SELECT * FROM active_study_sessions WHERE user_id = ?', [userId])).toHaveLength(0);
+    expect(await dataSource!.query('SELECT * FROM study_session_transition_receipts WHERE user_id = ?', [userId])).toHaveLength(1);
+    expect(await dataSource!.query('SELECT * FROM study_session_command_keys WHERE user_id = ?', [userId])).toHaveLength(1);
+    expect(realtime.emitToUser).toHaveBeenCalledTimes(1);
   });
 
   it('rejects a terminal session with a stable transition problem', async () => {

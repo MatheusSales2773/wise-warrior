@@ -304,6 +304,13 @@ migrations compiladas em `dist/migrations` são aplicadas automaticamente antes
 de o servidor começar a aceitar requisições. Em desenvolvimento e teste, a
 execução automática fica desativada.
 
+A migration de idempotência de sessão cria triggers de compatibilidade. Com o
+binary log habilitado, o MySQL exige `log_bin_trust_function_creators=1` para
+criá-los sem conceder `SUPER` ao usuário da aplicação. O serviço MySQL desta
+stack já inicia com essa opção; para conectar a um MySQL gerenciado, configure
+o parâmetro no servidor antes de aplicar as migrations. Consulte a
+[documentação do MySQL 8 sobre triggers e binary logging](https://dev.mysql.com/doc/refman/8.0/en/stored-programs-logging.html).
+
 Com o MySQL acessível e a partir da raiz do monorepo, execute:
 
 ```bash

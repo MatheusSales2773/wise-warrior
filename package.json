@@ -19,7 +19,9 @@
     "verify:m2": "npm run verify:m2 --workspace apps/frontend",
     "verify:m3:quality": "npm run build --workspace apps/backend && npm run lint --workspace apps/backend && npm test --workspace apps/backend && npm run migration:test --workspace apps/backend && npm run test:auth:integration --workspace apps/backend && npm run verify:m2 --workspace apps/frontend",
     "verify:m4:quality": "npm run verify:m3:quality && npm run lint:openapi && npm run test:integration --workspace apps/backend",
-    "verify:m4": "npm run verify:m4:quality && npm run test:e2e"
+    "verify:m4": "npm run verify:m4:quality && npm run test:e2e",
+    "verify:m5:quality": "npm run verify:m4:quality",
+    "verify:m5": "npm run verify:m5:quality && npm run test:e2e"
   },
   "devDependencies": {
     "@redocly/cli": "2.53.2",

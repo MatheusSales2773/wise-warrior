@@ -7,6 +7,7 @@ import { CreateWiseSchema1788458400000 } from '../migrations/1788458400000-creat
 import { AddStudySessionRecentIndex1788458520000 } from '../migrations/1788458520000-add-study-session-recent-index';
 import { AddCanonicalStudySessionStart1788458760000 } from '../migrations/1788458760000-add-canonical-study-session-start';
 import { AddStudySessionPauseResume1788458880000 } from '../migrations/1788458880000-add-study-session-pause-resume';
+import { UnifyStudySessionIdempotencyKeys1788459000000 } from '../migrations/1788459000000-unify-study-session-idempotency-keys';
 
 export const APPLICATION_MIGRATIONS: NonNullable<DataSourceOptions['migrations']> = [
   CreateWiseSchema1788458400000,
@@ -14,6 +15,7 @@ export const APPLICATION_MIGRATIONS: NonNullable<DataSourceOptions['migrations']
   AddStudySessionRecentIndex1788458520000,
   AddCanonicalStudySessionStart1788458760000,
   AddStudySessionPauseResume1788458880000,
+  UnifyStudySessionIdempotencyKeys1788459000000,
 ];
 
 export interface IntegrationDatabase {

@@ -292,13 +292,18 @@ paths:
   /sessions:
     post:
       summary: Inicia uma Study Session solo
+      description: >
+        Aceita presets de 900, 1500 ou 3000 segundos; o padrão defensivo é
+        1500. Idempotency-Key é única por usuário entre inícios e transições.
+        Um replay idêntico devolve o snapshot original; reutilizar a chave por
+        outro comando ou com duração diferente devolve conflito estável.
       operationId: startStudySession
       tags: [Sessions]
       parameters:
         - name: Idempotency-Key
           in: header
           required: true
-          schema: { type: string, minLength: 1, maxLength: 128 }
+          schema: { type: string, minLength: 1, maxLength: 128, pattern: '^[!-~]{1,128}$' }
       requestBody:
         required: false
         content:
@@ -311,12 +316,16 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/StudySessionSnapshot" }
         "400": { $ref: "#/components/responses/BadRequest" }
-        "409": { $ref: "#/components/responses/Conflict" }
+        "409": { $ref: "#/components/responses/StudySessionStartConflict" }
         "401": { $ref: "#/components/responses/Unauthorized" }
 
   /sessions/active:
     get:
       summary: Consulta a Study Session ativa desta conta
+      description: >
+        Retorna 200 com o snapshot e canControl, ou 204 sem corpo quando não
+        há sessão ativa. Outra Session autenticada pode consultar o snapshot,
+        mas não pode controlar a Study Session.
       operationId: getActiveStudySession
       tags: [Sessions]
       responses:
@@ -333,8 +342,9 @@ paths:
       summary: Pausa uma Study Session em andamento
       description: >
         A transição é confirmada pelo servidor e retorna o snapshot canônico.
-        Reenvios com a mesma chave retornam a resposta original; uma versão
-        obsoleta retorna conflito sem alterar a sessão.
+        Requer Idempotency-Key e expectedVersion. Reenvios idênticos devolvem
+        o snapshot original; a chave é única por usuário entre comandos.
+        Uma versão obsoleta retorna conflito sem alterar a sessão.
       operationId: pauseStudySession
       tags: [Sessions]
       parameters:
@@ -342,7 +352,7 @@ paths:
         - name: Idempotency-Key
           in: header
           required: true
-          schema: { type: string, minLength: 1, maxLength: 128 }
+          schema: { type: string, minLength: 1, maxLength: 128, pattern: '^[!-~]{1,128}$' }
       requestBody:
         required: true
         content:
@@ -356,16 +366,17 @@ paths:
               schema: { $ref: "#/components/schemas/StudySessionSnapshot" }
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
-        "404": { $ref: "#/components/responses/NotFound" }
-        "409": { $ref: "#/components/responses/Conflict" }
+        "404": { $ref: "#/components/responses/StudySessionNotFound" }
+        "409": { $ref: "#/components/responses/StudySessionPauseConflict" }
 
   /sessions/{id}/resume:
     post:
       summary: Retoma uma Study Session pausada
       description: >
         Retoma do tempo restante congelado pelo servidor e retorna um novo
-        prazo canônico. Reenvios com a mesma chave retornam a resposta
-        original; uma versão obsoleta retorna conflito sem alterar a sessão.
+        prazo canônico. Requer Idempotency-Key e expectedVersion. Reenvios
+        idênticos devolvem o snapshot original; uma versão obsoleta retorna
+        conflito sem alterar a sessão.
       operationId: resumeStudySession
       tags: [Sessions]
       parameters:
@@ -373,7 +384,7 @@ paths:
         - name: Idempotency-Key
           in: header
           required: true
-          schema: { type: string, minLength: 1, maxLength: 128 }
+          schema: { type: string, minLength: 1, maxLength: 128, pattern: '^[!-~]{1,128}$' }
       requestBody:
         required: true
         content:
@@ -387,8 +398,8 @@ paths:
               schema: { $ref: "#/components/schemas/StudySessionSnapshot" }
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
-        "404": { $ref: "#/components/responses/NotFound" }
-        "409": { $ref: "#/components/responses/Conflict" }
+        "404": { $ref: "#/components/responses/StudySessionNotFound" }
+        "409": { $ref: "#/components/responses/StudySessionResumeConflict" }
 
   /sessions/{id}/stop:
     post:
@@ -398,7 +409,9 @@ paths:
         segundos ou `stopped_early` a partir de 300 segundos. A progressão,
         a sessão terminal, o recibo idempotente e a liberação da sessão ativa
         são confirmados em uma única transação. O prazo integral retorna conflito
-        para que a conclusão seja feita pelo comando próprio.
+        para que a conclusão seja feita pelo comando próprio. Requer
+        Idempotency-Key e expectedVersion; respostas de retry preservam o
+        snapshot original.
       operationId: stopStudySession
       tags: [Sessions]
       parameters:
@@ -406,7 +419,7 @@ paths:
         - name: Idempotency-Key
           in: header
           required: true
-          schema: { type: string, minLength: 1, maxLength: 128 }
+          schema: { type: string, minLength: 1, maxLength: 128, pattern: '^[!-~]{1,128}$' }
       requestBody:
         required: true
         content:
@@ -420,8 +433,8 @@ paths:
               schema: { $ref: "#/components/schemas/StudySessionSnapshot" }
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
-        "404": { $ref: "#/components/responses/NotFound" }
-        "409": { $ref: "#/components/responses/Conflict" }
+        "404": { $ref: "#/components/responses/StudySessionNotFound" }
+        "409": { $ref: "#/components/responses/StudySessionStopConflict" }
 
   /sessions/recent:
     get:
@@ -461,7 +474,7 @@ paths:
         - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
       responses:
         "204": { description: Heartbeat registrado }
-        "404": { $ref: "#/components/responses/NotFound" }
+        "404": { $ref: "#/components/responses/StudySessionNotFound" }
 
   /sessions/{id}/complete:
     post:
@@ -492,13 +505,19 @@ paths:
             schema: { $ref: "#/components/schemas/StudySessionTransitionRequest" }
       responses:
         "200":
-          description: Snapshot terminal canônico completed ou discarded
+          description: >
+            Snapshot terminal canônico completed ou discarded. Para uma
+            requisição legada sem estado canônico, o servidor preserva a
+            resposta histórica StudySession.
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/StudySessionSnapshot" }
+              schema:
+                oneOf:
+                  - { $ref: "#/components/schemas/StudySessionSnapshot" }
+                  - { $ref: "#/components/schemas/StudySession" }
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
-        "404": { $ref: "#/components/responses/NotFound" }
+        "404": { $ref: "#/components/responses/StudySessionNotFound" }
         "409":
           description: >
             Conclusão precoce, versão obsoleta, transição inválida, Session sem
@@ -511,42 +530,42 @@ paths:
                   summary: O prazo canônico ainda não foi alcançado
                   value:
                     type: https://wise.app/errors/study-session-completion-too-early
-                    title: Conflict
+                    title: ConflictException
                     status: 409
                     detail: O prazo canônico da Study Session ainda não foi alcançado
-                    instance: /sessions/{id}/complete
+                    instance: /api/v1/sessions/{id}/complete
                 versionConflict:
                   summary: A versão esperada está obsoleta
                   value:
                     type: https://wise.app/errors/study-session-version-conflict
-                    title: Conflict
+                    title: ConflictException
                     status: 409
-                    detail: A Study Session mudou desde a última confirmação
-                    instance: /sessions/{id}/complete
+                    detail: A Study Session mudou desde a última confirmação; atualize o snapshot antes de continuar
+                    instance: /api/v1/sessions/{id}/complete
                 transitionNotAllowed:
                   summary: O estado atual não permite conclusão
                   value:
                     type: https://wise.app/errors/study-session-transition-not-allowed
-                    title: Conflict
+                    title: ConflictException
                     status: 409
                     detail: Não é possível concluir a Study Session no estado atual
-                    instance: /sessions/{id}/complete
+                    instance: /api/v1/sessions/{id}/complete
                 notControllable:
                   summary: A Session autenticada não iniciou o foco
                   value:
                     type: https://wise.app/errors/study-session-not-controllable
-                    title: Conflict
+                    title: ConflictException
                     status: 409
-                    detail: Esta Study Session só pode ser controlada pela Session que a iniciou
-                    instance: /sessions/{id}/complete
+                    detail: Esta Study Session só pode ser controlada pela Session autenticada que a iniciou
+                    instance: /api/v1/sessions/{id}/complete
                 idempotencyKeyReused:
                   summary: A chave já foi usada para outro comando
                   value:
                     type: https://wise.app/errors/idempotency-key-reused
-                    title: Conflict
+                    title: ConflictException
                     status: 409
-                    detail: Idempotency-Key já foi usada com outra transição
-                    instance: /sessions/{id}/complete
+                    detail: Idempotency-Key já foi usada por outro comando
+                    instance: /api/v1/sessions/{id}/complete
 
   /guilds:
     post:
@@ -794,8 +813,8 @@ components:
       required: [id, mode, subject, state, plannedDurationSeconds, startedAt, runDeadlineAt, pausedAt, pausedTotalSeconds, durationValidSeconds, remainingSeconds, serverNow, version, endedAt, xpAwarded, terminalReason, discardedReason, canControl]
       properties:
         id: { type: string, format: uuid }
-        mode: { type: string, enum: [solo, guild] }
-        subject: { type: [string, "null"] }
+        mode: { type: string, enum: [solo] }
+        subject: { type: "null" }
         state: { type: string, enum: [running, paused, completed, stopped_early, cancelled, discarded] }
         plannedDurationSeconds: { type: integer, enum: [900, 1500, 3000] }
         startedAt: { type: string, format: date-time }
@@ -811,6 +830,25 @@ components:
         terminalReason: { type: [string, "null"], enum: [manual-stop, auto-complete, legacy-session-without-owner, null] }
         discardedReason: { type: [string, "null"] }
         canControl: { type: boolean }
+      example:
+        id: 00000000-0000-4000-8000-000000000074
+        mode: solo
+        subject: null
+        state: running
+        plannedDurationSeconds: 1500
+        startedAt: "2026-09-23T12:00:00.000Z"
+        runDeadlineAt: "2026-09-23T12:25:00.000Z"
+        pausedAt: null
+        pausedTotalSeconds: 0
+        durationValidSeconds: 0
+        remainingSeconds: 1500
+        serverNow: "2026-09-23T12:00:00.000Z"
+        version: 1
+        endedAt: null
+        xpAwarded: 0
+        terminalReason: null
+        discardedReason: null
+        canControl: true
 
     StudySession:
       type: object
@@ -952,8 +990,170 @@ components:
       content:
         application/problem+json:
           schema: { $ref: "#/components/schemas/Problem" }
+    StudySessionNotFound:
+      description: >
+        Study Session inexistente ou pertencente a outro usuário. Ambos os
+        casos usam o mesmo status e detalhe e não incluem dados do recurso.
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/Problem" }
     Conflict:
       description: "Conflito de estado (ex.: e-mail/nome já em uso)"
       content:
         application/problem+json:
           schema: { $ref: "#/components/schemas/Problem" }
+    StudySessionStartConflict:
+      description: Study Session ativa ou reutilização incompatível de Idempotency-Key.
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/Problem" }
+          examples:
+            activeStudySession:
+              summary: Já existe uma Study Session ativa para este usuário
+              value:
+                type: https://wise.app/errors/study-session-active
+                title: ConflictException
+                status: 409
+                detail: Já existe uma Study Session ativa nesta conta
+                instance: /api/v1/sessions
+            idempotencyKeyReused:
+              summary: A chave pertence a outro comando ou duração
+              value:
+                type: https://wise.app/errors/idempotency-key-reused
+                title: ConflictException
+                status: 409
+                detail: Idempotency-Key já foi usada por outro comando
+                instance: /api/v1/sessions
+    # Keep operation examples local: each RFC 7807 `instance` names its route.
+    StudySessionPauseConflict:
+      description: >
+        Versão obsoleta, transição inválida, prazo vencido, falta de controle
+        pela Session iniciadora ou chave já usada por outro comando.
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/Problem" }
+          examples:
+            versionConflict:
+              summary: A versão esperada está obsoleta
+              value:
+                type: https://wise.app/errors/study-session-version-conflict
+                title: ConflictException
+                status: 409
+                detail: A Study Session mudou desde a última confirmação; atualize o snapshot antes de continuar
+                instance: /api/v1/sessions/{id}/pause
+            transitionNotAllowed:
+              summary: O estado atual não permite pausar
+              value:
+                type: https://wise.app/errors/study-session-transition-not-allowed
+                title: ConflictException
+                status: 409
+                detail: Não é possível pausar a Study Session no estado atual
+                instance: /api/v1/sessions/{id}/pause
+            deadlinePassed:
+              summary: O prazo já terminou
+              value:
+                type: https://wise.app/errors/study-session-deadline-passed
+                title: ConflictException
+                status: 409
+                detail: O prazo canônico da Study Session já terminou
+                instance: /api/v1/sessions/{id}/pause
+            notControllable:
+              summary: A Session autenticada não iniciou o foco
+              value:
+                type: https://wise.app/errors/study-session-not-controllable
+                title: ConflictException
+                status: 409
+                detail: Esta Study Session só pode ser controlada pela Session autenticada que a iniciou
+                instance: /api/v1/sessions/{id}/pause
+            idempotencyKeyReused:
+              summary: A chave já foi usada por outro comando
+              value:
+                type: https://wise.app/errors/idempotency-key-reused
+                title: ConflictException
+                status: 409
+                detail: Idempotency-Key já foi usada por outro comando
+                instance: /api/v1/sessions/{id}/pause
+    StudySessionResumeConflict:
+      description: Versão obsoleta, transição inválida, falta de controle ou chave incompatível.
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/Problem" }
+          examples:
+            versionConflict:
+              summary: A versão esperada está obsoleta
+              value:
+                type: https://wise.app/errors/study-session-version-conflict
+                title: ConflictException
+                status: 409
+                detail: A Study Session mudou desde a última confirmação; atualize o snapshot antes de continuar
+                instance: /api/v1/sessions/{id}/resume
+            transitionNotAllowed:
+              summary: O estado atual não permite retomar
+              value:
+                type: https://wise.app/errors/study-session-transition-not-allowed
+                title: ConflictException
+                status: 409
+                detail: Não é possível retomar a Study Session no estado atual
+                instance: /api/v1/sessions/{id}/resume
+            notControllable:
+              summary: A Session autenticada não iniciou o foco
+              value:
+                type: https://wise.app/errors/study-session-not-controllable
+                title: ConflictException
+                status: 409
+                detail: Esta Study Session só pode ser controlada pela Session autenticada que a iniciou
+                instance: /api/v1/sessions/{id}/resume
+            idempotencyKeyReused:
+              summary: A chave já foi usada por outro comando
+              value:
+                type: https://wise.app/errors/idempotency-key-reused
+                title: ConflictException
+                status: 409
+                detail: Idempotency-Key já foi usada por outro comando
+                instance: /api/v1/sessions/{id}/resume
+    StudySessionStopConflict:
+      description: Prazo integral, versão obsoleta, transição inválida, falta de controle ou chave incompatível.
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/Problem" }
+          examples:
+            deadlinePassed:
+              summary: O prazo integral exige o comando de conclusão
+              value:
+                type: https://wise.app/errors/study-session-deadline-passed
+                title: ConflictException
+                status: 409
+                detail: O prazo canônico da Study Session já terminou
+                instance: /api/v1/sessions/{id}/stop
+            versionConflict:
+              summary: A versão esperada está obsoleta
+              value:
+                type: https://wise.app/errors/study-session-version-conflict
+                title: ConflictException
+                status: 409
+                detail: A Study Session mudou desde a última confirmação; atualize o snapshot antes de continuar
+                instance: /api/v1/sessions/{id}/stop
+            transitionNotAllowed:
+              summary: O estado atual não permite encerrar
+              value:
+                type: https://wise.app/errors/study-session-transition-not-allowed
+                title: ConflictException
+                status: 409
+                detail: Não é possível encerrar a Study Session no estado atual
+                instance: /api/v1/sessions/{id}/stop
+            notControllable:
+              summary: A Session autenticada não iniciou o foco
+              value:
+                type: https://wise.app/errors/study-session-not-controllable
+                title: ConflictException
+                status: 409
+                detail: Esta Study Session só pode ser controlada pela Session autenticada que a iniciou
+                instance: /api/v1/sessions/{id}/stop
+            idempotencyKeyReused:
+              summary: A chave já foi usada por outro comando
+              value:
+                type: https://wise.app/errors/idempotency-key-reused
+                title: ConflictException
+                status: 409
+                detail: Idempotency-Key já foi usada por outro comando
+                instance: /api/v1/sessions/{id}/stop
