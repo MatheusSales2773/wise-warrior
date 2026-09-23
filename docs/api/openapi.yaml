@@ -722,7 +722,7 @@ components:
 
     StudySessionSnapshot:
       type: object
-      required: [id, mode, state, plannedDurationSeconds, startedAt, pausedTotalSeconds, durationValidSeconds, remainingSeconds, serverNow, version, xpAwarded, canControl]
+      required: [id, mode, subject, state, plannedDurationSeconds, startedAt, runDeadlineAt, pausedAt, pausedTotalSeconds, durationValidSeconds, remainingSeconds, serverNow, version, endedAt, xpAwarded, terminalReason, discardedReason, canControl]
       properties:
         id: { type: string, format: uuid }
         mode: { type: string, enum: [solo, guild] }

@@ -5,7 +5,9 @@ import { MAX_SUPPORTED_XP_TOTAL } from '../progression/domain/progression-policy
 import { ProgressionService } from '../progression/progression.service';
 import type { RealtimeGateway } from '../realtime/realtime.gateway';
 import { User } from '../users/entities/user.entity';
+import { UsersService } from '../users/users.service';
 import { StudySession } from './entities/study-session.entity';
+import { StudySessionStartService } from './study-session-start.service';
 import { StudySessionTransitionService } from './study-session-transition.service';
 import { APPLICATION_MIGRATIONS, createIntegrationDatabase, type IntegrationDatabase } from '../../test/integration-database';
 
@@ -186,6 +188,7 @@ describe('Study Session transitions against MySQL', () => {
     const persisted = await dataSource!.getRepository(StudySession).findOneByOrFail({ id: studySessionId });
     expect(persisted).toMatchObject({ state: 'cancelled', durationValidSeconds: 299, xpAwarded: 0, version: 2 });
     expect(await dataSource!.query('SELECT * FROM active_study_sessions WHERE user_id = ?', [userId])).toHaveLength(0);
+    expect(await dataSource!.query('SELECT * FROM raid_contributions WHERE study_session_id = ?', [studySessionId])).toHaveLength(0);
     expect(await dataSource!.getRepository(Character).findOneByOrFail({ id: characterId })).toMatchObject({ xpTotal: 0 });
     expect(realtime.emitToUser).not.toHaveBeenCalled();
   });
@@ -194,6 +197,7 @@ describe('Study Session transitions against MySQL', () => {
     now = new Date(now.getTime() + 300_000);
 
     const result = await service.stop(userId, authSessionId, studySessionId, { expectedVersion: 1 }, 'stop-at-300');
+    const stoppedAt = now;
     now = new Date(now.getTime() + 5_000);
     const replay = await service.stop(userId, authSessionId, studySessionId, { expectedVersion: 1 }, 'stop-at-300');
 
@@ -209,6 +213,7 @@ describe('Study Session transitions against MySQL', () => {
     );
     expect(await dataSource!.getRepository(Character).findOneByOrFail({ id: characterId })).toMatchObject({ xpTotal: 50 });
     expect(await dataSource!.query('SELECT * FROM active_study_sessions WHERE user_id = ?', [userId])).toHaveLength(0);
+    expect(await dataSource!.query('SELECT * FROM raid_contributions WHERE study_session_id = ?', [studySessionId])).toHaveLength(0);
     expect(await dataSource!.query('SELECT action FROM study_session_transition_receipts WHERE user_id = ?', [userId])).toEqual([
       { action: 'stop' },
     ]);
@@ -216,6 +221,15 @@ describe('Study Session transitions against MySQL', () => {
     expect(realtime.emitToUser).toHaveBeenCalledWith(userId, 'progress:xpUpdated', {
       xpGained: 50, xpTotal: 50, level: 1,
     });
+
+    const startService = new StudySessionStartService(
+      dataSource!, new UsersService({} as never, {} as never, {} as never, {} as never),
+    );
+    const nextSession = await startService.start(userId, authSessionId, { plannedDurationSeconds: 900 }, 'start-after-stop');
+    expect(nextSession).toMatchObject({ state: 'running', mode: 'solo', subject: null, canControl: true });
+    expect(await startService.active(userId, authSessionId)).toMatchObject({ id: nextSession.id, state: 'running' });
+    expect(await dataSource!.getRepository(StudySession).findOneByOrFail({ id: studySessionId }))
+      .toMatchObject({ state: 'stopped_early', endedAt: stoppedAt, xpAwarded: 50 });
   });
 
   it('freezes valid focus and pause totals when stopped from a repeatedly paused session', async () => {
