@@ -22,6 +22,7 @@ type ScreenRefreshProps =
 
 export type ScreenProps = ScreenRefreshProps & {
   avoidKeyboard?: boolean;
+  backgroundOverlay?: ReactNode;
   children?: ReactNode;
   contentContainerStyle?: StyleProp<ViewStyle>;
   contentStyle?: StyleProp<ViewStyle>;
@@ -40,6 +41,7 @@ const BOTTOM_NAVIGATION_SAFE_AREA_EDGES: Edge[] = ['top', 'right', 'left'];
 
 export function Screen({
   avoidKeyboard = false,
+  backgroundOverlay,
   children,
   contentContainerStyle,
   contentStyle,
@@ -98,6 +100,7 @@ export function Screen({
         start={{ x: 0, y: 0 }}
         style={StyleSheet.absoluteFill}
       />
+      {backgroundOverlay}
       {shouldAvoidKeyboard ? (
         <KeyboardAvoidingView
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}

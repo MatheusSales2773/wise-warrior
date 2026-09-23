@@ -1,6 +1,9 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
+import Ionicons from '@expo/vector-icons/Ionicons';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { AccessibilityInfo, Platform, Pressable, StyleSheet, View } from 'react-native';
+import { AccessibilityInfo, Platform, Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import Svg, { Circle, Defs, LinearGradient as SvgGradient, RadialGradient, Rect, Stop } from 'react-native-svg';
 import { Screen, WiseButton, WiseCard, WiseText, theme } from '@/design-system';
 import { controlStyles } from '@/design-system/components/control-styles';
 import {
@@ -50,6 +53,143 @@ const TRANSITION_COPY: Record<TransitionAction, { status: string; action: string
 
 const STUDY_SESSION_VERSION_CONFLICT = 'https://wise.app/errors/study-session-version-conflict';
 
+function ForgePageGradient() {
+  return (
+    <Svg aria-hidden pointerEvents="none" style={StyleSheet.absoluteFill} testID="study-session-page-gradient" width="100%" height="100%">
+      <Defs>
+        <RadialGradient id="forgePageGlow" cx="50%" cy="0%" r="90%">
+          <Stop offset="0" stopColor={theme.color.backgroundOverlay} />
+          <Stop offset="0.5" stopColor={theme.color.backgroundRaised} />
+          <Stop offset="1" stopColor={theme.color.backgroundCanvas} />
+        </RadialGradient>
+      </Defs>
+      <Rect width="100%" height="100%" fill="url(#forgePageGlow)" />
+    </Svg>
+  );
+}
+
+function ForgeStageGradient() {
+  return (
+    <Svg aria-hidden pointerEvents="none" style={StyleSheet.absoluteFill} testID="study-session-stage-gradient" width="100%" height="100%">
+      <Defs>
+        <RadialGradient id="forgeStageGlow" cx="50%" cy="45%" r="65%">
+          <Stop offset="0" stopColor={theme.color.accentPrimary} stopOpacity="0.26" />
+          <Stop offset="0.55" stopColor={theme.color.accentPrimary} stopOpacity="0.07" />
+          <Stop offset="1" stopColor={theme.color.accentPrimary} stopOpacity="0" />
+        </RadialGradient>
+      </Defs>
+      <Rect width="100%" height="100%" fill="url(#forgeStageGlow)" />
+    </Svg>
+  );
+}
+
+function ForgeAction({ label, icon, onPress, primary = false, disabled = false, loading = false, testID, iconOnly = false, expanded }: {
+  label: string;
+  icon: 'stop' | 'pause' | 'play' | 'settings-outline';
+  onPress: () => void;
+  primary?: boolean;
+  disabled?: boolean;
+  loading?: boolean;
+  testID?: string;
+  iconOnly?: boolean;
+  expanded?: boolean;
+}) {
+  const { width } = useWindowDimensions();
+  const [focused, setFocused] = useState(false);
+  const blocked = disabled || loading;
+  const content = <>
+    <Ionicons accessibilityElementsHidden importantForAccessibility="no" name={icon} size={16} color={primary ? theme.color.backgroundCanvas : theme.color.textPrimary} />
+    {!iconOnly ? <Text style={[styles.actionLabel, primary && styles.actionLabelPrimary]}>{label}</Text> : null}
+  </>;
+
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      accessibilityState={{ disabled: blocked, busy: loading, expanded }}
+      disabled={blocked}
+      onPress={onPress}
+      onFocus={() => setFocused(true)}
+      onBlur={() => setFocused(false)}
+      style={[styles.actionButton, primary ? styles.actionButtonPrimary : styles.actionButtonIcon, primary && width < 450 && styles.actionButtonPrimaryCompact, iconOnly && styles.actionButtonIcon, blocked && styles.actionButtonDisabled, focused && Platform.OS === 'web' && controlStyles.webFocus]}
+      testID={testID}
+    >
+      {primary ? <LinearGradient colors={[theme.color.accentPrimary, theme.color.accentMuted]} start={{ x: 0, y: 0 }} end={{ x: 0, y: 1 }} style={styles.actionGradient} testID="study-session-primary-gradient">{content}</LinearGradient> : content}
+    </Pressable>
+  );
+}
+
+function ForgeTimer({ remaining, duration, phase, size, testID, accessibilityLabel }: {
+  remaining: number;
+  duration: number;
+  phase: string;
+  size: number;
+  testID?: string;
+  accessibilityLabel?: string;
+}) {
+  const radius = 154;
+  const circumference = 2 * Math.PI * radius;
+  const progress = Math.max(0, Math.min(1, (duration - remaining) / duration));
+
+  return (
+    <View style={[styles.timerRingWrap, { width: size, height: size }]}>
+      <Svg aria-hidden width={size} height={size} viewBox="0 0 340 340" style={styles.timerRing}>
+        <Defs>
+          <SvgGradient id="forgeRingGradient" x1="0" y1="0" x2="1" y2="1">
+            <Stop offset="0" stopColor={theme.color.accentHighlight} />
+            <Stop offset="1" stopColor={theme.color.accentPrimary} />
+          </SvgGradient>
+        </Defs>
+        <Circle cx="170" cy="170" r={radius} fill="none" stroke={theme.color.borderSoft} strokeWidth="2" />
+        <Circle cx="170" cy="170" r={radius} fill="none" stroke="url(#forgeRingGradient)" strokeWidth="6" strokeLinecap="round" strokeDasharray={circumference} strokeDashoffset={circumference * (1 - progress)} />
+      </Svg>
+      <View style={styles.timerCenter}>
+        <WiseText color="accentPrimary" variant="caption">◈ {phase} ◈</WiseText>
+        <Text accessibilityLiveRegion="none" aria-live="off" accessibilityLabel={accessibilityLabel} style={[styles.timerDigits, { fontSize: size < 290 ? 54 : 72 }]} testID={testID}>{formatRemainingTime(remaining)}</Text>
+        <WiseText color="textTertiary" variant="mono">/ {formatRemainingTime(duration)}</WiseText>
+      </View>
+    </View>
+  );
+}
+
+function DurationSettings({ selected, focusedDuration, startPending, onSelect, onFocus, onClose, inline = false }: {
+  selected: PlannedDurationSeconds;
+  focusedDuration: PlannedDurationSeconds | null;
+  startPending: boolean;
+  onSelect: (duration: PlannedDurationSeconds) => void;
+  onFocus: (duration: PlannedDurationSeconds | null) => void;
+  onClose: () => void;
+  inline?: boolean;
+}) {
+  return <WiseCard style={inline ? styles.inlineSettingsCard : styles.sideCard}>
+    <WiseText variant="subtitle">◈ Quanto tempo você vai focar?</WiseText>
+    <View style={styles.presets} accessibilityRole="radiogroup">
+      {STUDY_SESSION_PRESETS.map((duration) => (
+        <Pressable
+          accessibilityLabel={`${duration / 60} minutos`}
+          accessibilityRole="radio"
+          accessibilityState={{ checked: selected === duration, disabled: startPending }}
+          disabled={startPending}
+          key={duration}
+          onPress={() => onSelect(duration)}
+          onFocus={() => onFocus(duration)}
+          onBlur={() => onFocus(focusedDuration === duration ? null : focusedDuration)}
+          style={[
+            styles.preset,
+            selected === duration && styles.selected,
+            focusedDuration === duration && Platform.OS === 'web' && controlStyles.webFocus,
+          ]}
+          testID={`study-duration-${duration / 60}`}
+        >
+          <WiseText variant="label">{duration / 60} min</WiseText>
+        </Pressable>
+      ))}
+    </View>
+    {inline ? null : <WiseText color="textSecondary" variant="body">Escolha uma duração e inicie sua sessão.</WiseText>}
+    <WiseButton label="Fechar configurações" onPress={onClose} variant="secondary" />
+  </WiseCard>;
+}
+
 function isVersionConflict(error: unknown): boolean {
   if (typeof error !== 'object' || error === null) return false;
   const responseData = (error as { response?: { data?: unknown } }).response?.data;
@@ -59,8 +199,12 @@ function isVersionConflict(error: unknown): boolean {
 }
 
 export function StudySessionScreen() {
+  const { width } = useWindowDimensions();
+  const wideLayout = width >= 1140;
+  const ringSize = wideLayout ? 340 : Platform.OS === 'web' ? Math.min(310, width * 0.78) : Math.min(264, width * 0.68);
   const queryClient = useQueryClient();
   const [selected, setSelected] = useState<PlannedDurationSeconds>(1500);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [focusedDuration, setFocusedDuration] = useState<PlannedDurationSeconds | null>(null);
   const [now, setNow] = useState(0);
   const [retryTransition, setRetryTransition] = useState<TransitionCommand | null>(null);
@@ -157,6 +301,7 @@ export function StudySessionScreen() {
     mutationFn: ({ duration, key }: { duration: PlannedDurationSeconds; key: string }) => startStudySession(duration, key),
     onSuccess(snapshot) {
       pendingKey.current = null;
+      setSettingsOpen(false);
       setTerminalResult(null);
       clearCompletionIntent();
       setCompletionIntentState(null);
@@ -243,6 +388,12 @@ export function StudySessionScreen() {
   const remaining = completionPending || completionRetryAvailable || (completionWaiting && !activeSnapshot)
     ? 0
     : projectedRemaining;
+  const plannedDuration = snapshot?.plannedDurationSeconds ?? selected;
+  const phase = snapshot?.state === 'paused'
+    ? 'PAUSADA'
+    : snapshot
+      ? remaining > plannedDuration * 0.5 ? 'AQUECIMENTO' : remaining > plannedDuration * 0.15 ? 'FOCO PROFUNDO' : 'FORJA FINAL'
+      : 'PRONTA PARA COMEÇAR';
 
   useEffect(() => {
     if (
@@ -337,25 +488,24 @@ export function StudySessionScreen() {
   };
 
   return (
-    <Screen hasBottomNavigation testID="study-session" title="Forja">
+    <Screen backgroundOverlay={<ForgePageGradient />} hasBottomNavigation safeAreaEdges={['right', 'left']} testID="study-session" title="Forja" contentContainerStyle={styles.screenContent}>
       <View style={styles.layout}>
-        <WiseText color="textSecondary" variant="body">Escolha seu tempo de foco.</WiseText>
         {active.isPending && !snapshot ? <WiseText variant="body">Buscando sua sessão ativa…</WiseText> : null}
         {active.isError && !snapshot ? (
-          <WiseCard testID="study-session-load-error">
+          <WiseCard style={styles.messageCard} testID="study-session-load-error">
             <WiseText variant="body">Não foi possível consultar sua sessão. Verifique a conexão.</WiseText>
             <WiseButton label="Tentar novamente" onPress={() => void refreshActive()} variant="secondary" />
           </WiseCard>
         ) : null}
         {snapshot && !snapshot.canControl ? (
-          <WiseCard testID="study-session-remote-conflict">
+          <WiseCard style={styles.messageCard} testID="study-session-remote-conflict">
             <WiseText variant="subtitle">Foco em outro dispositivo</WiseText>
             <WiseText variant="body">Já existe uma sessão ativa nesta conta. Volte ao dispositivo que a iniciou para acompanhá-la.</WiseText>
             <WiseButton label="Atualizar estado" onPress={() => void refreshActive()} variant="secondary" />
           </WiseCard>
         ) : null}
         {displayedTerminalResult ? (
-          <WiseCard testID="study-session-result">
+          <WiseCard style={styles.messageCard} testID="study-session-result">
             <WiseText accessibilityLiveRegion="polite" aria-live="polite" variant="subtitle">
               {displayedTerminalResult.state === 'discarded'
                 ? 'Sessão não contabilizada'
@@ -390,11 +540,31 @@ export function StudySessionScreen() {
           </WiseCard>
         ) : null}
         {snapshot?.canControl && !displayedTerminalResult ? (
-          <WiseCard testID="study-session-active">
-            <WiseText variant="subtitle">{snapshot.state === 'paused' ? 'Sessão pausada' : 'Sessão em andamento'}</WiseText>
-            <WiseText accessibilityLiveRegion="none" aria-live="off" accessibilityLabel={`Tempo restante: ${Math.floor(remaining / 60)} minutos e ${remaining % 60} segundos. Sessão ${snapshot.state === 'paused' ? 'pausada' : 'em andamento'}.`} style={styles.timer} testID="study-session-timer" variant="display">{formatRemainingTime(remaining)}</WiseText>
-            <WiseText color="textSecondary" variant="body">Foco de {snapshot.plannedDurationSeconds / 60} minutos iniciado. Seu tempo é confirmado pelo servidor.</WiseText>
-            <WiseText accessibilityLiveRegion="polite" aria-live="polite" testID="study-session-state" variant="body">{sessionStatus}</WiseText>
+          <View style={[styles.forgeColumns, wideLayout && styles.forgeColumnsWide]} testID="study-session-active">
+          <WiseCard style={[styles.stage, wideLayout && styles.stageWide]} testID="study-session-stage">
+            <ForgeStageGradient />
+            <View style={styles.stageHeader}>
+              <WiseText color="accentPrimary" variant="caption">{snapshot.state === 'paused' ? 'Sessão pausada' : 'Sessão em andamento'}</WiseText>
+              <WiseText color="accentHighlight" variant="label">{snapshot.plannedDurationSeconds / 60} min de foco</WiseText>
+            </View>
+            <View style={styles.stageBody}>
+              <ForgeTimer
+                remaining={remaining}
+                duration={snapshot.plannedDurationSeconds}
+                phase={phase}
+                size={ringSize}
+                testID="study-session-timer"
+                accessibilityLabel={`Tempo restante: ${Math.floor(remaining / 60)} minutos e ${remaining % 60} segundos. Sessão ${snapshot.state === 'paused' ? 'pausada' : 'em andamento'}.`}
+              />
+            </View>
+            <View style={[styles.stageActions, width < 450 && styles.stageActionsCompact]}>
+            {settingsOpen && !wideLayout ? <WiseCard style={styles.inlineSettingsCard}>
+              <WiseText variant="subtitle">◈ Configurações da sessão</WiseText>
+              <View style={styles.statRow}><WiseText color="textSecondary" variant="body">Tempo de foco</WiseText><WiseText color="accentHighlight" variant="mono">{snapshot.plannedDurationSeconds / 60} min</WiseText></View>
+              <WiseText color="textSecondary" variant="body">A duração não pode ser alterada durante a sessão.</WiseText>
+              <WiseButton label="Fechar configurações" onPress={() => setSettingsOpen(false)} variant="secondary" />
+            </WiseCard> : null}
+            <View style={[styles.actionRow, width < 450 && styles.actionRowCompact]}>
             {completionRetryAvailable && completionIntent ? (
               <WiseButton
                 label="Tentar confirmar novamente"
@@ -427,7 +597,18 @@ export function StudySessionScreen() {
               />
             ) : !completionOwnsControls ? (
               <View style={styles.controls}>
-                <WiseButton
+                <ForgeAction
+                  icon="stop"
+                  iconOnly
+                  label={transition.isPending && pendingAction === 'stop' ? TRANSITION_COPY.stop.button : stopLabel}
+                  loading={transition.isPending && pendingAction === 'stop'}
+                  disabled={transition.isPending || refreshingCanonicalSnapshot || completionPending}
+                  onPress={() => changeSessionState('stop')}
+                  testID="study-session-stop"
+                />
+                <ForgeAction
+                  icon={snapshot.state === 'paused' ? 'play' : 'pause'}
+                  primary
                   label={transition.isPending && pendingNonStopAction
                     ? TRANSITION_COPY[pendingNonStopAction].button
                       : needsCanonicalRefresh
@@ -440,16 +621,10 @@ export function StudySessionScreen() {
                     : changeSessionState(snapshot.state === 'paused' ? 'resume' : 'pause')}
                   testID={snapshot.state === 'paused' ? 'study-session-resume' : 'study-session-pause'}
                 />
-                <WiseButton
-                  label={transition.isPending && pendingAction === 'stop' ? TRANSITION_COPY.stop.button : stopLabel}
-                  loading={transition.isPending && pendingAction === 'stop'}
-                  disabled={transition.isPending || refreshingCanonicalSnapshot || completionPending}
-                  onPress={() => changeSessionState('stop')}
-                  variant="secondary"
-                  testID="study-session-stop"
-                />
               </View>
             ) : null}
+            <ForgeAction icon="settings-outline" iconOnly label="Configurações da sessão" expanded={settingsOpen} onPress={() => setSettingsOpen((open) => !open)} />
+            </View>
             {transition.isError ? (
               <FeedbackMessage
                 variant="error"
@@ -482,37 +657,62 @@ export function StudySessionScreen() {
                 testID="study-session-completion-conflict"
               />
             ) : null}
+            </View>
+            <View style={styles.stageFeedback}>
+              <WiseText accessibilityLiveRegion="polite" aria-live="polite" testID="study-session-state" variant="body">{sessionStatus}</WiseText>
+            </View>
           </WiseCard>
+          <View style={[styles.sideColumn, wideLayout && styles.sideColumnWide]}>
+            {settingsOpen && wideLayout ? <WiseCard style={styles.sideCard}>
+              <WiseText variant="subtitle">◈ Configurações da sessão</WiseText>
+              <View style={styles.statRow}><WiseText color="textSecondary" variant="body">Tempo de foco</WiseText><WiseText color="accentHighlight" variant="mono">{snapshot.plannedDurationSeconds / 60} min</WiseText></View>
+              <WiseText color="textSecondary" variant="body">A duração não pode ser alterada durante a sessão.</WiseText>
+              <WiseButton label="Fechar configurações" onPress={() => setSettingsOpen(false)} variant="secondary" />
+            </WiseCard> : <>
+            <WiseCard style={styles.sideCard}>
+              <WiseText variant="subtitle">◈ Sua sessão</WiseText>
+              <View style={styles.statRow}><WiseText color="textSecondary" variant="body">Duração planejada</WiseText><WiseText color="accentHighlight" variant="mono">{snapshot.plannedDurationSeconds / 60} min</WiseText></View>
+              <View style={styles.statRow}><WiseText color="textSecondary" variant="body">Foco válido</WiseText><WiseText color="accentHighlight" variant="mono">{formatRemainingTime(validFocusSeconds)}</WiseText></View>
+              <WiseText color="textTertiary" variant="body">O tempo e a conclusão são confirmados pelo servidor.</WiseText>
+            </WiseCard>
+            <WiseCard style={styles.sideCard}>
+              <WiseText variant="subtitle">◈ Como funciona</WiseText>
+              <WiseText color="textSecondary" variant="body">Pause quando precisar. Ao retomar, o contador continua de onde parou.</WiseText>
+              <WiseText color="textSecondary" variant="body">Sessões encerradas antes de 5 minutos não concedem XP.</WiseText>
+            </WiseCard>
+            </>}
+          </View>
+          </View>
         ) : null}
         {!displayedTerminalResult && !active.isPending && !active.isError && !snapshot ? (
-          <WiseCard testID="study-session-setup">
-            <WiseText variant="subtitle">Quanto tempo você vai focar?</WiseText>
-            <View style={styles.presets}>
-              {STUDY_SESSION_PRESETS.map((duration) => (
-                <Pressable
-                  accessibilityLabel={`${duration / 60} minutos`}
-                  accessibilityRole="radio"
-                  accessibilityState={{ checked: selected === duration, disabled: start.isPending }}
-                  disabled={start.isPending}
-                  key={duration}
-                  onPress={() => { pendingKey.current = null; setSelected(duration); }}
-                  onFocus={() => setFocusedDuration(duration)}
-                  onBlur={() => setFocusedDuration((focused) => focused === duration ? null : focused)}
-                  style={[
-                    styles.preset,
-                    selected === duration && styles.selected,
-                    focusedDuration === duration && Platform.OS === 'web' && controlStyles.webFocus,
-                  ]}
-                  testID={`study-duration-${duration / 60}`}
-                >
-                  <WiseText variant="label">{duration / 60} min</WiseText>
-                </Pressable>
-              ))}
+          <View style={[styles.forgeColumns, wideLayout && styles.forgeColumnsWide]} testID="study-session-setup">
+          <WiseCard style={[styles.stage, wideLayout && styles.stageWide]} testID="study-session-stage">
+            <ForgeStageGradient />
+            <View style={styles.stageHeader}>
+              <WiseText color="accentPrimary" variant="caption">PREPARE SUA FORJA</WiseText>
+              <WiseText color="accentHighlight" variant="label">{selected / 60} min selecionados</WiseText>
             </View>
-            <WiseText color="textSecondary" variant="body">Duração escolhida: {selected / 60} minutos</WiseText>
-            <WiseButton label="Iniciar foco" loading={start.isPending} onPress={begin} size="large" testID="study-session-start" />
-            {start.isError ? <WiseText color="feedbackDanger" variant="body">Não foi possível confirmar o início. Tente novamente.</WiseText> : null}
+            <View style={styles.stageBody}>
+              <ForgeTimer remaining={selected} duration={selected} phase={phase} size={ringSize} />
+            </View>
+            <View style={[styles.stageActions, width < 450 && styles.stageActionsCompact]}>
+              {settingsOpen && !wideLayout ? <DurationSettings selected={selected} focusedDuration={focusedDuration} startPending={start.isPending} onSelect={(duration) => { pendingKey.current = null; setSelected(duration); }} onFocus={setFocusedDuration} onClose={() => setSettingsOpen(false)} inline /> : null}
+              <View style={[styles.actionRow, width < 450 && styles.actionRowCompact]}>
+                <View style={styles.actionButtonPlaceholder} />
+                <ForgeAction icon="play" primary label="Iniciar foco" loading={start.isPending} onPress={begin} testID="study-session-start" />
+                <ForgeAction icon="settings-outline" iconOnly label="Configurar duração" expanded={settingsOpen} onPress={() => setSettingsOpen((open) => !open)} />
+              </View>
+              {start.isError ? <WiseText color="feedbackDanger" variant="body">Não foi possível confirmar o início. Tente novamente.</WiseText> : null}
+            </View>
           </WiseCard>
+          <View style={[styles.sideColumn, wideLayout && styles.sideColumnWide]}>
+          {settingsOpen && wideLayout ? <DurationSettings selected={selected} focusedDuration={focusedDuration} startPending={start.isPending} onSelect={(duration) => { pendingKey.current = null; setSelected(duration); }} onFocus={setFocusedDuration} onClose={() => setSettingsOpen(false)} /> : <WiseCard style={styles.sideCard}>
+            <WiseText variant="subtitle">◈ Seu progresso</WiseText>
+            <WiseText color="textSecondary" variant="body">O foco válido e o XP aparecem ao concluir a sessão.</WiseText>
+            <WiseText color="textTertiary" variant="body">Se encerrar antes de 5 minutos, a sessão não concede XP.</WiseText>
+          </WiseCard>}
+          </View>
+          </View>
         ) : null}
       </View>
     </Screen>
@@ -520,10 +720,40 @@ export function StudySessionScreen() {
 }
 
 const styles = StyleSheet.create({
-  layout: { width: '100%', maxWidth: 580, alignSelf: 'center', gap: theme.space.sectionGap },
-  controls: { gap: theme.space.stackDefault },
-  presets: { flexDirection: 'row', flexWrap: 'wrap', gap: theme.space.stackTight, marginVertical: theme.space.sectionGap },
-  preset: { minWidth: theme.layout.touchTarget, minHeight: theme.layout.touchTarget, paddingHorizontal: theme.space.cardInset, justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: theme.color.borderEmphasis, borderRadius: theme.radius.control },
+  screenContent: { justifyContent: 'flex-start' },
+  layout: { width: '100%', maxWidth: 1040, alignSelf: 'center', gap: theme.space.sectionGap },
+  messageCard: { maxWidth: 580, alignSelf: 'center', padding: theme.space.cardInset, gap: theme.space.controlInset },
+  forgeColumns: { width: '100%', gap: theme.space.cardInset },
+  forgeColumnsWide: { flexDirection: 'row', alignItems: 'flex-start' },
+  stage: { minWidth: 0 },
+  stageWide: { flex: 1 },
+  stageHeader: { minHeight: 65, paddingHorizontal: theme.space.cardInset, paddingVertical: theme.space.controlInset, borderBottomWidth: 1, borderBottomColor: theme.color.borderGhost, flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: theme.space.inlineTight },
+  stageBody: { alignItems: 'center', justifyContent: 'center', paddingVertical: theme.space.controlInset, paddingHorizontal: theme.space.inlineTight },
+  stageActions: { borderTopWidth: 1, borderTopColor: theme.color.borderGhost, paddingHorizontal: theme.space.cardInset, paddingVertical: theme.space.stackDefault, alignItems: 'center', gap: theme.space.stackTight },
+  stageActionsCompact: { paddingHorizontal: theme.space.inlineTight },
+  actionRow: { width: '100%', flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 14 },
+  actionRowCompact: { gap: theme.space.inlineTight },
+  actionButton: { minHeight: theme.layout.touchTarget, borderWidth: 1, borderRadius: theme.radius.detail, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
+  actionButtonPrimary: { minWidth: 200, borderColor: theme.color.accentHighlight, shadowColor: theme.color.accentPrimary, shadowOpacity: 0.35, shadowRadius: 14, elevation: 4 },
+  actionButtonPrimaryCompact: { minWidth: 0, flexGrow: 1, flexShrink: 1, maxWidth: 200 },
+  actionButtonIcon: { width: theme.layout.touchTarget, height: theme.layout.touchTarget, borderColor: theme.color.borderEmphasis, backgroundColor: theme.color.surfaceCard },
+  actionButtonDisabled: { opacity: 0.5 },
+  actionButtonPlaceholder: { width: theme.layout.touchTarget, height: theme.layout.touchTarget },
+  actionGradient: { minHeight: theme.layout.touchTarget, width: '100%', paddingHorizontal: theme.space.controlInset, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: theme.space.inlineTight },
+  actionLabel: { fontFamily: 'Cinzel-SemiBold', color: theme.color.textPrimary, fontSize: 11, letterSpacing: 2, textTransform: 'uppercase' },
+  actionLabelPrimary: { fontFamily: 'Cinzel-Bold', color: theme.color.backgroundCanvas },
+  stageFeedback: { borderTopWidth: 1, borderTopColor: theme.color.borderGhost, padding: theme.space.controlInset },
+  sideColumn: { width: '100%', gap: theme.space.cardInset },
+  sideColumnWide: { maxWidth: 320 },
+  sideCard: { padding: theme.space.stackDefault, gap: theme.space.controlInset },
+  statRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: theme.space.inlineTight, borderBottomWidth: 1, borderBottomColor: theme.color.borderGhost, paddingBottom: theme.space.stackTight },
+  timerRingWrap: { justifyContent: 'center', alignItems: 'center' },
+  timerRing: { transform: [{ rotate: '-90deg' }] },
+  timerCenter: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, alignItems: 'center', justifyContent: 'center', gap: theme.space.inlineTight },
+  timerDigits: { ...theme.type.display, color: theme.color.textPrimary, textAlign: 'center', lineHeight: 88, letterSpacing: 2, fontVariant: ['tabular-nums'] },
+  controls: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 8 },
+  inlineSettingsCard: { width: '100%', padding: theme.space.controlInset, gap: theme.space.controlInset },
+  presets: { flexDirection: 'row', flexWrap: 'wrap', gap: theme.space.stackTight },
+  preset: { minWidth: theme.layout.touchTarget, minHeight: theme.layout.touchTarget, paddingHorizontal: theme.space.stackTight, justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: theme.color.borderEmphasis, borderRadius: theme.radius.control },
   selected: { backgroundColor: theme.color.surfaceCardActive, borderColor: theme.color.accentPrimary },
-  timer: { textAlign: 'center', marginVertical: theme.space.sectionGap },
 });
