@@ -1,6 +1,6 @@
-import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
+import { act, fireEvent, render, waitFor, within } from '@testing-library/react-native';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { AppState, type AppStateStatus } from 'react-native';
+import { AppState, processColor, type AppStateStatus } from 'react-native';
 import { StudySessionScreen } from '@/features/study-session/study-session-screen';
 import { StudySessionHeartbeatRuntime } from '@/features/study-session/study-session-heartbeat-runtime';
 import { getActiveStudySession, heartbeatStudySession, startStudySession, type StudySessionSnapshot } from '@/features/study-session/api';
@@ -73,6 +73,7 @@ it('offers only three presets, starts with 25 minutes and sends the chosen durat
   const { view } = await renderStudySession();
   await view.findByTestId('study-session-setup');
 
+  await fireEvent.press(view.getByRole('button', { name: 'Configurar duração' }));
   expect(view.getByTestId('study-duration-25').props.accessibilityState.checked).toBe(true);
   expect(view.getAllByRole('radio')).toHaveLength(3);
   await fireEvent.press(view.getByTestId('study-duration-15'));
@@ -81,6 +82,72 @@ it('offers only three presets, starts with 25 minutes and sends the chosen durat
   await waitFor(() => expect(start).toHaveBeenCalledWith(900, expect.any(String)));
   await view.findByTestId('study-session-active');
   expect(view.queryByTestId('study-session-setup')).toBeNull();
+  view.unmount();
+});
+
+it('configures focus duration from the gear before starting the forge', async () => {
+  getActive.mockResolvedValue(null);
+  start.mockResolvedValue(snapshot);
+  const { view } = await renderStudySession();
+  await view.findByTestId('study-session-setup');
+
+  expect(view.queryByRole('radio')).toBeNull();
+  await fireEvent.press(view.getByRole('button', { name: 'Configurar duração' }));
+  expect(view.getByRole('radio', { name: '25 minutos' }).props.accessibilityState.checked).toBe(true);
+  await fireEvent.press(view.getByRole('radio', { name: '15 minutos' }));
+  await fireEvent.press(view.getByRole('button', { name: 'Fechar configurações' }));
+  expect(view.getByText('15:00')).toBeTruthy();
+  await fireEvent.press(view.getByRole('button', { name: 'Iniciar foco' }));
+  await waitFor(() => expect(start).toHaveBeenCalledWith(900, expect.any(String)));
+  view.unmount();
+});
+
+it('opens and closes the focus duration options by tapping the same gear', async () => {
+  getActive.mockResolvedValue(null);
+  const { view } = await renderStudySession();
+  await view.findByTestId('study-session-setup');
+
+  const gear = view.getByRole('button', { name: 'Configurar duração' });
+  expect(view.queryByRole('radio')).toBeNull();
+  await fireEvent.press(gear);
+  expect(view.getAllByRole('radio')).toHaveLength(3);
+  await fireEvent.press(gear);
+  expect(view.queryByRole('radio')).toBeNull();
+  view.unmount();
+});
+
+it('keeps the iPhone forge header and duration choices in the visible stage', async () => {
+  getActive.mockResolvedValue(null);
+  const { view } = await renderStudySession();
+  await view.findByTestId('study-session-setup');
+
+  expect(view.getByTestId('study-session-safe-area').props.edges.top).toBe('off');
+  await fireEvent.press(view.getByRole('button', { name: 'Configurar duração' }));
+  expect(within(view.getByTestId('study-session-stage')).getAllByRole('radio')).toHaveLength(3);
+  view.unmount();
+});
+
+it('shows the fixed duration in settings during an active session', async () => {
+  getActive.mockResolvedValue(snapshot);
+  const { view } = await renderStudySession();
+  await view.findByTestId('study-session-active');
+
+  await fireEvent.press(view.getByRole('button', { name: 'Configurações da sessão' }));
+  expect(view.getByText('A duração não pode ser alterada durante a sessão.')).toBeTruthy();
+  expect(view.queryByRole('radio')).toBeNull();
+  await fireEvent.press(view.getByRole('button', { name: 'Fechar configurações' }));
+  expect(view.queryByText('A duração não pode ser alterada durante a sessão.')).toBeNull();
+  view.unmount();
+});
+
+it('renders the forge with a gold background glow and gold primary action', async () => {
+  getActive.mockResolvedValue(snapshot);
+  const { view } = await renderStudySession();
+  await view.findByTestId('study-session-active');
+
+  expect(view.getByTestId('study-session-page-gradient', { includeHiddenElements: true })).toBeTruthy();
+  expect(view.getByTestId('study-session-stage-gradient', { includeHiddenElements: true })).toBeTruthy();
+  expect(view.getByTestId('study-session-primary-gradient').props.colors).toEqual([processColor('#d4a85a'), processColor('#8a6a3a')]);
   view.unmount();
 });
 

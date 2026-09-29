@@ -34,7 +34,13 @@ test.describe('Forja web', () => {
     await registerThroughUi(page);
     await page.getByRole('link', { name: 'Forja' }).click();
     await expect(page.getByTestId('study-session-setup')).toBeVisible();
+    await expect(page.getByRole('radio')).toHaveCount(0);
+    await page.getByRole('button', { name: 'Configurar duração' }).click();
+    await expect(page.getByRole('radio', { name: '25 minutos' })).toBeChecked();
     await page.getByRole('radio', { name: '15 minutos' }).click();
+    await expect(page.getByRole('radio', { name: '15 minutos' })).toBeChecked();
+    await page.getByRole('button', { name: 'Fechar configurações' }).click();
+    await expect(page.getByRole('radio')).toHaveCount(0);
 
     const apiPath = new URL(apiUrl).pathname.replace(/\/+$/, '');
     const startResponsePromise = page.waitForResponse((response) =>

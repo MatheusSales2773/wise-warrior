@@ -17,6 +17,9 @@ export function NavigationLink({ active, compact = false, destination }: Navigat
   const [focused, setFocused] = useState(false);
   const [hovered, setHovered] = useState(false);
   const [pressed, setPressed] = useState(false);
+  const visibleLabel = compact && destination.href === '/' ? 'Acamp.'
+    : compact && destination.href === '/perfil' ? 'Perfil'
+      : destination.label;
 
   return (
     <Link asChild href={destination.href}>
@@ -41,11 +44,11 @@ export function NavigationLink({ active, compact = false, destination }: Navigat
         <WiseIcon color={active ? 'accentHighlight' : 'textTertiary'} name={active ? destination.activeIcon : destination.inactiveIcon} />
         <WiseText
           color={active ? 'accentHighlight' : 'textSecondary'}
-          numberOfLines={compact ? 2 : 1}
+          numberOfLines={1}
           style={compact ? styles.compactLabel : undefined}
           variant="label"
         >
-          {destination.label}
+          {visibleLabel}
         </WiseText>
       </Pressable>
     </Link>
@@ -73,7 +76,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: theme.space.inlineHairline,
     paddingVertical: theme.space.inlineHairline,
   },
-  compactLabel: { width: '100%', textAlign: 'center' },
+  compactLabel: { width: '100%', textAlign: 'center', fontSize: 12, letterSpacing: 0 },
   active: {
     backgroundColor: theme.color.surfaceCardActive,
     borderColor: theme.color.borderEmphasis,

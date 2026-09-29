@@ -90,6 +90,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: theme.space.inlineHairline,
     paddingVertical: theme.space.inlineHairline,
   },
-  label: { width: '100%', textAlign: 'center' },
+  label: { width: '100%', textAlign: 'center', fontSize: 12, letterSpacing: 0 },
   moreInteracting: { backgroundColor: theme.color.surfaceCard, borderColor: theme.color.borderEmphasis },
 });

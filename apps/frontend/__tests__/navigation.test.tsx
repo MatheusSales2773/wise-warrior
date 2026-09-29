@@ -6,7 +6,7 @@ import { AppNavigation, restoreNavigationTriggerFocus } from '@/design-system/co
 import { AppShellFrame } from '@/design-system/components/AppShell';
 import { isDesktopLayout } from '@/design-system/tokens/layout';
 import { modalAnimationType, MoreMenu } from '@/design-system/navigation/MoreMenu';
-import { render } from '@testing-library/react-native';
+import { render, within } from '@testing-library/react-native';
 import { theme } from '@/design-system/tokens/theme';
 import { mockAuthState } from '../test-utils/auth-context';
 
@@ -133,6 +133,16 @@ describe('adaptive application navigation', () => {
 
     await fireEvent.press(screen.getByRole('link', { name: 'Guilda' }));
     await waitFor(() => expect(router).toHavePathname('/guilda'));
+  });
+
+  it('keeps iPhone navigation labels on one line', async () => {
+    await setViewport('ios', 402);
+    const router = renderRouter('src/app', { initialUrl: '/sessao' });
+    await router;
+
+    for (const [label, visibleLabel] of [['Acampamento', 'Acamp.'], ['Forja', 'Forja'], ['Personagem', 'Perfil'], ['Guilda', 'Guilda']] as const) {
+      expect(within(screen.getByRole('link', { name: label })).getByText(visibleLabel).props.numberOfLines).toBe(1);
+    }
   });
 
   it('dismisses Mais when resize switches to the desktop sidebar', async () => {

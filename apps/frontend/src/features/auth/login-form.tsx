@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react';
-import { StyleSheet, TextInput, View } from 'react-native';
-import { FeedbackMessage, WiseButton, WiseField, theme } from '@/design-system';
+import { StyleSheet, Text, TextInput, View } from 'react-native';
+import { FeedbackMessage, WiseButton, WiseField, WiseText, theme } from '@/design-system';
 import { useAuth } from '@/core/auth/auth-context';
 import { AuthShell } from './components/AuthShell';
 import { AuthNavigationLink } from './components/AuthNavigationLink';
@@ -53,6 +53,10 @@ export function LoginForm() {
       title="Entre na batalha"
     >
       <View aria-busy={submitting} style={styles.form}>
+        <View style={styles.formHead}>
+          <WiseText accessibilityRole="header" variant="subtitle">Abra seu grimório</WiseText>
+          <WiseText color="textTertiary" variant="body">Seus registros de foco aguardam por você.</WiseText>
+        </View>
         <WiseField
           ref={emailRef}
           autoCapitalize="none"
@@ -88,6 +92,10 @@ export function LoginForm() {
         {formError ? (
           <FeedbackMessage message={formError} title="Erro" variant="error" />
         ) : null}
+        <View style={styles.metaRow}>
+          <WiseText color="accentPrimary" variant="caption">✦</WiseText>
+          <Text style={styles.meta}>Seu progresso permanece protegido no grimório</Text>
+        </View>
         <WiseButton
           label="Entrar na batalha"
           loading={submitting}
@@ -104,4 +112,7 @@ export function LoginForm() {
 
 const styles = StyleSheet.create({
   form: { gap: theme.space.stackDefault },
+  formHead: { alignItems: 'center', gap: theme.space.inlineHairline, marginBottom: theme.space.inlineTight },
+  metaRow: { flexDirection: 'row', alignItems: 'center', gap: theme.space.inlineTight },
+  meta: { fontFamily: 'Inter-Medium', color: theme.color.textTertiary, fontSize: 11 },
 });
