@@ -169,6 +169,8 @@ function DurationSettings({ selected, focusedDuration, startPending, onSelect, o
           accessibilityLabel={`${duration / 60} minutos`}
           accessibilityRole="radio"
           accessibilityState={{ checked: selected === duration, disabled: startPending }}
+          aria-checked={selected === duration}
+          aria-disabled={startPending}
           disabled={startPending}
           key={duration}
           onPress={() => onSelect(duration)}
