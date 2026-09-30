@@ -309,6 +309,28 @@ describe('Recent Matéria suggestions on the Forja', () => {
     view.unmount();
   });
 
+  it('does not show the previous suggestions as current once a session was started', async () => {
+    getActive.mockResolvedValue(null);
+    getRecent.mockResolvedValue(['Antiga']);
+    start.mockResolvedValue({ ...snapshot, subject: 'Nova' });
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
+    const renderTree = (showScreen: boolean) => (
+      <QueryClientProvider client={client}>{showScreen ? <StudySessionScreen /> : null}</QueryClientProvider>
+    );
+    const view = await render(renderTree(true));
+    await view.findByRole('button', { name: 'Antiga' });
+    await fireEvent.press(view.getByRole('button', { name: 'Iniciar foco' }));
+    await view.findByTestId('study-session-active');
+
+    await view.rerender(renderTree(false));
+    getRecent.mockReturnValue(new Promise(() => undefined));
+    await view.rerender(renderTree(true));
+    await view.findByTestId('study-session-setup');
+
+    expect(view.queryByRole('button', { name: 'Antiga' })).toBeNull();
+    view.unmount();
+  });
+
   it('does not block the start while the suggestions are loading', async () => {
     getActive.mockResolvedValue(null);
     getRecent.mockReturnValue(new Promise(() => undefined));

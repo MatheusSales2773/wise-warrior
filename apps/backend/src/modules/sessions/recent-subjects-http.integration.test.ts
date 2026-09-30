@@ -171,6 +171,17 @@ describe('Recent subjects HTTP contract against MySQL', () => {
     expect(subjects).toEqual(['Em andamento', 'Descartada', 'Cancelada', 'Antecipada', 'Concluída']);
   });
 
+  it('ignores legacy sessions whose subject is blank, as they are Sem matéria', async () => {
+    await recordSession(userId, 'Física', 10);
+    await recordSession(userId, '', 20);
+    await recordSession(userId, '   ', 30);
+    await recordSession(userId, '\t\n ', 40);
+
+    const { subjects } = await (await getRecentSubjects()).json() as { subjects: string[] };
+
+    expect(subjects).toEqual(['Física']);
+  });
+
   it('never returns subjects from another user', async () => {
     await recordSession(otherUserId, 'Segredo do outro', 100);
     await recordSession(userId, 'Minha matéria', 10);

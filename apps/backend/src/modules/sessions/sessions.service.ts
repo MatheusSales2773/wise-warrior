@@ -66,7 +66,9 @@ export class SessionsService {
 
   /**
    * Latest spelling of each distinct Matéria, newest use first. "Distinct" ignores letter case but
-   * not accents; the column collation (`_ai_ci`) would also merge accents, so it is overridden here.
+   * not accents, so the collation is set explicitly: the MySQL 8.0 default (`utf8mb4_0900_ai_ci`)
+   * would also merge accents. Blank subjects only exist in rows from before the Matéria rules
+   * (the old DTO accepted `''` and spaces) and are Sem matéria, never a suggestion.
    */
   async recentSubjects(userId: string): Promise<RecentSubjectsResponseDto> {
     const rows: Array<{ subject: string }> = await this.studySessions.query(
@@ -78,7 +80,7 @@ export class SessionsService {
                     ORDER BY started_at DESC, id DESC
                   ) AS use_rank
              FROM study_sessions
-            WHERE user_id = ? AND subject IS NOT NULL
+            WHERE user_id = ? AND subject IS NOT NULL AND subject NOT REGEXP '^[[:space:]]*$'
          ) AS ranked
         WHERE ranked.use_rank = 1
         ORDER BY ranked.started_at DESC, ranked.id DESC

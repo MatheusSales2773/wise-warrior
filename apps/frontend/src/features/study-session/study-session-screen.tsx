@@ -17,7 +17,7 @@ import {
   type StudySessionTransitionAction,
   type StudySessionTransitionRequest,
 } from './api';
-import { activeStudySessionQueryKey, useActiveStudySession, useRecentStudySessionSubjects } from './queries';
+import { activeStudySessionQueryKey, recentStudySessionSubjectsQueryKey, useActiveStudySession, useRecentStudySessionSubjects } from './queries';
 import { formatRemainingTime, remainingStudySeconds } from './timer';
 import { MAX_SUBJECT_LENGTH, validateSubject, type SubjectValidation } from './subject';
 import { FeedbackMessage } from '@/design-system/components/FeedbackMessage';
@@ -369,6 +369,8 @@ export function StudySessionScreen() {
       clearCompletionIntent();
       setCompletionIntentState(null);
       queryClient.setQueryData(activeStudySessionQueryKey, snapshot);
+      // The started Matéria is now the most recent one; a cached list would flash the old order on return.
+      queryClient.removeQueries({ queryKey: recentStudySessionSubjectsQueryKey });
     },
     onError() {
       void refreshActive();
