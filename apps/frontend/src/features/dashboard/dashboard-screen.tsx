@@ -87,33 +87,43 @@ function CardContent({ children, testID }: PropsWithChildren<{ testID?: string }
 }
 
 const NO_SUBJECT_LABEL = 'Sem matéria';
+const ACTIVITY_SEPARATOR = ' · ';
 
-function formatMode(mode: string): string {
-  return mode === 'guild' ? 'guilda' : mode;
+function joinParts(parts: (string | null | undefined)[]): string {
+  return parts.filter(Boolean).join(ACTIVITY_SEPARATOR);
+}
+
+function describeActivity(session: RecentStudySession) {
+  const subject = session.subject?.trim() || null;
+  const subjectLabel = subject ?? NO_SUBJECT_LABEL;
+  const isGuild = session.mode === 'guild';
+  const modeLabel = isGuild ? 'guilda' : session.mode;
+  const discarded = session.discardedReason ? formatDiscardReason(session.discardedReason) : null;
+  const xp = `${formatXp(session.xpAwarded)} XP`;
+  const metaLine = joinParts([formatSessionState(session.state), modeLabel, formatSessionDate(session.endedAt), formatDuration(session.durationValidSeconds)]);
+
+  return {
+    a11yLabel: `Sessão: ${joinParts([subjectLabel, metaLine, xp, discarded])}`,
+    discarded,
+    hasSubject: subject !== null,
+    metaLine,
+    title: joinParts([subjectLabel, isGuild ? modeLabel : null]),
+    xp,
+  };
 }
 
 function ActivityItem({ session }: { session: RecentStudySession }) {
-  const subject = session.subject?.trim() || null;
-  const isGuild = session.mode === 'guild';
-  const title = `${subject ?? NO_SUBJECT_LABEL}${isGuild ? ' · guilda' : ''}`;
-  const display = {
-    date: formatSessionDate(session.endedAt),
-    discarded: session.discardedReason ? formatDiscardReason(session.discardedReason) : null,
-    duration: formatDuration(session.durationValidSeconds),
-    xp: `${formatXp(session.xpAwarded)} XP`,
-  };
-  const meta = [formatSessionState(session.state), formatMode(session.mode), display.date, display.duration].filter(Boolean).join(' · ');
-  const details = [subject ?? NO_SUBJECT_LABEL, meta, display.xp, display.discarded].filter(Boolean).join(' · ');
+  const item = describeActivity(session);
 
   return (
-    <View accessible accessibilityLabel={`Sessão: ${details}`} key={session.id} style={styles.activityItem}>
+    <View accessible accessibilityLabel={item.a11yLabel} key={session.id} style={styles.activityItem}>
       <View style={styles.activityMain}>
-        <Text allowFontScaling style={subject ? styles.activitySubject : styles.activityNoSubject}>{title}</Text>
-        <Text style={styles.activityMeta}>{meta}</Text>
+        <Text allowFontScaling ellipsizeMode="tail" numberOfLines={2} style={item.hasSubject ? styles.activitySubject : styles.activityNoSubject}>{item.title}</Text>
+        <Text style={styles.activityMeta}>{item.metaLine}</Text>
       </View>
-      {display.discarded
-        ? <Text style={styles.activityDiscarded}>{display.discarded}</Text>
-        : <Text style={styles.activityXp}>+{display.xp}</Text>}
+      {item.discarded
+        ? <Text style={styles.activityDiscarded}>{item.discarded}</Text>
+        : <Text style={styles.activityXp}>+{item.xp}</Text>}
     </View>
   );
 }
