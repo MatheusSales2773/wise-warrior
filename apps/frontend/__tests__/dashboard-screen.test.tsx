@@ -2,6 +2,7 @@ import { act, fireEvent, render, screen, waitFor, within } from '@testing-librar
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { AccessibilityInfo, Platform, StyleSheet } from 'react-native';
 import { DashboardScreen } from '@/features/dashboard/dashboard-screen';
+import { theme } from '@/design-system';
 import { getMyProfile, getRecentStudySessions, getSessionMetrics, type UserProfile, type RecentStudySession, type SessionMetrics } from '@/features/dashboard/api';
 import { dashboardKeys } from '@/features/dashboard/queries';
 
@@ -42,6 +43,10 @@ const metrics: SessionMetrics = {
 
 const mockedProfile = getMyProfile as jest.MockedFunction<typeof getMyProfile>;
 const mockedActivity = getRecentStudySessions as jest.MockedFunction<typeof getRecentStudySessions>;
+
+function metaParts(sessionId: string): string[] {
+  return String(screen.getByTestId(`dashboard-activity-meta-${sessionId}`).props.children).split(' · ');
+}
 const mockedMetrics = getSessionMetrics as jest.MockedFunction<typeof getSessionMetrics>;
 
 async function renderDashboard() {
@@ -259,7 +264,7 @@ describe('DashboardScreen', () => {
 
     await waitFor(() => expect(screen.getByTestId('dashboard-activity')).toBeTruthy());
     expect(screen.getByText('Matemática')).toBeTruthy();
-    expect(screen.getByText(/^Concluída · foco · .* · 25 min$/)).toBeTruthy();
+    expect(metaParts('session-1')).toEqual(['Concluída', 'foco', expect.any(String), '25 min']);
     expect(screen.queryByText('Sem matéria')).toBeNull();
   });
 
@@ -273,7 +278,7 @@ describe('DashboardScreen', () => {
     await waitFor(() => expect(screen.getByTestId('dashboard-activity')).toBeTruthy());
     expect(screen.getByText('Sem matéria')).toBeTruthy();
     expect(screen.queryByText('Cancelada')).toBeNull();
-    expect(screen.getByText(/^Cancelada · .*· 4 min$/)).toBeTruthy();
+    expect(metaParts('session-1')).toEqual(['Cancelada', 'foco', expect.any(String), '4 min']);
     expect(screen.queryByText('null')).toBeNull();
     expect(screen.getByLabelText(/Sem matéria.*Cancelada/)).toBeTruthy();
   });
@@ -301,12 +306,15 @@ describe('DashboardScreen', () => {
 
     await waitFor(() => expect(screen.getByTestId('dashboard-activity')).toBeTruthy());
     const noSubject = StyleSheet.flatten(screen.getByText('Sem matéria').props.style);
-    const subject = StyleSheet.flatten(screen.getByText('Física').props.style);
-    expect(noSubject?.fontStyle).toBe('italic');
-    expect(subject?.fontStyle).toBeUndefined();
+    const subject = StyleSheet.flatten(screen.getByTestId('dashboard-activity-title-s2').props.style);
+    expect(noSubject?.fontStyle).toBeUndefined();
+    expect(noSubject?.fontFamily).toBe('Inter-Regular');
+    expect(noSubject?.color).toBe(theme.color.textTertiary);
+    expect(subject?.fontFamily).toBe('Inter-Medium');
+    expect(subject?.color).toBe(theme.color.textPrimary);
     const guildMarks = screen.getAllByText(/· guilda$/);
     expect(guildMarks).toHaveLength(2);
-    guildMarks.forEach((mark) => expect(StyleSheet.flatten(mark.props.style)?.fontStyle).toBeUndefined());
+    guildMarks.forEach((mark) => expect(StyleSheet.flatten(mark.props.style)?.color).toBe(theme.color.textPrimary));
   });
 
   it('clamps a long subject title to two lines with a tail ellipsis', async () => {
@@ -344,7 +352,7 @@ describe('DashboardScreen', () => {
 
     await waitFor(() => expect(screen.getByTestId('dashboard-activity')).toBeTruthy());
     expect(screen.getByText(`${subject} · guilda`).props.allowFontScaling).toBe(true);
-    expect(screen.getByText(/^Concluída · guilda · .* · 25 min$/)).toBeTruthy();
+    expect(metaParts('session-1')).toEqual(['Concluída', 'guilda', expect.any(String), '25 min']);
     expect(screen.getByLabelText(new RegExp(`${subject}.*Concluída.*guilda.*25 min`))).toBeTruthy();
   });
 
