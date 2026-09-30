@@ -87,26 +87,27 @@ function CardContent({ children, testID }: PropsWithChildren<{ testID?: string }
 }
 
 const NO_SUBJECT_LABEL = 'Sem matéria';
-const DOT_SEPARATOR = ' · ';
+const DETAIL_SEPARATOR = ' · ';
 
-function joinWithDot(parts: (string | null | undefined)[]): string {
-  return parts.filter(Boolean).join(DOT_SEPARATOR);
+function joinDetails(parts: (string | null | undefined)[]): string {
+  return parts.filter(Boolean).join(DETAIL_SEPARATOR);
 }
 
 function describeActivity(session: RecentStudySession) {
   const subject = session.subject?.trim() || null;
   const subjectLabel = subject ?? NO_SUBJECT_LABEL;
+  const isGuild = session.mode === 'guild';
   const modeLabel = formatSessionMode(session.mode);
   const discarded = session.discardedReason ? formatDiscardReason(session.discardedReason) : null;
   const xp = `${formatXp(session.xpAwarded)} XP`;
-  const metaLine = joinWithDot([formatSessionState(session.state), modeLabel, formatSessionDate(session.endedAt), formatDuration(session.durationValidSeconds)]);
+  const metaLine = joinDetails([formatSessionState(session.state), modeLabel, formatSessionDate(session.endedAt), formatDuration(session.durationValidSeconds)]);
 
   return {
-    a11yLabel: `Sessão: ${joinWithDot([subjectLabel, metaLine, xp, discarded])}`,
+    a11yLabel: `Sessão: ${joinDetails([subjectLabel, metaLine, xp, discarded])}`,
     discarded,
     hasSubject: subject !== null,
     metaLine,
-    guildMark: session.mode === 'guild' ? `${DOT_SEPARATOR}${modeLabel}` : null,
+    guildLabel: isGuild ? modeLabel : null,
     subjectLabel,
     xp,
   };
@@ -118,9 +119,9 @@ function ActivityItem({ session }: { session: RecentStudySession }) {
   return (
     <View accessible accessibilityLabel={item.a11yLabel} style={styles.activityItem}>
       <View style={styles.activityMain}>
-        <Text allowFontScaling ellipsizeMode="tail" numberOfLines={2} style={styles.activitySubject}>
-          <Text allowFontScaling style={item.hasSubject ? styles.activitySubject : styles.activityNoSubject}>{item.subjectLabel}</Text>
-          {item.guildMark}
+        <Text allowFontScaling ellipsizeMode="tail" numberOfLines={2} style={styles.activitySubject} testID={`dashboard-activity-title-${session.id}`}>
+          <Text style={item.hasSubject ? undefined : styles.activityNoSubject}>{item.subjectLabel}</Text>
+          {item.guildLabel ? `${DETAIL_SEPARATOR}${item.guildLabel}` : null}
         </Text>
         <Text style={styles.activityMeta}>{item.metaLine}</Text>
       </View>

@@ -168,7 +168,7 @@ describe('DashboardScreen', () => {
     expect(screen.getByText(longSubject)).toBeTruthy();
     expect(screen.getByText(/· 45 s$/)).toBeTruthy();
     expect(screen.getByText('Sessão não contabilizada')).toBeTruthy();
-    expect(screen.getByText(longSubject).props.allowFontScaling).toBe(true);
+    expect(screen.getByTestId(`dashboard-activity-title-${session.id}`).props.allowFontScaling).toBe(true);
   });
 
   it('exposes each long activity item as one complete accessible announcement', async () => {
@@ -302,23 +302,26 @@ describe('DashboardScreen', () => {
     await waitFor(() => expect(screen.getByTestId('dashboard-activity')).toBeTruthy());
     const noSubject = StyleSheet.flatten(screen.getByText('Sem matéria').props.style);
     const subject = StyleSheet.flatten(screen.getByText('Física').props.style);
-    expect(noSubject.fontStyle).toBe('italic');
-    expect(subject.fontStyle).toBeUndefined();
+    expect(noSubject?.fontStyle).toBe('italic');
+    expect(subject?.fontStyle).toBeUndefined();
     const guildMarks = screen.getAllByText(/· guilda$/);
     expect(guildMarks).toHaveLength(2);
-    guildMarks.forEach((mark) => expect(StyleSheet.flatten(mark.props.style).fontStyle).toBeUndefined());
+    guildMarks.forEach((mark) => expect(StyleSheet.flatten(mark.props.style)?.fontStyle).toBeUndefined());
   });
 
   it('clamps a long subject title to two lines with a tail ellipsis', async () => {
-    const subject = 'Matemática aplicada e raciocínio lógico '.repeat(2).trim().slice(0, 80);
+    const subject = 'Cálculo diferencial e integral aplicado a problemas de otimização e modelagem';
+    expect(subject).toHaveLength(77);
+    const eighty = `${subject}...`;
+    expect(eighty).toHaveLength(80);
     mockedProfile.mockResolvedValue(profile);
-    mockedActivity.mockResolvedValue([{ ...session, subject }]);
+    mockedActivity.mockResolvedValue([{ ...session, subject: eighty }]);
     await renderDashboard();
 
     await waitFor(() => expect(screen.getByTestId('dashboard-activity')).toBeTruthy());
-    const title = screen.getByText(subject).parent;
-    expect(title?.props.numberOfLines).toBe(2);
-    expect(title?.props.ellipsizeMode).toBe('tail');
+    const title = screen.getByTestId(`dashboard-activity-title-${session.id}`);
+    expect(title.props.numberOfLines).toBe(2);
+    expect(title.props.ellipsizeMode).toBe('tail');
   });
 
   it('treats empty or whitespace-only subjects as "Sem matéria"', async () => {
