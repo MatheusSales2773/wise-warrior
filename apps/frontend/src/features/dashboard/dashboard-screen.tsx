@@ -86,35 +86,48 @@ function CardContent({ children, testID }: PropsWithChildren<{ testID?: string }
   return <View style={styles.cardContent} testID={testID}>{children}</View>;
 }
 
-function ActivityItem({ session }: { session: RecentStudySession }) {
-  const display = {
-    date: formatSessionDate(session.endedAt),
-    discarded: session.discardedReason ? formatDiscardReason(session.discardedReason) : null,
-    duration: formatDuration(session.durationValidSeconds),
-    mode: session.mode,
-    status: formatSessionState(session.state),
-    subject: session.subject,
-    xp: `${formatXp(session.xpAwarded)} XP`,
+const NO_SUBJECT_LABEL = 'Sem matéria';
+const DETAIL_SEPARATOR = ' · ';
+
+function joinDetails(parts: (string | null | undefined)[]): string {
+  return parts.filter(Boolean).join(DETAIL_SEPARATOR);
+}
+
+function describeActivity(session: RecentStudySession) {
+  const subject = session.subject?.trim() || null;
+  const subjectLabel = subject ?? NO_SUBJECT_LABEL;
+  const isGuild = session.mode === 'guild';
+  const modeLabel = formatSessionMode(session.mode);
+  const discarded = session.discardedReason ? formatDiscardReason(session.discardedReason) : null;
+  const xp = `${formatXp(session.xpAwarded)} XP`;
+  const metaLine = joinDetails([formatSessionState(session.state), modeLabel, formatSessionDate(session.endedAt), formatDuration(session.durationValidSeconds)]);
+
+  return {
+    a11yLabel: `Sessão: ${joinDetails([subjectLabel, metaLine, xp, discarded])}`,
+    discarded,
+    hasSubject: subject !== null,
+    metaLine,
+    guildLabel: isGuild ? modeLabel : null,
+    subjectLabel,
+    xp,
   };
-  const details = [
-    display.status,
-    display.subject,
-    display.mode,
-    display.date,
-    display.duration,
-    display.xp,
-    display.discarded,
-  ].filter(Boolean).join(' · ');
+}
+
+function ActivityItem({ session }: { session: RecentStudySession }) {
+  const item = describeActivity(session);
 
   return (
-    <View accessible accessibilityLabel={`Sessão: ${details}`} key={session.id} style={styles.activityItem}>
+    <View accessible accessibilityLabel={item.a11yLabel} style={styles.activityItem}>
       <View style={styles.activityMain}>
-        <Text allowFontScaling style={styles.activitySubject}>{display.subject ?? display.status}{display.mode === 'guild' ? ' · guilda' : ''}</Text>
-        <Text style={styles.activityMeta}>{display.date} · {display.duration}</Text>
+        <Text allowFontScaling ellipsizeMode="tail" numberOfLines={2} style={styles.activitySubject} testID={`dashboard-activity-title-${session.id}`}>
+          <Text style={item.hasSubject ? undefined : styles.activityNoSubject}>{item.subjectLabel}</Text>
+          {item.guildLabel ? `${DETAIL_SEPARATOR}${item.guildLabel}` : null}
+        </Text>
+        <Text style={styles.activityMeta} testID={`dashboard-activity-meta-${session.id}`}>{item.metaLine}</Text>
       </View>
-      {display.discarded
-        ? <Text style={styles.activityDiscarded}>{display.discarded}</Text>
-        : <Text style={styles.activityXp}>+{display.xp}</Text>}
+      {item.discarded
+        ? <Text style={styles.activityDiscarded}>{item.discarded}</Text>
+        : <Text style={styles.activityXp}>+{item.xp}</Text>}
     </View>
   );
 }
@@ -224,6 +237,10 @@ function MetricsCard({ query }: { query: UseQueryResult<SessionMetrics> }) {
 
 function formatDayCount(value: number): string {
   return `${value} ${value === 1 ? 'dia' : 'dias'}`;
+}
+
+function formatSessionMode(mode: string): string {
+  return mode === 'guild' ? 'guilda' : mode;
 }
 
 function formatSessionState(state: RecentStudySession['state']): string {
@@ -516,6 +533,7 @@ const styles = StyleSheet.create({
   activityItem: { flexDirection: 'row', alignItems: 'flex-start', gap: 14, minWidth: 0, paddingVertical: 10, borderBottomWidth: theme.border.standard, borderBottomColor: theme.color.borderGhost, borderStyle: 'dashed' },
   activityMain: { flex: 1, minWidth: 0, gap: 3 },
   activitySubject: { fontFamily: 'Inter-Medium', fontSize: 12, lineHeight: 17, color: theme.color.textPrimary },
+  activityNoSubject: { fontFamily: 'Inter-Regular', fontSize: 12, lineHeight: 17, color: theme.color.textTertiary },
   activityMeta: { fontFamily: 'Inter-Regular', fontSize: 10, lineHeight: 14, letterSpacing: 0.6, color: theme.color.textTertiary },
   activityXp: { fontFamily: 'JetBrainsMono-SemiBold', fontSize: 12, lineHeight: 17, color: theme.color.accentHighlight, flexShrink: 0 },
   activityDiscarded: { ...mono, fontSize: 11, lineHeight: 16, color: theme.color.feedbackDanger, flexShrink: 1, maxWidth: '45%', textAlign: 'right' },

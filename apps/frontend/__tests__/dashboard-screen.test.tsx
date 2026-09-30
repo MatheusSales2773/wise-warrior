@@ -1,7 +1,8 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react-native';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { AccessibilityInfo, Platform } from 'react-native';
+import { AccessibilityInfo, Platform, StyleSheet } from 'react-native';
 import { DashboardScreen } from '@/features/dashboard/dashboard-screen';
+import { theme } from '@/design-system';
 import { getMyProfile, getRecentStudySessions, getSessionMetrics, type UserProfile, type RecentStudySession, type SessionMetrics } from '@/features/dashboard/api';
 import { dashboardKeys } from '@/features/dashboard/queries';
 
@@ -42,6 +43,10 @@ const metrics: SessionMetrics = {
 
 const mockedProfile = getMyProfile as jest.MockedFunction<typeof getMyProfile>;
 const mockedActivity = getRecentStudySessions as jest.MockedFunction<typeof getRecentStudySessions>;
+
+function metaParts(sessionId: string): string[] {
+  return String(screen.getByTestId(`dashboard-activity-meta-${sessionId}`).props.children).split(' · ');
+}
 const mockedMetrics = getSessionMetrics as jest.MockedFunction<typeof getSessionMetrics>;
 
 async function renderDashboard() {
@@ -168,7 +173,7 @@ describe('DashboardScreen', () => {
     expect(screen.getByText(longSubject)).toBeTruthy();
     expect(screen.getByText(/· 45 s$/)).toBeTruthy();
     expect(screen.getByText('Sessão não contabilizada')).toBeTruthy();
-    expect(screen.getByText(longSubject).props.allowFontScaling).toBe(true);
+    expect(screen.getByTestId(`dashboard-activity-title-${session.id}`).props.allowFontScaling).toBe(true);
   });
 
   it('exposes each long activity item as one complete accessible announcement', async () => {
@@ -183,7 +188,7 @@ describe('DashboardScreen', () => {
 
     await waitFor(() => expect(screen.getByTestId('dashboard-activity')).toBeTruthy());
     expect(screen.queryByText('Aprendiz')).toBeNull();
-    expect(screen.getByLabelText(/Concluída.*Matemática aplicada e raciocínio lógico avançado.*foco.*25 min.*25 XP.*Sessão não contabilizada/)).toBeTruthy();
+    expect(screen.getByLabelText(/Matemática aplicada e raciocínio lógico avançado.*Concluída.*foco.*25 min.*25 XP.*Sessão não contabilizada/)).toBeTruthy();
     expect(screen.getByRole('progressbar', { name: 'Progresso para o nível 4', value: { min: 100, max: 200, now: 150 } })).toBeTruthy();
   });
 
@@ -252,7 +257,18 @@ describe('DashboardScreen', () => {
     expect(screen.getByText('Sessão não contabilizada')).toBeTruthy();
   });
 
-  it('keeps a cancelled session in activity without rendering a subject placeholder', async () => {
+  it('shows the subject as title and the session state in the details line', async () => {
+    mockedProfile.mockResolvedValue(profile);
+    mockedActivity.mockResolvedValue([session]);
+    await renderDashboard();
+
+    await waitFor(() => expect(screen.getByTestId('dashboard-activity')).toBeTruthy());
+    expect(screen.getByText('Matemática')).toBeTruthy();
+    expect(metaParts('session-1')).toEqual(['Concluída', 'foco', expect.any(String), '25 min']);
+    expect(screen.queryByText('Sem matéria')).toBeNull();
+  });
+
+  it('shows a discreet "Sem matéria" title for a session without subject, keeping the state in the details', async () => {
     mockedProfile.mockResolvedValue(profile);
     mockedActivity.mockResolvedValue([{
       ...session, subject: null, state: 'cancelled', durationValidSeconds: 299, xpAwarded: 0,
@@ -260,10 +276,84 @@ describe('DashboardScreen', () => {
     await renderDashboard();
 
     await waitFor(() => expect(screen.getByTestId('dashboard-activity')).toBeTruthy());
-    expect(screen.getByText('Cancelada')).toBeTruthy();
-    expect(screen.getByText(/· 4 min$/)).toBeTruthy();
+    expect(screen.getByText('Sem matéria')).toBeTruthy();
+    expect(screen.queryByText('Cancelada')).toBeNull();
+    expect(metaParts('session-1')).toEqual(['Cancelada', 'foco', expect.any(String), '4 min']);
     expect(screen.queryByText('null')).toBeNull();
-    expect(screen.queryByText('Sem matéria')).toBeNull();
+    expect(screen.getByLabelText(/Sem matéria.*Cancelada/)).toBeTruthy();
+  });
+
+  it('keeps the guild indication beside the subject or "Sem matéria"', async () => {
+    mockedProfile.mockResolvedValue(profile);
+    mockedActivity.mockResolvedValue([
+      { ...session, id: 's1', mode: 'guild' },
+      { ...session, id: 's2', mode: 'guild', subject: null },
+    ]);
+    await renderDashboard();
+
+    await waitFor(() => expect(screen.getByTestId('dashboard-activity')).toBeTruthy());
+    expect(screen.getByTestId('dashboard-activity-title-s1')).toHaveTextContent('Matemática · guilda');
+    expect(screen.getByTestId('dashboard-activity-title-s2')).toHaveTextContent('Sem matéria · guilda');
+  });
+
+  it('applies the discreet style only to "Sem matéria", not to the guild indication', async () => {
+    mockedProfile.mockResolvedValue(profile);
+    mockedActivity.mockResolvedValue([
+      { ...session, id: 's1', subject: null, mode: 'guild' },
+      { ...session, id: 's2', subject: 'Física', mode: 'guild' },
+    ]);
+    await renderDashboard();
+
+    await waitFor(() => expect(screen.getByTestId('dashboard-activity')).toBeTruthy());
+    const noSubject = StyleSheet.flatten(screen.getByText('Sem matéria').props.style);
+    const subject = StyleSheet.flatten(screen.getByTestId('dashboard-activity-title-s2').props.style);
+    expect(noSubject?.fontStyle).toBeUndefined();
+    expect(noSubject?.fontFamily).toBe('Inter-Regular');
+    expect(noSubject?.color).toBe(theme.color.textTertiary);
+    expect(subject?.fontFamily).toBe('Inter-Medium');
+    expect(subject?.color).toBe(theme.color.textPrimary);
+    const guildMarks = screen.getAllByText(/· guilda$/);
+    expect(guildMarks).toHaveLength(2);
+    guildMarks.forEach((mark) => expect(StyleSheet.flatten(mark.props.style)?.color).toBe(theme.color.textPrimary));
+  });
+
+  it('clamps a long subject title to two lines with a tail ellipsis', async () => {
+    const subject = 'Cálculo diferencial e integral aplicado a problemas de otimização e modelagem';
+    expect(subject).toHaveLength(77);
+    const eighty = `${subject}...`;
+    expect(eighty).toHaveLength(80);
+    mockedProfile.mockResolvedValue(profile);
+    mockedActivity.mockResolvedValue([{ ...session, subject: eighty }]);
+    await renderDashboard();
+
+    await waitFor(() => expect(screen.getByTestId('dashboard-activity')).toBeTruthy());
+    const title = screen.getByTestId(`dashboard-activity-title-${session.id}`);
+    expect(title.props.numberOfLines).toBe(2);
+    expect(title.props.ellipsizeMode).toBe('tail');
+  });
+
+  it('treats empty or whitespace-only subjects as "Sem matéria"', async () => {
+    mockedProfile.mockResolvedValue(profile);
+    mockedActivity.mockResolvedValue([
+      { ...session, id: 's1', subject: '' },
+      { ...session, id: 's2', subject: '   ' },
+    ]);
+    await renderDashboard();
+
+    await waitFor(() => expect(screen.getByTestId('dashboard-activity')).toBeTruthy());
+    expect(screen.getAllByText('Sem matéria')).toHaveLength(2);
+  });
+
+  it('keeps an 80-character subject readable and announced with the guild mode', async () => {
+    const subject = 'M'.repeat(80);
+    mockedProfile.mockResolvedValue(profile);
+    mockedActivity.mockResolvedValue([{ ...session, subject, mode: 'guild' }]);
+    await renderDashboard();
+
+    await waitFor(() => expect(screen.getByTestId('dashboard-activity')).toBeTruthy());
+    expect(screen.getByTestId(`dashboard-activity-title-${session.id}`)).toHaveTextContent(`${subject} · guilda`);
+    expect(metaParts('session-1')).toEqual(['Concluída', 'guilda', expect.any(String), '25 min']);
+    expect(screen.getByLabelText(new RegExp(`${subject}.*Concluída.*guilda.*25 min`))).toBeTruthy();
   });
 
   it('renders the streak metrics and 56-cell cadence card with accessible summaries', async () => {
