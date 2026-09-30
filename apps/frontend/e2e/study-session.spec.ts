@@ -117,13 +117,13 @@ test.describe('Forja web', () => {
     await page.getByRole('link', { name: 'Acampamento' }).click();
     await expect(page.getByTestId('dashboard-progression')).toContainText(`${result.xpAwarded} XP total`);
     const dashboardActivityItem = page.getByTestId('dashboard-activity').locator(
-      '[aria-label^="Sessão: Encerrada antecipadamente · Cálculo II · solo ·"]',
+      '[aria-label^="Sessão: Cálculo II · Encerrada antecipadamente · solo ·"]',
     );
     await expect(dashboardActivityItem).toHaveCount(1);
     await expect(dashboardActivityItem).toBeVisible();
     const expectedRecentLabel = await page.evaluate(({ endedAt, durationMinutes, xpAwarded }) => {
       const date = new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short', timeStyle: 'short' }).format(new Date(endedAt));
-      return `Sessão: Encerrada antecipadamente · Cálculo II · solo · ${date} · ${durationMinutes} min · ${xpAwarded} XP`;
+      return `Sessão: Cálculo II · Encerrada antecipadamente · solo · ${date} · ${durationMinutes} min · ${xpAwarded} XP`;
     }, {
       endedAt: result.endedAt,
       durationMinutes: Math.floor(result.durationValidSeconds / 60),
@@ -174,13 +174,13 @@ test.describe('Forja web', () => {
     await page.getByRole('link', { name: 'Acampamento' }).click();
     await expect(page.getByTestId('dashboard-progression')).toContainText('0 XP total');
     const cancelledActivityItem = page.getByTestId('dashboard-activity').locator(
-      '[aria-label^="Sessão: Cancelada · solo ·"]',
+      '[aria-label^="Sessão: Sem matéria · Cancelada · solo ·"]',
     );
     await expect(cancelledActivityItem).toHaveCount(1);
     await expect(cancelledActivityItem).toBeVisible();
     const expectedCancelledLabel = await page.evaluate(({ endedAt, duration, xpAwarded }) => {
       const date = new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short', timeStyle: 'short' }).format(new Date(endedAt));
-      return `Sessão: Cancelada · solo · ${date} · ${duration} · ${xpAwarded} XP`;
+      return `Sessão: Sem matéria · Cancelada · solo · ${date} · ${duration} · ${xpAwarded} XP`;
     }, {
       endedAt: result.endedAt,
       duration: result.durationValidSeconds < 60
