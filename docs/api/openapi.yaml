@@ -296,7 +296,8 @@ paths:
         Aceita presets de 900, 1500 ou 3000 segundos; o padrão defensivo é
         1500. Idempotency-Key é única por usuário entre inícios e transições.
         Um replay idêntico devolve o snapshot original; reutilizar a chave por
-        outro comando ou com duração diferente devolve conflito estável.
+        outro comando, com duração diferente ou com outra Matéria devolve
+        conflito estável.
       operationId: startStudySession
       tags: [Sessions]
       parameters:
@@ -800,6 +801,17 @@ components:
       additionalProperties: false
       properties:
         plannedDurationSeconds: { type: integer, enum: [900, 1500, 3000], default: 1500 }
+        subject:
+          type: [string, "null"]
+          description: >
+            Matéria opcional da Study Session. Ausente, null ou só espaços em
+            branco (inclusive tab e quebras de linha) resultam em Sem matéria
+            (null). A API remove espaços das pontas,
+            colapsa espaços internos repetidos, normaliza para NFC e preserva
+            maiúsculas e acentos; aceita de 1 a 80 caracteres após a
+            normalização e recusa quebras de linha e caracteres de controle
+            junto de texto com 400 application/problem+json.
+          example: Cálculo II
 
     StudySessionTransitionRequest:
       type: object
@@ -814,7 +826,9 @@ components:
       properties:
         id: { type: string, format: uuid }
         mode: { type: string, enum: [solo] }
-        subject: { type: "null" }
+        subject:
+          type: [string, "null"]
+          description: Matéria normalizada definida no início; null é Sem matéria. Não muda depois do início.
         state: { type: string, enum: [running, paused, completed, stopped_early, cancelled, discarded] }
         plannedDurationSeconds: { type: integer, enum: [900, 1500, 3000] }
         startedAt: { type: string, format: date-time }
@@ -1017,12 +1031,12 @@ components:
                 detail: Já existe uma Study Session ativa nesta conta
                 instance: /api/v1/sessions
             idempotencyKeyReused:
-              summary: A chave pertence a outro comando ou duração
+              summary: A chave pertence a outro comando, duração ou Matéria
               value:
                 type: https://wise.app/errors/idempotency-key-reused
                 title: ConflictException
                 status: 409
-                detail: Idempotency-Key já foi usada por outro comando
+                detail: Idempotency-Key já foi usada com outra duração ou Matéria
                 instance: /api/v1/sessions
     # Keep operation examples local: each RFC 7807 `instance` names its route.
     StudySessionPauseConflict:

@@ -6,6 +6,7 @@ import { StudySessionHeartbeatRuntime } from '@/features/study-session/study-ses
 import { getActiveStudySession, heartbeatStudySession, startStudySession, type StudySessionSnapshot } from '@/features/study-session/api';
 import { STUDY_SESSION_HEARTBEAT_INTERVAL_MS } from '@/features/study-session/use-study-session-heartbeat';
 import { formatRemainingTime, remainingStudySeconds } from '@/features/study-session/timer';
+import { clearCompletionIntent } from '@/features/study-session/completion-intent';
 
 jest.mock('@/features/study-session/api', () => ({
   STUDY_SESSION_PRESETS: [900, 1500, 3000],
@@ -79,7 +80,7 @@ it('offers only three presets, starts with 25 minutes and sends the chosen durat
   await fireEvent.press(view.getByTestId('study-duration-15'));
   await waitFor(() => expect(view.getByTestId('study-duration-15').props.accessibilityState.checked).toBe(true));
   await fireEvent.press(view.getByTestId('study-session-start'));
-  await waitFor(() => expect(start).toHaveBeenCalledWith(900, expect.any(String)));
+  await waitFor(() => expect(start).toHaveBeenCalledWith(900, expect.any(String), null));
   await view.findByTestId('study-session-active');
   expect(view.queryByTestId('study-session-setup')).toBeNull();
   view.unmount();
@@ -98,7 +99,7 @@ it('configures focus duration from the gear before starting the forge', async ()
   await fireEvent.press(view.getByRole('button', { name: 'Fechar configurações' }));
   expect(view.getByText('15:00')).toBeTruthy();
   await fireEvent.press(view.getByRole('button', { name: 'Iniciar foco' }));
-  await waitFor(() => expect(start).toHaveBeenCalledWith(900, expect.any(String)));
+  await waitFor(() => expect(start).toHaveBeenCalledWith(900, expect.any(String), null));
   view.unmount();
 });
 
@@ -114,6 +115,124 @@ it('opens and closes the focus duration options by tapping the same gear', async
   await fireEvent.press(gear);
   expect(view.queryByRole('radio')).toBeNull();
   view.unmount();
+});
+
+describe('Matéria on the Forja', () => {
+  // The fixed snapshots are past their deadline; drop any completion intent a started session retained.
+  afterEach(() => clearCompletionIntent());
+
+  it('offers an empty, labelled optional field in the setup stage and starts Sem matéria with one tap', async () => {
+    getActive.mockResolvedValue(null);
+    start.mockResolvedValue(snapshot);
+    const { view } = await renderStudySession();
+    await view.findByTestId('study-session-setup');
+
+    const field = view.getByLabelText('Matéria (opcional)');
+    expect(within(view.getByTestId('study-session-stage')).getByLabelText('Matéria (opcional)')).toBe(field);
+    expect(field.props.value ?? '').toBe('');
+    await fireEvent.press(view.getByRole('button', { name: 'Iniciar foco' }));
+    await waitFor(() => expect(start).toHaveBeenCalledWith(1500, expect.any(String), null));
+    view.unmount();
+  });
+
+  it('sends the typed Matéria, treating blank text as Sem matéria', async () => {
+    getActive.mockResolvedValue(null);
+    start.mockResolvedValue({ ...snapshot, subject: 'Cálculo II' });
+    const { view } = await renderStudySession();
+    await view.findByTestId('study-session-setup');
+
+    await fireEvent.changeText(view.getByLabelText('Matéria (opcional)'), '  Cálculo   II ');
+    await fireEvent.press(view.getByRole('button', { name: 'Iniciar foco' }));
+    await waitFor(() => expect(start).toHaveBeenCalledWith(1500, expect.any(String), 'Cálculo II'));
+    view.unmount();
+  });
+
+  it('treats a blank Matéria as Sem matéria', async () => {
+    getActive.mockResolvedValue(null);
+    start.mockResolvedValue(snapshot);
+    const { view } = await renderStudySession();
+    await view.findByTestId('study-session-setup');
+    await fireEvent.changeText(view.getByLabelText('Matéria (opcional)'), '   ');
+    await fireEvent.press(view.getByRole('button', { name: 'Iniciar foco' }));
+    await waitFor(() => expect(start).toHaveBeenCalledWith(1500, expect.any(String), null));
+    view.unmount();
+  });
+
+  it('warns before the start when the Matéria passes 80 characters and blocks the start', async () => {
+    getActive.mockResolvedValue(null);
+    start.mockResolvedValue(snapshot);
+    const { view } = await renderStudySession();
+    await view.findByTestId('study-session-setup');
+
+    await fireEvent.changeText(view.getByLabelText('Matéria (opcional)'), 'a'.repeat(80));
+    expect(view.queryByText(/máximo é 80/)).toBeNull();
+    await fireEvent.changeText(view.getByLabelText('Matéria (opcional)'), 'a'.repeat(81));
+    expect(view.getByText('A Matéria tem 81 caracteres; o máximo é 80.')).toBeTruthy();
+    expect(view.getByRole('button', { name: 'Iniciar foco' }).props.accessibilityState.disabled).toBe(true);
+    await fireEvent.press(view.getByRole('button', { name: 'Iniciar foco' }));
+    expect(start).not.toHaveBeenCalled();
+
+    await fireEvent.changeText(view.getByLabelText('Matéria (opcional)'), 'a'.repeat(80));
+    expect(view.queryByText(/máximo é 80/)).toBeNull();
+    await fireEvent.press(view.getByRole('button', { name: 'Iniciar foco' }));
+    await waitFor(() => expect(start).toHaveBeenCalledWith(1500, expect.any(String), 'a'.repeat(80)));
+    view.unmount();
+  });
+
+  it('refuses line breaks and control characters before the start', async () => {
+    getActive.mockResolvedValue(null);
+    const { view } = await renderStudySession();
+    await view.findByTestId('study-session-setup');
+
+    await fireEvent.changeText(view.getByLabelText('Matéria (opcional)'), 'Cálculo\nII');
+    expect(view.getByText('A Matéria não pode conter quebras de linha nem caracteres de controle.')).toBeTruthy();
+    await fireEvent.press(view.getByRole('button', { name: 'Iniciar foco' }));
+    expect(start).not.toHaveBeenCalled();
+    view.unmount();
+  });
+
+  it('retries with the same key but uses a new key when the Matéria changes', async () => {
+    getActive.mockResolvedValue(null);
+    start.mockRejectedValue(new Error('network'));
+    const { view } = await renderStudySession();
+    await view.findByTestId('study-session-setup');
+
+    await fireEvent.changeText(view.getByLabelText('Matéria (opcional)'), 'Física');
+    await fireEvent.press(view.getByRole('button', { name: 'Iniciar foco' }));
+    await waitFor(() => expect(start).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(view.getByRole('button', { name: 'Iniciar foco' }).props.accessibilityState.disabled).toBe(false));
+    await fireEvent.press(view.getByRole('button', { name: 'Iniciar foco' }));
+    await waitFor(() => expect(start).toHaveBeenCalledTimes(2));
+    expect(start.mock.calls[1]?.[1]).toBe(start.mock.calls[0]?.[1]);
+
+    await fireEvent.changeText(view.getByLabelText('Matéria (opcional)'), 'Química');
+    await waitFor(() => expect(view.getByRole('button', { name: 'Iniciar foco' }).props.accessibilityState.disabled).toBe(false));
+    await fireEvent.press(view.getByRole('button', { name: 'Iniciar foco' }));
+    await waitFor(() => expect(start).toHaveBeenCalledTimes(3));
+    expect(start.mock.calls[2]?.[1]).not.toBe(start.mock.calls[0]?.[1]);
+    expect(start.mock.calls[2]?.[2]).toBe('Química');
+    view.unmount();
+  });
+
+  it.each([
+    ['running', { state: 'running' as const }],
+    ['paused', { state: 'paused' as const, pausedAt: '2026-09-22T12:05:00.000Z', version: 2 }],
+  ])('restores the same Matéria as a read-only title when a %s session is found on mount', async (_state, overrides) => {
+    getActive.mockResolvedValue({ ...snapshot, subject: 'Cálculo II', ...overrides });
+    const { view } = await renderStudySession();
+    await view.findByTestId('study-session-active');
+    expect(view.getByTestId('study-session-subject')).toHaveTextContent('Cálculo II');
+    expect(view.queryByLabelText('Matéria (opcional)')).toBeNull();
+    view.unmount();
+  });
+
+  it('shows a discreet Sem matéria title when the session has no Matéria', async () => {
+    getActive.mockResolvedValue(snapshot);
+    const { view } = await renderStudySession();
+    await view.findByTestId('study-session-active');
+    expect(view.getByTestId('study-session-subject')).toHaveTextContent('Sem matéria');
+    view.unmount();
+  });
 });
 
 it('keeps the iPhone forge header and duration choices in the visible stage', async () => {

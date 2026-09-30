@@ -224,4 +224,62 @@ describe('Study Session HTTP contract against MySQL', () => {
     expect(JSON.stringify(foreignProblemBody)).not.toContain('Private historical subject');
     expect(JSON.stringify(foreignProblemBody)).not.toContain(otherUserId);
   });
+
+  it('starts with a normalized Matéria, refuses invalid ones with problem+json and keeps the snapshot on transitions', async () => {
+    const send = (method: 'GET' | 'POST', path: string, idempotencyKey?: string, body?: unknown) => fetch(`${baseUrl}/api/v1${path}`, {
+      method,
+      headers: {
+        ...authHeaders(ownerSessionId),
+        ...(idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : {}),
+        ...(body === undefined ? {} : { 'content-type': 'application/json' }),
+      },
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+    });
+
+    for (const [index, subject] of ['a'.repeat(81), 'Cálculo\nII', 'Cálculo\tII', 'Cál\u0000culo', 42, ['Cálculo']].entries()) {
+      const invalid = await send('POST', '/sessions', `http-invalid-subject-${index}`, { subject });
+      const problem = await invalid.json() as { type: string; status: number; instance: string };
+      expect(invalid.status).toBe(400);
+      expect(invalid.headers.get('content-type')).toContain('application/problem+json');
+      expect(problem).toMatchObject({ type: 'https://wise.app/errors/400', status: 400, instance: '/api/v1/sessions' });
+    }
+    expect(await dataSource!.getRepository(StudySession).count({ where: { userId } })).toBe(0);
+
+    const body = { plannedDurationSeconds: 900, subject: '  Cálculo   II ' };
+    const started = await send('POST', '/sessions', 'http-subject', body);
+    const startedSnapshot = await started.json() as { id: string; startedAt: string; subject: string | null };
+    expect(started.status).toBe(201);
+    expect(startedSnapshot).toMatchObject({ subject: 'Cálculo II', state: 'running' });
+
+    const replay = await send('POST', '/sessions', 'http-subject', { plannedDurationSeconds: 900, subject: 'Cálculo II' });
+    expect(replay.status).toBe(201);
+    expect(await replay.json()).toEqual(startedSnapshot);
+
+    for (const otherBody of [{ plannedDurationSeconds: 900, subject: 'Cálculo III' }, { plannedDurationSeconds: 900 }, { plannedDurationSeconds: 900, subject: null }]) {
+      const reused = await send('POST', '/sessions', 'http-subject', otherBody);
+      expect(reused.status).toBe(409);
+      expect(reused.headers.get('content-type')).toContain('application/problem+json');
+      expect(await reused.json()).toMatchObject({ type: 'https://wise.app/errors/idempotency-key-reused', status: 409 });
+    }
+
+    const active = await send('GET', '/sessions/active');
+    expect(await active.json()).toMatchObject({ id: startedSnapshot.id, subject: 'Cálculo II' });
+
+    now = new Date(new Date(startedSnapshot.startedAt).getTime() + 30_000);
+    const paused = await send('POST', `/sessions/${startedSnapshot.id}/pause`, 'http-subject-pause', { expectedVersion: 1 });
+    expect(await paused.json()).toMatchObject({ state: 'paused', subject: 'Cálculo II' });
+    const resumed = await send('POST', `/sessions/${startedSnapshot.id}/resume`, 'http-subject-resume', { expectedVersion: 2 });
+    expect(await resumed.json()).toMatchObject({ state: 'running', subject: 'Cálculo II' });
+    const cancelled = await send('POST', `/sessions/${startedSnapshot.id}/stop`, 'http-subject-stop', { expectedVersion: 3 });
+    expect(await cancelled.json()).toMatchObject({ subject: 'Cálculo II' });
+
+    for (const [index, payload] of [{}, { subject: null }, { subject: '   ' }].entries()) {
+      const session = await send('POST', '/sessions', `http-no-subject-${index}`, payload);
+      const snapshot = await session.json() as { id: string; subject: string | null };
+      expect(session.status).toBe(201);
+      expect(snapshot.subject).toBeNull();
+      await dataSource!.query('DELETE FROM active_study_sessions WHERE user_id = ?', [userId]);
+      await dataSource!.getRepository(StudySession).update({ id: snapshot.id }, { state: 'cancelled' });
+    }
+  });
 });
