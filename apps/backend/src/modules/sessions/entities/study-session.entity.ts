@@ -46,7 +46,7 @@ export class StudySession {
   @CreateDateColumn({ name: 'started_at', type: 'datetime', precision: 6 })
   startedAt: Date;
 
-  @Column({ name: 'ended_at', type: 'datetime', nullable: true })
+  @Column({ name: 'ended_at', type: 'datetime', precision: 3, nullable: true })
   endedAt?: Date | null;
 
   @Column({ name: 'planned_duration_seconds', type: 'int', nullable: true })

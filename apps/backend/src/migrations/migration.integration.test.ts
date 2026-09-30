@@ -356,7 +356,17 @@ describe('TypeORM migrations against an empty MySQL schema', () => {
       'AddCanonicalStudySessionStart1788458760000',
       'AddStudySessionPauseResume1788458880000',
       'UnifyStudySessionIdempotencyKeys1788459000000',
+      'AddStudySessionEndedAtPrecision1788459060000',
     ]);
+
+    await dataSource.undoLastMigration();
+    const endedAtRevertRows = await rows(
+      database!.admin,
+      `SELECT DATETIME_PRECISION FROM information_schema.COLUMNS
+       WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'study_sessions' AND COLUMN_NAME = 'ended_at'`,
+      [database!.name],
+    );
+    expect(endedAtRevertRows[0]?.DATETIME_PRECISION).toBe(0);
 
     await dataSource.undoLastMigration();
     const remainingRows = await rows(
@@ -510,6 +520,7 @@ describe('TypeORM migrations against an empty MySQL schema', () => {
     ]);
 
     await dataSource.undoLastMigration();
+    await dataSource.undoLastMigration();
     const leftoverTriggers = await rows(
       database.admin,
       `SELECT TRIGGER_NAME FROM information_schema.TRIGGERS
@@ -626,6 +637,7 @@ describe('TypeORM migrations against an empty MySQL schema', () => {
     await dataSource.undoLastMigration();
     await dataSource.undoLastMigration();
     await dataSource.undoLastMigration();
+    await dataSource.undoLastMigration();
     const downgradedHistory = await rows(
       database.admin,
       `SELECT id, subject, mode, raid_id FROM ${database.identifier}.study_sessions ORDER BY id`,
@@ -716,6 +728,7 @@ describe('TypeORM migrations against an empty MySQL schema', () => {
     );
     expect(leftoverArchives).toHaveLength(0);
 
+    await dataSource.undoLastMigration();
     await dataSource.undoLastMigration();
     await dataSource.undoLastMigration();
     await dataSource.undoLastMigration();
