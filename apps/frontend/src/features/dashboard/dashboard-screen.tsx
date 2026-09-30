@@ -87,27 +87,27 @@ function CardContent({ children, testID }: PropsWithChildren<{ testID?: string }
 }
 
 const NO_SUBJECT_LABEL = 'Sem matéria';
-const ACTIVITY_SEPARATOR = ' · ';
+const DOT_SEPARATOR = ' · ';
 
-function joinParts(parts: (string | null | undefined)[]): string {
-  return parts.filter(Boolean).join(ACTIVITY_SEPARATOR);
+function joinWithDot(parts: (string | null | undefined)[]): string {
+  return parts.filter(Boolean).join(DOT_SEPARATOR);
 }
 
 function describeActivity(session: RecentStudySession) {
   const subject = session.subject?.trim() || null;
   const subjectLabel = subject ?? NO_SUBJECT_LABEL;
-  const isGuild = session.mode === 'guild';
-  const modeLabel = isGuild ? 'guilda' : session.mode;
+  const modeLabel = formatSessionMode(session.mode);
   const discarded = session.discardedReason ? formatDiscardReason(session.discardedReason) : null;
   const xp = `${formatXp(session.xpAwarded)} XP`;
-  const metaLine = joinParts([formatSessionState(session.state), modeLabel, formatSessionDate(session.endedAt), formatDuration(session.durationValidSeconds)]);
+  const metaLine = joinWithDot([formatSessionState(session.state), modeLabel, formatSessionDate(session.endedAt), formatDuration(session.durationValidSeconds)]);
 
   return {
-    a11yLabel: `Sessão: ${joinParts([subjectLabel, metaLine, xp, discarded])}`,
+    a11yLabel: `Sessão: ${joinWithDot([subjectLabel, metaLine, xp, discarded])}`,
     discarded,
     hasSubject: subject !== null,
     metaLine,
-    title: joinParts([subjectLabel, isGuild ? modeLabel : null]),
+    guildMark: session.mode === 'guild' ? `${DOT_SEPARATOR}${modeLabel}` : null,
+    subjectLabel,
     xp,
   };
 }
@@ -116,9 +116,12 @@ function ActivityItem({ session }: { session: RecentStudySession }) {
   const item = describeActivity(session);
 
   return (
-    <View accessible accessibilityLabel={item.a11yLabel} key={session.id} style={styles.activityItem}>
+    <View accessible accessibilityLabel={item.a11yLabel} style={styles.activityItem}>
       <View style={styles.activityMain}>
-        <Text allowFontScaling ellipsizeMode="tail" numberOfLines={2} style={item.hasSubject ? styles.activitySubject : styles.activityNoSubject}>{item.title}</Text>
+        <Text allowFontScaling ellipsizeMode="tail" numberOfLines={2} style={styles.activitySubject}>
+          <Text allowFontScaling style={item.hasSubject ? styles.activitySubject : styles.activityNoSubject}>{item.subjectLabel}</Text>
+          {item.guildMark}
+        </Text>
         <Text style={styles.activityMeta}>{item.metaLine}</Text>
       </View>
       {item.discarded
@@ -233,6 +236,10 @@ function MetricsCard({ query }: { query: UseQueryResult<SessionMetrics> }) {
 
 function formatDayCount(value: number): string {
   return `${value} ${value === 1 ? 'dia' : 'dias'}`;
+}
+
+function formatSessionMode(mode: string): string {
+  return mode === 'guild' ? 'guilda' : mode;
 }
 
 function formatSessionState(state: RecentStudySession['state']): string {

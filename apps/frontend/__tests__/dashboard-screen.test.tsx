@@ -1,6 +1,6 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react-native';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { AccessibilityInfo, Platform } from 'react-native';
+import { AccessibilityInfo, Platform, StyleSheet } from 'react-native';
 import { DashboardScreen } from '@/features/dashboard/dashboard-screen';
 import { getMyProfile, getRecentStudySessions, getSessionMetrics, type UserProfile, type RecentStudySession, type SessionMetrics } from '@/features/dashboard/api';
 import { dashboardKeys } from '@/features/dashboard/queries';
@@ -289,6 +289,36 @@ describe('DashboardScreen', () => {
     await waitFor(() => expect(screen.getByTestId('dashboard-activity')).toBeTruthy());
     expect(screen.getByText('Matemática · guilda')).toBeTruthy();
     expect(screen.getByText('Sem matéria · guilda')).toBeTruthy();
+  });
+
+  it('applies the discreet style only to "Sem matéria", not to the guild indication', async () => {
+    mockedProfile.mockResolvedValue(profile);
+    mockedActivity.mockResolvedValue([
+      { ...session, id: 's1', subject: null, mode: 'guild' },
+      { ...session, id: 's2', subject: 'Física', mode: 'guild' },
+    ]);
+    await renderDashboard();
+
+    await waitFor(() => expect(screen.getByTestId('dashboard-activity')).toBeTruthy());
+    const noSubject = StyleSheet.flatten(screen.getByText('Sem matéria').props.style);
+    const subject = StyleSheet.flatten(screen.getByText('Física').props.style);
+    expect(noSubject.fontStyle).toBe('italic');
+    expect(subject.fontStyle).toBeUndefined();
+    const guildMarks = screen.getAllByText(/· guilda$/);
+    expect(guildMarks).toHaveLength(2);
+    guildMarks.forEach((mark) => expect(StyleSheet.flatten(mark.props.style).fontStyle).toBeUndefined());
+  });
+
+  it('clamps a long subject title to two lines with a tail ellipsis', async () => {
+    const subject = 'Matemática aplicada e raciocínio lógico '.repeat(2).trim().slice(0, 80);
+    mockedProfile.mockResolvedValue(profile);
+    mockedActivity.mockResolvedValue([{ ...session, subject }]);
+    await renderDashboard();
+
+    await waitFor(() => expect(screen.getByTestId('dashboard-activity')).toBeTruthy());
+    const title = screen.getByText(subject).parent;
+    expect(title?.props.numberOfLines).toBe(2);
+    expect(title?.props.ellipsizeMode).toBe('tail');
   });
 
   it('treats empty or whitespace-only subjects as "Sem matéria"', async () => {
