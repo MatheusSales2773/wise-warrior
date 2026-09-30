@@ -21,6 +21,7 @@ import { StudySessionStartService } from './study-session-start.service';
 import { StudySessionTransitionService } from './study-session-transition.service';
 import { StudySessionTransitionDto } from './dto/study-session-transition.dto';
 import type { RecentSessionResponseDto } from './dto/recent-session-response.dto';
+import type { RecentSubjectsResponseDto } from './dto/recent-subjects-response.dto';
 import type { SessionMetricsResponseDto } from './dto/session-metrics-response.dto';
 
 @Controller('sessions')
@@ -46,6 +47,12 @@ export class SessionsController {
   @HttpCode(HttpStatus.OK)
   recent(@CurrentUser() user: JwtPayload): Promise<RecentSessionResponseDto[]> {
     return this.sessions.recent(user.sub);
+  }
+
+  @Get('subjects/recent')
+  @HttpCode(HttpStatus.OK)
+  recentSubjects(@CurrentUser() user: JwtPayload): Promise<RecentSubjectsResponseDto> {
+    return this.sessions.recentSubjects(user.sub);
   }
 
   @Get('metrics')

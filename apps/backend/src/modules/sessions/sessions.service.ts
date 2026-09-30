@@ -12,8 +12,11 @@ import { xpForDuration } from './domain/xp-rate';
 import { ProgressionService } from '../progression/progression.service';
 import { RaidsService } from '../raids/raids.service';
 import { RecentSessionResponseDto } from './dto/recent-session-response.dto';
+import { RecentSubjectsResponseDto } from './dto/recent-subjects-response.dto';
 import { SessionMetricsResponseDto } from './dto/session-metrics-response.dto';
 import { buildCadence, calculateStreaks, type SessionActivityDay } from './domain/session-metrics';
+
+const RECENT_SUBJECTS_LIMIT = 6;
 
 @Injectable()
 export class SessionsService {
@@ -59,6 +62,32 @@ export class SessionsService {
       xpAwarded: session.xpAwarded,
       discardedReason: session.discardedReason ?? null,
     }));
+  }
+
+  /**
+   * Latest spelling of each distinct Matéria, newest use first. "Distinct" ignores letter case but
+   * not accents, so the collation is set explicitly: the MySQL 8.0 default (`utf8mb4_0900_ai_ci`)
+   * would also merge accents. Blank subjects only exist in rows from before the Matéria rules
+   * (the old DTO accepted `''` and spaces) and are Sem matéria, never a suggestion.
+   */
+  async recentSubjects(userId: string): Promise<RecentSubjectsResponseDto> {
+    const rows: Array<{ subject: string }> = await this.studySessions.query(
+      `SELECT ranked.subject AS subject
+         FROM (
+           SELECT subject, started_at, id,
+                  ROW_NUMBER() OVER (
+                    PARTITION BY subject COLLATE utf8mb4_0900_as_ci
+                    ORDER BY started_at DESC, id DESC
+                  ) AS use_rank
+             FROM study_sessions
+            WHERE user_id = ? AND subject IS NOT NULL AND subject NOT REGEXP '^[[:space:]]*$'
+         ) AS ranked
+        WHERE ranked.use_rank = 1
+        ORDER BY ranked.started_at DESC, ranked.id DESC
+        LIMIT ?`,
+      [userId, RECENT_SUBJECTS_LIMIT],
+    );
+    return { subjects: rows.map((row) => row.subject) };
   }
 
   /**
