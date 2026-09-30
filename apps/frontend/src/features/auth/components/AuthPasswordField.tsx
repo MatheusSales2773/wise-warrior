@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Platform, Pressable, StyleSheet } from 'react-native';
-import { WiseField, WiseText, theme, type WiseFieldProps } from '@/design-system';
+import Svg, { Circle, Path } from 'react-native-svg';
+import { WiseField, theme, type WiseFieldProps } from '@/design-system';
 
 export type AuthPasswordFieldProps = Omit<WiseFieldProps, 'secureTextEntry' | 'trailing'>;
 
@@ -29,10 +30,20 @@ export function AuthPasswordField({ label, ...fieldProps }: AuthPasswordFieldPro
           onPress={() => setRevealed((value) => !value)}
           style={[styles.toggle, focused && Platform.OS === 'web' && styles.webFocus]}
         >
-          <WiseText variant="label" color="accentPrimary">{revealed ? 'Ocultar' : 'Mostrar'}</WiseText>
+          <EyeGlyph color={focused ? theme.color.accentPrimary : theme.color.textTertiary} crossed={revealed} />
         </Pressable>
       }
     />
+  );
+}
+
+function EyeGlyph({ color, crossed }: { color: string; crossed: boolean }) {
+  return (
+    <Svg aria-hidden width={15} height={15} viewBox="0 0 24 24" fill="none">
+      <Path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12Z" stroke={color} strokeWidth={1.6} strokeLinejoin="round" />
+      <Circle cx={12} cy={12} r={3} stroke={color} strokeWidth={1.6} />
+      {crossed ? <Path d="M4 4l16 16" stroke={color} strokeWidth={1.6} strokeLinecap="round" /> : null}
+    </Svg>
   );
 }
 

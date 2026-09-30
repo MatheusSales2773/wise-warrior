@@ -83,6 +83,16 @@ function ForgeStageGradient() {
   );
 }
 
+/** Small gold "◈ TÍTULO" heading used by the prototype's side cards. */
+function ForgeCardTitle({ children }: { children: string }) {
+  return (
+    <View style={styles.cardTitle}>
+      <Text aria-hidden accessibilityElementsHidden importantForAccessibility="no" style={styles.cardTitleText}>◈</Text>
+      <Text accessibilityRole="header" allowFontScaling style={styles.cardTitleText}>{children}</Text>
+    </View>
+  );
+}
+
 function ForgeAction({ label, icon, onPress, primary = false, disabled = false, loading = false, testID, iconOnly = false, expanded }: {
   label: string;
   icon: 'stop' | 'pause' | 'play' | 'settings-outline';
@@ -144,9 +154,9 @@ function ForgeTimer({ remaining, duration, phase, size, testID, accessibilityLab
         <Circle cx="170" cy="170" r={radius} fill="none" stroke="url(#forgeRingGradient)" strokeWidth="6" strokeLinecap="round" strokeDasharray={circumference} strokeDashoffset={circumference * (1 - progress)} />
       </Svg>
       <View style={styles.timerCenter}>
-        <WiseText color="accentPrimary" variant="caption">◈ {phase} ◈</WiseText>
-        <Text accessibilityLiveRegion="none" aria-live="off" accessibilityLabel={accessibilityLabel} style={[styles.timerDigits, { fontSize: size < 290 ? 54 : 72 }]} testID={testID}>{formatRemainingTime(remaining)}</Text>
-        <WiseText color="textTertiary" variant="mono">/ {formatRemainingTime(duration)}</WiseText>
+        <Text allowFontScaling style={styles.timerPhase}>◈ {phase} ◈</Text>
+        <Text accessibilityLiveRegion="none" aria-live="off" accessibilityLabel={accessibilityLabel} style={[styles.timerDigits, { fontSize: size < 290 ? 56 : 80, lineHeight: size < 290 ? 64 : 88 }]} testID={testID}>{formatRemainingTime(remaining)}</Text>
+        <Text allowFontScaling style={styles.timerTarget}>/ {formatRemainingTime(duration)}</Text>
       </View>
     </View>
   );
@@ -162,7 +172,7 @@ function DurationSettings({ selected, focusedDuration, startPending, onSelect, o
   inline?: boolean;
 }) {
   return <WiseCard style={inline ? styles.inlineSettingsCard : styles.sideCard}>
-    <WiseText variant="subtitle">◈ Quanto tempo você vai focar?</WiseText>
+    <ForgeCardTitle>Quanto tempo você vai focar?</ForgeCardTitle>
     <View style={styles.presets} accessibilityRole="radiogroup">
       {STUDY_SESSION_PRESETS.map((duration) => (
         <Pressable
@@ -187,7 +197,7 @@ function DurationSettings({ selected, focusedDuration, startPending, onSelect, o
         </Pressable>
       ))}
     </View>
-    {inline ? null : <WiseText color="textSecondary" variant="body">Escolha uma duração e inicie sua sessão.</WiseText>}
+    {inline ? null : <Text allowFontScaling style={[styles.cardCopy, { color: theme.color.textSecondary }]}>Escolha uma duração e inicie sua sessão.</Text>}
     <WiseButton label="Fechar configurações" onPress={onClose} variant="secondary" />
   </WiseCard>;
 }
@@ -546,8 +556,8 @@ export function StudySessionScreen() {
           <WiseCard style={[styles.stage, wideLayout && styles.stageWide]} testID="study-session-stage">
             <ForgeStageGradient />
             <View style={styles.stageHeader}>
-              <WiseText color="accentPrimary" variant="caption">{snapshot.state === 'paused' ? 'Sessão pausada' : 'Sessão em andamento'}</WiseText>
-              <WiseText color="accentHighlight" variant="label">{snapshot.plannedDurationSeconds / 60} min de foco</WiseText>
+              <Text accessibilityRole="header" allowFontScaling style={styles.stageTitle}>{snapshot.state === 'paused' ? 'Sessão pausada' : 'Sessão em andamento'}</Text>
+              <Text allowFontScaling style={styles.stageMeta}>{snapshot.plannedDurationSeconds / 60} min de foco</Text>
             </View>
             <View style={styles.stageBody}>
               <ForgeTimer
@@ -561,9 +571,9 @@ export function StudySessionScreen() {
             </View>
             <View style={[styles.stageActions, width < 450 && styles.stageActionsCompact]}>
             {settingsOpen && !wideLayout ? <WiseCard style={styles.inlineSettingsCard}>
-              <WiseText variant="subtitle">◈ Configurações da sessão</WiseText>
-              <View style={styles.statRow}><WiseText color="textSecondary" variant="body">Tempo de foco</WiseText><WiseText color="accentHighlight" variant="mono">{snapshot.plannedDurationSeconds / 60} min</WiseText></View>
-              <WiseText color="textSecondary" variant="body">A duração não pode ser alterada durante a sessão.</WiseText>
+              <ForgeCardTitle>Configurações da sessão</ForgeCardTitle>
+              <View style={styles.statRow}><Text allowFontScaling style={[styles.cardCopy, { color: theme.color.textSecondary }]}>Tempo de foco</Text><WiseText color="accentHighlight" variant="mono">{snapshot.plannedDurationSeconds / 60} min</WiseText></View>
+              <Text allowFontScaling style={[styles.cardCopy, { color: theme.color.textSecondary }]}>A duração não pode ser alterada durante a sessão.</Text>
               <WiseButton label="Fechar configurações" onPress={() => setSettingsOpen(false)} variant="secondary" />
             </WiseCard> : null}
             <View style={[styles.actionRow, width < 450 && styles.actionRowCompact]}>
@@ -666,21 +676,21 @@ export function StudySessionScreen() {
           </WiseCard>
           <View style={[styles.sideColumn, wideLayout && styles.sideColumnWide]}>
             {settingsOpen && wideLayout ? <WiseCard style={styles.sideCard}>
-              <WiseText variant="subtitle">◈ Configurações da sessão</WiseText>
-              <View style={styles.statRow}><WiseText color="textSecondary" variant="body">Tempo de foco</WiseText><WiseText color="accentHighlight" variant="mono">{snapshot.plannedDurationSeconds / 60} min</WiseText></View>
-              <WiseText color="textSecondary" variant="body">A duração não pode ser alterada durante a sessão.</WiseText>
+              <ForgeCardTitle>Configurações da sessão</ForgeCardTitle>
+              <View style={styles.statRow}><Text allowFontScaling style={[styles.cardCopy, { color: theme.color.textSecondary }]}>Tempo de foco</Text><WiseText color="accentHighlight" variant="mono">{snapshot.plannedDurationSeconds / 60} min</WiseText></View>
+              <Text allowFontScaling style={[styles.cardCopy, { color: theme.color.textSecondary }]}>A duração não pode ser alterada durante a sessão.</Text>
               <WiseButton label="Fechar configurações" onPress={() => setSettingsOpen(false)} variant="secondary" />
             </WiseCard> : <>
             <WiseCard style={styles.sideCard}>
-              <WiseText variant="subtitle">◈ Sua sessão</WiseText>
-              <View style={styles.statRow}><WiseText color="textSecondary" variant="body">Duração planejada</WiseText><WiseText color="accentHighlight" variant="mono">{snapshot.plannedDurationSeconds / 60} min</WiseText></View>
-              <View style={styles.statRow}><WiseText color="textSecondary" variant="body">Foco válido</WiseText><WiseText color="accentHighlight" variant="mono">{formatRemainingTime(validFocusSeconds)}</WiseText></View>
-              <WiseText color="textTertiary" variant="body">O tempo e a conclusão são confirmados pelo servidor.</WiseText>
+              <ForgeCardTitle>Sua sessão</ForgeCardTitle>
+              <View style={styles.statRow}><Text allowFontScaling style={[styles.cardCopy, { color: theme.color.textSecondary }]}>Duração planejada</Text><WiseText color="accentHighlight" variant="mono">{snapshot.plannedDurationSeconds / 60} min</WiseText></View>
+              <View style={styles.statRow}><Text allowFontScaling style={[styles.cardCopy, { color: theme.color.textSecondary }]}>Foco válido</Text><WiseText color="accentHighlight" variant="mono">{formatRemainingTime(validFocusSeconds)}</WiseText></View>
+              <Text allowFontScaling style={[styles.cardCopy, { color: theme.color.textTertiary }]}>O tempo e a conclusão são confirmados pelo servidor.</Text>
             </WiseCard>
             <WiseCard style={styles.sideCard}>
-              <WiseText variant="subtitle">◈ Como funciona</WiseText>
-              <WiseText color="textSecondary" variant="body">Pause quando precisar. Ao retomar, o contador continua de onde parou.</WiseText>
-              <WiseText color="textSecondary" variant="body">Sessões encerradas antes de 5 minutos não concedem XP.</WiseText>
+              <ForgeCardTitle>Como funciona</ForgeCardTitle>
+              <Text allowFontScaling style={[styles.cardCopy, { color: theme.color.textSecondary }]}>Pause quando precisar. Ao retomar, o contador continua de onde parou.</Text>
+              <Text allowFontScaling style={[styles.cardCopy, { color: theme.color.textSecondary }]}>Sessões encerradas antes de 5 minutos não concedem XP.</Text>
             </WiseCard>
             </>}
           </View>
@@ -691,8 +701,8 @@ export function StudySessionScreen() {
           <WiseCard style={[styles.stage, wideLayout && styles.stageWide]} testID="study-session-stage">
             <ForgeStageGradient />
             <View style={styles.stageHeader}>
-              <WiseText color="accentPrimary" variant="caption">PREPARE SUA FORJA</WiseText>
-              <WiseText color="accentHighlight" variant="label">{selected / 60} min selecionados</WiseText>
+              <Text accessibilityRole="header" allowFontScaling style={styles.stageTitle}>PREPARE SUA FORJA</Text>
+              <Text allowFontScaling style={styles.stageMeta}>{selected / 60} min selecionados</Text>
             </View>
             <View style={styles.stageBody}>
               <ForgeTimer remaining={selected} duration={selected} phase={phase} size={ringSize} />
@@ -709,9 +719,9 @@ export function StudySessionScreen() {
           </WiseCard>
           <View style={[styles.sideColumn, wideLayout && styles.sideColumnWide]}>
           {settingsOpen && wideLayout ? <DurationSettings selected={selected} focusedDuration={focusedDuration} startPending={start.isPending} onSelect={(duration) => { pendingKey.current = null; setSelected(duration); }} onFocus={setFocusedDuration} onClose={() => setSettingsOpen(false)} /> : <WiseCard style={styles.sideCard}>
-            <WiseText variant="subtitle">◈ Seu progresso</WiseText>
-            <WiseText color="textSecondary" variant="body">O foco válido e o XP aparecem ao concluir a sessão.</WiseText>
-            <WiseText color="textTertiary" variant="body">Se encerrar antes de 5 minutos, a sessão não concede XP.</WiseText>
+            <ForgeCardTitle>Seu progresso</ForgeCardTitle>
+            <Text allowFontScaling style={[styles.cardCopy, { color: theme.color.textSecondary }]}>O foco válido e o XP aparecem ao concluir a sessão.</Text>
+            <Text allowFontScaling style={[styles.cardCopy, { color: theme.color.textTertiary }]}>Se encerrar antes de 5 minutos, a sessão não concede XP.</Text>
           </WiseCard>}
           </View>
           </View>
@@ -729,8 +739,10 @@ const styles = StyleSheet.create({
   forgeColumnsWide: { flexDirection: 'row', alignItems: 'flex-start' },
   stage: { minWidth: 0 },
   stageWide: { flex: 1 },
-  stageHeader: { minHeight: 65, paddingHorizontal: theme.space.cardInset, paddingVertical: theme.space.controlInset, borderBottomWidth: 1, borderBottomColor: theme.color.borderGhost, flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: theme.space.inlineTight },
-  stageBody: { alignItems: 'center', justifyContent: 'center', paddingVertical: theme.space.controlInset, paddingHorizontal: theme.space.inlineTight },
+  stageHeader: { paddingHorizontal: theme.space.cardInset, paddingVertical: 18, borderBottomWidth: 1, borderBottomColor: theme.color.borderGhost, gap: 6 },
+  stageTitle: { fontFamily: 'Inter-Bold', fontSize: 11, lineHeight: 16, letterSpacing: 2.6, textTransform: 'uppercase', color: theme.color.accentPrimary },
+  stageMeta: { fontFamily: 'Inter-Regular', fontSize: 11, lineHeight: 16, color: theme.color.accentHighlight },
+  stageBody: { alignItems: 'center', justifyContent: 'center', paddingVertical: theme.space.sectionGap, paddingHorizontal: theme.space.controlInset },
   stageActions: { borderTopWidth: 1, borderTopColor: theme.color.borderGhost, paddingHorizontal: theme.space.cardInset, paddingVertical: theme.space.stackDefault, alignItems: 'center', gap: theme.space.stackTight },
   stageActionsCompact: { paddingHorizontal: theme.space.inlineTight },
   actionRow: { width: '100%', flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 14 },
@@ -747,15 +759,21 @@ const styles = StyleSheet.create({
   stageFeedback: { borderTopWidth: 1, borderTopColor: theme.color.borderGhost, padding: theme.space.controlInset },
   sideColumn: { width: '100%', gap: theme.space.cardInset },
   sideColumnWide: { maxWidth: 320 },
-  sideCard: { padding: theme.space.stackDefault, gap: theme.space.controlInset },
+  sideCard: { padding: 22, gap: 14, borderRadius: theme.radius.control },
+  cardTitle: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 2 },
+  cardTitleText: { fontFamily: 'Cinzel-SemiBold', fontSize: 11, lineHeight: 16, letterSpacing: 2.6, textTransform: 'uppercase', color: theme.color.accentPrimary },
+  cardCopy: { fontFamily: 'Inter-Regular', fontSize: 12, lineHeight: 19 },
+  statLabel: { fontFamily: 'Inter-Regular', fontSize: 12, lineHeight: 18, color: theme.color.textSecondary, flexShrink: 1 },
   statRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: theme.space.inlineTight, borderBottomWidth: 1, borderBottomColor: theme.color.borderGhost, paddingBottom: theme.space.stackTight },
   timerRingWrap: { justifyContent: 'center', alignItems: 'center' },
   timerRing: { transform: [{ rotate: '-90deg' }] },
-  timerCenter: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, alignItems: 'center', justifyContent: 'center', gap: theme.space.inlineTight },
-  timerDigits: { ...theme.type.display, color: theme.color.textPrimary, textAlign: 'center', lineHeight: 88, letterSpacing: 2, fontVariant: ['tabular-nums'] },
+  timerCenter: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, alignItems: 'center', justifyContent: 'center', gap: 6 },
+  timerPhase: { fontFamily: 'Inter-Medium', fontSize: 10, lineHeight: 14, letterSpacing: 3.2, textTransform: 'uppercase', color: theme.color.accentPrimary },
+  timerTarget: { fontFamily: 'JetBrainsMono-Medium', fontSize: 12, lineHeight: 16, letterSpacing: 1.2, color: theme.color.textTertiary, textAlign: 'center' },
+  timerDigits: { ...theme.type.display, color: theme.color.textPrimary, textAlign: 'center', letterSpacing: 2, fontVariant: ['tabular-nums'], textShadowColor: theme.color.accentGlow, textShadowRadius: 24, textShadowOffset: { width: 0, height: 0 } },
   controls: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 8 },
   inlineSettingsCard: { width: '100%', padding: theme.space.controlInset, gap: theme.space.controlInset },
   presets: { flexDirection: 'row', flexWrap: 'wrap', gap: theme.space.stackTight },
-  preset: { minWidth: theme.layout.touchTarget, minHeight: theme.layout.touchTarget, paddingHorizontal: theme.space.stackTight, justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: theme.color.borderEmphasis, borderRadius: theme.radius.control },
-  selected: { backgroundColor: theme.color.surfaceCardActive, borderColor: theme.color.accentPrimary },
+  preset: { minWidth: theme.layout.touchTarget, minHeight: theme.layout.touchTarget, paddingHorizontal: 14, justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: theme.color.borderGhost, borderRadius: theme.radius.pill, backgroundColor: theme.color.surfaceInset },
+  selected: { backgroundColor: 'rgba(212, 168, 90, 0.08)', borderColor: theme.color.borderEmphasis },
 });

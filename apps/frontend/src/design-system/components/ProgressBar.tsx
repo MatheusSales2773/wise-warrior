@@ -1,3 +1,4 @@
+import { LinearGradient } from 'expo-linear-gradient';
 import { useEffect, useState } from 'react';
 import { Animated, StyleSheet, View } from 'react-native';
 import { motionDuration, theme } from '../tokens/theme';
@@ -8,9 +9,11 @@ export type ProgressBarProps = {
   maximumValue?: number;
   accessibilityLabel?: string;
   testID?: string;
+  /** `tall` matches the framed prototype bar: inset track, hairline border and gold gradient fill. */
+  size?: 'default' | 'tall';
 } & ({ indeterminate: true; value?: never } | { indeterminate?: false; value: number });
 
-export function ProgressBar({ minimumValue = 0, maximumValue = 100, value, indeterminate = false, accessibilityLabel, testID }: ProgressBarProps) {
+export function ProgressBar({ minimumValue = 0, maximumValue = 100, value, indeterminate = false, accessibilityLabel, testID, size = 'default' }: ProgressBarProps) {
   const [opacity] = useState(() => new Animated.Value(1));
   const duration = motionDuration(theme.motion.deliberate, useReducedMotion());
 
@@ -47,20 +50,24 @@ export function ProgressBar({ minimumValue = 0, maximumValue = 100, value, indet
       aria-valuemax={maximumValue}
       aria-valuenow={indeterminate ? undefined : value}
       aria-busy={indeterminate}
-      style={styles.track}
+      style={[styles.track, size === 'tall' && styles.tallTrack]}
     >
       <Animated.View
         testID={testID ? `${testID}-fill` : undefined}
         aria-hidden
         accessibilityElementsHidden
         importantForAccessibility="no-hide-descendants"
-        style={[styles.fill, { width: indeterminate ? theme.progress.indeterminateWidth : `${fraction * 100}%`, opacity: indeterminate && duration > 0 ? opacity : 1 }]}
-      />
+        style={[styles.fill, size === 'tall' && styles.tallFill, { width: indeterminate ? theme.progress.indeterminateWidth : `${fraction * 100}%`, opacity: indeterminate && duration > 0 ? opacity : 1 }]}
+      >
+        {size === 'tall' ? <LinearGradient colors={[theme.color.accentMuted, theme.color.accentPrimary]} end={{ x: 1, y: 0 }} start={{ x: 0, y: 0 }} style={StyleSheet.absoluteFill} /> : null}
+      </Animated.View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   track: { height: theme.space.inlineTight, overflow: 'hidden', borderRadius: theme.radius.pill, backgroundColor: theme.color.surfaceCard },
+  tallTrack: { height: 12, borderRadius: 2, borderWidth: theme.border.standard, borderColor: theme.color.borderSoft, backgroundColor: theme.color.surfaceInset },
+  tallFill: { borderRadius: 0, overflow: 'hidden' },
   fill: { height: '100%', borderRadius: theme.radius.pill, backgroundColor: theme.color.accentPrimary },
 });

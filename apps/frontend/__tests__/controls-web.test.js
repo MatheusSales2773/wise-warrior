@@ -14,6 +14,11 @@ jest.mock('expo-router', () => ({
 
 // Exercise the installed Web renderer, including its native-to-DOM prop mapping.
 jest.mock('react-native', () => jest.requireActual('react-native-web'));
+// jsdom resolves the native gradient view; the Web build uses a plain View-backed gradient.
+jest.mock('expo-linear-gradient', () => {
+  const { View } = jest.requireActual('react-native-web');
+  return { LinearGradient: ({ colors: _colors, start: _start, end: _end, ...props }) => <View {...props} /> };
+});
 jest.mock('expo-splash-screen', () => ({ hideAsync: jest.fn() }));
 jest.mock('expo/src/winter/fetch', () => ({ fetch: jest.fn() }));
 
