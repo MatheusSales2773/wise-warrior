@@ -1,4 +1,38 @@
-import { applyXp, levelForXp, xpThresholdForLevel } from './progression-policy';
+import {
+  applyXp,
+  levelForXp,
+  MAX_SUPPORTED_XP_TOTAL,
+  xpThresholdForLevel,
+} from './progression-policy';
+
+function referenceXpThresholdForLevel(level: number): number {
+  if (level <= 1) {
+    return 0;
+  }
+  return Math.round(500 * level ** 1.5);
+}
+
+function referenceLevelForXpLinear(xpTotal: number): number {
+  let level = 1;
+  while (referenceXpThresholdForLevel(level + 1) <= xpTotal) {
+    level += 1;
+  }
+  return level;
+}
+
+function referenceLevelForXpBinary(xpTotal: number): number {
+  let lowerLevel = 1;
+  let upperLevel = 1_000_000_001;
+  while (lowerLevel < upperLevel) {
+    const candidateLevel = lowerLevel + Math.floor((upperLevel - lowerLevel) / 2);
+    if (referenceXpThresholdForLevel(candidateLevel) <= xpTotal) {
+      lowerLevel = candidateLevel + 1;
+    } else {
+      upperLevel = candidateLevel;
+    }
+  }
+  return lowerLevel - 1;
+}
 
 describe('xpThresholdForLevel', () => {
   it('requires 0 XP for level 1 (starting level)', () => {
@@ -31,9 +65,32 @@ describe('levelForXp', () => {
     expect(levelForXp(threshold5 + 1)).toBe(5);
   });
 
+  it('preserves rounded thresholds at representative high levels', () => {
+    for (const level of [2, 5, 100, 10_000, 500_000]) {
+      const threshold = referenceXpThresholdForLevel(level);
+
+      for (const xpTotal of [threshold - 1, threshold, threshold + 1]) {
+        expect(levelForXp(xpTotal)).toBe(referenceLevelForXpLinear(xpTotal));
+      }
+    }
+  });
+
+  it('resolves the supported XP ceiling against an independent oracle', () => {
+    expect(levelForXp(MAX_SUPPORTED_XP_TOTAL)).toBe(
+      referenceLevelForXpBinary(MAX_SUPPORTED_XP_TOTAL),
+    );
+  });
+
   it('throws for negative XP', () => {
     expect(() => levelForXp(-1)).toThrow();
   });
+
+  it.each([NaN, Infinity, 1.5, Number.MAX_SAFE_INTEGER])(
+    'throws for invalid XP value %p',
+    (xp) => {
+      expect(() => levelForXp(xp)).toThrow();
+    },
+  );
 });
 
 describe('applyXp', () => {
@@ -66,5 +123,15 @@ describe('applyXp', () => {
 
   it('throws for negative xpGained', () => {
     expect(() => applyXp(0, -1)).toThrow();
+  });
+
+  it('rejects a checked addition above the supported total', () => {
+    expect(() => applyXp(MAX_SUPPORTED_XP_TOTAL, 1)).toThrow();
+  });
+
+  it('accepts the supported total boundary', () => {
+    expect(applyXp(MAX_SUPPORTED_XP_TOTAL - 1, 1).newXpTotal).toBe(
+      MAX_SUPPORTED_XP_TOTAL,
+    );
   });
 });

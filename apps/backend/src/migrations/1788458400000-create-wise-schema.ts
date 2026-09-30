@@ -383,6 +383,7 @@ export class CreateWiseSchema1788458400000 implements MigrationInterface {
   }
 
   public async down(queryRunner: QueryRunner): Promise<void> {
+    // These archives may hold M5 records that cannot be represented in the legacy schema.
     for (const table of [
       'guild_chat_messages',
       'raid_contributions',

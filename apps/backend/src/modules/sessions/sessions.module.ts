@@ -5,11 +5,19 @@ import { SessionsService } from './sessions.service';
 import { SessionsController } from './sessions.controller';
 import { ProgressionModule } from '../progression/progression.module';
 import { RaidsModule } from '../raids/raids.module';
+import { StudySessionStartService } from './study-session-start.service';
+import { UsersModule } from '../users/users.module';
+import { StudySessionTransitionService, STUDY_SESSION_CLOCK } from './study-session-transition.service';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([StudySession]), ProgressionModule, RaidsModule],
+  imports: [TypeOrmModule.forFeature([StudySession]), ProgressionModule, RaidsModule, UsersModule],
   controllers: [SessionsController],
-  providers: [SessionsService],
+  providers: [
+    SessionsService,
+    StudySessionStartService,
+    StudySessionTransitionService,
+    { provide: STUDY_SESSION_CLOCK, useValue: { now: () => new Date() } },
+  ],
   exports: [SessionsService],
 })
 export class SessionsModule {}

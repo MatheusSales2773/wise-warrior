@@ -48,9 +48,14 @@ Before implementing or changing code, tests, infrastructure, or configuration:
 - [Playwright 1.63 CI](https://playwright.dev/docs/ci)
 - [Playwright 1.63 authentication](https://playwright.dev/docs/auth)
 
+#### API contracts
+
+- [Redocly CLI 2.x documentation](https://redocly.com/docs/cli/)
+
 #### Infrastructure
 
 - [Docker Compose documentation](https://docs.docker.com/compose/)
+- [GitHub Actions workflow syntax](https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax)
 - [nginx documentation](https://nginx.org/en/docs/)
 
 ## Agent skills
@@ -67,14 +72,6 @@ Use the canonical labels `needs-triage`, `needs-info`, `ready-for-agent`, `ready
 
 This is a single-context repository. The PRD and current ADR register live in `docs/PRD.md`; a root `CONTEXT.md` may be added later. See `docs/agents/domain.md`.
 
+## Git & Commit Guidelines
 
-# Codex project instructions
-
-For complex coding tasks, use the `astra-orchestrator` skill when its trigger conditions match.
-
-The root agent owns architecture, decomposition, integration, and final verification.
-Prefer specialized subagents for bounded exploration, implementation, testing, review, and technical research.
-
-Do not delegate trivial work merely for parallelism.
-Do not let multiple implementation agents edit the same files without explicit ownership boundaries.
-User instructions always take precedence over this orchestration policy.
+- Do NOT include any "Co-Authored-By" tags or mention Claude in git commit messages.

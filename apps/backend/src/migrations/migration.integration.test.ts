@@ -1,9 +1,16 @@
 import type { Connection, RowDataPacket } from 'mysql2/promise';
-import mysql from 'mysql2/promise';
 import { DataSource } from 'typeorm';
-import { createDatabaseOptions } from '../config/database.config';
+import {
+  APPLICATION_MIGRATIONS,
+  createIntegrationDatabase,
+  type IntegrationDatabase,
+} from '../test/integration-database';
 import { CreateWiseSchema1788458400000 } from './1788458400000-create-wise-schema';
 import { AddSessionRefreshTokenHistory1788458460000 } from './1788458460000-add-session-refresh-token-history';
+import { AddStudySessionRecentIndex1788458520000 } from './1788458520000-add-study-session-recent-index';
+import { AddCanonicalStudySessionStart1788458760000 } from './1788458760000-add-canonical-study-session-start';
+import { AddStudySessionPauseResume1788458880000 } from './1788458880000-add-study-session-pause-resume';
+import { StudySession } from '../modules/sessions/entities/study-session.entity';
 
 const expectedTables = [
   'users',
@@ -16,6 +23,10 @@ const expectedTables = [
   'guild_memberships',
   'raids',
   'study_sessions',
+  'active_study_sessions',
+  'study_session_start_receipts',
+  'study_session_transition_receipts',
+  'study_session_command_keys',
   'raid_contributions',
   'guild_chat_messages',
 ];
@@ -56,7 +67,21 @@ const expectedColumns: Record<string, string[]> = {
     'duration_valid_seconds',
     'xp_awarded',
     'discarded_reason',
+    'planned_duration_seconds',
+    'state',
+    'run_deadline_at',
+    'paused_at',
+    'paused_total_seconds',
+    'paused_total_milliseconds',
+    'version',
+    'terminal_reason',
+    'initiating_session_id',
+    'active_user_id',
   ],
+  active_study_sessions: ['user_id', 'study_session_id'],
+  study_session_start_receipts: ['user_id', 'idempotency_key', 'planned_duration_seconds', 'initiating_session_id', 'response_json'],
+  study_session_transition_receipts: ['user_id', 'study_session_id', 'idempotency_key', 'action', 'expected_version', 'response_json', 'created_at'],
+  study_session_command_keys: ['user_id', 'idempotency_key', 'command_kind', 'created_at'],
   raid_contributions: [
     'id',
     'raid_id',
@@ -75,20 +100,12 @@ async function rows(connection: Connection, sql: string, values: unknown[] = [])
   return result as SchemaRow[];
 }
 
-function identifier(name: string): string {
-  if (!/^wise_migrations_test_[a-z0-9_]+$/.test(name)) {
-    throw new Error(`Unexpected database identifier: ${name}`);
-  }
-  return `\`${name}\``;
-}
-
 describe('TypeORM migrations against an empty MySQL schema', () => {
   jest.setTimeout(30_000);
 
-  let admin: Connection | undefined;
+  let database: IntegrationDatabase | undefined;
   let dataSource: DataSource | undefined;
   let initialDataSource: DataSource | undefined;
-  let databaseName: string | undefined;
 
   afterEach(async () => {
     try {
@@ -99,56 +116,20 @@ describe('TypeORM migrations against an empty MySQL schema', () => {
         await initialDataSource.destroy();
       }
     } finally {
-      if (admin) {
-        try {
-          if (databaseName) {
-            await admin.query(`DROP DATABASE IF EXISTS ${identifier(databaseName)}`);
-          }
-        } finally {
-          await admin.end();
-        }
-      }
+      await database?.close();
     }
   });
 
   it('creates, inspects, and reverts the complete schema', async () => {
-    const host = process.env.TEST_DB_HOST ?? 'localhost';
-    const port = Number(process.env.TEST_DB_PORT ?? 3306);
-    const username = process.env.TEST_DB_ADMIN_USERNAME ?? 'root';
-    const password = process.env.TEST_DB_ADMIN_PASSWORD ?? 'change-me-root';
-    databaseName = `wise_migrations_test_${process.pid}_${Date.now()}`;
-
-    admin = await mysql.createConnection({ host, port, user: username, password });
-    await admin.query(`CREATE DATABASE ${identifier(databaseName)}`);
-
-    const options = createDatabaseOptions({
-      NODE_ENV: 'test',
-      DB_HOST: host,
-      DB_PORT: port,
-      DB_USERNAME: username,
-      DB_PASSWORD: password,
-      DB_DATABASE: databaseName,
-    });
-    dataSource = new DataSource({
-      ...options,
-      database: databaseName,
-      migrations: [
-        CreateWiseSchema1788458400000,
-        AddSessionRefreshTokenHistory1788458460000,
-      ],
-      migrationsRun: false,
-    });
-
+    database = await createIntegrationDatabase('wise_migrations_test');
+    dataSource = new DataSource(database.options(APPLICATION_MIGRATIONS));
     await dataSource.initialize();
     await dataSource.runMigrations();
 
-    const schemaLog = await dataSource.driver.createSchemaBuilder().log();
-    expect(schemaLog.upQueries).toEqual([]);
-
     const tableRows = await rows(
-      admin,
+      database!.admin,
       `SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA = ? ORDER BY TABLE_NAME`,
-      [databaseName],
+      [database!.name],
     );
     expect(tableRows.map((row) => row.TABLE_NAME)).toEqual([
       ...expectedTables.slice().sort(),
@@ -157,38 +138,47 @@ describe('TypeORM migrations against an empty MySQL schema', () => {
 
     for (const tableName of expectedTables) {
       const columnRows = await rows(
-        admin,
+        database!.admin,
         `SELECT COLUMN_NAME FROM information_schema.COLUMNS
          WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? ORDER BY ORDINAL_POSITION`,
-        [databaseName, tableName],
+        [database!.name, tableName],
       );
       expect(columnRows.map((row) => row.COLUMN_NAME)).toEqual(expectedColumns[tableName]);
 
       const primaryKeyRows = await rows(
-        admin,
+        database!.admin,
         `SELECT COLUMN_NAME FROM information_schema.KEY_COLUMN_USAGE
          WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? AND CONSTRAINT_NAME = 'PRIMARY'
          ORDER BY ORDINAL_POSITION`,
-        [databaseName, tableName],
+        [database!.name, tableName],
       );
       expect(primaryKeyRows.map((row) => row.COLUMN_NAME)).toEqual(
         tableName === 'session_refresh_token_history'
           ? ['session_id', 'token_hash']
-          : ['id'],
+          : tableName === 'study_session_start_receipts'
+            ? ['user_id', 'idempotency_key']
+          : tableName === 'study_session_transition_receipts'
+            ? ['user_id', 'idempotency_key']
+            : tableName === 'study_session_command_keys'
+              ? ['user_id', 'idempotency_key']
+            : tableName === 'active_study_sessions'
+              ? ['user_id']
+              : ['id'],
       );
     }
 
     const uniqueRows = await rows(
-      admin,
+      database!.admin,
       `SELECT TABLE_NAME, INDEX_NAME, GROUP_CONCAT(COLUMN_NAME ORDER BY SEQ_IN_INDEX) AS COLUMNS
        FROM information_schema.STATISTICS
        WHERE TABLE_SCHEMA = ? AND NON_UNIQUE = 0 AND TABLE_NAME <> 'migrations'
        GROUP BY TABLE_NAME, INDEX_NAME
        ORDER BY TABLE_NAME, INDEX_NAME`,
-      [databaseName],
+      [database!.name],
     );
     const expectedUniques = [
       ['users', 'UQ_users_email', 'email'],
+      ['study_sessions', 'UQ_study_sessions_active_user', 'active_user_id'],
       ['guilds', 'UQ_guilds_name', 'name'],
       ['characters', 'REL_c6e648aeaab79e4213def02aba', 'user_id'],
       [
@@ -215,15 +205,16 @@ describe('TypeORM migrations against an empty MySQL schema', () => {
     }
 
     const criticalIndexRows = await rows(
-      admin,
+      database!.admin,
       `SELECT TABLE_NAME, INDEX_NAME, GROUP_CONCAT(COLUMN_NAME ORDER BY SEQ_IN_INDEX) AS COLUMNS
        FROM information_schema.STATISTICS
        WHERE TABLE_SCHEMA = ? AND NON_UNIQUE = 1
        GROUP BY TABLE_NAME, INDEX_NAME`,
-      [databaseName],
+      [database!.name],
     );
     for (const expected of [
       ['study_sessions', 'IDX_study_sessions_user_id_started_at', 'user_id,started_at'],
+      ['study_sessions', 'IDX_study_sessions_user_id_ended_at_id', 'user_id,ended_at,id'],
       ['raid_contributions', 'IDX_raid_contributions_raid_id_user_id', 'raid_id,user_id'],
       ['sessions', 'IDX_sessions_user_id', 'user_id'],
       [
@@ -244,8 +235,43 @@ describe('TypeORM migrations against an empty MySQL schema', () => {
       );
     }
 
+    await database!.admin.query(
+      `INSERT INTO ${database!.identifier}.users
+       (id, email, password_hash, display_name, plan_tier)
+       VALUES (?, ?, ?, ?, ?)`,
+      ['00000000-0000-4000-8000-000000000001', 'explain@example.com', 'hash', 'Explain', 'free'],
+    );
+    await database!.admin.query(
+      `INSERT INTO ${database!.identifier}.study_sessions
+       (id, user_id, subject, mode, started_at, ended_at,
+        duration_valid_seconds, xp_awarded)
+       SELECT UUID(), ?, 'Explain', 'solo', NOW() - INTERVAL 2 HOUR,
+              NOW() - INTERVAL 1 HOUR, 3600, 10
+       FROM (SELECT 1 UNION ALL SELECT 2 UNION ALL SELECT 3 UNION ALL SELECT 4
+             UNION ALL SELECT 5 UNION ALL SELECT 6 UNION ALL SELECT 7 UNION ALL SELECT 8
+             UNION ALL SELECT 9 UNION ALL SELECT 10) a
+       CROSS JOIN (SELECT 1 UNION ALL SELECT 2 UNION ALL SELECT 3 UNION ALL SELECT 4
+                   UNION ALL SELECT 5 UNION ALL SELECT 6 UNION ALL SELECT 7 UNION ALL SELECT 8
+                   UNION ALL SELECT 9 UNION ALL SELECT 10) b
+       CROSS JOIN (SELECT 1 UNION ALL SELECT 2 UNION ALL SELECT 3 UNION ALL SELECT 4
+                   UNION ALL SELECT 5 UNION ALL SELECT 6 UNION ALL SELECT 7 UNION ALL SELECT 8
+                   UNION ALL SELECT 9 UNION ALL SELECT 10) c`,
+      ['00000000-0000-4000-8000-000000000001'],
+    );
+
+    const explainRows = await rows(
+      database!.admin,
+      `EXPLAIN SELECT id, subject, mode, started_at, ended_at,
+                      duration_valid_seconds, xp_awarded, discarded_reason
+       FROM ${database!.identifier}.study_sessions
+       WHERE user_id = ? AND ended_at IS NOT NULL
+       ORDER BY ended_at DESC, id DESC LIMIT 5`,
+      ['00000000-0000-4000-8000-000000000001'],
+    );
+    expect(explainRows[0]?.key).toBe('IDX_study_sessions_user_id_ended_at_id');
+
     const foreignKeyRows = await rows(
-      admin,
+      database!.admin,
       `SELECT kcu.CONSTRAINT_NAME, kcu.TABLE_NAME, kcu.COLUMN_NAME,
               kcu.REFERENCED_TABLE_NAME, kcu.REFERENCED_COLUMN_NAME,
               rc.DELETE_RULE
@@ -256,9 +282,15 @@ describe('TypeORM migrations against an empty MySQL schema', () => {
         AND rc.TABLE_NAME = kcu.TABLE_NAME
        WHERE kcu.CONSTRAINT_SCHEMA = ?
        ORDER BY kcu.TABLE_NAME, kcu.CONSTRAINT_NAME`,
-      [databaseName],
+      [database!.name],
     );
     const expectedForeignKeys = [
+      ['FK_active_study_sessions_user', 'active_study_sessions', 'user_id', 'users', 'id', 'CASCADE'],
+      ['FK_active_study_sessions_study', 'active_study_sessions', 'study_session_id', 'study_sessions', 'id', 'CASCADE'],
+      ['FK_study_session_start_receipts_user', 'study_session_start_receipts', 'user_id', 'users', 'id', 'CASCADE'],
+      ['FK_study_session_transition_receipts_user', 'study_session_transition_receipts', 'user_id', 'users', 'id', 'CASCADE'],
+      ['FK_study_session_transition_receipts_study', 'study_session_transition_receipts', 'study_session_id', 'study_sessions', 'id', 'CASCADE'],
+      ['FK_study_session_command_keys_user', 'study_session_command_keys', 'user_id', 'users', 'id', 'CASCADE'],
       ['FK_characters_user_id_users', 'characters', 'user_id', 'users', 'id', 'CASCADE'],
       ['FK_sessions_user_id_users', 'sessions', 'user_id', 'users', 'id', 'CASCADE'],
       [
@@ -314,104 +346,405 @@ describe('TypeORM migrations against an empty MySQL schema', () => {
     }
 
     const migrationRows = await rows(
-      admin,
-      `SELECT name FROM ${identifier(databaseName)}.migrations`,
+      database!.admin,
+      `SELECT name FROM ${database!.identifier}.migrations`,
     );
     expect(migrationRows.map((row) => row.name)).toEqual([
       'CreateWiseSchema1788458400000',
       'AddSessionRefreshTokenHistory1788458460000',
+      'AddStudySessionRecentIndex1788458520000',
+      'AddCanonicalStudySessionStart1788458760000',
+      'AddStudySessionPauseResume1788458880000',
+      'UnifyStudySessionIdempotencyKeys1788459000000',
+      'AddStudySessionEndedAtPrecision1788459060000',
     ]);
 
     await dataSource.undoLastMigration();
+    const endedAtRevertRows = await rows(
+      database!.admin,
+      `SELECT DATETIME_PRECISION FROM information_schema.COLUMNS
+       WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'study_sessions' AND COLUMN_NAME = 'ended_at'`,
+      [database!.name],
+    );
+    expect(endedAtRevertRows[0]?.DATETIME_PRECISION).toBe(0);
+
+    await dataSource.undoLastMigration();
     const remainingRows = await rows(
-      admin,
+      database!.admin,
       `SELECT TABLE_NAME FROM information_schema.TABLES
        WHERE TABLE_SCHEMA = ? AND TABLE_NAME <> 'migrations' ORDER BY TABLE_NAME`,
-      [databaseName],
+      [database!.name],
     );
     expect(remainingRows.map((row) => row.TABLE_NAME)).toEqual(
+      expectedTables.filter((tableName) => tableName !== 'study_session_command_keys').sort(),
+    );
+
+    await dataSource.undoLastMigration();
+    const afterPauseResumeRevertRows = await rows(
+      database!.admin,
+      `SELECT TABLE_NAME FROM information_schema.TABLES
+       WHERE TABLE_SCHEMA = ? AND TABLE_NAME <> 'migrations' ORDER BY TABLE_NAME`,
+      [database!.name],
+    );
+    expect(afterPauseResumeRevertRows.map((row) => row.TABLE_NAME)).toEqual(
       expectedTables
-        .filter((tableName) => tableName !== 'session_refresh_token_history')
+        .filter((tableName) => !['study_session_transition_receipts', 'study_session_command_keys'].includes(tableName))
+        .sort(),
+    );
+
+    await dataSource.undoLastMigration();
+    const afterCanonicalRevertRows = await rows(
+      database!.admin,
+      `SELECT TABLE_NAME FROM information_schema.TABLES
+       WHERE TABLE_SCHEMA = ? AND TABLE_NAME <> 'migrations' ORDER BY TABLE_NAME`,
+      [database!.name],
+    );
+    expect(afterCanonicalRevertRows.map((row) => row.TABLE_NAME)).toEqual(
+      expectedTables
+        .filter((tableName) => ![
+          'active_study_sessions',
+          'study_session_start_receipts',
+          'study_session_transition_receipts',
+          'study_session_command_keys',
+        ].includes(tableName))
+        .sort(),
+    );
+
+    await dataSource.undoLastMigration();
+    await dataSource.undoLastMigration();
+    const afterHistoryRevertRows = await rows(
+      database!.admin,
+      `SELECT TABLE_NAME FROM information_schema.TABLES
+       WHERE TABLE_SCHEMA = ? AND TABLE_NAME <> 'migrations' ORDER BY TABLE_NAME`,
+      [database!.name],
+    );
+    expect(afterHistoryRevertRows.map((row) => row.TABLE_NAME)).toEqual(
+      expectedTables
+        .filter((tableName) => !['session_refresh_token_history', 'active_study_sessions', 'study_session_start_receipts', 'study_session_transition_receipts', 'study_session_command_keys'].includes(tableName))
         .sort(),
     );
 
     await dataSource.undoLastMigration();
     const emptyRows = await rows(
-      admin,
+      database!.admin,
       `SELECT TABLE_NAME FROM information_schema.TABLES
        WHERE TABLE_SCHEMA = ? AND TABLE_NAME <> 'migrations'`,
-      [databaseName],
+      [database!.name],
     );
     expect(emptyRows).toEqual([]);
   });
 
-  it('adds the history table without invalidating an existing session', async () => {
-    const host = process.env.TEST_DB_HOST ?? 'localhost';
-    const port = Number(process.env.TEST_DB_PORT ?? 3306);
-    const username = process.env.TEST_DB_ADMIN_USERNAME ?? 'root';
-    const password = process.env.TEST_DB_ADMIN_PASSWORD ?? 'change-me-root';
-    databaseName = `wise_migrations_test_${process.pid}_${Date.now()}`;
+  it('backfills colliding legacy keys and captures receipt writes from older app instances', async () => {
+    database = await createIntegrationDatabase('wise_migrations_test');
+    const migrationsBeforeCommandKeys = [
+      CreateWiseSchema1788458400000,
+      AddSessionRefreshTokenHistory1788458460000,
+      AddStudySessionRecentIndex1788458520000,
+      AddCanonicalStudySessionStart1788458760000,
+      AddStudySessionPauseResume1788458880000,
+    ];
+    dataSource = new DataSource(database.options(migrationsBeforeCommandKeys));
+    await dataSource.initialize();
+    await dataSource.runMigrations();
 
-    admin = await mysql.createConnection({ host, port, user: username, password });
-    await admin.query(`CREATE DATABASE ${identifier(databaseName)}`);
+    await database.admin.query(
+      `INSERT INTO ${database.identifier}.users
+       (id, email, password_hash, display_name, plan_tier)
+       VALUES (?, ?, ?, ?, ?)`,
+      ['legacy-user', 'legacy@example.com', 'hash', 'Legacy', 'free'],
+    );
+    await database.admin.query(
+      `INSERT INTO ${database.identifier}.study_sessions
+       (id, user_id, subject, mode, raid_id, started_at, ended_at, last_heartbeat_at,
+        duration_valid_seconds, xp_awarded, discarded_reason, planned_duration_seconds,
+        state, run_deadline_at, paused_at, paused_total_seconds, paused_total_milliseconds,
+        version, terminal_reason, initiating_session_id)
+       VALUES (?, ?, NULL, 'solo', NULL, ?, NULL, ?, 300, 0, NULL, 1500,
+        'paused', ?, ?, 0, 0, 2, NULL, ?)`,
+      ['legacy-study', 'legacy-user', new Date('2026-09-23T10:00:00Z'), new Date('2026-09-23T10:05:00Z'),
+        new Date('2026-09-23T10:25:00Z'), new Date('2026-09-23T10:05:00Z'), 'legacy-auth-session'],
+    );
+    await database.admin.query(
+      `INSERT INTO ${database.identifier}.active_study_sessions (user_id, study_session_id)
+       VALUES (?, ?)`,
+      ['legacy-user', 'legacy-study'],
+    );
+    await database.admin.query(
+      `INSERT INTO ${database.identifier}.study_session_start_receipts
+       (user_id, idempotency_key, planned_duration_seconds, initiating_session_id, response_json)
+       VALUES (?, ?, ?, ?, CAST(? AS JSON))`,
+      ['legacy-user', 'legacy-shared-key', 1500, 'legacy-auth-session', JSON.stringify({ id: 'legacy-study' })],
+    );
+    await database.admin.query(
+      `INSERT INTO ${database.identifier}.study_session_transition_receipts
+       (user_id, study_session_id, idempotency_key, action, expected_version, response_json)
+       VALUES (?, ?, ?, ?, ?, CAST(? AS JSON))`,
+      ['legacy-user', 'legacy-study', 'legacy-shared-key', 'pause', 1, JSON.stringify({ id: 'legacy-study', state: 'paused' })],
+    );
 
-    const options = createDatabaseOptions({
-      NODE_ENV: 'test',
-      DB_HOST: host,
-      DB_PORT: port,
-      DB_USERNAME: username,
-      DB_PASSWORD: password,
-      DB_DATABASE: databaseName,
-    });
-    initialDataSource = new DataSource({
-      ...options,
-      database: databaseName,
-      migrations: [CreateWiseSchema1788458400000],
-      migrationsRun: false,
-    });
+    await dataSource.destroy();
+    dataSource = new DataSource(database.options(APPLICATION_MIGRATIONS));
+    await dataSource.initialize();
+    await dataSource.runMigrations();
+    const backfilledKey = await rows(
+      database.admin,
+      `SELECT command_kind FROM ${database.identifier}.study_session_command_keys
+       WHERE user_id = ? AND idempotency_key = ?`,
+      ['legacy-user', 'legacy-shared-key'],
+    );
+    expect(backfilledKey).toEqual([{ command_kind: 'start' }]);
+
+    // Older app instances only insert into receipt tables; the migration triggers keep these writes scoped.
+    await database.admin.query(
+      `INSERT INTO ${database.identifier}.study_session_start_receipts
+       (user_id, idempotency_key, planned_duration_seconds, initiating_session_id, response_json)
+       VALUES (?, ?, ?, ?, CAST(? AS JSON))`,
+      ['legacy-user', 'rolling-start-key', 1500, 'legacy-auth-session', JSON.stringify({ id: 'legacy-study' })],
+    );
+    await database.admin.query(
+      `INSERT INTO ${database.identifier}.study_session_transition_receipts
+       (user_id, study_session_id, idempotency_key, action, expected_version, response_json)
+       VALUES (?, ?, ?, ?, ?, CAST(? AS JSON))`,
+      ['legacy-user', 'legacy-study', 'rolling-transition-key', 'resume', 2, JSON.stringify({ id: 'legacy-study', state: 'running' })],
+    );
+    const capturedKeys = await rows(
+      database.admin,
+      `SELECT idempotency_key, command_kind FROM ${database.identifier}.study_session_command_keys
+       WHERE user_id = ? ORDER BY idempotency_key`,
+      ['legacy-user'],
+    );
+    expect(capturedKeys).toEqual([
+      { idempotency_key: 'legacy-shared-key', command_kind: 'start' },
+      { idempotency_key: 'rolling-start-key', command_kind: 'start' },
+      { idempotency_key: 'rolling-transition-key', command_kind: 'resume' },
+    ]);
+
+    await dataSource.undoLastMigration();
+    await dataSource.undoLastMigration();
+    const leftoverTriggers = await rows(
+      database.admin,
+      `SELECT TRIGGER_NAME FROM information_schema.TRIGGERS
+       WHERE TRIGGER_SCHEMA = ?
+         AND TRIGGER_NAME IN (?, ?)`,
+      [database.name, 'TR_study_session_start_receipt_command_key', 'TR_study_session_transition_receipt_command_key'],
+    );
+    expect(leftoverTriggers).toHaveLength(0);
+  });
+
+  it('keeps existing session history readable and reverses M5 data without loss', async () => {
+    database = await createIntegrationDatabase('wise_migrations_test');
+    initialDataSource = new DataSource(
+      database.options([CreateWiseSchema1788458400000]),
+    );
     await initialDataSource.initialize();
     await initialDataSource.runMigrations();
-    await admin.query(
-      `INSERT INTO ${identifier(databaseName)}.users
+    await database.admin.query(
+      `INSERT INTO ${database.identifier}.users
        (id, email, password_hash, display_name, plan_tier)
        VALUES (?, ?, ?, ?, ?)`,
       ['existing-user', 'existing@example.com', 'hash', 'Existing', 'free'],
     );
-    await admin.query(
-      `INSERT INTO ${identifier(databaseName)}.sessions
+    await database.admin.query(
+      `INSERT INTO ${database.identifier}.sessions
        (id, user_id, refresh_token_hash, last_used_at)
        VALUES (?, ?, ?, ?)`,
       ['existing-session', 'existing-user', 'hash-only', new Date()],
     );
+    await database.admin.query(
+      `INSERT INTO ${database.identifier}.guilds (id, name, created_by) VALUES (?, ?, ?)`,
+      ['existing-guild', 'Historical Guild', 'existing-user'],
+    );
+    await database.admin.query(
+      `INSERT INTO ${database.identifier}.raids
+       (id, guild_id, title, goal_xp, starts_at, ends_at) VALUES (?, ?, ?, ?, ?, ?)`,
+      ['existing-raid', 'existing-guild', 'Historical Raid', 1000, new Date('2026-01-01T00:00:00Z'), new Date('2026-01-02T00:00:00Z')],
+    );
+    await database.admin.query(
+      `INSERT INTO ${database.identifier}.study_sessions
+       (id, user_id, subject, mode, raid_id, started_at, ended_at, duration_valid_seconds, xp_awarded)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ['existing-study', 'existing-user', 'Cálculo', 'guild', 'existing-raid', new Date('2026-01-01T12:00:00Z'), new Date('2026-01-01T12:25:00Z'), 1500, 250],
+    );
     await initialDataSource.destroy();
     initialDataSource = undefined;
 
-    dataSource = new DataSource({
-      ...options,
-      database: databaseName,
-      migrations: [
-        CreateWiseSchema1788458400000,
-        AddSessionRefreshTokenHistory1788458460000,
-      ],
-      migrationsRun: false,
-    });
+    dataSource = new DataSource(database.options(APPLICATION_MIGRATIONS));
     await dataSource.initialize();
     await dataSource.runMigrations();
 
     const sessionRows = await rows(
-      admin,
-      `SELECT id, refresh_token_hash FROM ${identifier(databaseName)}.sessions`,
+      database.admin,
+      `SELECT id, refresh_token_hash FROM ${database.identifier}.sessions`,
     );
     expect(sessionRows).toEqual([
       expect.objectContaining({ id: 'existing-session', refresh_token_hash: 'hash-only' }),
     ]);
+    const historicStudies = await rows(
+      database.admin,
+      `SELECT id, subject, mode, raid_id, state FROM ${database.identifier}.study_sessions`,
+    );
+    expect(historicStudies).toEqual([
+      expect.objectContaining({ id: 'existing-study', subject: 'Cálculo', mode: 'guild', raid_id: 'existing-raid', state: 'completed' }),
+    ]);
+    const historicalSession = await dataSource.getRepository(StudySession).findOneByOrFail({ id: 'existing-study' });
+    expect(historicalSession).toMatchObject({
+      subject: 'Cálculo', mode: 'guild', raidId: 'existing-raid',
+      durationValidSeconds: 1500, xpAwarded: 250, state: 'completed',
+    });
 
     const historyTableRows = await rows(
-      admin,
+      database.admin,
       `SELECT TABLE_NAME FROM information_schema.TABLES
        WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'session_refresh_token_history'`,
-      [databaseName],
+      [database.name],
     );
     expect(historyTableRows).toHaveLength(1);
+
+    await database.admin.query(
+      `INSERT INTO ${database.identifier}.study_sessions
+       (id, user_id, subject, mode, raid_id, started_at, ended_at, last_heartbeat_at,
+        duration_valid_seconds, xp_awarded, discarded_reason, planned_duration_seconds,
+        state, run_deadline_at, paused_at, paused_total_seconds, version, terminal_reason,
+        initiating_session_id)
+       VALUES
+        (?, ?, NULL, 'solo', NULL, ?, ?, ?, ?, ?, NULL, ?, ?, ?, NULL, ?, ?, ?, ?),
+        (?, ?, NULL, 'solo', NULL, ?, NULL, ?, 0, 0, NULL, ?, 'running', ?, NULL, 0, 1, NULL, ?)`,
+      [
+        'solo-completed', 'existing-user', new Date('2026-09-22T12:00:00Z'), new Date('2026-09-22T12:25:00Z'),
+        new Date('2026-09-22T12:25:00Z'), 1500, 250, 1500, 'completed', new Date('2026-09-22T12:25:00Z'),
+        0, 2, 'completed', 'existing-session',
+        'solo-running', 'existing-user', new Date('2026-09-22T12:30:00Z'), new Date('2026-09-22T12:30:00Z'),
+        1500, new Date('2026-09-22T12:55:00Z'), 'existing-session',
+      ],
+    );
+    await database.admin.query(
+      `INSERT INTO ${database.identifier}.active_study_sessions (user_id, study_session_id)
+       VALUES (?, ?)`,
+      ['existing-user', 'solo-running'],
+    );
+    await database.admin.query(
+      `INSERT INTO ${database.identifier}.study_session_start_receipts
+       (user_id, idempotency_key, planned_duration_seconds, initiating_session_id, response_json)
+       VALUES (?, ?, ?, ?, CAST(? AS JSON))`,
+      ['existing-user', 'solo-start-key', 1500, 'existing-session', JSON.stringify({ id: 'solo-running' })],
+    );
+    await database.admin.query(
+      `INSERT INTO ${database.identifier}.study_session_transition_receipts
+       (user_id, study_session_id, idempotency_key, action, expected_version, response_json)
+       VALUES (?, ?, ?, ?, ?, CAST(? AS JSON))`,
+      ['existing-user', 'solo-running', 'solo-transition-key', 'pause', 1, JSON.stringify({ id: 'solo-running', state: 'paused' })],
+    );
+    await dataSource.undoLastMigration();
+    await dataSource.undoLastMigration();
+    await dataSource.undoLastMigration();
+    await dataSource.undoLastMigration();
+    const downgradedHistory = await rows(
+      database.admin,
+      `SELECT id, subject, mode, raid_id FROM ${database.identifier}.study_sessions ORDER BY id`,
+    );
+    expect(downgradedHistory).toEqual([
+      expect.objectContaining({ id: 'existing-study', subject: 'Cálculo', mode: 'guild', raid_id: 'existing-raid' }),
+    ]);
+    const archivedSessions = await rows(
+      database.admin,
+      `SELECT id, subject, mode, state FROM ${database.identifier}.study_session_m5_downgrade_archive ORDER BY id`,
+    );
+    expect(archivedSessions).toEqual([
+      { id: 'solo-completed', subject: null, mode: 'solo', state: 'completed' },
+      { id: 'solo-running', subject: null, mode: 'solo', state: 'running' },
+    ]);
+    const archivedReceipts = await rows(
+      database.admin,
+      `SELECT user_id, idempotency_key, planned_duration_seconds, initiating_session_id
+       FROM ${database.identifier}.study_session_start_receipts_downgrade_archive`,
+    );
+    expect(archivedReceipts).toEqual([
+      expect.objectContaining({
+        user_id: 'existing-user', idempotency_key: 'solo-start-key', planned_duration_seconds: 1500,
+        initiating_session_id: 'existing-session',
+      }),
+    ]);
+    const archivedTransitionReceipts = await rows(
+      database.admin,
+      `SELECT user_id, study_session_id, idempotency_key, action, expected_version, response_json
+       FROM ${database.identifier}.study_session_transition_receipts_downgrade_archive`,
+    );
+    expect(archivedTransitionReceipts).toEqual([
+      expect.objectContaining({
+        user_id: 'existing-user', study_session_id: 'solo-running', idempotency_key: 'solo-transition-key',
+        action: 'pause', expected_version: 1,
+        response_json: { id: 'solo-running', state: 'paused' },
+      }),
+    ]);
+
+    await dataSource.runMigrations();
+    const restoredSessions = await rows(
+      database.admin,
+      `SELECT id, subject, mode, raid_id, state FROM ${database.identifier}.study_sessions ORDER BY id`,
+    );
+    expect(restoredSessions).toEqual([
+      expect.objectContaining({ id: 'existing-study', subject: 'Cálculo', mode: 'guild', raid_id: 'existing-raid', state: 'completed' }),
+      { id: 'solo-completed', subject: null, mode: 'solo', raid_id: null, state: 'completed' },
+      { id: 'solo-running', subject: null, mode: 'solo', raid_id: null, state: 'running' },
+    ]);
+    const restoredActiveSession = await rows(
+      database.admin,
+      `SELECT user_id, study_session_id FROM ${database.identifier}.active_study_sessions`,
+    );
+    expect(restoredActiveSession).toEqual([{ user_id: 'existing-user', study_session_id: 'solo-running' }]);
+    const restoredReceipt = await rows(
+      database.admin,
+      `SELECT user_id, idempotency_key, response_json
+       FROM ${database.identifier}.study_session_start_receipts`,
+    );
+    expect(restoredReceipt).toEqual([
+      expect.objectContaining({ user_id: 'existing-user', idempotency_key: 'solo-start-key', response_json: { id: 'solo-running' } }),
+    ]);
+    const restoredTransitionReceipt = await rows(
+      database.admin,
+      `SELECT user_id, study_session_id, idempotency_key, action, expected_version, response_json
+       FROM ${database.identifier}.study_session_transition_receipts`,
+    );
+    expect(restoredTransitionReceipt).toEqual([
+      expect.objectContaining({
+        user_id: 'existing-user', study_session_id: 'solo-running', idempotency_key: 'solo-transition-key',
+        action: 'pause', expected_version: 1,
+        response_json: { id: 'solo-running', state: 'paused' },
+      }),
+    ]);
+    const restoredCommandKeys = await rows(
+      database.admin,
+      `SELECT user_id, idempotency_key, command_kind FROM ${database.identifier}.study_session_command_keys ORDER BY idempotency_key`,
+    );
+    expect(restoredCommandKeys).toEqual([
+      { user_id: 'existing-user', idempotency_key: 'solo-start-key', command_kind: 'start' },
+      { user_id: 'existing-user', idempotency_key: 'solo-transition-key', command_kind: 'pause' },
+    ]);
+    const leftoverArchives = await rows(
+      database.admin,
+      `SELECT TABLE_NAME FROM information_schema.TABLES
+       WHERE TABLE_SCHEMA = ? AND TABLE_NAME IN (?, ?, ?)`,
+      [database.name, 'study_session_m5_downgrade_archive', 'study_session_start_receipts_downgrade_archive', 'study_session_transition_receipts_downgrade_archive'],
+    );
+    expect(leftoverArchives).toHaveLength(0);
+
+    await dataSource.undoLastMigration();
+    await dataSource.undoLastMigration();
+    await dataSource.undoLastMigration();
+    await dataSource.undoLastMigration();
+    await dataSource.undoLastMigration();
+    await dataSource.undoLastMigration();
+    await dataSource.undoLastMigration();
+    const remainingSchemaTables = await rows(
+      database.admin,
+      `SELECT TABLE_NAME FROM information_schema.TABLES
+       WHERE TABLE_SCHEMA = ? AND TABLE_NAME <> 'migrations'`,
+      [database.name],
+    );
+    expect(remainingSchemaTables.map((row) => row.TABLE_NAME).sort()).toEqual([
+      'study_session_m5_downgrade_archive',
+      'study_session_start_receipts_downgrade_archive',
+      'study_session_transition_receipts_downgrade_archive',
+    ]);
   });
 });

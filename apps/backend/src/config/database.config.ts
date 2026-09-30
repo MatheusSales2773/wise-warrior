@@ -51,6 +51,8 @@ export function createDatabaseOptions(
     synchronize: false,
     migrationsRun: runMigrations,
     migrationsTableName: 'migrations',
+    // Study-session timestamps are stored and bucketed as UTC calendar values.
+    timezone: 'Z',
     extra: { connectionLimit: 5 },
   };
 }

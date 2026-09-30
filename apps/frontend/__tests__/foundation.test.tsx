@@ -1,16 +1,21 @@
 import { fireEvent, renderRouter, screen, waitFor } from 'expo-router/testing-library';
 import { StyleSheet } from 'react-native';
+import { queryClient } from '../src/core/query/query-runtime';
 import { theme } from '../src/design-system/tokens/theme';
 
 jest.mock('@/core/auth/auth-context', () => require('../test-utils/auth-context').createAuthContextMock());
 
 describe('Expo foundation routes', () => {
+  beforeEach(() => {
+    queryClient.clear();
+  });
+
   it.each([
-    ['/', 'Acampamento', 'Seu painel de progresso está em preparação.'],
-    ['/sessao', 'Forja', 'Sua sessão de estudo está em preparação.'],
+    ['/', 'Acampamento', 'Carregando seu painel…'],
+    ['/sessao', 'Forja', 'Buscando sua sessão ativa…'],
     ['/perfil', 'Personagem', 'Seu perfil está em preparação.'],
     ['/guilda', 'Guilda', 'Sua guilda está em preparação.'],
-  ])('resolves %s directly with its honest placeholder', async (pathname, title, message) => {
+  ])('resolves %s directly with its initial state', async (pathname, title, message) => {
     const router = renderRouter('src/app', { initialUrl: pathname });
     await router;
 

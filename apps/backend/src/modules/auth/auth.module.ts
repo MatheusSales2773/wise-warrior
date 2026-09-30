@@ -20,6 +20,6 @@ import { Character } from '../progression/entities/character.entity';
   ],
   controllers: [AuthController, NativeAuthController],
   providers: [AuthService, JwtStrategy, RejectBrowserOriginGuard],
-  exports: [AuthService],
+  exports: [AuthService, JwtStrategy],
 })
 export class AuthModule {}

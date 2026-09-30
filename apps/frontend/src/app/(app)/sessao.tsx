@@ -1,5 +1,5 @@
-import { PlaceholderScreen } from '@/design-system/components/PlaceholderScreen';
+import { StudySessionScreen } from '@/features/study-session/study-session-screen';
 
-export default function StudySessionScreen() {
-  return <PlaceholderScreen message="Sua sessão de estudo está em preparação." title="Forja" />;
+export default function StudySessionRoute() {
+  return <StudySessionScreen />;
 }

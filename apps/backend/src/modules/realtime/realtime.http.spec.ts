@@ -5,6 +5,7 @@ import { Test } from '@nestjs/testing';
 import { createConnection } from 'node:net';
 import type { AddressInfo } from 'node:net';
 import { configureApp } from '../../app.setup';
+import { JwtStrategy } from '../auth/strategies/jwt.strategy';
 import { RealtimeGateway } from './realtime.gateway';
 
 describe('Realtime HTTP transport contract', () => {
@@ -32,6 +33,7 @@ describe('Realtime HTTP transport contract', () => {
       providers: [
         RealtimeGateway,
         { provide: JwtService, useValue: { verify: jest.fn() } },
+        { provide: JwtStrategy, useValue: { validate: jest.fn() } },
       ],
     }).compile();
 

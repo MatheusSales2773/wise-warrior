@@ -13,11 +13,22 @@
     "build": "npm run build --workspace apps/backend && npm run build --workspace apps/frontend",
     "test": "npm run test --workspace apps/backend && npm run test --workspace apps/frontend",
     "lint": "npm run lint --workspace apps/backend && npm run lint --workspace apps/frontend",
+    "lint:openapi": "redocly lint --extends minimal docs/api/openapi.yaml",
     "test:e2e": "./scripts/test-e2e.sh",
     "verify:m1": "npm run verify:m1 --workspace apps/frontend",
-    "verify:m2": "npm run verify:m2 --workspace apps/frontend"
+    "verify:m2": "npm run verify:m2 --workspace apps/frontend",
+    "verify:m3:quality": "npm run build --workspace apps/backend && npm run lint --workspace apps/backend && npm test --workspace apps/backend && npm run migration:test --workspace apps/backend && npm run test:auth:integration --workspace apps/backend && npm run verify:m2 --workspace apps/frontend",
+    "verify:m4:quality": "npm run verify:m3:quality && npm run lint:openapi && npm run test:integration --workspace apps/backend",
+    "verify:m4": "npm run verify:m4:quality && npm run test:e2e",
+    "ci:backend": "npm run build --workspace apps/backend && npm run lint --workspace apps/backend && npm test --workspace apps/backend && npm run test:integration --workspace apps/backend",
+    "ci:frontend": "npm run verify:m2 --workspace apps/frontend",
+    "verify:quality": "npm run ci:backend && npm run ci:frontend && npm run lint:openapi",
+    "verify": "npm run verify:quality && npm run test:e2e",
+    "verify:m5:quality": "npm run verify:quality",
+    "verify:m5": "npm run verify"
   },
   "devDependencies": {
+    "@redocly/cli": "2.53.2",
     "eslint": "9.39.5",
     "react": "19.2.3",
     "react-dom": "19.2.3"

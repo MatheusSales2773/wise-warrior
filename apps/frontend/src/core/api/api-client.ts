@@ -15,6 +15,7 @@ export type HttpResponse<T> = {
 
 export type HttpRequestOptions = {
   signal?: AbortSignal;
+  headers?: Record<string, string>;
   /** Requests marked as auth/public never start the session recovery flow. */
   requestKind?: 'auth' | 'public';
 };
@@ -23,6 +24,10 @@ export type HttpRequestOptions = {
 export interface HttpClient {
   get<T = unknown>(url: string, options?: HttpRequestOptions): Promise<HttpResponse<T>>;
   post<T = unknown>(url: string, body?: unknown, options?: HttpRequestOptions): Promise<HttpResponse<T>>;
+}
+
+export interface HttpClientWithPatch extends HttpClient {
+  patch<T = unknown>(url: string, body?: unknown, options?: HttpRequestOptions): Promise<HttpResponse<T>>;
 }
 
 export type HttpClientConfig = {
@@ -222,6 +227,8 @@ async function replayOnce<T>(
 }
 
 /** Restaura a Session uma única vez antes de repetir uma request protegida rejeitada. */
+export function createSessionAwareHttpClient(transport: HttpClientWithPatch): HttpClientWithPatch;
+export function createSessionAwareHttpClient(transport: HttpClient): HttpClient;
 export function createSessionAwareHttpClient(transport: HttpClient): HttpClient {
   async function request<T>(
     url: string,
@@ -267,11 +274,16 @@ export function createSessionAwareHttpClient(transport: HttpClient): HttpClient 
     }
   }
 
+  const patchTransport = (transport as Partial<HttpClientWithPatch>).patch;
   return {
     get: <T>(url: string, options?: HttpRequestOptions) =>
       request(url, (requestOptions) => transport.get<T>(url, requestOptions), options),
     post: <T>(url: string, body?: unknown, options?: HttpRequestOptions) =>
       request(url, (requestOptions) => transport.post<T>(url, body, requestOptions), options),
+    ...(patchTransport ? {
+      patch: <T>(url: string, body?: unknown, options?: HttpRequestOptions) =>
+        request<T>(url, (requestOptions) => (transport as HttpClientWithPatch).patch<T>(url, body, requestOptions), options),
+    } : {}),
   };
 }
 
@@ -299,7 +311,7 @@ export function applyAuthorizationHeader(
  * access token em memória. Erros Axios são reduzidos à taxonomia pública antes
  * de atravessarem esta fronteira.
  */
-export function createHttpClient(config: HttpClientConfig = {}): HttpClient {
+export function createHttpClient(config: HttpClientConfig = {}): HttpClientWithPatch {
   const instance = create(resolveAxiosConfig(config));
 
   const bearer = config.bearer;
@@ -314,8 +326,8 @@ export function createHttpClient(config: HttpClientConfig = {}): HttpClient {
     async get<T>(url: string, options?: HttpRequestOptions): Promise<HttpResponse<T>> {
       try {
         const response = options?.signal
-          ? await instance.get<T>(url, { signal: options.signal })
-          : await instance.get<T>(url);
+          ? await instance.get<T>(url, { signal: options.signal, headers: options.headers })
+          : await instance.get<T>(url, { headers: options?.headers });
         return { status: response.status, data: response.data };
       } catch (error) {
         throw toApiError(error);
@@ -324,8 +336,18 @@ export function createHttpClient(config: HttpClientConfig = {}): HttpClient {
     async post<T>(url: string, body?: unknown, options?: HttpRequestOptions): Promise<HttpResponse<T>> {
       try {
         const response = options?.signal
-          ? await instance.post<T>(url, body, { signal: options.signal })
-          : await instance.post<T>(url, body);
+          ? await instance.post<T>(url, body, { signal: options.signal, headers: options.headers })
+          : await instance.post<T>(url, body, { headers: options?.headers });
+        return { status: response.status, data: response.data };
+      } catch (error) {
+        throw toApiError(error);
+      }
+    },
+    async patch<T>(url: string, body?: unknown, options?: HttpRequestOptions): Promise<HttpResponse<T>> {
+      try {
+        const response = options?.signal
+          ? await instance.patch<T>(url, body, { signal: options.signal, headers: options.headers })
+          : await instance.patch<T>(url, body, { headers: options?.headers });
         return { status: response.status, data: response.data };
       } catch (error) {
         throw toApiError(error);
@@ -334,7 +356,7 @@ export function createHttpClient(config: HttpClientConfig = {}): HttpClient {
   };
 }
 
-let authenticatedClient: HttpClient | null = null;
+let authenticatedClient: HttpClientWithPatch | null = null;
 let bareClient: HttpClient | null = null;
 
 export function shouldSendBrowserCredentials(platform = Platform.OS): boolean {
@@ -342,7 +364,7 @@ export function shouldSendBrowserCredentials(platform = Platform.OS): boolean {
 }
 
 /** Cliente autenticado para rotas de produto; usa somente o bearer em memória. */
-export function getAuthenticatedHttpClient(): HttpClient {
+export function getAuthenticatedHttpClient(): HttpClientWithPatch {
   if (!authenticatedClient) {
     authenticatedClient = createSessionAwareHttpClient(
       createHttpClient({ bearer: getAccessToken, withCredentials: false }),

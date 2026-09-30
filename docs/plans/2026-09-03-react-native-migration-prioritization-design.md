@@ -1,6 +1,7 @@
 # Design — migração e priorização do frontend universal
 
 **Data:** 03/09/2026
+**Revisado em:** 17/09/2026 — reprioriza Study Session após a conclusão da M4
 **Status:** Validado
 **Arquitetura base:**
 `docs/plans/2026-09-03-react-native-universal-design.md`
@@ -8,9 +9,10 @@
 ## 1. Objetivo
 
 Substituir o frontend React/Vite atual por uma aplicação Expo universal para Web,
-iOS e Android antes de ampliar o produto. A migração preserva os fluxos e dados
-reais existentes, mas não transporta implementações que já divergem do domínio
-validado, como DOM/CSS direto e o cronômetro crescente atual.
+iOS e Android, priorizando o fluxo individual de Study Session antes das áreas
+sociais opcionais para o usuário. A migração preserva os fluxos e dados reais
+existentes, mas não transporta implementações que já divergem do domínio validado,
+como DOM/CSS direto e o cronômetro crescente atual.
 
 A tela de sessão será construída diretamente como Pomodoro regressivo. Não haverá
 uma implementação intermediária do comportamento antigo.
@@ -30,11 +32,12 @@ Três abordagens foram avaliadas:
 3. **Troca completa de uma vez — rejeitada:** concentra incompatibilidades e
    dificulta localizar regressões.
 
-A expansão do produto começa apenas depois da paridade útil da base existente. A
-exceção são mudanças mínimas de backend indispensáveis à fatia em andamento,
-principalmente autenticação nativa e o contrato definitivo de Study Session.
+A partir da M4, paridade deixa de significar reproduzir primeiro todas as telas do
+frontend anterior. O núcleo individual de Study Session e sua integridade passam
+à frente de Perfil, Guilda e Raid. Mudanças de backend entram junto à primeira
+fatia que delas necessitar, sem criar implementações intermediárias descartáveis.
 
-## 3. Primeira grande entrega — migração do existente
+## 3. Fase 1 — migração e núcleo funcional
 
 ### M1 — Fundação universal
 
@@ -66,89 +69,114 @@ principalmente autenticação nativa e o contrato definitivo de Study Session.
 - implementar estados de carregamento, erro, vazio e atualização;
 - adaptar composição ampla para Web e empilhada para celular.
 
-### M5 — Perfil
+### Revisão de prioridade após M4
+
+Participar de uma Guilda é opcional para o usuário. Guilda e Raid continuam
+obrigatórias para concluir a Fase 1, mas não antecedem o fluxo individual que
+sustenta o produto: realizar uma Study Session e receber XP. Perfil será o último
+marco da fase.
+
+### M5 — Study Session essencial
+
+- operar somente em modo solo, online e com o aplicativo em primeiro plano;
+- oferecer presets de foco de 15, 25 e 50 minutos, com 25 minutos selecionados
+  inicialmente;
+- não solicitar nem persistir matéria nesta primeira entrega;
+- usar contador regressivo derivado de timestamps canônicos;
+- iniciar, pausar e retomar com confirmação do servidor;
+- cancelar antes de cinco minutos sem XP;
+- encerrar antecipadamente após cinco minutos com 10 XP por minuto completo;
+- concluir automaticamente ao chegar a zero enquanto o aplicativo estiver ativo;
+- garantir no máximo uma Study Session ativa por usuário, inclusive quando outro
+  dispositivo tentar iniciar uma nova;
+- usar estados canônicos `running`, `paused`, `completed`, `stopped_early`,
+  `cancelled` e `discarded`;
+- usar comandos idempotentes, versão esperada e proteção contra concorrência;
+- calcular no servidor o tempo válido e o XP e mostrar o resultado confirmado;
+- refletir a conclusão no Dashboard;
+- não reproduzir o cronômetro crescente do frontend anterior.
+
+O M5 preserva a integridade global da sessão, mas não oferece controle ou
+atualização em tempo real entre dispositivos. Em outro dispositivo, a primeira
+versão apenas informa que já existe uma sessão ativa.
+
+### M6 — Matéria da Study Session
+
+- permitir selecionar e persistir matéria;
+- exibir a matéria no resultado, no Dashboard e no histórico aplicável;
+- manter compatibilidade com as Study Sessions sem matéria criadas na M5;
+- não usar valor fictício para substituir matéria ausente.
+
+### M7 — Controle multidispositivo
+
+- consultar e controlar a sessão ativa em qualquer dispositivo;
+- propagar mudanças por Socket.IO e confirmar o estado por REST;
+- detectar conflitos e reaplicar o estado canônico;
+- resolver explicitamente uma sessão pausada antes de começar outra.
+
+### M8 — Resiliência em background e offline
+
+- resistir a background usando timestamps;
+- manter conclusão pendente durante perda de conexão;
+- usar uma fila local pequena e idempotente;
+- reconciliar ao recuperar rede;
+- emitir notificação local no dispositivo que acompanha o ciclo.
+
+### M9 — Pomodoro completo
+
+- oferecer pausas locais de 5 e 15 minutos;
+- oferecer pausa longa após quatro focos integralmente concluídos;
+- persistir e sincronizar a sequência;
+- mostrar feedback de conclusão e XP.
+
+### M10 — Guilda
+
+- migrar criação, entrada e visualização usando a API real;
+- representar corretamente o estado sem Guilda;
+- marcar informações indisponíveis sem introduzir dados fictícios.
+
+### M11 — Raid
+
+- migrar participação em Raid, contribuição de foco e ranking;
+- integrar somente Study Sessions elegíveis à contribuição;
+- mostrar atualizações canônicas de progresso e resultado.
+
+### M12 — Perfil
 
 - migrar dados pessoais e histórico disponível;
 - listar sessões autenticadas por dispositivo;
-- suportar revogação individual e saída de todos os dispositivos.
-
-### M6 — Guilda
-
-- migrar criação e visualização usando a API existente;
-- representar corretamente o estado sem guilda;
-- marcar informações indisponíveis sem introduzir dados fictícios.
-
-### M7 — Sessão de estudo definitiva
-
-- selecionar matéria e presets de foco de 15, 25 e 50 minutos;
-- usar contador regressivo derivado de timestamps;
-- iniciar, concluir automaticamente e encerrar antecipadamente;
-- mostrar duração e XP confirmados pelo servidor;
-- não reproduzir o cronômetro crescente do frontend atual.
-
-Ao final de M7, o frontend existente estará substituído por uma aplicação React
-Native funcional nas três plataformas. Offline, pausa sincronizada e controle
-avançado entre dispositivos permanecem para a expansão priorizada.
-
-## 4. Segunda grande entrega — capacidades novas
-
-### P0 — Integridade da sessão
-
-1. no máximo uma Study Session ativa por usuário;
-2. estados canônicos `running`, `paused`, `completed`, `stopped_early`,
-   `cancelled` e `discarded`;
-3. comandos idempotentes e proteção contra concorrência;
-4. cálculo server-side do tempo válido e do XP;
-5. mínimo de cinco minutos e 10 XP por minuto completo.
-
-### P1 — Controle multidispositivo
-
-1. consultar a sessão ativa em qualquer dispositivo;
-2. pausar e retomar com confirmação do servidor;
-3. propagar mudanças por Socket.IO e confirmar o estado por REST;
-4. detectar conflitos e reaplicar o estado canônico;
-5. resolver explicitamente uma sessão pausada antes de começar outra.
-
-### P2 — Resiliência
-
-1. resistir a background usando timestamps;
-2. manter conclusão pendente durante perda de conexão;
-3. usar uma fila local pequena e idempotente;
-4. reconciliar ao recuperar rede;
-5. emitir notificação local no dispositivo que acompanha o ciclo.
-
-### P3 — Pomodoro completo
-
-1. pausas locais de 5 e 15 minutos;
-2. pausa longa após quatro focos integralmente concluídos;
-3. sequência persistida e sincronizada;
-4. feedback de conclusão, XP e contribuição para raid.
-
-### P4 — Social e acabamento
-
-1. raids e contribuição de foco;
-2. ranking e atualizações de guilda;
-3. refinamento visual baseado no standalone;
-4. acessibilidade, desempenho e documentação;
-5. futuramente, áudio, temas adicionais e áreas marcadas “Em breve”.
+- suportar revogação individual e saída de todos os dispositivos;
+- concluir a paridade útil do frontend universal da Fase 1.
 
 Funcionalidades sociais e cosméticas não antecedem a confiabilidade da Study
-Session e da concessão de XP.
+Session e da concessão de XP. Guilda ser obrigatória na Fase 1 não torna sua
+participação obrigatória para o usuário.
+
+## 4. Capacidades posteriores à Fase 1
+
+- refinamento visual adicional baseado no standalone;
+- melhorias de acessibilidade, desempenho e documentação que excedam a definição
+  de pronto dos marcos;
+- áudio, temas adicionais e áreas marcadas “Em breve”.
 
 ## 5. Dependências
 
 - M2 depende de M1.
 - M3 depende de M1 e das primitivas mínimas de M2.
-- M4, M5 e M6 dependem de M3.
-- M7 depende de M1–M3 e das extensões mínimas do contrato de sessão.
-- P0 deve estar concluído antes de P1–P4.
-- P2 depende dos comandos idempotentes de P0.
-- P3 depende da integridade de P0 e da reconciliação necessária de P2.
-- P4 depende dos resultados canônicos de sessão e XP.
+- M4 e M5 dependem de M3.
+- M5 incorpora a integridade anteriormente separada como P0.
+- M6 depende do contrato canônico de Study Session entregue na M5.
+- M7 depende dos estados, versões e comandos idempotentes da M5.
+- M8 depende dos comandos idempotentes da M5 e da reconciliação multidispositivo
+  da M7.
+- M9 depende da integridade da M5 e da reconciliação da M8.
+- M10 depende de M3, mas é deliberadamente executada depois do núcleo de sessão.
+- M11 depende de M10 e dos resultados canônicos de sessão e XP.
+- M12 depende de M3 e é deliberadamente o último marco da Fase 1.
 
 Mudanças de backend serão implementadas junto à primeira fatia que delas
-necessitar: autenticação nativa em M3, contrato definitivo de sessão em M7/P0,
-multidispositivo em P1 e reconciliação em P2.
+necessitar: autenticação nativa em M3, contrato definitivo de sessão em M5,
+matéria em M6, multidispositivo em M7 e reconciliação em M8.
 
 ## 6. Definição de pronto por incremento
 
@@ -190,7 +218,7 @@ Refinamentos cosméticos não podem bloquear a validação desses riscos.
 
 ## 9. Próximo artefato
 
-O plano de implementação deve decompor M1–M7 e P0–P4 em tarefas pequenas, com
+O plano de implementação deve decompor M1–M12 em tarefas pequenas, com
 arquivos afetados, testes, comandos de verificação, dependências e critérios de
 aceite. Antes do primeiro código, ele também deve confirmar as versões instaladas
 e consultar a documentação oficial correspondente, conforme `AGENTS.md`.

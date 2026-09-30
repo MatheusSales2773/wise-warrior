@@ -33,6 +33,14 @@ function renderRegister(service: AuthService, initialMetrics = metrics) {
 }
 
 describe('RegisterForm', () => {
+  it('introduces character creation with the prototype form guidance', async () => {
+    await renderRegister(serviceDouble(async () => ({ sessionId: 'session-register' })));
+
+    expect(screen.getByRole('header', { name: 'Forje seu personagem' })).toBeTruthy();
+    expect(screen.getByText('Um novo caminho começa com uma decisão.')).toBeTruthy();
+    expect(screen.getByText('A confirmação fica apenas neste ritual')).toBeTruthy();
+  });
+
   it('renders the accessible registration fields, CTA and login link', async () => {
     await renderRegister(serviceDouble(async () => ({ sessionId: 'session-register' })));
 

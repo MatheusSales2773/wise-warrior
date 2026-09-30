@@ -1,8 +1,8 @@
 import { useRef, useState } from 'react';
-import { StyleSheet, TextInput, View } from 'react-native';
-import { FeedbackMessage, WiseButton, WiseField, theme } from '@/design-system';
+import { StyleSheet, Text, TextInput, View } from 'react-native';
+import { FeedbackMessage, WiseButton, WiseField, WiseText, theme } from '@/design-system';
 import { useAuth } from '@/core/auth/auth-context';
-import { AuthShell } from './components/AuthShell';
+import { AuthCardHead, AuthChevron, AuthShell } from './components/AuthShell';
 import { AuthNavigationLink } from './components/AuthNavigationLink';
 import { AuthPasswordField } from './components/AuthPasswordField';
 import { loginErrorMessage } from './messages';
@@ -53,6 +53,7 @@ export function LoginForm() {
       title="Entre na batalha"
     >
       <View aria-busy={submitting} style={styles.form}>
+        <AuthCardHead subtitle="Seus registros de foco aguardam por você." title="Abra seu grimório" />
         <WiseField
           ref={emailRef}
           autoCapitalize="none"
@@ -62,6 +63,7 @@ export function LoginForm() {
           error={errors.email}
           keyboardType="email-address"
           label="E-mail"
+          hint="Identidade"
           nativeID="login-email"
           onChangeText={setEmail}
           onSubmitEditing={() => passwordRef.current?.focus()}
@@ -88,20 +90,27 @@ export function LoginForm() {
         {formError ? (
           <FeedbackMessage message={formError} title="Erro" variant="error" />
         ) : null}
+        <View style={styles.metaRow}>
+          <WiseText color="accentPrimary" variant="caption">✦</WiseText>
+          <Text style={styles.meta}>Seu progresso permanece protegido no grimório</Text>
+        </View>
         <WiseButton
           label="Entrar na batalha"
+          trailing={<AuthChevron />}
           loading={submitting}
           size="large"
           onPress={() => {
             void handleSubmit();
           }}
         />
-        <AuthNavigationLink href="/cadastro" label="Ainda não tem uma conta? Crie seu personagem" />
+        <AuthNavigationLink href="/cadastro" label="Crie seu personagem" prompt="Ainda não tem uma conta?" />
       </View>
     </AuthShell>
   );
 }
 
 const styles = StyleSheet.create({
-  form: { gap: theme.space.stackDefault },
+  form: { gap: theme.space.controlInset },
+  metaRow: { flexDirection: 'row', alignItems: 'center', gap: theme.space.inlineTight, marginBottom: theme.space.inlineHairline },
+  meta: { fontFamily: 'Inter-Regular', color: theme.color.textTertiary, fontSize: 11, lineHeight: 16, flexShrink: 1 },
 });

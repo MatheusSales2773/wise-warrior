@@ -1,11 +1,12 @@
 import type { INestApplication, LoggerService } from '@nestjs/common';
+import { JwtService } from '@nestjs/jwt';
 import { Test } from '@nestjs/testing';
-import type { Connection, RowDataPacket } from 'mysql2/promise';
-import mysql from 'mysql2/promise';
+import type { RowDataPacket } from 'mysql2/promise';
 import type { AddressInfo } from 'node:net';
 import { DataSource } from 'typeorm';
 import { AppModule } from '../../app.module';
 import { configureApp } from '../../app.setup';
+import { createIntegrationDatabase, type IntegrationDatabase } from '../../test/integration-database';
 
 type Row = RowDataPacket & Record<string, unknown>;
 
@@ -47,13 +48,6 @@ class CapturingLogger implements LoggerService {
   }
 }
 
-function identifier(name: string): string {
-  if (!/^wise_universal_auth_[a-z0-9_]+$/.test(name)) {
-    throw new Error(`Unexpected database identifier: ${name}`);
-  }
-  return `\`${name}\``;
-}
-
 describe('Universal authentication security contract', () => {
   jest.setTimeout(30_000);
 
@@ -74,10 +68,9 @@ describe('Universal authentication security contract', () => {
     MAX_SESSIONS_PER_USER: process.env.MAX_SESSIONS_PER_USER,
   };
 
-  let admin: Connection | undefined;
+  let database: IntegrationDatabase | undefined;
   let app: INestApplication | undefined;
   let dataSource: DataSource | undefined;
-  let databaseName: string | undefined;
   let baseUrl: string;
 
   beforeAll(async () => {
@@ -98,9 +91,7 @@ describe('Universal authentication security contract', () => {
     const port = Number(process.env.TEST_DB_PORT ?? 3306);
     const username = process.env.TEST_DB_ADMIN_USERNAME ?? 'root';
     const password = process.env.TEST_DB_ADMIN_PASSWORD ?? 'change-me-root';
-    databaseName = `wise_universal_auth_${process.pid}_${Date.now()}`;
-    admin = await mysql.createConnection({ host, port, user: username, password });
-    await admin.query(`CREATE DATABASE ${identifier(databaseName)}`);
+    database = await createIntegrationDatabase('wise_universal_auth');
 
     process.env.NODE_ENV = 'test';
     process.env.CORS_ORIGIN = 'http://localhost:8081';
@@ -108,7 +99,7 @@ describe('Universal authentication security contract', () => {
     process.env.DB_PORT = String(port);
     process.env.DB_USERNAME = username;
     process.env.DB_PASSWORD = password;
-    process.env.DB_DATABASE = databaseName;
+    process.env.DB_DATABASE = database.name;
     process.env.DB_MIGRATIONS_RUN = 'false';
     process.env.JWT_ACCESS_SECRET = 'integration-access-secret';
     process.env.JWT_ACCESS_TTL = '15m';
@@ -137,25 +128,17 @@ describe('Universal authentication security contract', () => {
       }
     } finally {
       try {
-        if (admin && databaseName) {
-          await admin.query(`DROP DATABASE IF EXISTS ${identifier(databaseName)}`);
-        }
+        await database?.close();
       } finally {
-        try {
-          if (admin) {
-            await admin.end();
+        for (const [key, value] of Object.entries(previousEnvironment)) {
+          if (value === undefined) {
+            delete process.env[key];
+          } else {
+            process.env[key] = value;
           }
-        } finally {
-          for (const [key, value] of Object.entries(previousEnvironment)) {
-            if (value === undefined) {
-              delete process.env[key];
-            } else {
-              process.env[key] = value;
-            }
-          }
-          for (const spy of consoleSpies) {
-            spy.mockRestore();
-          }
+        }
+        for (const spy of consoleSpies) {
+          spy.mockRestore();
         }
       }
     }
@@ -173,6 +156,14 @@ describe('Universal authentication security contract', () => {
     });
   }
 
+  function get(path: string, headers: Record<string, string> = {}): Promise<Response> {
+    return fetch(`${baseUrl}${path}`, { headers });
+  }
+
+  function remove(path: string, headers: Record<string, string> = {}): Promise<Response> {
+    return fetch(`${baseUrl}${path}`, { method: 'DELETE', headers });
+  }
+
   function refreshTokenFromCookie(response: Response): string {
     const cookie = response.headers.get('set-cookie') ?? '';
     const match = /ww_refresh=([^;]+)/.exec(cookie);
@@ -186,6 +177,86 @@ describe('Universal authentication security contract', () => {
     const headers: Array<[string, string]> = [];
     response.headers.forEach((value, name) => headers.push([name, value]));
     return headers;
+  }
+
+  function accessClaims(accessToken: string): Record<string, unknown> {
+    const decoded = app!.get(JwtService).decode(accessToken);
+    if (!decoded || typeof decoded !== 'object' || Array.isArray(decoded)) {
+      throw new Error('Access token did not decode to an object');
+    }
+    return decoded as Record<string, unknown>;
+  }
+
+  function signAccessToken(payload: Record<string, unknown>): string {
+    return app!.get(JwtService).sign(payload, {
+      secret: 'integration-access-secret',
+      expiresIn: '15m',
+    });
+  }
+
+  function exerciseSocketIoTransport(
+    token: string,
+    expectation: 'connected' | 'rejected',
+  ): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const endpoint = new URL(baseUrl);
+      endpoint.protocol = 'ws:';
+      endpoint.pathname = '/socket.io/';
+      endpoint.search = new URLSearchParams({
+        EIO: '4',
+        transport: 'websocket',
+        token,
+      }).toString();
+      const socket = new WebSocket(endpoint);
+      let settled = false;
+      const timeout = setTimeout(() => {
+        if (settled) return;
+        settled = true;
+        socket.close();
+        reject(new Error(`Socket.IO transport did not ${expectation}`));
+      }, 5_000);
+
+      const finish = (error?: Error) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timeout);
+        socket.close();
+        if (error) {
+          reject(error);
+        } else {
+          resolve();
+        }
+      };
+
+      socket.addEventListener('open', () => socket.send('40'));
+      socket.addEventListener('message', (event) => {
+        const message = String(event.data);
+        if (expectation === 'connected' && message.startsWith('40')) {
+          finish();
+        }
+        if (expectation === 'rejected') {
+          if (message.startsWith('40')) {
+            finish(new Error('Rejected Socket.IO token received a connect packet'));
+          } else if (message.startsWith('41') || message.startsWith('44')) {
+            finish();
+          }
+        }
+      });
+      socket.addEventListener('close', () => {
+        if (expectation === 'rejected') {
+          finish();
+        } else if (!settled) {
+          finish(new Error('Socket.IO transport closed before connect'));
+        }
+      });
+      socket.addEventListener('error', () => {
+        if (expectation === 'rejected') {
+          finish();
+        } else {
+          finish(new Error('Socket.IO transport failed during connect'));
+        }
+      });
+    });
   }
 
   it('keeps plaintext passwords and refresh credentials out of Web responses, logs and MySQL', async () => {
@@ -240,7 +311,7 @@ describe('Universal authentication security contract', () => {
     refreshTokens.push(webLoginRefresh);
 
     const registeredUserRows = (await dataSource!.query(
-      `SELECT id, email, display_name FROM ${identifier(databaseName!)}.users
+      `SELECT id, email, display_name FROM ${database!.identifier}.users
        WHERE email = ?`,
       ['web-security@wise.app'],
     )) as Row[];
@@ -254,7 +325,7 @@ describe('Universal authentication security contract', () => {
     );
 
     const characterRows = (await dataSource!.query(
-      `SELECT user_id, level, xp_total FROM ${identifier(databaseName!)}.characters
+      `SELECT user_id, level, xp_total FROM ${database!.identifier}.characters
        WHERE user_id = ?`,
       [registeredUserId],
     )) as Row[];
@@ -265,7 +336,7 @@ describe('Universal authentication security contract', () => {
     expect(Number(characterRows[0]!.xp_total)).toBe(0);
 
     const registeredSessionRows = (await dataSource!.query(
-      `SELECT id, revoked_at FROM ${identifier(databaseName!)}.sessions
+      `SELECT id, revoked_at FROM ${database!.identifier}.sessions
        WHERE user_id = ? ORDER BY created_at ASC`,
       [registeredUserId],
     )) as Row[];
@@ -309,7 +380,7 @@ describe('Universal authentication security contract', () => {
     );
     expect(webLogoutReplay.status).toBe(401);
     const webRevokedRows = (await dataSource!.query(
-      `SELECT revoked_at FROM ${identifier(databaseName!)}.sessions WHERE id = ?`,
+      `SELECT revoked_at FROM ${database!.identifier}.sessions WHERE id = ?`,
       [webLoginBody.sessionId],
     )) as Row[];
     expect(webRevokedRows).toHaveLength(1);
@@ -366,7 +437,7 @@ describe('Universal authentication security contract', () => {
     });
     expect(nativeLogoutReplay.status).toBe(401);
     const nativeRevokedRows = (await dataSource!.query(
-      `SELECT revoked_at FROM ${identifier(databaseName!)}.sessions WHERE id = ?`,
+      `SELECT revoked_at FROM ${database!.identifier}.sessions WHERE id = ?`,
       [nativeRefreshBody.sessionId],
     )) as Row[];
     expect(nativeRevokedRows).toHaveLength(1);
@@ -394,13 +465,13 @@ describe('Universal authentication security contract', () => {
     ]);
 
     const persistedRows = (await dataSource!.query(
-      `SELECT password_hash FROM ${identifier(databaseName!)}.users`,
+      `SELECT password_hash FROM ${database!.identifier}.users`,
     )) as Row[];
     const sessionRows = (await dataSource!.query(
-      `SELECT refresh_token_hash FROM ${identifier(databaseName!)}.sessions`,
+      `SELECT refresh_token_hash FROM ${database!.identifier}.sessions`,
     )) as Row[];
     const historyRows = (await dataSource!.query(
-      `SELECT token_hash FROM ${identifier(databaseName!)}.session_refresh_token_history`,
+      `SELECT token_hash FROM ${database!.identifier}.session_refresh_token_history`,
     )) as Row[];
     const serializedPersistence = JSON.stringify([
       ...persistedRows,
@@ -434,6 +505,294 @@ describe('Universal authentication security contract', () => {
         String(row.password_hash).startsWith('$argon2id$'),
       ),
     ).toBe(true);
+  });
+
+  it('returns numeric progression boundaries from the authenticated profile endpoint', async () => {
+    const registration = await post(
+      '/auth/register',
+      {
+        email: 'profile-projection@wise.app',
+        password: 'profile-password-secret',
+        displayName: 'Profile Projection',
+      },
+      { origin: 'http://localhost:8081' },
+    );
+    expect(registration.status).toBe(201);
+    const registrationBody = (await registration.json()) as {
+      accessToken: string;
+    };
+
+    const profileResponse = await get('/users/me', {
+      authorization: `Bearer ${registrationBody.accessToken}`,
+      origin: 'http://localhost:8081',
+    });
+    expect(profileResponse.status).toBe(200);
+    const profile = (await profileResponse.json()) as Record<string, unknown>;
+
+    expect(profile).toEqual(
+      expect.objectContaining({
+        level: 1,
+        xpTotal: 0,
+        levelStartXp: 0,
+        nextLevelXp: 1_414,
+      }),
+    );
+    expect(typeof profile.levelStartXp).toBe('number');
+    expect(typeof profile.nextLevelXp).toBe('number');
+    expect(typeof profile.xpTotal).toBe('number');
+  });
+
+  it('preserves the profile contract for a legacy account without a Character', async () => {
+    const registration = await post(
+      '/auth/register',
+      {
+        email: 'legacy-profile@wise.app',
+        password: 'legacy-password-secret',
+        displayName: 'Legacy Profile',
+      },
+      { origin: 'http://localhost:8081' },
+    );
+    expect(registration.status).toBe(201);
+    const registrationBody = (await registration.json()) as {
+      accessToken: string;
+    };
+
+    const userRows = (await dataSource!.query(
+      `SELECT id FROM ${database!.identifier}.users WHERE email = ?`,
+      ['legacy-profile@wise.app'],
+    )) as Row[];
+    expect(userRows).toHaveLength(1);
+    await dataSource!.query(
+      `DELETE FROM ${database!.identifier}.characters WHERE user_id = ?`,
+      [String(userRows[0]!.id)],
+    );
+
+    const profileResponse = await get('/users/me', {
+      authorization: `Bearer ${registrationBody.accessToken}`,
+      origin: 'http://localhost:8081',
+    });
+    expect(profileResponse.status).toBe(200);
+    const profile = (await profileResponse.json()) as Record<string, unknown>;
+
+    expect(profile).toEqual(
+      expect.objectContaining({
+        id: String(userRows[0]!.id),
+        email: 'legacy-profile@wise.app',
+        displayName: 'Legacy Profile',
+        planTier: 'free',
+        level: 1,
+        xpTotal: 0,
+        levelStartXp: 0,
+        nextLevelXp: 1_414,
+        title: null,
+      }),
+    );
+    expect(typeof profile.level).toBe('number');
+    expect(typeof profile.xpTotal).toBe('number');
+    expect(typeof profile.levelStartXp).toBe('number');
+    expect(typeof profile.nextLevelXp).toBe('number');
+  });
+
+  it('returns a safe HTTP failure when persisted character level diverges from XP', async () => {
+    const xpTotal = 1_501;
+    const registration = await post(
+      '/auth/register',
+      {
+        email: 'inconsistent-profile@wise.app',
+        password: 'inconsistent-profile-password',
+        displayName: 'Inconsistent Profile',
+      },
+      { origin: 'http://localhost:8081' },
+    );
+    expect(registration.status).toBe(201);
+    const registrationBody = (await registration.json()) as {
+      accessToken: string;
+    };
+    const userRows = (await dataSource!.query(
+      `SELECT id FROM ${database!.identifier}.users WHERE email = ?`,
+      ['inconsistent-profile@wise.app'],
+    )) as Row[];
+    expect(userRows).toHaveLength(1);
+
+    await dataSource!.query(
+      `UPDATE ${database!.identifier}.characters
+       SET level = ?, xp_total = ?
+       WHERE user_id = ?`,
+      [3, xpTotal, String(userRows[0]!.id)],
+    );
+
+    const profileResponse = await get('/users/me', {
+      authorization: `Bearer ${registrationBody.accessToken}`,
+      origin: 'http://localhost:8081',
+    });
+    expect(profileResponse.status).toBe(500);
+    expect(profileResponse.headers.get('content-type')).toContain(
+      'application/problem+json',
+    );
+    const profile = (await profileResponse.json()) as Record<string, unknown>;
+
+    expect(profile).toEqual({
+      type: 'https://wise.app/errors/500',
+      title: 'InternalServerError',
+      status: 500,
+      detail: 'Erro interno inesperado',
+      instance: '/api/v1/users/me',
+    });
+    expect(JSON.stringify(profile)).not.toContain(String(xpTotal));
+    expect(JSON.stringify(profile)).not.toContain(
+      'nível persistido inconsistente com xpTotal',
+    );
+  });
+
+  it('propagates and enforces Session identity through the real authentication contract', async () => {
+    const origin = 'http://localhost:8081';
+    const userA = {
+      email: `session-identity-a-${process.pid}@wise.app`,
+      password: 'session-identity-password',
+      displayName: 'Session Identity A',
+    };
+    const userB = {
+      email: `session-identity-b-${process.pid}@wise.app`,
+      password: 'session-identity-password',
+      displayName: 'Session Identity B',
+    };
+
+    const registration = await post('/auth/register', userA, { origin });
+    expect(registration.status).toBe(201);
+    const registrationBody = (await registration.json()) as {
+      accessToken: string;
+      sessionId: string;
+    };
+    const registrationClaims = accessClaims(registrationBody.accessToken);
+    const userRows = (await dataSource!.query(
+      `SELECT id FROM ${database!.identifier}.users WHERE email = ?`,
+      [userA.email],
+    )) as Row[];
+    expect(userRows).toHaveLength(1);
+    const userAId = String(userRows[0]!.id);
+    expect(registrationClaims).toEqual(
+      expect.objectContaining({
+        sub: userAId,
+        email: userA.email,
+        sessionId: registrationBody.sessionId,
+      }),
+    );
+
+    const login = await post(
+      '/auth/login',
+      { email: userA.email, password: userA.password },
+      { origin },
+    );
+    expect(login.status).toBe(200);
+    const loginBody = (await login.json()) as {
+      accessToken: string;
+      sessionId: string;
+    };
+    expect(loginBody.sessionId).not.toBe(registrationBody.sessionId);
+    expect(accessClaims(loginBody.accessToken)).toEqual(
+      expect.objectContaining({
+        sub: userAId,
+        email: userA.email,
+        sessionId: loginBody.sessionId,
+      }),
+    );
+
+    const loginRefreshToken = refreshTokenFromCookie(login);
+    const refresh = await post(
+      '/auth/refresh',
+      {},
+      { origin, cookie: `ww_refresh=${loginRefreshToken}` },
+    );
+    expect(refresh.status).toBe(200);
+    const refreshBody = (await refresh.json()) as {
+      accessToken: string;
+      sessionId: string;
+    };
+    expect(refreshBody.sessionId).toBe(loginBody.sessionId);
+    expect(accessClaims(refreshBody.accessToken)).toEqual(
+      expect.objectContaining({
+        sub: userAId,
+        email: userA.email,
+        sessionId: loginBody.sessionId,
+      }),
+    );
+    await expect(
+      get('/users/me', {
+        authorization: `Bearer ${refreshBody.accessToken}`,
+        origin,
+      }),
+    ).resolves.toHaveProperty('status', 200);
+
+    await exerciseSocketIoTransport(refreshBody.accessToken, 'connected');
+
+    const registrationB = await post('/auth/register', userB, { origin });
+    expect(registrationB.status).toBe(201);
+    const registrationBBody = (await registrationB.json()) as {
+      accessToken: string;
+      sessionId: string;
+    };
+    const registrationBClaims = accessClaims(registrationBBody.accessToken);
+    expect(registrationBClaims.sessionId).toBe(registrationBBody.sessionId);
+    expect(registrationBClaims.sub).not.toBe(userAId);
+
+    const legacyToken = signAccessToken({ sub: userAId, email: userA.email });
+    const legacyResponse = await get('/users/me', {
+      authorization: `Bearer ${legacyToken}`,
+      origin,
+    });
+    expect(legacyResponse.status).toBe(401);
+
+    const crossedSessionToken = signAccessToken({
+      sub: userAId,
+      email: userA.email,
+      sessionId: registrationBBody.sessionId,
+    });
+    const crossedSessionResponse = await get('/users/me', {
+      authorization: `Bearer ${crossedSessionToken}`,
+      'x-session-id': registrationBBody.sessionId,
+      origin,
+    });
+    expect(crossedSessionResponse.status).toBe(401);
+
+    const revokeLogin = await remove(
+      `/users/me/sessions/${loginBody.sessionId}`,
+      { authorization: `Bearer ${registrationBody.accessToken}`, origin },
+    );
+    expect(revokeLogin.status).toBe(204);
+    const revokedAccessResponse = await get('/users/me', {
+      authorization: `Bearer ${loginBody.accessToken}`,
+      origin,
+    });
+    expect(revokedAccessResponse.status).toBe(401);
+    await exerciseSocketIoTransport(loginBody.accessToken, 'rejected');
+    const registrationStillActive = await get('/users/me', {
+      authorization: `Bearer ${registrationBody.accessToken}`,
+      origin,
+    });
+    expect(registrationStillActive.status).toBe(200);
+
+    const revokeAll = await remove('/users/me/sessions', {
+      authorization: `Bearer ${registrationBody.accessToken}`,
+      origin,
+    });
+    expect(revokeAll.status).toBe(204);
+    const revokedAllResponse = await get('/users/me', {
+      authorization: `Bearer ${registrationBody.accessToken}`,
+      origin,
+    });
+    expect(revokedAllResponse.status).toBe(401);
+    const userBStillActive = await get('/users/me', {
+      authorization: `Bearer ${registrationBBody.accessToken}`,
+      origin,
+    });
+    expect(userBStillActive.status).toBe(200);
+
+    const revokedRefresh = await post(
+      '/auth/refresh',
+      {},
+      { origin, cookie: `ww_refresh=${loginRefreshToken}` },
+    );
+    expect(revokedRefresh.status).toBe(401);
   });
 
   it('enforces the five-session limit across concurrent Web and native logins', async () => {
@@ -470,12 +829,12 @@ describe('Universal authentication security contract', () => {
     expect(loginResponses.every((response) => response.status === 200)).toBe(true);
 
     const userRows = (await dataSource!.query(
-      `SELECT id FROM ${identifier(databaseName!)}.users WHERE email = ?`,
+      `SELECT id FROM ${database!.identifier}.users WHERE email = ?`,
       [email],
     )) as Row[];
     expect(userRows).toHaveLength(1);
     const sessionRows = (await dataSource!.query(
-      `SELECT id, revoked_at FROM ${identifier(databaseName!)}.sessions
+      `SELECT id, revoked_at FROM ${database!.identifier}.sessions
        WHERE user_id = ? ORDER BY created_at ASC`,
       [String(userRows[0]!.id)],
     )) as Row[];
@@ -564,22 +923,22 @@ describe('Universal authentication security contract', () => {
 
     expect(responses.map((response) => response.status).sort()).toEqual([201, 409]);
     const userRows = (await dataSource!.query(
-      `SELECT id FROM ${identifier(databaseName!)}.users WHERE email = ?`,
+      `SELECT id FROM ${database!.identifier}.users WHERE email = ?`,
       [email],
     )) as Row[];
     expect(userRows).toHaveLength(1);
     const characterRows = (await dataSource!.query(
       `SELECT characters.id
-       FROM ${identifier(databaseName!)}.characters AS characters
-       INNER JOIN ${identifier(databaseName!)}.users AS users
+       FROM ${database!.identifier}.characters AS characters
+       INNER JOIN ${database!.identifier}.users AS users
          ON users.id = characters.user_id
        WHERE users.email = ?`,
       [email],
     )) as Row[];
     const sessionRows = (await dataSource!.query(
       `SELECT sessions.id
-       FROM ${identifier(databaseName!)}.sessions AS sessions
-       INNER JOIN ${identifier(databaseName!)}.users AS users
+       FROM ${database!.identifier}.sessions AS sessions
+       INNER JOIN ${database!.identifier}.users AS users
          ON users.id = sessions.user_id
        WHERE users.email = ?`,
       [email],
@@ -593,7 +952,7 @@ describe('Universal authentication security contract', () => {
     const triggerName = `wise_registration_fail_${process.pid}`;
     await dataSource!.query(
       `CREATE TRIGGER \`${triggerName}\`
-       BEFORE INSERT ON ${identifier(databaseName!)}.characters
+       BEFORE INSERT ON ${database!.identifier}.characters
        FOR EACH ROW SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'forced registration failure'`,
     );
 
@@ -606,21 +965,21 @@ describe('Universal authentication security contract', () => {
       expect(response.status).toBe(500);
 
       const userRows = (await dataSource!.query(
-        `SELECT id FROM ${identifier(databaseName!)}.users WHERE email = ?`,
+        `SELECT id FROM ${database!.identifier}.users WHERE email = ?`,
         [email],
       )) as Row[];
       const characterRows = (await dataSource!.query(
         `SELECT characters.id
-         FROM ${identifier(databaseName!)}.characters AS characters
-         INNER JOIN ${identifier(databaseName!)}.users AS users
+         FROM ${database!.identifier}.characters AS characters
+         INNER JOIN ${database!.identifier}.users AS users
            ON users.id = characters.user_id
          WHERE users.email = ?`,
         [email],
       )) as Row[];
       const sessionRows = (await dataSource!.query(
         `SELECT sessions.id
-         FROM ${identifier(databaseName!)}.sessions AS sessions
-         INNER JOIN ${identifier(databaseName!)}.users AS users
+         FROM ${database!.identifier}.sessions AS sessions
+         INNER JOIN ${database!.identifier}.users AS users
            ON users.id = sessions.user_id
          WHERE users.email = ?`,
         [email],

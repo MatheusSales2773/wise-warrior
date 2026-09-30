@@ -166,7 +166,7 @@ export class AuthService {
       }),
     );
 
-    const accessToken = this.signAccessToken(user);
+    const accessToken = this.signAccessToken(user, session.id);
     return {
       accessToken,
       refreshToken: `${session.id}.${secret}`,
@@ -195,9 +195,12 @@ export class AuthService {
     }
   }
 
-  private signAccessToken(user: Pick<User, 'id' | 'email'>): string {
+  private signAccessToken(
+    user: Pick<User, 'id' | 'email'>,
+    sessionId: string,
+  ): string {
     return this.jwt.sign(
-      { sub: user.id, email: user.email },
+      { sub: user.id, email: user.email, sessionId },
       {
         secret: this.config.get('JWT_ACCESS_SECRET'),
         expiresIn: this.config.get('JWT_ACCESS_TTL') ?? '15m',
@@ -333,7 +336,7 @@ export class AuthService {
     }
 
     return {
-      accessToken: this.signAccessToken(result.user),
+      accessToken: this.signAccessToken(result.user, result.sessionId),
       refreshToken: `${result.sessionId}.${result.newSecret}`,
       sessionId: result.sessionId,
     };

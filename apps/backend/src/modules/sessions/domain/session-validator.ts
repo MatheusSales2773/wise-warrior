@@ -32,11 +32,34 @@ export function validateSessionDuration(
     (endedAt.getTime() - startedAt.getTime()) / 1000,
   );
 
-  if (durationSeconds <= 0) {
-    throw new Error('endedAt deve ser posterior a startedAt');
-  }
   if (priorDailySeconds < 0) {
     throw new Error('priorDailySeconds não pode ser negativo');
+  }
+
+  return validateFocusSeconds(durationSeconds, priorDailySeconds);
+}
+
+/** Validate server-computed focus time without including paused wall time. */
+export function validateStudySessionFocusSeconds(
+  focusSeconds: number,
+  priorDailySeconds: number,
+): SessionValidationResult {
+  if (!Number.isSafeInteger(focusSeconds) || focusSeconds < 0) {
+    throw new Error('focusSeconds deve ser um inteiro não negativo');
+  }
+  if (!Number.isSafeInteger(priorDailySeconds) || priorDailySeconds < 0) {
+    throw new Error('priorDailySeconds deve ser um inteiro não negativo');
+  }
+
+  return validateFocusSeconds(focusSeconds, priorDailySeconds);
+}
+
+function validateFocusSeconds(
+  durationSeconds: number,
+  priorDailySeconds: number,
+): SessionValidationResult {
+  if (durationSeconds <= 0) {
+    throw new Error('A duração de foco deve ser maior que zero');
   }
 
   if (durationSeconds > MAX_CONTINUOUS_SESSION_SECONDS) {
