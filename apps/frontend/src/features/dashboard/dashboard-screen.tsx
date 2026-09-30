@@ -86,31 +86,30 @@ function CardContent({ children, testID }: PropsWithChildren<{ testID?: string }
   return <View style={styles.cardContent} testID={testID}>{children}</View>;
 }
 
+const NO_SUBJECT_LABEL = 'Sem matéria';
+
+function formatMode(mode: string): string {
+  return mode === 'guild' ? 'guilda' : mode;
+}
+
 function ActivityItem({ session }: { session: RecentStudySession }) {
+  const subject = session.subject?.trim() || null;
+  const isGuild = session.mode === 'guild';
+  const title = `${subject ?? NO_SUBJECT_LABEL}${isGuild ? ' · guilda' : ''}`;
   const display = {
     date: formatSessionDate(session.endedAt),
     discarded: session.discardedReason ? formatDiscardReason(session.discardedReason) : null,
     duration: formatDuration(session.durationValidSeconds),
-    mode: session.mode === 'guild' ? 'guilda' : session.mode,
-    status: formatSessionState(session.state),
-    subject: session.subject,
     xp: `${formatXp(session.xpAwarded)} XP`,
   };
-  const details = [
-    display.subject ?? 'Sem matéria',
-    display.status,
-    display.mode,
-    display.date,
-    display.duration,
-    display.xp,
-    display.discarded,
-  ].filter(Boolean).join(' · ');
+  const meta = [formatSessionState(session.state), formatMode(session.mode), display.date, display.duration].filter(Boolean).join(' · ');
+  const details = [subject ?? NO_SUBJECT_LABEL, meta, display.xp, display.discarded].filter(Boolean).join(' · ');
 
   return (
     <View accessible accessibilityLabel={`Sessão: ${details}`} key={session.id} style={styles.activityItem}>
       <View style={styles.activityMain}>
-        <Text allowFontScaling style={display.subject ? styles.activitySubject : styles.activityNoSubject}>{display.subject ?? 'Sem matéria'}{session.mode === 'guild' ? ' · guilda' : ''}</Text>
-        <Text style={styles.activityMeta}>{[display.status, display.mode, display.date, display.duration].filter(Boolean).join(' · ')}</Text>
+        <Text allowFontScaling style={subject ? styles.activitySubject : styles.activityNoSubject}>{title}</Text>
+        <Text style={styles.activityMeta}>{meta}</Text>
       </View>
       {display.discarded
         ? <Text style={styles.activityDiscarded}>{display.discarded}</Text>

@@ -291,6 +291,30 @@ describe('DashboardScreen', () => {
     expect(screen.getByText('Sem matéria · guilda')).toBeTruthy();
   });
 
+  it('treats empty or whitespace-only subjects as "Sem matéria"', async () => {
+    mockedProfile.mockResolvedValue(profile);
+    mockedActivity.mockResolvedValue([
+      { ...session, id: 's1', subject: '' },
+      { ...session, id: 's2', subject: '   ' },
+    ]);
+    await renderDashboard();
+
+    await waitFor(() => expect(screen.getByTestId('dashboard-activity')).toBeTruthy());
+    expect(screen.getAllByText('Sem matéria')).toHaveLength(2);
+  });
+
+  it('keeps an 80-character subject readable and announced with the guild mode', async () => {
+    const subject = 'M'.repeat(80);
+    mockedProfile.mockResolvedValue(profile);
+    mockedActivity.mockResolvedValue([{ ...session, subject, mode: 'guild' }]);
+    await renderDashboard();
+
+    await waitFor(() => expect(screen.getByTestId('dashboard-activity')).toBeTruthy());
+    expect(screen.getByText(`${subject} · guilda`).props.allowFontScaling).toBe(true);
+    expect(screen.getByText(/^Concluída · guilda · .* · 25 min$/)).toBeTruthy();
+    expect(screen.getByLabelText(new RegExp(`${subject}.*Concluída.*guilda.*25 min`))).toBeTruthy();
+  });
+
   it('renders the streak metrics and 56-cell cadence card with accessible summaries', async () => {
     mockedProfile.mockResolvedValue(profile);
     mockedActivity.mockResolvedValue([]);
