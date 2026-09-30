@@ -11,4 +11,16 @@ describe('Study Session start request', () => {
     const legacyRequest = Object.assign(new StartSessionDto(), { mode: 'guild' });
     expect(await validate(legacyRequest, { whitelist: true, forbidNonWhitelisted: true })).not.toEqual([]);
   });
+
+  it('accepts an optional Matéria as text or null and rejects other types', async () => {
+    const options = { whitelist: true, forbidNonWhitelisted: true };
+    for (const valid of [undefined, null, '', '  ', 'Cálculo II']) {
+      const request = Object.assign(new StartSessionDto(), { subject: valid });
+      expect(await validate(request, options)).toEqual([]);
+    }
+    for (const invalid of [0, 42, true, {}, ['Cálculo']]) {
+      const request = Object.assign(new StartSessionDto(), { subject: invalid });
+      expect(await validate(request, options)).not.toEqual([]);
+    }
+  });
 });

@@ -18,6 +18,15 @@ it('sends the chosen preset with its idempotency key', async () => {
   expect(post).toHaveBeenCalledWith('/sessions', { plannedDurationSeconds: 1500 }, { headers: { 'Idempotency-Key': 'start-once' } });
 });
 
+it('sends the Matéria only when one was chosen and keeps Sem matéria as absence', async () => {
+  const post = jest.fn().mockResolvedValue({ status: 201, data: { id: 'study-1', subject: 'Cálculo II' } });
+  (getAuthenticatedHttpClient as jest.Mock).mockReturnValue({ post });
+  await startStudySession(900, 'with-subject', 'Cálculo II');
+  expect(post).toHaveBeenLastCalledWith('/sessions', { plannedDurationSeconds: 900, subject: 'Cálculo II' }, { headers: { 'Idempotency-Key': 'with-subject' } });
+  await startStudySession(900, 'without-subject', null);
+  expect(post).toHaveBeenLastCalledWith('/sessions', { plannedDurationSeconds: 900 }, { headers: { 'Idempotency-Key': 'without-subject' } });
+});
+
 it('sends a heartbeat to the active Study Session endpoint', async () => {
   const patch = jest.fn().mockResolvedValue({ status: 204, data: undefined });
   (getAuthenticatedHttpClient as jest.Mock).mockReturnValue({ patch });
