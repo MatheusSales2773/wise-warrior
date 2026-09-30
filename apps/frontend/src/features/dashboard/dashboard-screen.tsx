@@ -228,10 +228,10 @@ function MetricsCard({ query }: { query: UseQueryResult<SessionMetrics> }) {
         <Text style={styles.metricTrend}>{formatDuration(metrics.validSecondsToday)} de foco válido</Text>
       </View>
     </WiseCard>
-    <View style={styles.metricsStatus}>
+    {query.isRefetching || query.isError ? <View style={styles.metricsStatus} testID="dashboard-metrics-status">
       {query.isRefetching ? <WiseText color="textSecondary" testID="dashboard-metrics-refreshing" variant="caption">Atualizando métricas…</WiseText> : null}
       {query.isError ? <View testID="dashboard-metrics-refresh-error"><FeedbackMessage message="Não foi possível atualizar suas métricas de treino." title="Métricas desatualizadas" variant="error" /><WiseButton label="Tentar novamente" loading={query.isRefetching} onPress={() => void retry()} variant="secondary" /></View> : null}
-    </View>
+    </View> : null}
   </View>;
 }
 

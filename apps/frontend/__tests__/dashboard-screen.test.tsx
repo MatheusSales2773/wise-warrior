@@ -419,6 +419,31 @@ describe('DashboardScreen', () => {
     expect(screen.getByTestId('dashboard-activity-empty')).toBeTruthy();
   });
 
+  it('adds no empty status row to the metrics grid, which would double the gap before the next card', async () => {
+    mockUseWindowDimensions.mockReturnValue({ width: 375, height: 812, scale: 1, fontScale: 1 });
+    mockedProfile.mockResolvedValue(profile);
+    mockedActivity.mockResolvedValue([]);
+    await renderDashboard();
+    await screen.findByTestId('dashboard-sessions');
+
+    expect(screen.getByTestId('dashboard-metrics').children).toHaveLength(2);
+    expect(screen.queryByTestId('dashboard-metrics-status')).toBeNull();
+  });
+
+  it('shows the metrics status on its own full-width row while refreshing', async () => {
+    mockedProfile.mockResolvedValue(profile);
+    mockedActivity.mockResolvedValue([]);
+    await renderDashboard();
+    await screen.findByTestId('dashboard-sessions');
+
+    mockedMetrics.mockReturnValue(new Promise(() => undefined));
+    await act(async () => { fireEvent.press(screen.getByRole('button', { name: 'Atualizar dados' })); });
+
+    const status = await screen.findByTestId('dashboard-metrics-status');
+    expect(within(status).getByTestId('dashboard-metrics-refreshing')).toBeTruthy();
+    expect(StyleSheet.flatten(status.props.style)).toMatchObject({ flexBasis: '100%' });
+  });
+
   it('keeps cached metrics visible when a background refresh fails', async () => {
     mockedProfile.mockResolvedValue(profile);
     mockedActivity.mockResolvedValue([]);
