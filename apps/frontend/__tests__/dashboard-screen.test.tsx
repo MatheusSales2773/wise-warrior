@@ -183,7 +183,7 @@ describe('DashboardScreen', () => {
 
     await waitFor(() => expect(screen.getByTestId('dashboard-activity')).toBeTruthy());
     expect(screen.queryByText('Aprendiz')).toBeNull();
-    expect(screen.getByLabelText(/Concluída.*Matemática aplicada e raciocínio lógico avançado.*foco.*25 min.*25 XP.*Sessão não contabilizada/)).toBeTruthy();
+    expect(screen.getByLabelText(/Matemática aplicada e raciocínio lógico avançado.*Concluída.*foco.*25 min.*25 XP.*Sessão não contabilizada/)).toBeTruthy();
     expect(screen.getByRole('progressbar', { name: 'Progresso para o nível 4', value: { min: 100, max: 200, now: 150 } })).toBeTruthy();
   });
 
@@ -252,7 +252,18 @@ describe('DashboardScreen', () => {
     expect(screen.getByText('Sessão não contabilizada')).toBeTruthy();
   });
 
-  it('keeps a cancelled session in activity without rendering a subject placeholder', async () => {
+  it('shows the subject as title and the session state in the details line', async () => {
+    mockedProfile.mockResolvedValue(profile);
+    mockedActivity.mockResolvedValue([session]);
+    await renderDashboard();
+
+    await waitFor(() => expect(screen.getByTestId('dashboard-activity')).toBeTruthy());
+    expect(screen.getByText('Matemática')).toBeTruthy();
+    expect(screen.getByText(/^Concluída · foco · .* · 25 min$/)).toBeTruthy();
+    expect(screen.queryByText('Sem matéria')).toBeNull();
+  });
+
+  it('shows a discreet "Sem matéria" title for a session without subject, keeping the state in the details', async () => {
     mockedProfile.mockResolvedValue(profile);
     mockedActivity.mockResolvedValue([{
       ...session, subject: null, state: 'cancelled', durationValidSeconds: 299, xpAwarded: 0,
@@ -260,10 +271,24 @@ describe('DashboardScreen', () => {
     await renderDashboard();
 
     await waitFor(() => expect(screen.getByTestId('dashboard-activity')).toBeTruthy());
-    expect(screen.getByText('Cancelada')).toBeTruthy();
-    expect(screen.getByText(/· 4 min$/)).toBeTruthy();
+    expect(screen.getByText('Sem matéria')).toBeTruthy();
+    expect(screen.queryByText('Cancelada')).toBeNull();
+    expect(screen.getByText(/^Cancelada · .*· 4 min$/)).toBeTruthy();
     expect(screen.queryByText('null')).toBeNull();
-    expect(screen.queryByText('Sem matéria')).toBeNull();
+    expect(screen.getByLabelText(/Sem matéria.*Cancelada/)).toBeTruthy();
+  });
+
+  it('keeps the guild indication beside the subject or "Sem matéria"', async () => {
+    mockedProfile.mockResolvedValue(profile);
+    mockedActivity.mockResolvedValue([
+      { ...session, id: 's1', mode: 'guild' },
+      { ...session, id: 's2', mode: 'guild', subject: null },
+    ]);
+    await renderDashboard();
+
+    await waitFor(() => expect(screen.getByTestId('dashboard-activity')).toBeTruthy());
+    expect(screen.getByText('Matemática · guilda')).toBeTruthy();
+    expect(screen.getByText('Sem matéria · guilda')).toBeTruthy();
   });
 
   it('renders the streak metrics and 56-cell cadence card with accessible summaries', async () => {

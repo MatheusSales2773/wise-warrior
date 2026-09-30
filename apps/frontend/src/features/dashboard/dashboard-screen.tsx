@@ -91,14 +91,14 @@ function ActivityItem({ session }: { session: RecentStudySession }) {
     date: formatSessionDate(session.endedAt),
     discarded: session.discardedReason ? formatDiscardReason(session.discardedReason) : null,
     duration: formatDuration(session.durationValidSeconds),
-    mode: session.mode,
+    mode: session.mode === 'guild' ? 'guilda' : session.mode,
     status: formatSessionState(session.state),
     subject: session.subject,
     xp: `${formatXp(session.xpAwarded)} XP`,
   };
   const details = [
+    display.subject ?? 'Sem matéria',
     display.status,
-    display.subject,
     display.mode,
     display.date,
     display.duration,
@@ -109,8 +109,8 @@ function ActivityItem({ session }: { session: RecentStudySession }) {
   return (
     <View accessible accessibilityLabel={`Sessão: ${details}`} key={session.id} style={styles.activityItem}>
       <View style={styles.activityMain}>
-        <Text allowFontScaling style={styles.activitySubject}>{display.subject ?? display.status}{display.mode === 'guild' ? ' · guilda' : ''}</Text>
-        <Text style={styles.activityMeta}>{display.date} · {display.duration}</Text>
+        <Text allowFontScaling style={display.subject ? styles.activitySubject : styles.activityNoSubject}>{display.subject ?? 'Sem matéria'}{session.mode === 'guild' ? ' · guilda' : ''}</Text>
+        <Text style={styles.activityMeta}>{[display.status, display.mode, display.date, display.duration].filter(Boolean).join(' · ')}</Text>
       </View>
       {display.discarded
         ? <Text style={styles.activityDiscarded}>{display.discarded}</Text>
@@ -516,6 +516,7 @@ const styles = StyleSheet.create({
   activityItem: { flexDirection: 'row', alignItems: 'flex-start', gap: 14, minWidth: 0, paddingVertical: 10, borderBottomWidth: theme.border.standard, borderBottomColor: theme.color.borderGhost, borderStyle: 'dashed' },
   activityMain: { flex: 1, minWidth: 0, gap: 3 },
   activitySubject: { fontFamily: 'Inter-Medium', fontSize: 12, lineHeight: 17, color: theme.color.textPrimary },
+  activityNoSubject: { fontFamily: 'Inter-Regular', fontSize: 12, lineHeight: 17, fontStyle: 'italic', color: theme.color.textTertiary },
   activityMeta: { fontFamily: 'Inter-Regular', fontSize: 10, lineHeight: 14, letterSpacing: 0.6, color: theme.color.textTertiary },
   activityXp: { fontFamily: 'JetBrainsMono-SemiBold', fontSize: 12, lineHeight: 17, color: theme.color.accentHighlight, flexShrink: 0 },
   activityDiscarded: { ...mono, fontSize: 11, lineHeight: 16, color: theme.color.feedbackDanger, flexShrink: 1, maxWidth: '45%', textAlign: 'right' },
