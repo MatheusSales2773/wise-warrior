@@ -804,12 +804,13 @@ components:
         subject:
           type: [string, "null"]
           description: >
-            Matéria opcional da Study Session. Ausente, null ou só espaços
-            resultam em Sem matéria (null). A API remove espaços das pontas,
+            Matéria opcional da Study Session. Ausente, null ou só espaços em
+            branco (inclusive tab e quebras de linha) resultam em Sem matéria
+            (null). A API remove espaços das pontas,
             colapsa espaços internos repetidos, normaliza para NFC e preserva
             maiúsculas e acentos; aceita de 1 a 80 caracteres após a
             normalização e recusa quebras de linha e caracteres de controle
-            com 400 application/problem+json.
+            junto de texto com 400 application/problem+json.
           example: Cálculo II
 
     StudySessionTransitionRequest:

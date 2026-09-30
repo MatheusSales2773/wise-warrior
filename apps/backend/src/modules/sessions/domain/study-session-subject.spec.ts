@@ -6,7 +6,7 @@ import {
 
 describe('Study Session subject normalization', () => {
   it('treats absence, null and blank text as no subject', () => {
-    for (const blank of [undefined, null, '', '   ', '   ']) {
+    for (const blank of [undefined, null, '', '   ', '   ', '\t', ' \n ', '  \n  ', '\r\n', '\u2028']) {
       expect(normalizeStudySessionSubject(blank)).toBeNull();
     }
   });
@@ -45,7 +45,7 @@ describe('Study Session subject normalization', () => {
   it('rejects line breaks and control characters', () => {
     for (const invalid of [
       'Cálculo\nII', 'Cálculo\r\nII', 'Cálculo\tII', 'Cálculo\u0000II', 'Cálculo\u001bII',
-      '\u007fCálculo', '\u0085', 'Cálculo II', 'Cálculo II', '  \n  ',
+      '\u007fCálculo', '\u0085', 'Cálculo II', 'Cálculo II',
     ]) {
       expect(() => normalizeStudySessionSubject(invalid)).toThrow(InvalidStudySessionSubjectError);
     }

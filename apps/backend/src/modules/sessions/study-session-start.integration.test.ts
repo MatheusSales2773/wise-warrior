@@ -129,7 +129,7 @@ describe('canonical Study Session start against MySQL', () => {
     });
     expect(stopped.subject).toBe('ÁLGEBRA linear II');
 
-    for (const [index, blank] of [undefined, null, '', '   '].entries()) {
+    for (const [index, blank] of [undefined, null, '', '   ', ' \n\t '].entries()) {
       const session = await service.start(userId, 'device-a', { subject: blank as never }, `blank-${index}`);
       expect(session.subject).toBeNull();
       expect(await dataSource!.getRepository(StudySession).findOneByOrFail({ id: session.id })).toMatchObject({ subject: null });

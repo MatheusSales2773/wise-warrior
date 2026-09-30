@@ -2,7 +2,7 @@ import { MAX_SUBJECT_LENGTH, validateSubject } from '@/features/study-session/su
 
 describe('Matéria input validation (mirror of the API rules)', () => {
   it('treats blank text as Sem matéria', () => {
-    for (const blank of ['', '   ', '  ']) {
+    for (const blank of ['', '   ', '  ', '\t', ' \n ', '\r\n', '\u2028']) {
       expect(validateSubject(blank)).toEqual({ status: 'valid', subject: null });
     }
   });
