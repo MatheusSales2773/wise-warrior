@@ -1,5 +1,5 @@
 import { useId, useState, type ReactNode, type Ref } from 'react';
-import { Platform, StyleSheet, TextInput, View, type TextInputProps } from 'react-native';
+import { Platform, StyleSheet, Text, TextInput, View, type TextInputProps } from 'react-native';
 import { theme, typographyFor } from '../tokens/theme';
 import { useFontFallback } from './font-runtime';
 import { FeedbackMessage } from './FeedbackMessage';
@@ -9,12 +9,14 @@ import { controlStyles } from './control-styles';
 export type WiseFieldProps = Omit<TextInputProps, 'style' | 'children' | 'accessibilityLabel' | 'accessibilityLabelledBy' | 'accessibilityHint' | 'aria-label' | 'aria-labelledby' | 'id'> & {
   label: string;
   helpText?: string;
+  /** Short decorative tag shown opposite the label, e.g. "Identidade". */
+  hint?: string;
   error?: string;
   trailing?: ReactNode;
   ref?: Ref<TextInput>;
 };
 
-export function WiseField({ label, helpText, error, nativeID, onFocus, onBlur, trailing, ref, ...inputProps }: WiseFieldProps) {
+export function WiseField({ label, hint, helpText, error, nativeID, onFocus, onBlur, trailing, ref, ...inputProps }: WiseFieldProps) {
   const generatedId = useId();
   const [focused, setFocused] = useState(false);
   const fallback = useFontFallback();
@@ -24,7 +26,10 @@ export function WiseField({ label, helpText, error, nativeID, onFocus, onBlur, t
 
   return (
     <View style={styles.field}>
-      <WiseText variant="label" nativeID={`${id}-label`}>{label}</WiseText>
+      <View style={styles.labelRow}>
+        <Text allowFontScaling nativeID={`${id}-label`} style={[styles.label, fallback && styles.fallbackFont]}>{label}</Text>
+        {hint ? <Text aria-hidden accessibilityElementsHidden importantForAccessibility="no" style={[styles.hint, fallback && styles.fallbackMono]}>{hint}</Text> : null}
+      </View>
       <View style={styles.inputRow}>
         <TextInput
           {...inputProps}
@@ -44,7 +49,7 @@ export function WiseField({ label, helpText, error, nativeID, onFocus, onBlur, t
             trailing ? styles.inputWithTrailing : null,
             typographyFor('body', fallback),
             error && { borderColor: theme.color.feedbackDanger },
-            focused && { borderColor: theme.color.accentPrimary },
+            focused && { borderColor: theme.color.borderFocus },
             focused && Platform.OS === 'web' && controlStyles.webFocus,
           ]}
         />
@@ -60,16 +65,21 @@ export function WiseField({ label, helpText, error, nativeID, onFocus, onBlur, t
 }
 
 const styles = StyleSheet.create({
-  field: { gap: theme.space.inlineTight },
+  field: { gap: 6 },
+  labelRow: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', gap: theme.space.inlineTight },
+  label: { fontFamily: 'Inter-Medium', fontSize: 12, lineHeight: 16, color: theme.color.textSecondary, flexShrink: 1 },
+  hint: { fontFamily: 'JetBrainsMono-Medium', fontSize: 9, lineHeight: 12, letterSpacing: 0.8, textTransform: 'uppercase', color: theme.color.textTertiary },
+  fallbackFont: { fontFamily: undefined },
+  fallbackMono: { fontFamily: 'monospace' },
   inputRow: { position: 'relative', justifyContent: 'center' },
   input: {
     minHeight: theme.layout.touchTarget,
     minWidth: theme.layout.touchTarget,
-    paddingHorizontal: theme.space.controlInset,
-    paddingVertical: theme.space.inlineTight,
+    paddingHorizontal: 14,
+    paddingVertical: 11,
     borderWidth: theme.border.standard,
-    borderColor: theme.color.borderEmphasis,
-    borderRadius: theme.radius.control,
+    borderColor: theme.color.borderGhost,
+    borderRadius: theme.radius.detail,
     color: theme.color.textPrimary,
     backgroundColor: theme.color.surfaceInset,
   },

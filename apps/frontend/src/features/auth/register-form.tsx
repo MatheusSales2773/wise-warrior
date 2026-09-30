@@ -4,7 +4,7 @@ import { useAuth } from '@/core/auth/auth-context';
 import { FeedbackMessage, WiseButton, WiseField, WiseText, theme } from '@/design-system';
 import { AuthNavigationLink } from './components/AuthNavigationLink';
 import { AuthPasswordField } from './components/AuthPasswordField';
-import { AuthShell } from './components/AuthShell';
+import { AuthCardHead, AuthChevron, AuthShell } from './components/AuthShell';
 import { registerErrorMessage } from './messages';
 import {
   normalizeRegistration,
@@ -66,10 +66,7 @@ export function RegisterForm() {
       title="Crie seu personagem"
     >
       <View aria-busy={submitting} style={styles.form}>
-        <View style={styles.formHead}>
-          <WiseText accessibilityRole="header" variant="subtitle">Forje seu personagem</WiseText>
-          <WiseText color="textTertiary" variant="body">Um novo caminho começa com uma decisão.</WiseText>
-        </View>
+        <AuthCardHead subtitle="Um novo caminho começa com uma decisão." title="Forje seu personagem" />
         <WiseField
           ref={nameRef}
           autoCapitalize="words"
@@ -77,6 +74,7 @@ export function RegisterForm() {
           editable={!submitting}
           error={errors.displayName}
           label="Nome do guerreiro"
+          hint="2–60 letras"
           maxLength={60}
           nativeID="register-display-name"
           onChangeText={setDisplayName}
@@ -93,6 +91,7 @@ export function RegisterForm() {
           editable={!submitting}
           error={errors.email}
           label="E-mail"
+          hint="Identidade"
           nativeID="register-email"
           onChangeText={setEmail}
           onSubmitEditing={() => passwordRef.current?.focus()}
@@ -107,6 +106,7 @@ export function RegisterForm() {
           editable={!submitting}
           error={errors.password}
           label="Senha"
+          hint="8–128 runas"
           maxLength={128}
           nativeID="register-password"
           onChangeText={setPassword}
@@ -122,6 +122,7 @@ export function RegisterForm() {
           editable={!submitting}
           error={errors.passwordConfirmation}
           label="Confirmar senha"
+          hint="Repetir"
           maxLength={128}
           nativeID="register-password-confirmation"
           onChangeText={setPasswordConfirmation}
@@ -139,21 +140,21 @@ export function RegisterForm() {
         </View>
         <WiseButton
           label="Criar personagem"
+          trailing={<AuthChevron />}
           loading={submitting}
           size="large"
           onPress={() => {
             void handleSubmit();
           }}
         />
-        <AuthNavigationLink href="/entrar" label="Já tem uma conta? Entre na batalha" />
+        <AuthNavigationLink href="/entrar" label="Entre na batalha" prompt="Já tem uma conta?" />
       </View>
     </AuthShell>
   );
 }
 
 const styles = StyleSheet.create({
-  form: { gap: theme.space.stackDefault },
-  formHead: { alignItems: 'center', gap: theme.space.inlineHairline, marginBottom: theme.space.inlineTight },
-  metaRow: { flexDirection: 'row', alignItems: 'center', gap: theme.space.inlineTight },
-  meta: { fontFamily: 'Inter-Medium', color: theme.color.textTertiary, fontSize: 11 },
+  form: { gap: theme.space.controlInset },
+  metaRow: { flexDirection: 'row', alignItems: 'center', gap: theme.space.inlineTight, marginBottom: theme.space.inlineHairline },
+  meta: { fontFamily: 'Inter-Regular', color: theme.color.textTertiary, fontSize: 11, lineHeight: 16, flexShrink: 1 },
 });

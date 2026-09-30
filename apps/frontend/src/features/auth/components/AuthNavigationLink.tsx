@@ -1,16 +1,17 @@
 import { Link } from 'expo-router';
 import { useState } from 'react';
-import { Platform, Pressable, StyleSheet } from 'react-native';
+import { Platform, Pressable, StyleSheet, Text } from 'react-native';
 import { controlStyles } from '@/design-system/components/control-styles';
-import { WiseText } from '@/design-system/components/WiseText';
 import { theme } from '@/design-system/tokens/theme';
 
 type AuthNavigationLinkProps = {
   href: '/entrar' | '/cadastro';
   label: string;
+  /** Muted lead-in shown before the underlined action, e.g. "Ainda não tem uma conta?". */
+  prompt?: string;
 };
 
-export function AuthNavigationLink({ href, label }: AuthNavigationLinkProps) {
+export function AuthNavigationLink({ href, label, prompt }: AuthNavigationLinkProps) {
   const [focused, setFocused] = useState(false);
 
   return (
@@ -19,7 +20,7 @@ export function AuthNavigationLink({ href, label }: AuthNavigationLinkProps) {
       asChild
     >
       <Pressable
-        accessibilityLabel={label}
+        accessibilityLabel={prompt ? `${prompt} ${label}` : label}
         accessibilityRole="link"
         onBlur={() => setFocused(false)}
         onFocus={() => setFocused(true)}
@@ -28,7 +29,10 @@ export function AuthNavigationLink({ href, label }: AuthNavigationLinkProps) {
           focused && Platform.OS === 'web' && controlStyles.webFocus,
         ])}
       >
-        <WiseText color="accentPrimary" variant="label">{label}</WiseText>
+        <Text allowFontScaling style={styles.text}>
+          {prompt ? <Text style={styles.prompt}>{prompt} </Text> : null}
+          <Text style={styles.action}>{label}</Text>
+        </Text>
       </Pressable>
     </Link>
   );
@@ -42,4 +46,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingHorizontal: theme.space.inlineTight,
   },
+  text: { fontFamily: 'Inter-Regular', fontSize: 12, lineHeight: 18, textAlign: 'center' },
+  prompt: { color: theme.color.textTertiary },
+  action: { color: theme.color.accentPrimary, textDecorationLine: 'underline' },
 });

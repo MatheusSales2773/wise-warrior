@@ -1,7 +1,6 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react-native';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { AccessibilityInfo, Platform } from 'react-native';
-import { theme } from '@/design-system';
 import { DashboardScreen } from '@/features/dashboard/dashboard-screen';
 import { getMyProfile, getRecentStudySessions, getSessionMetrics, type UserProfile, type RecentStudySession, type SessionMetrics } from '@/features/dashboard/api';
 import { dashboardKeys } from '@/features/dashboard/queries';
@@ -147,10 +146,10 @@ describe('DashboardScreen', () => {
     await renderDashboard();
 
     await waitFor(() => expect(screen.getByTestId('dashboard-profile-content')).toBeTruthy());
-    expect(screen.getByTestId('dashboard-profile-content').props.style).toEqual(expect.objectContaining({ padding: theme.space.cardInset }));
+    expect(screen.getByTestId('dashboard-profile-content').props.style).toEqual(expect.arrayContaining([expect.objectContaining({ padding: 22 })]));
     expect(screen.getByTestId('dashboard-grid').props.style).toEqual(expect.arrayContaining([expect.objectContaining({ width: '100%', flexDirection: 'column' })]));
     expect(screen.getByTestId('dashboard-main-column').props.style).toEqual(expect.objectContaining({ minWidth: 0 }));
-    expect(screen.getByTestId('dashboard-side-column').props.style).toEqual(expect.objectContaining({ minWidth: 0 }));
+    expect(screen.getByTestId('dashboard-side-column').props.style).toEqual(expect.arrayContaining([expect.objectContaining({ minWidth: 0 })]));
     expect(screen.queryByText('Aprendiz')).toBeTruthy();
   });
 
@@ -167,7 +166,7 @@ describe('DashboardScreen', () => {
     expect(screen.getByRole('header', { name: `Boas-vindas, ${longDisplayName}` })).toBeTruthy();
     expect(screen.getByText(longTitle)).toBeTruthy();
     expect(screen.getByText(longSubject)).toBeTruthy();
-    expect(screen.getByText('45 s · 25 XP')).toBeTruthy();
+    expect(screen.getByText(/· 45 s$/)).toBeTruthy();
     expect(screen.getByText('Sessão não contabilizada')).toBeTruthy();
     expect(screen.getByText(longSubject).props.allowFontScaling).toBe(true);
   });
@@ -225,8 +224,8 @@ describe('DashboardScreen', () => {
 
     await waitFor(() => expect(screen.getByTestId('dashboard-activity')).toBeTruthy());
     expect(screen.getByTestId('dashboard-grid').props.style).toEqual(expect.arrayContaining([expect.objectContaining({ flexDirection: 'row' })]));
-    expect(screen.getByTestId('dashboard-main-column').props.style).toEqual(expect.objectContaining({ flex: 2 }));
-    expect(screen.getByTestId('dashboard-side-column').props.style).toEqual(expect.objectContaining({ flex: 1 }));
+    expect(screen.getByTestId('dashboard-main-column').props.style).toEqual(expect.objectContaining({ flex: 1 }));
+    expect(screen.getByTestId('dashboard-side-column').props.style).toEqual(expect.arrayContaining([expect.objectContaining({ width: 320 })]));
   });
 
   it('shows a blocking profile error and retries the profile request', async () => {
@@ -261,8 +260,8 @@ describe('DashboardScreen', () => {
     await renderDashboard();
 
     await waitFor(() => expect(screen.getByTestId('dashboard-activity')).toBeTruthy());
-    expect(screen.getByText(/Cancelada · foco ·/)).toBeTruthy();
-    expect(screen.getByText('4 min · 0 XP')).toBeTruthy();
+    expect(screen.getByText('Cancelada')).toBeTruthy();
+    expect(screen.getByText(/· 4 min$/)).toBeTruthy();
     expect(screen.queryByText('null')).toBeNull();
     expect(screen.queryByText('Sem matéria')).toBeNull();
   });
