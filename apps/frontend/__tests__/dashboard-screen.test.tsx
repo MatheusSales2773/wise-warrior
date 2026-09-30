@@ -76,14 +76,52 @@ describe('DashboardScreen', () => {
     expect(screen.getByText('50%')).toBeTruthy();
   });
 
-  it('offers refresh inside the welcome card on iOS', async () => {
+  it.each(['ios', 'android'] as const)('has no refresh button on %s, where the user pulls down to refresh', async (os) => {
+    jest.replaceProperty(Platform, 'OS', os);
+    mockedProfile.mockResolvedValue(profile);
+    mockedActivity.mockResolvedValue([]);
+    await renderDashboard();
+
+    const welcome = await screen.findByTestId('dashboard-profile');
+    expect(within(welcome).queryByRole('button', { name: 'Atualizar dados' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Atualizar dados' })).toBeNull();
+  });
+
+  it('refreshes profile, activity and metrics when pulling down on iOS, showing progress until they settle', async () => {
     jest.replaceProperty(Platform, 'OS', 'ios');
+    mockedProfile.mockResolvedValue(profile);
+    mockedActivity.mockResolvedValue([]);
+    await renderDashboard();
+    await waitFor(() => expect(screen.getByTestId('dashboard-activity-empty')).toBeTruthy());
+    const isRefreshing = () => screen.getByTestId('dashboard-scroll').props.refreshControl.props.refreshing;
+    expect(isRefreshing()).toBe(false);
+
+    let resolveProfile!: (value: UserProfile) => void;
+    let resolveActivity!: (value: RecentStudySession[]) => void;
+    let resolveMetrics!: (value: SessionMetrics) => void;
+    mockedProfile.mockReturnValue(new Promise((resolve) => { resolveProfile = resolve; }));
+    mockedActivity.mockReturnValue(new Promise((resolve) => { resolveActivity = resolve; }));
+    mockedMetrics.mockReturnValue(new Promise((resolve) => { resolveMetrics = resolve; }));
+    await act(async () => { fireEvent(screen.getByTestId('dashboard-scroll'), 'refresh'); });
+
+    expect(mockedProfile).toHaveBeenCalledTimes(2);
+    expect(mockedActivity).toHaveBeenCalledTimes(2);
+    expect(mockedMetrics).toHaveBeenCalledTimes(2);
+    await waitFor(() => expect(isRefreshing()).toBe(true));
+
+    await act(async () => { resolveProfile(profile); resolveActivity([]); resolveMetrics(metrics); });
+    await waitFor(() => expect(isRefreshing()).toBe(false));
+  });
+
+  it('keeps the refresh button on web, where there is no pull gesture', async () => {
+    jest.replaceProperty(Platform, 'OS', 'web');
     mockedProfile.mockResolvedValue(profile);
     mockedActivity.mockResolvedValue([]);
     await renderDashboard();
 
     const welcome = await screen.findByTestId('dashboard-profile');
     expect(within(welcome).getByRole('button', { name: 'Atualizar dados' })).toBeTruthy();
+    expect(screen.getByTestId('dashboard-scroll').props.refreshControl).toBeUndefined();
   });
 
   it('offers a direct focus action from Acampamento', async () => {

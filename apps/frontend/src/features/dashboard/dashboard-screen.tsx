@@ -381,7 +381,9 @@ export function DashboardScreen() {
   const user = profile.data;
   if (!user) return null;
   const desktop = isDesktopLayout(Platform.OS, width);
-  const refreshProps = Platform.OS === 'web' ? {} : { refreshing, onRefresh: () => { void refresh(); } };
+  // Touch platforms refresh by pulling the screen down; the button is only for web, which has no such gesture.
+  const canPullToRefresh = Platform.OS !== 'web';
+  const refreshProps = canPullToRefresh ? { refreshing, onRefresh: () => { void refresh(); } } : {};
   const compact = width < 640;
   const xpPercent = Math.min(100, Math.round(((user.xpTotal - user.levelStartXp) / Math.max(1, user.nextLevelXp - user.levelStartXp)) * 100));
   return <Screen backgroundOverlay={<DashboardGlow />} safeAreaEdges={[]} title="Acampamento" testID="dashboard" {...refreshProps}>
@@ -400,7 +402,7 @@ export function DashboardScreen() {
               <Text style={[styles.heroTitle, compact && styles.heroTitleCompact]}>{user.title || 'Sua jornada começa aqui'}</Text>
               <View testID="dashboard-status" accessibilityLiveRegion="polite" aria-live="polite" aria-atomic style={styles.status}>{statusMessage ? <Text style={[styles.statusText, { color: refreshing ? theme.color.accentPrimary : theme.color.feedbackSuccess }]}>{statusMessage}</Text> : null}</View>
             </View>
-            <WiseButton label="Atualizar dados" loading={refreshing} onPress={() => void refresh()} variant="ghost" />
+            {canPullToRefresh ? null : <WiseButton label="Atualizar dados" loading={refreshing} onPress={() => void refresh()} variant="ghost" />}
           </View>
         </View>
         <ProfileRefreshError query={profile} />
