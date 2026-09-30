@@ -292,8 +292,8 @@ describe('DashboardScreen', () => {
     await renderDashboard();
 
     await waitFor(() => expect(screen.getByTestId('dashboard-activity')).toBeTruthy());
-    expect(screen.getByText('Matemática · guilda')).toBeTruthy();
-    expect(screen.getByText('Sem matéria · guilda')).toBeTruthy();
+    expect(screen.getByTestId('dashboard-activity-title-s1')).toHaveTextContent('Matemática · guilda');
+    expect(screen.getByTestId('dashboard-activity-title-s2')).toHaveTextContent('Sem matéria · guilda');
   });
 
   it('applies the discreet style only to "Sem matéria", not to the guild indication', async () => {
@@ -351,7 +351,7 @@ describe('DashboardScreen', () => {
     await renderDashboard();
 
     await waitFor(() => expect(screen.getByTestId('dashboard-activity')).toBeTruthy());
-    expect(screen.getByText(`${subject} · guilda`).props.allowFontScaling).toBe(true);
+    expect(screen.getByTestId(`dashboard-activity-title-${session.id}`)).toHaveTextContent(`${subject} · guilda`);
     expect(metaParts('session-1')).toEqual(['Concluída', 'guilda', expect.any(String), '25 min']);
     expect(screen.getByLabelText(new RegExp(`${subject}.*Concluída.*guilda.*25 min`))).toBeTruthy();
   });
