@@ -1,5 +1,5 @@
 import { getAuthenticatedHttpClient } from '@/core/api/api-client';
-import { getActiveStudySession, heartbeatStudySession, pauseStudySession, resumeStudySession, startStudySession, stopStudySession } from '@/features/study-session/api';
+import { getActiveStudySession, getRecentStudySessionSubjects, heartbeatStudySession, pauseStudySession, resumeStudySession, startStudySession, stopStudySession } from '@/features/study-session/api';
 
 jest.mock('@/core/api/api-client', () => ({ getAuthenticatedHttpClient: jest.fn() }));
 
@@ -25,6 +25,15 @@ it('sends the Matéria only when one was chosen and keeps Sem matéria as absenc
   expect(post).toHaveBeenLastCalledWith('/sessions', { plannedDurationSeconds: 900, subject: 'Cálculo II' }, { headers: { 'Idempotency-Key': 'with-subject' } });
   await startStudySession(900, 'without-subject', null);
   expect(post).toHaveBeenLastCalledWith('/sessions', { plannedDurationSeconds: 900 }, { headers: { 'Idempotency-Key': 'without-subject' } });
+});
+
+it('unwraps the recent Matérias and forwards the abort signal', async () => {
+  const get = jest.fn().mockResolvedValue({ status: 200, data: { subjects: ['Física', 'Cálculo II'] } });
+  (getAuthenticatedHttpClient as jest.Mock).mockReturnValue({ get });
+  const signal = new AbortController().signal;
+
+  await expect(getRecentStudySessionSubjects(signal)).resolves.toEqual(['Física', 'Cálculo II']);
+  expect(get).toHaveBeenCalledWith('/sessions/subjects/recent', { signal });
 });
 
 it('sends a heartbeat to the active Study Session endpoint', async () => {

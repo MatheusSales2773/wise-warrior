@@ -35,6 +35,11 @@ export async function getActiveStudySession(signal?: AbortSignal): Promise<Study
   return response.status === 204 ? null : { ...response.data, receivedAtMs: Date.now() };
 }
 
+export async function getRecentStudySessionSubjects(signal?: AbortSignal): Promise<string[]> {
+  const response = await getAuthenticatedHttpClient().get<{ subjects: string[] }>('/sessions/subjects/recent', { signal });
+  return response.data.subjects;
+}
+
 /** `subject` is the normalized Matéria; `null` (Sem matéria) is sent as absence. */
 export async function startStudySession(
   plannedDurationSeconds: PlannedDurationSeconds,

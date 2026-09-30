@@ -17,7 +17,7 @@ import {
   type StudySessionTransitionAction,
   type StudySessionTransitionRequest,
 } from './api';
-import { activeStudySessionQueryKey, useActiveStudySession } from './queries';
+import { activeStudySessionQueryKey, useActiveStudySession, useRecentStudySessionSubjects } from './queries';
 import { formatRemainingTime, remainingStudySeconds } from './timer';
 import { MAX_SUBJECT_LENGTH, validateSubject, type SubjectValidation } from './subject';
 import { FeedbackMessage } from '@/design-system/components/FeedbackMessage';
@@ -209,6 +209,46 @@ function subjectError(validation: SubjectValidation): string | undefined {
   if (validation.status === 'too-long') return `A Matéria tem ${validation.length} caracteres; o máximo é ${MAX_SUBJECT_LENGTH}.`;
   if (validation.status === 'invalid-characters') return 'A Matéria não pode conter quebras de linha nem caracteres de controle.';
   return undefined;
+}
+
+/** Loading, failure and an empty history render nothing: suggestions must never get in the way of starting. */
+function RecentSubjectSuggestions({ selectedSubject, disabled, onSelect }: {
+  selectedSubject: string | null;
+  disabled: boolean;
+  onSelect: (subject: string) => void;
+}) {
+  const { data: subjects } = useRecentStudySessionSubjects();
+  const [focusedSubject, setFocusedSubject] = useState<string | null>(null);
+  if (!subjects?.length) return null;
+
+  return (
+    <View accessibilityLabel="Matérias recentes" role="group" style={styles.suggestions} testID="study-session-subject-suggestions">
+      {subjects.map((subject) => {
+        const selected = subject === selectedSubject;
+        return (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityState={{ selected, disabled }}
+            aria-selected={selected}
+            disabled={disabled}
+            hitSlop={{ top: 4, bottom: 4 }}
+            key={subject}
+            onBlur={() => setFocusedSubject((current) => (current === subject ? null : current))}
+            onFocus={() => setFocusedSubject(subject)}
+            onPress={() => onSelect(subject)}
+            style={[
+              styles.suggestion,
+              selected && styles.selected,
+              disabled && styles.actionButtonDisabled,
+              focusedSubject === subject && Platform.OS === 'web' && controlStyles.webFocus,
+            ]}
+          >
+            <Text allowFontScaling numberOfLines={1} style={[styles.suggestionText, selected && styles.suggestionTextSelected]}>{subject}</Text>
+          </Pressable>
+        );
+      })}
+    </View>
+  );
 }
 
 function isVersionConflict(error: unknown): boolean {
@@ -758,6 +798,11 @@ export function StudySessionScreen() {
                 testID="study-session-subject-input"
                 value={subjectInput}
               />
+              <RecentSubjectSuggestions
+                disabled={start.isPending}
+                onSelect={changeSubject}
+                selectedSubject={subjectValidation.status === 'valid' ? subjectValidation.subject : null}
+              />
             </View>
             <View style={[styles.stageActions, width < 450 && styles.stageActionsCompact]}>
               {settingsOpen && !wideLayout ? <DurationSettings selected={selected} focusedDuration={focusedDuration} startPending={start.isPending} onSelect={(duration) => { pendingKey.current = null; setSelected(duration); }} onFocus={setFocusedDuration} onClose={() => setSettingsOpen(false)} inline /> : null}
@@ -797,6 +842,10 @@ const styles = StyleSheet.create({
   subjectTitle: { fontFamily: 'Cinzel-SemiBold', fontSize: 18, lineHeight: 24, color: theme.color.textPrimary },
   subjectTitleEmpty: { fontFamily: 'Inter-Regular', fontSize: 14, lineHeight: 20, color: theme.color.textTertiary },
   subjectSection: { borderTopWidth: 1, borderTopColor: theme.color.borderGhost, paddingHorizontal: theme.space.cardInset, paddingVertical: theme.space.stackDefault },
+  suggestions: { flexDirection: 'row', flexWrap: 'wrap', gap: theme.space.inlineTight, marginTop: theme.space.stackTight },
+  suggestion: { maxWidth: '100%', minHeight: 36, paddingHorizontal: theme.space.stackTight, justifyContent: 'center', borderWidth: 1, borderColor: theme.color.borderGhost, borderRadius: theme.radius.pill, backgroundColor: theme.color.surfaceInset },
+  suggestionText: { fontFamily: 'Inter-Regular', fontSize: 13, lineHeight: 18, color: theme.color.textSecondary },
+  suggestionTextSelected: { color: theme.color.textPrimary },
   stageBody: { alignItems: 'center', justifyContent: 'center', paddingVertical: theme.space.sectionGap, paddingHorizontal: theme.space.controlInset },
   stageActions: { borderTopWidth: 1, borderTopColor: theme.color.borderGhost, paddingHorizontal: theme.space.cardInset, paddingVertical: theme.space.stackDefault, alignItems: 'center', gap: theme.space.stackTight },
   stageActionsCompact: { paddingHorizontal: theme.space.inlineTight },
