@@ -543,7 +543,7 @@ describe('TypeORM migrations against an empty MySQL schema', () => {
       { idempotency_key: 'rolling-transition-key', command_kind: 'resume' },
     ]);
 
-    for (let step = 0; step < 3; step += 1) await dataSource.undoLastMigration();
+    for (let step = 0; step < 4; step += 1) await dataSource.undoLastMigration();
     const leftoverTriggers = await rows(
       database.admin,
       `SELECT TRIGGER_NAME FROM information_schema.TRIGGERS
@@ -668,6 +668,7 @@ describe('TypeORM migrations against an empty MySQL schema', () => {
     expect(receiptsWithSubject).toEqual([{ idempotency_key: 'solo-start-key', subject: 'Cálculo II' }]);
 
     // M6 revert: only the receipt column goes away; every persisted Matéria (including legacy Guild rows) stays.
+    await dataSource.undoLastMigration(); // single-guild index, which sits above the M6 receipt subject
     await dataSource.undoLastMigration();
     const receiptColumnsAfterRevert = await rows(
       database.admin,
@@ -697,7 +698,7 @@ describe('TypeORM migrations against an empty MySQL schema', () => {
     );
     expect(receiptsAfterReapply).toEqual([{ idempotency_key: 'solo-start-key', subject: null }]);
 
-    for (let step = 0; step < 5; step += 1) await dataSource.undoLastMigration();
+    for (let step = 0; step < 6; step += 1) await dataSource.undoLastMigration();
     const downgradedHistory = await rows(
       database.admin,
       `SELECT id, subject, mode, raid_id FROM ${database.identifier}.study_sessions ORDER BY id`,
@@ -788,7 +789,7 @@ describe('TypeORM migrations against an empty MySQL schema', () => {
     );
     expect(leftoverArchives).toHaveLength(0);
 
-    for (let step = 0; step < 8; step += 1) await dataSource.undoLastMigration();
+    for (let step = 0; step < 9; step += 1) await dataSource.undoLastMigration();
     const remainingSchemaTables = await rows(
       database.admin,
       `SELECT TABLE_NAME FROM information_schema.TABLES
