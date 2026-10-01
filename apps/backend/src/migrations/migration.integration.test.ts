@@ -358,7 +358,19 @@ describe('TypeORM migrations against an empty MySQL schema', () => {
       'UnifyStudySessionIdempotencyKeys1788459000000',
       'AddStudySessionEndedAtPrecision1788459060000',
       'AddStudySessionStartReceiptSubject1788459120000',
+      'EnforceSingleGuildPerUser1788459180000',
     ]);
+
+    await dataSource.undoLastMigration();
+    const singleGuildRevertRows = await rows(
+      database!.admin,
+      `SELECT INDEX_NAME, NON_UNIQUE FROM information_schema.STATISTICS
+       WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'guild_memberships' AND COLUMN_NAME = 'user_id'`,
+      [database!.name],
+    );
+    expect(singleGuildRevertRows.map((row) => [row.INDEX_NAME, Number(row.NON_UNIQUE)])).toEqual(
+      expect.arrayContaining([['IDX_guild_memberships_user_id', 1]]),
+    );
 
     await dataSource.undoLastMigration();
     const receiptSubjectRevertRows = await rows(
