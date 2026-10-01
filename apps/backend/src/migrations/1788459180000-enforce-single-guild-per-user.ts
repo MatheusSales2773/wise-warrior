@@ -11,19 +11,20 @@ export class EnforceSingleGuildPerUser1788459180000 implements MigrationInterfac
         ON older.user_id = m.user_id
        AND (older.joined_at < m.joined_at OR (older.joined_at = m.joined_at AND older.id < m.id))
     `);
-    await queryRunner.dropIndex('guild_memberships', 'IDX_guild_memberships_user_id');
+    // The foreign key on user_id needs an index at every step, so the unique one is created before the old one is dropped.
     await queryRunner.createIndex('guild_memberships', new TableIndex({
       name: 'UQ_guild_memberships_user_id',
       columnNames: ['user_id'],
       isUnique: true,
     }));
+    await queryRunner.dropIndex('guild_memberships', 'IDX_guild_memberships_user_id');
   }
 
   public async down(queryRunner: QueryRunner): Promise<void> {
-    await queryRunner.dropIndex('guild_memberships', 'UQ_guild_memberships_user_id');
     await queryRunner.createIndex('guild_memberships', new TableIndex({
       name: 'IDX_guild_memberships_user_id',
       columnNames: ['user_id'],
     }));
+    await queryRunner.dropIndex('guild_memberships', 'UQ_guild_memberships_user_id');
   }
 }
