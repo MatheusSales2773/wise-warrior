@@ -7,6 +7,7 @@ import type { StartSessionDto } from './dto/start-session.dto';
 import { isStudySessionPreset } from './domain/study-session-presets';
 import { getStudySessionTime } from './domain/study-session-time';
 import { isValidIdempotencyKey } from './domain/idempotency-key';
+import { InvalidStudySessionSubjectError, normalizeStudySessionSubject } from './domain/study-session-subject';
 import { rejectIfStudySessionCommandKeyUsed } from './study-session-command-keys';
 
 export type StudySessionSnapshot = {
@@ -32,6 +33,7 @@ export type StudySessionSnapshot = {
 
 type ReceiptRow = {
   planned_duration_seconds: number;
+  subject: string | null;
   initiating_session_id: string;
   response_json: StudySessionSnapshot | string;
 };
@@ -97,6 +99,7 @@ export class StudySessionStartService {
     if (!isStudySessionPreset(plannedDurationSeconds)) {
       throw new BadRequestException('Duração de foco inválida');
     }
+    const subject = this.normalizeSubject(dto.subject);
     if (!isValidIdempotencyKey(idempotencyKey)) {
       throw new BadRequestException('Idempotency-Key é obrigatório e deve conter de 1 a 128 caracteres ASCII visíveis');
     }
@@ -106,15 +109,15 @@ export class StudySessionStartService {
       if (!await this.users.lockForUpdate(userId, manager)) throw new BadRequestException('Usuário inválido');
 
       const receipts = await manager.query(
-        'SELECT planned_duration_seconds, initiating_session_id, response_json FROM study_session_start_receipts WHERE user_id = ? AND idempotency_key = ?',
+        'SELECT planned_duration_seconds, subject, initiating_session_id, response_json FROM study_session_start_receipts WHERE user_id = ? AND idempotency_key = ?',
         [userId, idempotencyKey],
       ) as ReceiptRow[];
       const receipt = receipts[0];
       if (receipt) {
-        if (Number(receipt.planned_duration_seconds) !== plannedDurationSeconds) {
+        if (Number(receipt.planned_duration_seconds) !== plannedDurationSeconds || receipt.subject !== subject) {
           throw new ConflictException({
             type: 'https://wise.app/errors/idempotency-key-reused',
-            message: 'Idempotency-Key já foi usada com outra duração',
+            message: 'Idempotency-Key já foi usada com outra duração ou Matéria',
           });
         }
         return deserializeStudySessionSnapshot(
@@ -136,7 +139,7 @@ export class StudySessionStartService {
       const now = new Date();
       const studySession = manager.getRepository(StudySession).create({
         userId,
-        subject: null,
+        subject,
         mode: 'solo',
         raidId: null,
         startedAt: now,
@@ -161,10 +164,19 @@ export class StudySessionStartService {
         [userId, idempotencyKey, 'start'],
       );
       await manager.query(
-        'INSERT INTO study_session_start_receipts (user_id, idempotency_key, planned_duration_seconds, initiating_session_id, response_json) VALUES (?, ?, ?, ?, ?)',
-        [userId, idempotencyKey, plannedDurationSeconds, authSessionId, JSON.stringify(snapshot)],
+        'INSERT INTO study_session_start_receipts (user_id, idempotency_key, planned_duration_seconds, subject, initiating_session_id, response_json) VALUES (?, ?, ?, ?, ?, ?)',
+        [userId, idempotencyKey, plannedDurationSeconds, subject, authSessionId, JSON.stringify(snapshot)],
       );
       return snapshot;
     });
+  }
+
+  private normalizeSubject(value: unknown): string | null {
+    try {
+      return normalizeStudySessionSubject(value);
+    } catch (error) {
+      if (error instanceof InvalidStudySessionSubjectError) throw new BadRequestException(error.message);
+      throw error;
+    }
   }
 }

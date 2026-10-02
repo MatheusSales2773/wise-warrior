@@ -86,35 +86,48 @@ function CardContent({ children, testID }: PropsWithChildren<{ testID?: string }
   return <View style={styles.cardContent} testID={testID}>{children}</View>;
 }
 
-function ActivityItem({ session }: { session: RecentStudySession }) {
-  const display = {
-    date: formatSessionDate(session.endedAt),
-    discarded: session.discardedReason ? formatDiscardReason(session.discardedReason) : null,
-    duration: formatDuration(session.durationValidSeconds),
-    mode: session.mode,
-    status: formatSessionState(session.state),
-    subject: session.subject,
-    xp: `${formatXp(session.xpAwarded)} XP`,
+const NO_SUBJECT_LABEL = 'Sem matéria';
+const DETAIL_SEPARATOR = ' · ';
+
+function joinDetails(parts: (string | null | undefined)[]): string {
+  return parts.filter(Boolean).join(DETAIL_SEPARATOR);
+}
+
+function describeActivity(session: RecentStudySession) {
+  const subject = session.subject?.trim() || null;
+  const subjectLabel = subject ?? NO_SUBJECT_LABEL;
+  const isGuild = session.mode === 'guild';
+  const modeLabel = formatSessionMode(session.mode);
+  const discarded = session.discardedReason ? formatDiscardReason(session.discardedReason) : null;
+  const xp = `${formatXp(session.xpAwarded)} XP`;
+  const metaLine = joinDetails([formatSessionState(session.state), modeLabel, formatSessionDate(session.endedAt), formatDuration(session.durationValidSeconds)]);
+
+  return {
+    a11yLabel: `Sessão: ${joinDetails([subjectLabel, metaLine, xp, discarded])}`,
+    discarded,
+    hasSubject: subject !== null,
+    metaLine,
+    guildLabel: isGuild ? modeLabel : null,
+    subjectLabel,
+    xp,
   };
-  const details = [
-    display.status,
-    display.subject,
-    display.mode,
-    display.date,
-    display.duration,
-    display.xp,
-    display.discarded,
-  ].filter(Boolean).join(' · ');
+}
+
+function ActivityItem({ session }: { session: RecentStudySession }) {
+  const item = describeActivity(session);
 
   return (
-    <View accessible accessibilityLabel={`Sessão: ${details}`} key={session.id} style={styles.activityItem}>
+    <View accessible accessibilityLabel={item.a11yLabel} style={styles.activityItem}>
       <View style={styles.activityMain}>
-        <Text allowFontScaling style={styles.activitySubject}>{display.subject ?? display.status}{display.mode === 'guild' ? ' · guilda' : ''}</Text>
-        <Text style={styles.activityMeta}>{display.date} · {display.duration}</Text>
+        <Text allowFontScaling ellipsizeMode="tail" numberOfLines={2} style={styles.activitySubject} testID={`dashboard-activity-title-${session.id}`}>
+          <Text style={item.hasSubject ? undefined : styles.activityNoSubject}>{item.subjectLabel}</Text>
+          {item.guildLabel ? `${DETAIL_SEPARATOR}${item.guildLabel}` : null}
+        </Text>
+        <Text style={styles.activityMeta} testID={`dashboard-activity-meta-${session.id}`}>{item.metaLine}</Text>
       </View>
-      {display.discarded
-        ? <Text style={styles.activityDiscarded}>{display.discarded}</Text>
-        : <Text style={styles.activityXp}>+{display.xp}</Text>}
+      {item.discarded
+        ? <Text style={styles.activityDiscarded}>{item.discarded}</Text>
+        : <Text style={styles.activityXp}>+{item.xp}</Text>}
     </View>
   );
 }
@@ -215,15 +228,19 @@ function MetricsCard({ query }: { query: UseQueryResult<SessionMetrics> }) {
         <Text style={styles.metricTrend}>{formatDuration(metrics.validSecondsToday)} de foco válido</Text>
       </View>
     </WiseCard>
-    <View style={styles.metricsStatus}>
+    {query.isRefetching || query.isError ? <View style={styles.metricsStatus} testID="dashboard-metrics-status">
       {query.isRefetching ? <WiseText color="textSecondary" testID="dashboard-metrics-refreshing" variant="caption">Atualizando métricas…</WiseText> : null}
       {query.isError ? <View testID="dashboard-metrics-refresh-error"><FeedbackMessage message="Não foi possível atualizar suas métricas de treino." title="Métricas desatualizadas" variant="error" /><WiseButton label="Tentar novamente" loading={query.isRefetching} onPress={() => void retry()} variant="secondary" /></View> : null}
-    </View>
+    </View> : null}
   </View>;
 }
 
 function formatDayCount(value: number): string {
   return `${value} ${value === 1 ? 'dia' : 'dias'}`;
+}
+
+function formatSessionMode(mode: string): string {
+  return mode === 'guild' ? 'guilda' : mode;
 }
 
 function formatSessionState(state: RecentStudySession['state']): string {
@@ -364,7 +381,9 @@ export function DashboardScreen() {
   const user = profile.data;
   if (!user) return null;
   const desktop = isDesktopLayout(Platform.OS, width);
-  const refreshProps = Platform.OS === 'web' ? {} : { refreshing, onRefresh: () => { void refresh(); } };
+  // Touch platforms refresh by pulling the screen down; the button is only for web, which has no such gesture.
+  const canPullToRefresh = Platform.OS !== 'web';
+  const refreshProps = canPullToRefresh ? { refreshing, onRefresh: () => { void refresh(); } } : {};
   const compact = width < 640;
   const xpPercent = Math.min(100, Math.round(((user.xpTotal - user.levelStartXp) / Math.max(1, user.nextLevelXp - user.levelStartXp)) * 100));
   return <Screen backgroundOverlay={<DashboardGlow />} safeAreaEdges={[]} title="Acampamento" testID="dashboard" {...refreshProps}>
@@ -383,7 +402,7 @@ export function DashboardScreen() {
               <Text style={[styles.heroTitle, compact && styles.heroTitleCompact]}>{user.title || 'Sua jornada começa aqui'}</Text>
               <View testID="dashboard-status" accessibilityLiveRegion="polite" aria-live="polite" aria-atomic style={styles.status}>{statusMessage ? <Text style={[styles.statusText, { color: refreshing ? theme.color.accentPrimary : theme.color.feedbackSuccess }]}>{statusMessage}</Text> : null}</View>
             </View>
-            <WiseButton label="Atualizar dados" loading={refreshing} onPress={() => void refresh()} variant="ghost" />
+            {canPullToRefresh ? null : <WiseButton label="Atualizar dados" loading={refreshing} onPress={() => void refresh()} variant="ghost" />}
           </View>
         </View>
         <ProfileRefreshError query={profile} />
@@ -516,6 +535,7 @@ const styles = StyleSheet.create({
   activityItem: { flexDirection: 'row', alignItems: 'flex-start', gap: 14, minWidth: 0, paddingVertical: 10, borderBottomWidth: theme.border.standard, borderBottomColor: theme.color.borderGhost, borderStyle: 'dashed' },
   activityMain: { flex: 1, minWidth: 0, gap: 3 },
   activitySubject: { fontFamily: 'Inter-Medium', fontSize: 12, lineHeight: 17, color: theme.color.textPrimary },
+  activityNoSubject: { fontFamily: 'Inter-Regular', fontSize: 12, lineHeight: 17, color: theme.color.textTertiary },
   activityMeta: { fontFamily: 'Inter-Regular', fontSize: 10, lineHeight: 14, letterSpacing: 0.6, color: theme.color.textTertiary },
   activityXp: { fontFamily: 'JetBrainsMono-SemiBold', fontSize: 12, lineHeight: 17, color: theme.color.accentHighlight, flexShrink: 0 },
   activityDiscarded: { ...mono, fontSize: 11, lineHeight: 16, color: theme.color.feedbackDanger, flexShrink: 1, maxWidth: '45%', textAlign: 'right' },

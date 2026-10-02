@@ -14,6 +14,7 @@ jest.mock('@/features/study-session/api', () => ({
   STUDY_SESSION_PRESETS: [900, 1500, 3000],
   completeStudySession: jest.fn(),
   getActiveStudySession: jest.fn(),
+  getRecentStudySessionSubjects: jest.fn().mockResolvedValue([]),
   heartbeatStudySession: jest.fn(),
   pauseStudySession: jest.fn(),
   resumeStudySession: jest.fn(),

@@ -79,7 +79,7 @@ const expectedColumns: Record<string, string[]> = {
     'active_user_id',
   ],
   active_study_sessions: ['user_id', 'study_session_id'],
-  study_session_start_receipts: ['user_id', 'idempotency_key', 'planned_duration_seconds', 'initiating_session_id', 'response_json'],
+  study_session_start_receipts: ['user_id', 'idempotency_key', 'planned_duration_seconds', 'subject', 'initiating_session_id', 'response_json'],
   study_session_transition_receipts: ['user_id', 'study_session_id', 'idempotency_key', 'action', 'expected_version', 'response_json', 'created_at'],
   study_session_command_keys: ['user_id', 'idempotency_key', 'command_kind', 'created_at'],
   raid_contributions: [
@@ -357,7 +357,19 @@ describe('TypeORM migrations against an empty MySQL schema', () => {
       'AddStudySessionPauseResume1788458880000',
       'UnifyStudySessionIdempotencyKeys1788459000000',
       'AddStudySessionEndedAtPrecision1788459060000',
+      'AddStudySessionStartReceiptSubject1788459120000',
     ]);
+
+    await dataSource.undoLastMigration();
+    const receiptSubjectRevertRows = await rows(
+      database!.admin,
+      `SELECT COLUMN_NAME FROM information_schema.COLUMNS
+       WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'study_session_start_receipts' ORDER BY ORDINAL_POSITION`,
+      [database!.name],
+    );
+    expect(receiptSubjectRevertRows.map((row) => row.COLUMN_NAME)).toEqual(
+      ['user_id', 'idempotency_key', 'planned_duration_seconds', 'initiating_session_id', 'response_json'],
+    );
 
     await dataSource.undoLastMigration();
     const endedAtRevertRows = await rows(
@@ -519,8 +531,7 @@ describe('TypeORM migrations against an empty MySQL schema', () => {
       { idempotency_key: 'rolling-transition-key', command_kind: 'resume' },
     ]);
 
-    await dataSource.undoLastMigration();
-    await dataSource.undoLastMigration();
+    for (let step = 0; step < 3; step += 1) await dataSource.undoLastMigration();
     const leftoverTriggers = await rows(
       database.admin,
       `SELECT TRIGGER_NAME FROM information_schema.TRIGGERS
@@ -634,10 +645,47 @@ describe('TypeORM migrations against an empty MySQL schema', () => {
        VALUES (?, ?, ?, ?, ?, CAST(? AS JSON))`,
       ['existing-user', 'solo-running', 'solo-transition-key', 'pause', 1, JSON.stringify({ id: 'solo-running', state: 'paused' })],
     );
+    await database.admin.query(
+      `UPDATE ${database.identifier}.study_session_start_receipts SET subject = ? WHERE idempotency_key = ?`,
+      ['Cálculo II', 'solo-start-key'],
+    );
+    const receiptsWithSubject = await rows(
+      database.admin,
+      `SELECT idempotency_key, subject FROM ${database.identifier}.study_session_start_receipts`,
+    );
+    expect(receiptsWithSubject).toEqual([{ idempotency_key: 'solo-start-key', subject: 'Cálculo II' }]);
+
+    // M6 revert: only the receipt column goes away; every persisted Matéria (including legacy Guild rows) stays.
     await dataSource.undoLastMigration();
-    await dataSource.undoLastMigration();
-    await dataSource.undoLastMigration();
-    await dataSource.undoLastMigration();
+    const receiptColumnsAfterRevert = await rows(
+      database.admin,
+      `SELECT COLUMN_NAME FROM information_schema.COLUMNS
+       WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'study_session_start_receipts'`,
+      [database.name],
+    );
+    expect(receiptColumnsAfterRevert.map((row) => row.COLUMN_NAME)).not.toContain('subject');
+    const receiptsAfterRevert = await rows(
+      database.admin,
+      `SELECT idempotency_key FROM ${database.identifier}.study_session_start_receipts`,
+    );
+    expect(receiptsAfterRevert).toEqual([{ idempotency_key: 'solo-start-key' }]);
+    const studiesAfterRevert = await rows(
+      database.admin,
+      `SELECT id, subject, mode, raid_id FROM ${database.identifier}.study_sessions ORDER BY id`,
+    );
+    expect(studiesAfterRevert).toEqual([
+      expect.objectContaining({ id: 'existing-study', subject: 'Cálculo', mode: 'guild', raid_id: 'existing-raid' }),
+      expect.objectContaining({ id: 'solo-completed', subject: null, mode: 'solo' }),
+      expect.objectContaining({ id: 'solo-running', subject: null, mode: 'solo' }),
+    ]);
+    await dataSource.runMigrations();
+    const receiptsAfterReapply = await rows(
+      database.admin,
+      `SELECT idempotency_key, subject FROM ${database.identifier}.study_session_start_receipts`,
+    );
+    expect(receiptsAfterReapply).toEqual([{ idempotency_key: 'solo-start-key', subject: null }]);
+
+    for (let step = 0; step < 5; step += 1) await dataSource.undoLastMigration();
     const downgradedHistory = await rows(
       database.admin,
       `SELECT id, subject, mode, raid_id FROM ${database.identifier}.study_sessions ORDER BY id`,
@@ -728,13 +776,7 @@ describe('TypeORM migrations against an empty MySQL schema', () => {
     );
     expect(leftoverArchives).toHaveLength(0);
 
-    await dataSource.undoLastMigration();
-    await dataSource.undoLastMigration();
-    await dataSource.undoLastMigration();
-    await dataSource.undoLastMigration();
-    await dataSource.undoLastMigration();
-    await dataSource.undoLastMigration();
-    await dataSource.undoLastMigration();
+    for (let step = 0; step < 8; step += 1) await dataSource.undoLastMigration();
     const remainingSchemaTables = await rows(
       database.admin,
       `SELECT TABLE_NAME FROM information_schema.TABLES

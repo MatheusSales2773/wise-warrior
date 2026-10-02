@@ -4,7 +4,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { AccessibilityInfo, Platform, Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import Svg, { Circle, Defs, LinearGradient as SvgGradient, RadialGradient, Rect, Stop } from 'react-native-svg';
-import { Screen, WiseButton, WiseCard, WiseText, theme } from '@/design-system';
+import { Screen, WiseButton, WiseCard, WiseField, WiseText, theme } from '@/design-system';
 import { controlStyles } from '@/design-system/components/control-styles';
 import {
   pauseStudySession,
@@ -17,8 +17,9 @@ import {
   type StudySessionTransitionAction,
   type StudySessionTransitionRequest,
 } from './api';
-import { activeStudySessionQueryKey, useActiveStudySession } from './queries';
+import { activeStudySessionQueryKey, recentStudySessionSubjectsQueryKey, useActiveStudySession, useRecentStudySessionSubjects } from './queries';
 import { formatRemainingTime, remainingStudySeconds } from './timer';
+import { MAX_SUBJECT_LENGTH, validateSubject, type SubjectValidation } from './subject';
 import { FeedbackMessage } from '@/design-system/components/FeedbackMessage';
 import { dashboardKeys } from '@/features/dashboard/queries';
 import {
@@ -202,6 +203,54 @@ function DurationSettings({ selected, focusedDuration, startPending, onSelect, o
   </WiseCard>;
 }
 
+const NO_SUBJECT_LABEL = 'Sem matéria';
+
+function subjectError(validation: SubjectValidation): string | undefined {
+  if (validation.status === 'too-long') return `A Matéria tem ${validation.length} caracteres; o máximo é ${MAX_SUBJECT_LENGTH}.`;
+  if (validation.status === 'invalid-characters') return 'A Matéria não pode conter quebras de linha nem caracteres de controle.';
+  return undefined;
+}
+
+/** Loading, failure and an empty history render nothing: suggestions must never get in the way of starting. */
+function RecentSubjectSuggestions({ selectedSubject, disabled, onSelect }: {
+  selectedSubject: string | null;
+  disabled: boolean;
+  onSelect: (subject: string) => void;
+}) {
+  const { data: subjects } = useRecentStudySessionSubjects();
+  const [focusedSubject, setFocusedSubject] = useState<string | null>(null);
+  if (!subjects?.length) return null;
+
+  return (
+    <View accessibilityLabel="Matérias recentes" role="group" style={styles.suggestions} testID="study-session-subject-suggestions">
+      {subjects.map((subject) => {
+        const selected = subject === selectedSubject;
+        return (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityState={{ selected, disabled }}
+            aria-selected={selected}
+            disabled={disabled}
+            hitSlop={{ top: 4, bottom: 4 }}
+            key={subject}
+            onBlur={() => setFocusedSubject((current) => (current === subject ? null : current))}
+            onFocus={() => setFocusedSubject(subject)}
+            onPress={() => onSelect(subject)}
+            style={[
+              styles.suggestion,
+              selected && styles.selected,
+              disabled && styles.actionButtonDisabled,
+              focusedSubject === subject && Platform.OS === 'web' && controlStyles.webFocus,
+            ]}
+          >
+            <Text allowFontScaling numberOfLines={1} style={[styles.suggestionText, selected && styles.suggestionTextSelected]}>{subject}</Text>
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+}
+
 function isVersionConflict(error: unknown): boolean {
   if (typeof error !== 'object' || error === null) return false;
   const responseData = (error as { response?: { data?: unknown } }).response?.data;
@@ -216,6 +265,7 @@ export function StudySessionScreen() {
   const ringSize = wideLayout ? 340 : Platform.OS === 'web' ? Math.min(310, width * 0.78) : Math.min(264, width * 0.68);
   const queryClient = useQueryClient();
   const [selected, setSelected] = useState<PlannedDurationSeconds>(1500);
+  const [subjectInput, setSubjectInput] = useState('');
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [focusedDuration, setFocusedDuration] = useState<PlannedDurationSeconds | null>(null);
   const [now, setNow] = useState(0);
@@ -310,14 +360,17 @@ export function StudySessionScreen() {
   }, [observeCompletion]);
 
   const start = useMutation({
-    mutationFn: ({ duration, key }: { duration: PlannedDurationSeconds; key: string }) => startStudySession(duration, key),
+    mutationFn: ({ duration, key, subject }: { duration: PlannedDurationSeconds; key: string; subject: string | null }) => startStudySession(duration, key, subject),
     onSuccess(snapshot) {
       pendingKey.current = null;
+      setSubjectInput('');
       setSettingsOpen(false);
       setTerminalResult(null);
       clearCompletionIntent();
       setCompletionIntentState(null);
       queryClient.setQueryData(activeStudySessionQueryKey, snapshot);
+      // The started Matéria is now the most recent one; a cached list would flash the old order on return.
+      queryClient.removeQueries({ queryKey: recentStudySessionSubjectsQueryKey });
     },
     onError() {
       void refreshActive();
@@ -480,10 +533,21 @@ export function StudySessionScreen() {
     }
   }, [sessionStatus, snapshot?.canControl]);
 
+  const subjectValidation = validateSubject(subjectInput);
+  const subjectMessage = subjectError(subjectValidation);
+
+  const changeSubject = (text: string) => {
+    const next = validateSubject(text);
+    // A retry keeps its key only while the request stays identical; another Matéria is a new start.
+    if (JSON.stringify(next) !== JSON.stringify(subjectValidation)) pendingKey.current = null;
+    setSubjectInput(text);
+  };
+
   const begin = () => {
+    if (subjectValidation.status !== 'valid') return;
     const key = pendingKey.current ?? newIdempotencyKey();
     pendingKey.current = key;
-    start.mutate({ duration: selected, key });
+    start.mutate({ duration: selected, key, subject: subjectValidation.subject });
   };
 
   const changeSessionState = (action: TransitionAction) => {
@@ -500,7 +564,7 @@ export function StudySessionScreen() {
   };
 
   return (
-    <Screen backgroundOverlay={<ForgePageGradient />} hasBottomNavigation safeAreaEdges={['right', 'left']} testID="study-session" title="Forja" contentContainerStyle={styles.screenContent}>
+    <Screen avoidKeyboard backgroundOverlay={<ForgePageGradient />} hasBottomNavigation safeAreaEdges={['right', 'left']} testID="study-session" title="Forja" contentContainerStyle={styles.screenContent}>
       <View style={styles.layout}>
         {active.isPending && !snapshot ? <WiseText variant="body">Buscando sua sessão ativa…</WiseText> : null}
         {active.isError && !snapshot ? (
@@ -529,6 +593,14 @@ export function StudySessionScreen() {
                       ? 'Sessão encerrada antecipadamente'
                       : 'Sessão encerrada'}
             </WiseText>
+            <WiseText
+              color={displayedTerminalResult.subject ? 'textPrimary' : 'textTertiary'}
+              numberOfLines={3}
+              testID="study-session-result-subject"
+              variant="body"
+            >
+              {displayedTerminalResult.subject ?? NO_SUBJECT_LABEL}
+            </WiseText>
             <WiseText variant="body">Foco válido: {formatRemainingTime(displayedTerminalResult.durationValidSeconds)}</WiseText>
             <WiseText variant="body">XP confirmado: {displayedTerminalResult.xpAwarded}</WiseText>
             {displayedTerminalResult.state === 'discarded' ? (
@@ -556,6 +628,15 @@ export function StudySessionScreen() {
           <WiseCard style={[styles.stage, wideLayout && styles.stageWide]} testID="study-session-stage">
             <ForgeStageGradient />
             <View style={styles.stageHeader}>
+              <Text
+                accessibilityRole="header"
+                allowFontScaling
+                numberOfLines={2}
+                style={snapshot.subject ? styles.subjectTitle : styles.subjectTitleEmpty}
+                testID="study-session-subject"
+              >
+                {snapshot.subject ?? NO_SUBJECT_LABEL}
+              </Text>
               <Text accessibilityRole="header" allowFontScaling style={styles.stageTitle}>{snapshot.state === 'paused' ? 'Sessão pausada' : 'Sessão em andamento'}</Text>
               <Text allowFontScaling style={styles.stageMeta}>{snapshot.plannedDurationSeconds / 60} min de foco</Text>
             </View>
@@ -707,11 +788,29 @@ export function StudySessionScreen() {
             <View style={styles.stageBody}>
               <ForgeTimer remaining={selected} duration={selected} phase={phase} size={ringSize} />
             </View>
+            <View style={styles.subjectSection}>
+              <WiseField
+                autoCapitalize="sentences"
+                editable={!start.isPending}
+                error={subjectMessage}
+                label="Matéria (opcional)"
+                onChangeText={changeSubject}
+                placeholder="Ex.: Cálculo II"
+                returnKeyType="done"
+                testID="study-session-subject-input"
+                value={subjectInput}
+              />
+              <RecentSubjectSuggestions
+                disabled={start.isPending}
+                onSelect={changeSubject}
+                selectedSubject={subjectValidation.status === 'valid' ? subjectValidation.subject : null}
+              />
+            </View>
             <View style={[styles.stageActions, width < 450 && styles.stageActionsCompact]}>
               {settingsOpen && !wideLayout ? <DurationSettings selected={selected} focusedDuration={focusedDuration} startPending={start.isPending} onSelect={(duration) => { pendingKey.current = null; setSelected(duration); }} onFocus={setFocusedDuration} onClose={() => setSettingsOpen(false)} inline /> : null}
               <View style={[styles.actionRow, width < 450 && styles.actionRowCompact]}>
                 <View style={styles.actionButtonPlaceholder} />
-                <ForgeAction icon="play" primary label="Iniciar foco" loading={start.isPending} onPress={begin} testID="study-session-start" />
+                <ForgeAction icon="play" primary label="Iniciar foco" loading={start.isPending} disabled={subjectValidation.status !== 'valid'} onPress={begin} testID="study-session-start" />
                 <ForgeAction icon="settings-outline" iconOnly label="Configurar duração" expanded={settingsOpen} onPress={() => setSettingsOpen((open) => !open)} />
               </View>
               {start.isError ? <WiseText color="feedbackDanger" variant="body">Não foi possível confirmar o início. Tente novamente.</WiseText> : null}
@@ -742,6 +841,13 @@ const styles = StyleSheet.create({
   stageHeader: { paddingHorizontal: theme.space.cardInset, paddingVertical: 18, borderBottomWidth: 1, borderBottomColor: theme.color.borderGhost, gap: 6 },
   stageTitle: { fontFamily: 'Inter-Bold', fontSize: 11, lineHeight: 16, letterSpacing: 2.6, textTransform: 'uppercase', color: theme.color.accentPrimary },
   stageMeta: { fontFamily: 'Inter-Regular', fontSize: 11, lineHeight: 16, color: theme.color.accentHighlight },
+  subjectTitle: { fontFamily: 'Cinzel-SemiBold', fontSize: 18, lineHeight: 24, color: theme.color.textPrimary },
+  subjectTitleEmpty: { fontFamily: 'Inter-Regular', fontSize: 14, lineHeight: 20, color: theme.color.textTertiary },
+  subjectSection: { borderTopWidth: 1, borderTopColor: theme.color.borderGhost, paddingHorizontal: theme.space.cardInset, paddingVertical: theme.space.stackDefault },
+  suggestions: { flexDirection: 'row', flexWrap: 'wrap', gap: theme.space.inlineTight, marginTop: theme.space.stackTight },
+  suggestion: { maxWidth: '100%', minHeight: 36, paddingHorizontal: theme.space.stackTight, justifyContent: 'center', borderWidth: 1, borderColor: theme.color.borderGhost, borderRadius: theme.radius.pill, backgroundColor: theme.color.surfaceInset },
+  suggestionText: { fontFamily: 'Inter-Regular', fontSize: 13, lineHeight: 18, color: theme.color.textSecondary },
+  suggestionTextSelected: { color: theme.color.textPrimary },
   stageBody: { alignItems: 'center', justifyContent: 'center', paddingVertical: theme.space.sectionGap, paddingHorizontal: theme.space.controlInset },
   stageActions: { borderTopWidth: 1, borderTopColor: theme.color.borderGhost, paddingHorizontal: theme.space.cardInset, paddingVertical: theme.space.stackDefault, alignItems: 'center', gap: theme.space.stackTight },
   stageActionsCompact: { paddingHorizontal: theme.space.inlineTight },

@@ -3,18 +3,21 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { AppState, processColor, type AppStateStatus } from 'react-native';
 import { StudySessionScreen } from '@/features/study-session/study-session-screen';
 import { StudySessionHeartbeatRuntime } from '@/features/study-session/study-session-heartbeat-runtime';
-import { getActiveStudySession, heartbeatStudySession, startStudySession, type StudySessionSnapshot } from '@/features/study-session/api';
+import { getActiveStudySession, getRecentStudySessionSubjects, heartbeatStudySession, startStudySession, type StudySessionSnapshot } from '@/features/study-session/api';
 import { STUDY_SESSION_HEARTBEAT_INTERVAL_MS } from '@/features/study-session/use-study-session-heartbeat';
 import { formatRemainingTime, remainingStudySeconds } from '@/features/study-session/timer';
+import { clearCompletionIntent } from '@/features/study-session/completion-intent';
 
 jest.mock('@/features/study-session/api', () => ({
   STUDY_SESSION_PRESETS: [900, 1500, 3000],
   getActiveStudySession: jest.fn(),
+  getRecentStudySessionSubjects: jest.fn(),
   heartbeatStudySession: jest.fn(),
   startStudySession: jest.fn(),
 }));
 
 const getActive = getActiveStudySession as jest.MockedFunction<typeof getActiveStudySession>;
+const getRecent = getRecentStudySessionSubjects as jest.MockedFunction<typeof getRecentStudySessionSubjects>;
 const heartbeat = heartbeatStudySession as jest.MockedFunction<typeof heartbeatStudySession>;
 const start = startStudySession as jest.MockedFunction<typeof startStudySession>;
 let heartbeatTick: (() => void) | undefined;
@@ -42,6 +45,7 @@ async function renderStudySession() {
 }
 
 beforeEach(() => {
+  getRecent.mockResolvedValue([]);
   heartbeatTick = undefined;
   appStateListeners = [];
   heartbeatIntervalId = undefined;
@@ -79,7 +83,7 @@ it('offers only three presets, starts with 25 minutes and sends the chosen durat
   await fireEvent.press(view.getByTestId('study-duration-15'));
   await waitFor(() => expect(view.getByTestId('study-duration-15').props.accessibilityState.checked).toBe(true));
   await fireEvent.press(view.getByTestId('study-session-start'));
-  await waitFor(() => expect(start).toHaveBeenCalledWith(900, expect.any(String)));
+  await waitFor(() => expect(start).toHaveBeenCalledWith(900, expect.any(String), null));
   await view.findByTestId('study-session-active');
   expect(view.queryByTestId('study-session-setup')).toBeNull();
   view.unmount();
@@ -98,7 +102,7 @@ it('configures focus duration from the gear before starting the forge', async ()
   await fireEvent.press(view.getByRole('button', { name: 'Fechar configurações' }));
   expect(view.getByText('15:00')).toBeTruthy();
   await fireEvent.press(view.getByRole('button', { name: 'Iniciar foco' }));
-  await waitFor(() => expect(start).toHaveBeenCalledWith(900, expect.any(String)));
+  await waitFor(() => expect(start).toHaveBeenCalledWith(900, expect.any(String), null));
   view.unmount();
 });
 
@@ -114,6 +118,260 @@ it('opens and closes the focus duration options by tapping the same gear', async
   await fireEvent.press(gear);
   expect(view.queryByRole('radio')).toBeNull();
   view.unmount();
+});
+
+describe('Matéria on the Forja', () => {
+  // The fixed snapshots are past their deadline; drop any completion intent a started session retained.
+  afterEach(() => clearCompletionIntent());
+
+  it('offers an empty, labelled optional field in the setup stage and starts Sem matéria with one tap', async () => {
+    getActive.mockResolvedValue(null);
+    start.mockResolvedValue(snapshot);
+    const { view } = await renderStudySession();
+    await view.findByTestId('study-session-setup');
+
+    const field = view.getByLabelText('Matéria (opcional)');
+    expect(within(view.getByTestId('study-session-stage')).getByLabelText('Matéria (opcional)')).toBe(field);
+    expect(field.props.value ?? '').toBe('');
+    await fireEvent.press(view.getByRole('button', { name: 'Iniciar foco' }));
+    await waitFor(() => expect(start).toHaveBeenCalledWith(1500, expect.any(String), null));
+    view.unmount();
+  });
+
+  it('sends the typed Matéria, treating blank text as Sem matéria', async () => {
+    getActive.mockResolvedValue(null);
+    start.mockResolvedValue({ ...snapshot, subject: 'Cálculo II' });
+    const { view } = await renderStudySession();
+    await view.findByTestId('study-session-setup');
+
+    await fireEvent.changeText(view.getByLabelText('Matéria (opcional)'), '  Cálculo   II ');
+    await fireEvent.press(view.getByRole('button', { name: 'Iniciar foco' }));
+    await waitFor(() => expect(start).toHaveBeenCalledWith(1500, expect.any(String), 'Cálculo II'));
+    view.unmount();
+  });
+
+  it('treats a blank Matéria as Sem matéria', async () => {
+    getActive.mockResolvedValue(null);
+    start.mockResolvedValue(snapshot);
+    const { view } = await renderStudySession();
+    await view.findByTestId('study-session-setup');
+    await fireEvent.changeText(view.getByLabelText('Matéria (opcional)'), '   ');
+    await fireEvent.press(view.getByRole('button', { name: 'Iniciar foco' }));
+    await waitFor(() => expect(start).toHaveBeenCalledWith(1500, expect.any(String), null));
+    view.unmount();
+  });
+
+  it('warns before the start when the Matéria passes 80 characters and blocks the start', async () => {
+    getActive.mockResolvedValue(null);
+    start.mockResolvedValue(snapshot);
+    const { view } = await renderStudySession();
+    await view.findByTestId('study-session-setup');
+
+    await fireEvent.changeText(view.getByLabelText('Matéria (opcional)'), 'a'.repeat(80));
+    expect(view.queryByText(/máximo é 80/)).toBeNull();
+    await fireEvent.changeText(view.getByLabelText('Matéria (opcional)'), 'a'.repeat(81));
+    expect(view.getByText('A Matéria tem 81 caracteres; o máximo é 80.')).toBeTruthy();
+    expect(view.getByRole('button', { name: 'Iniciar foco' }).props.accessibilityState.disabled).toBe(true);
+    await fireEvent.press(view.getByRole('button', { name: 'Iniciar foco' }));
+    expect(start).not.toHaveBeenCalled();
+
+    await fireEvent.changeText(view.getByLabelText('Matéria (opcional)'), 'a'.repeat(80));
+    expect(view.queryByText(/máximo é 80/)).toBeNull();
+    await fireEvent.press(view.getByRole('button', { name: 'Iniciar foco' }));
+    await waitFor(() => expect(start).toHaveBeenCalledWith(1500, expect.any(String), 'a'.repeat(80)));
+    view.unmount();
+  });
+
+  it('refuses line breaks and control characters before the start', async () => {
+    getActive.mockResolvedValue(null);
+    const { view } = await renderStudySession();
+    await view.findByTestId('study-session-setup');
+
+    await fireEvent.changeText(view.getByLabelText('Matéria (opcional)'), 'Cálculo\nII');
+    expect(view.getByText('A Matéria não pode conter quebras de linha nem caracteres de controle.')).toBeTruthy();
+    await fireEvent.press(view.getByRole('button', { name: 'Iniciar foco' }));
+    expect(start).not.toHaveBeenCalled();
+    view.unmount();
+  });
+
+  it('retries with the same key but uses a new key when the Matéria changes', async () => {
+    getActive.mockResolvedValue(null);
+    start.mockRejectedValue(new Error('network'));
+    const { view } = await renderStudySession();
+    await view.findByTestId('study-session-setup');
+
+    await fireEvent.changeText(view.getByLabelText('Matéria (opcional)'), 'Física');
+    await fireEvent.press(view.getByRole('button', { name: 'Iniciar foco' }));
+    await waitFor(() => expect(start).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(view.getByRole('button', { name: 'Iniciar foco' }).props.accessibilityState.disabled).toBe(false));
+    await fireEvent.press(view.getByRole('button', { name: 'Iniciar foco' }));
+    await waitFor(() => expect(start).toHaveBeenCalledTimes(2));
+    expect(start.mock.calls[1]?.[1]).toBe(start.mock.calls[0]?.[1]);
+
+    await fireEvent.changeText(view.getByLabelText('Matéria (opcional)'), 'Química');
+    await waitFor(() => expect(view.getByRole('button', { name: 'Iniciar foco' }).props.accessibilityState.disabled).toBe(false));
+    await fireEvent.press(view.getByRole('button', { name: 'Iniciar foco' }));
+    await waitFor(() => expect(start).toHaveBeenCalledTimes(3));
+    expect(start.mock.calls[2]?.[1]).not.toBe(start.mock.calls[0]?.[1]);
+    expect(start.mock.calls[2]?.[2]).toBe('Química');
+    view.unmount();
+  });
+
+  it.each([
+    ['running', { state: 'running' as const }],
+    ['paused', { state: 'paused' as const, pausedAt: '2026-09-22T12:05:00.000Z', version: 2 }],
+  ])('restores the same Matéria as a read-only title when a %s session is found on mount', async (_state, overrides) => {
+    getActive.mockResolvedValue({ ...snapshot, subject: 'Cálculo II', ...overrides });
+    const { view } = await renderStudySession();
+    await view.findByTestId('study-session-active');
+    expect(view.getByTestId('study-session-subject')).toHaveTextContent('Cálculo II');
+    expect(view.queryByLabelText('Matéria (opcional)')).toBeNull();
+    view.unmount();
+  });
+
+  it('shows a discreet Sem matéria title when the session has no Matéria', async () => {
+    getActive.mockResolvedValue(snapshot);
+    const { view } = await renderStudySession();
+    await view.findByTestId('study-session-active');
+    expect(view.getByTestId('study-session-subject')).toHaveTextContent('Sem matéria');
+    view.unmount();
+  });
+});
+
+describe('Recent Matéria suggestions on the Forja', () => {
+  afterEach(() => clearCompletionIntent());
+
+  async function renderSetupWithSuggestions(subjects: string[]) {
+    getActive.mockResolvedValue(null);
+    getRecent.mockResolvedValue(subjects);
+    start.mockResolvedValue(snapshot);
+    const rendered = await renderStudySession();
+    await rendered.view.findByTestId('study-session-setup');
+    return rendered;
+  }
+
+  it('shows the recent Matérias as buttons and fills the field on tap without starting', async () => {
+    const { view } = await renderSetupWithSuggestions(['Física', 'Cálculo II']);
+
+    const physics = await view.findByRole('button', { name: 'Física' });
+    expect(view.getByRole('button', { name: 'Cálculo II' })).toBeTruthy();
+    expect(within(view.getByTestId('study-session-stage')).getByRole('button', { name: 'Física' })).toBe(physics);
+    expect(view.getByLabelText('Matéria (opcional)').props.value ?? '').toBe('');
+
+    await fireEvent.press(physics);
+
+    expect(view.getByLabelText('Matéria (opcional)').props.value).toBe('Física');
+    expect(start).not.toHaveBeenCalled();
+    view.unmount();
+  });
+
+  it('keeps the filled Matéria editable and starts with the edited text', async () => {
+    const { view } = await renderSetupWithSuggestions(['Cálculo']);
+
+    await fireEvent.press(await view.findByRole('button', { name: 'Cálculo' }));
+    await fireEvent.changeText(view.getByLabelText('Matéria (opcional)'), 'Cálculo II');
+    await fireEvent.press(view.getByRole('button', { name: 'Iniciar foco' }));
+
+    await waitFor(() => expect(start).toHaveBeenCalledWith(1500, expect.any(String), 'Cálculo II'));
+    view.unmount();
+  });
+
+  it('starts with a suggested Matéria after one tap on it and one on start', async () => {
+    const { view } = await renderSetupWithSuggestions(['Física']);
+
+    await fireEvent.press(await view.findByRole('button', { name: 'Física' }));
+    await fireEvent.press(view.getByRole('button', { name: 'Iniciar foco' }));
+
+    await waitFor(() => expect(start).toHaveBeenCalledWith(1500, expect.any(String), 'Física'));
+    view.unmount();
+  });
+
+  it('announces a suggestion as selected only while it matches the field text', async () => {
+    const { view } = await renderSetupWithSuggestions(['Física', 'Química']);
+    const isSelected = (name: string) => view.getByRole('button', { name }).props.accessibilityState.selected;
+    await view.findByRole('button', { name: 'Física' });
+
+    expect(isSelected('Física')).toBe(false);
+    expect(isSelected('Química')).toBe(false);
+
+    await fireEvent.press(view.getByRole('button', { name: 'Física' }));
+    expect(isSelected('Física')).toBe(true);
+    expect(isSelected('Química')).toBe(false);
+
+    await fireEvent.changeText(view.getByLabelText('Matéria (opcional)'), '  Física ');
+    expect(isSelected('Física')).toBe(true);
+
+    await fireEvent.changeText(view.getByLabelText('Matéria (opcional)'), 'Fisica');
+    expect(isSelected('Física')).toBe(false);
+
+    await fireEvent.changeText(view.getByLabelText('Matéria (opcional)'), 'Química');
+    expect(isSelected('Química')).toBe(true);
+    view.unmount();
+  });
+
+  it('does not show the previous suggestions as current once a session was started', async () => {
+    getActive.mockResolvedValue(null);
+    getRecent.mockResolvedValue(['Antiga']);
+    start.mockResolvedValue({ ...snapshot, subject: 'Nova' });
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
+    const renderTree = (showScreen: boolean) => (
+      <QueryClientProvider client={client}>{showScreen ? <StudySessionScreen /> : null}</QueryClientProvider>
+    );
+    const view = await render(renderTree(true));
+    await view.findByRole('button', { name: 'Antiga' });
+    await fireEvent.press(view.getByRole('button', { name: 'Iniciar foco' }));
+    await view.findByTestId('study-session-active');
+
+    await view.rerender(renderTree(false));
+    getRecent.mockReturnValue(new Promise(() => undefined));
+    await view.rerender(renderTree(true));
+    await view.findByTestId('study-session-setup');
+
+    expect(view.queryByRole('button', { name: 'Antiga' })).toBeNull();
+    view.unmount();
+  });
+
+  it('does not block the start while the suggestions are loading', async () => {
+    getActive.mockResolvedValue(null);
+    getRecent.mockReturnValue(new Promise(() => undefined));
+    start.mockResolvedValue(snapshot);
+    const { view } = await renderStudySession();
+    await view.findByTestId('study-session-setup');
+
+    expect(view.getByRole('button', { name: 'Iniciar foco' }).props.accessibilityState.disabled).toBe(false);
+    await fireEvent.press(view.getByRole('button', { name: 'Iniciar foco' }));
+
+    await waitFor(() => expect(start).toHaveBeenCalledWith(1500, expect.any(String), null));
+    view.unmount();
+  });
+
+  it('keeps the Forja working when the suggestions fail', async () => {
+    getActive.mockResolvedValue(null);
+    getRecent.mockRejectedValue(new Error('network'));
+    start.mockResolvedValue(snapshot);
+    const { view } = await renderStudySession();
+    await view.findByTestId('study-session-setup');
+    await waitFor(() => expect(getRecent).toHaveBeenCalled());
+
+    expect(view.queryByTestId('study-session-subject-suggestions')).toBeNull();
+    expect(view.queryByText(/erro|falha|não foi possível/i)).toBeNull();
+    await fireEvent.changeText(view.getByLabelText('Matéria (opcional)'), 'Física');
+    await fireEvent.press(view.getByRole('button', { name: 'Iniciar foco' }));
+
+    await waitFor(() => expect(start).toHaveBeenCalledWith(1500, expect.any(String), 'Física'));
+    view.unmount();
+  });
+
+  it('shows no suggestions area and no message when there are no recent Matérias', async () => {
+    const { view } = await renderSetupWithSuggestions([]);
+    await waitFor(() => expect(getRecent).toHaveBeenCalled());
+
+    expect(view.queryByTestId('study-session-subject-suggestions')).toBeNull();
+    expect(view.queryByText(/recentes/i)).toBeNull();
+    expect(view.getAllByRole('button').map((button) => button.props.accessibilityLabel))
+      .toEqual(['Iniciar foco', 'Configurar duração']);
+    view.unmount();
+  });
 });
 
 it('keeps the iPhone forge header and duration choices in the visible stage', async () => {

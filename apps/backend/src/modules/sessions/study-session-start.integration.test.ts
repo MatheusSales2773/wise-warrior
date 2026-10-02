@@ -1,4 +1,4 @@
-import { ConflictException } from '@nestjs/common';
+import { BadRequestException, ConflictException } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import { User } from '../users/entities/user.entity';
 import { UsersService } from '../users/users.service';
@@ -100,6 +100,82 @@ describe('canonical Study Session start against MySQL', () => {
         { plannedDurationSeconds: winner.plannedDurationSeconds === 900 ? 3000 : 900 },
         winner.plannedDurationSeconds === 900 ? 'request-a' : 'request-b',
       ),
+      'https://wise.app/errors/idempotency-key-reused',
+    );
+  });
+
+  it('stores the normalized Matéria, restores it and treats absence as Sem matéria', async () => {
+    const service = createService();
+    const started = await service.start(userId, 'device-a', { subject: '  ÁLGEBRA\u00a0 linear\u2003II  ' }, 'subject-a');
+    expect(started.subject).toBe('ÁLGEBRA linear II');
+    expect(await service.active(userId, 'device-a')).toMatchObject({ id: started.id, subject: 'ÁLGEBRA linear II' });
+    expect(await service.active(userId, 'device-b')).toMatchObject({ id: started.id, subject: 'ÁLGEBRA linear II' });
+    expect(await dataSource!.getRepository(StudySession).findOneByOrFail({ id: started.id }))
+      .toMatchObject({ subject: 'ÁLGEBRA linear II' });
+    expect(await dataSource!.query(
+      'SELECT subject FROM study_session_start_receipts WHERE user_id = ? AND idempotency_key = ?',
+      [userId, 'subject-a'],
+    )).toEqual([{ subject: 'ÁLGEBRA linear II' }]);
+
+    const transitions = new StudySessionTransitionService(
+      dataSource!, { now: () => new Date(started.startedAt.getTime() + 10_000) }, {} as never,
+    );
+    const paused = await transitions.pause({
+      userId, authSessionId: 'device-a', studySessionId: started.id, dto: { expectedVersion: 1 }, idempotencyKey: 'subject-pause',
+    });
+    expect(paused.subject).toBe('ÁLGEBRA linear II');
+    const stopped = await transitions.stop({
+      userId, authSessionId: 'device-a', studySessionId: started.id, dto: { expectedVersion: 2 }, idempotencyKey: 'subject-stop',
+    });
+    expect(stopped.subject).toBe('ÁLGEBRA linear II');
+
+    for (const [index, blank] of [undefined, null, '', '   ', ' \n\t '].entries()) {
+      const session = await service.start(userId, 'device-a', { subject: blank as never }, `blank-${index}`);
+      expect(session.subject).toBeNull();
+      expect(await dataSource!.getRepository(StudySession).findOneByOrFail({ id: session.id })).toMatchObject({ subject: null });
+      await dataSource!.query('DELETE FROM active_study_sessions WHERE user_id = ?', [userId]);
+      await dataSource!.getRepository(StudySession).update({ id: session.id }, { state: 'cancelled' });
+    }
+  });
+
+  it('rejects invalid Matéria without creating a session or a receipt', async () => {
+    const service = createService();
+    for (const invalid of ['a'.repeat(81), 'Cálculo\nII', 'Cálculo\tII', 'Cál\u0000culo', 42, ['Cálculo'], {}]) {
+      await expect(service.start(userId, 'device-a', { subject: invalid as never }, 'invalid-subject'))
+        .rejects.toBeInstanceOf(BadRequestException);
+    }
+    expect(await dataSource!.getRepository(StudySession).count()).toBe(0);
+    expect(await dataSource!.query('SELECT 1 FROM study_session_start_receipts')).toHaveLength(0);
+    expect(await dataSource!.query('SELECT 1 FROM study_session_command_keys')).toHaveLength(0);
+  });
+
+  it('includes the normalized Matéria in the start receipt comparison', async () => {
+    const service = createService();
+    const started = await service.start(userId, 'device-a', { plannedDurationSeconds: 900, subject: 'Cálculo II' }, 'subject-key');
+
+    const sameSubject = await service.start(userId, 'device-a', { plannedDurationSeconds: 900, subject: '  Cálculo   II ' }, 'subject-key');
+    expect(sameSubject).toEqual(started);
+    expect(sameSubject.subject).toBe('Cálculo II');
+    const decomposed = await service.start(userId, 'device-b', { plannedDurationSeconds: 900, subject: 'Ca\u0301lculo II' }, 'subject-key');
+    expect(decomposed).toEqual({ ...started, canControl: false });
+
+    for (const other of ['Cálculo III', 'cálculo ii', null, undefined, '  ']) {
+      await expectConflictType(
+        service.start(userId, 'device-a', { plannedDurationSeconds: 900, subject: other as never }, 'subject-key'),
+        'https://wise.app/errors/idempotency-key-reused',
+      );
+    }
+    expect(await dataSource!.getRepository(StudySession).count({ where: { userId } })).toBe(1);
+  });
+
+  it('replays receipts written before M6 as Sem matéria', async () => {
+    const service = createService();
+    const started = await service.start(userId, 'device-a', { plannedDurationSeconds: 900 }, 'legacy-receipt');
+    await dataSource!.query('UPDATE study_session_start_receipts SET subject = NULL WHERE user_id = ?', [userId]);
+    await expect(service.start(userId, 'device-a', { plannedDurationSeconds: 900 }, 'legacy-receipt')).resolves.toEqual(started);
+    await expect(service.start(userId, 'device-a', { plannedDurationSeconds: 900, subject: '  ' }, 'legacy-receipt')).resolves.toEqual(started);
+    await expectConflictType(
+      service.start(userId, 'device-a', { plannedDurationSeconds: 900, subject: 'Física' }, 'legacy-receipt'),
       'https://wise.app/errors/idempotency-key-reused',
     );
   });

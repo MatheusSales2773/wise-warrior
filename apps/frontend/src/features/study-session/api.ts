@@ -35,10 +35,20 @@ export async function getActiveStudySession(signal?: AbortSignal): Promise<Study
   return response.status === 204 ? null : { ...response.data, receivedAtMs: Date.now() };
 }
 
-export async function startStudySession(plannedDurationSeconds: PlannedDurationSeconds, idempotencyKey: string): Promise<StudySessionSnapshot> {
+export async function getRecentStudySessionSubjects(signal?: AbortSignal): Promise<string[]> {
+  const response = await getAuthenticatedHttpClient().get<{ subjects: string[] }>('/sessions/subjects/recent', { signal });
+  return response.data.subjects;
+}
+
+/** `subject` is the normalized Matéria; `null` (Sem matéria) is sent as absence. */
+export async function startStudySession(
+  plannedDurationSeconds: PlannedDurationSeconds,
+  idempotencyKey: string,
+  subject: string | null = null,
+): Promise<StudySessionSnapshot> {
   const response = await getAuthenticatedHttpClient().post<StudySessionSnapshot>(
     '/sessions',
-    { plannedDurationSeconds },
+    subject === null ? { plannedDurationSeconds } : { plannedDurationSeconds, subject },
     { headers: { 'Idempotency-Key': idempotencyKey } },
   );
   return { ...response.data, receivedAtMs: Date.now() };

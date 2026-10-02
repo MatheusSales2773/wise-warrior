@@ -77,7 +77,15 @@ export function Screen({
       contentContainerStyle={[styles.scrollContent, contentContainerStyle]}
       contentInsetAdjustmentBehavior="never"
       keyboardShouldPersistTaps="handled"
-      refreshControl={refreshing !== undefined && onRefresh ? <RefreshControl refreshing={refreshing} onRefresh={onRefresh} /> : undefined}
+      refreshControl={refreshing !== undefined && onRefresh ? (
+        <RefreshControl
+          colors={[theme.color.accentPrimary]}
+          onRefresh={onRefresh}
+          progressBackgroundColor={theme.color.surfaceCard}
+          refreshing={refreshing}
+          tintColor={theme.color.accentPrimary}
+        />
+      ) : undefined}
       style={styles.flex}
       testID={testID ? `${testID}-scroll` : 'screen-scroll'}
     >

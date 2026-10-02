@@ -15,6 +15,7 @@ import { dashboardKeys } from '@/features/dashboard/queries';
 jest.mock('@/features/study-session/api', () => ({
   STUDY_SESSION_PRESETS: [900, 1500, 3000],
   getActiveStudySession: jest.fn(),
+  getRecentStudySessionSubjects: jest.fn().mockResolvedValue([]),
   pauseStudySession: jest.fn(),
   resumeStudySession: jest.fn(),
   stopStudySession: jest.fn(),
@@ -356,4 +357,22 @@ it('anchors the resumed timer to the latest snapshot after a long pause', async 
   } finally {
     Object.defineProperty(Platform, 'OS', { configurable: true, value: originalPlatform });
   }
+});
+
+it.each([
+  ['shows the confirmed Matéria in the result', 'Cálculo II', 'Cálculo II'],
+  ['shows a discreet Sem matéria in the result', null, 'Sem matéria'],
+])('%s', async (_name, subject, shown) => {
+  const cancelled: StudySessionSnapshot = {
+    ...snapshot, subject, state: 'cancelled', endedAt: '2026-09-22T12:04:59.999Z',
+    durationValidSeconds: 299, remainingSeconds: 0, terminalReason: 'manual-stop', version: 2,
+  };
+  getActive.mockResolvedValue({ ...snapshot, subject });
+  stop.mockResolvedValue(cancelled);
+  const { view } = await renderStudySession();
+
+  await fireEvent.press(await view.findByRole('button', { name: 'Cancelar sessão' }));
+  await view.findByTestId('study-session-result');
+  expect(view.getByTestId('study-session-result-subject')).toHaveTextContent(shown);
+  view.unmount();
 });

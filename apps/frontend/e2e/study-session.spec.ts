@@ -30,7 +30,7 @@ async function backdateStudySessionForE2e(studySessionId: string): Promise<void>
 }
 
 test.describe('Forja web', () => {
-  test('pausa, retoma, encerra com XP e atualiza o Dashboard com a resposta do servidor', async ({ page }) => {
+  test('inicia com Matéria, pausa, retoma, encerra com XP e atualiza o Dashboard com a resposta do servidor', async ({ page }) => {
     await registerThroughUi(page);
     await page.getByRole('link', { name: 'Forja' }).click();
     await expect(page.getByTestId('study-session-setup')).toBeVisible();
@@ -41,6 +41,8 @@ test.describe('Forja web', () => {
     await expect(page.getByRole('radio', { name: '15 minutos' })).toBeChecked();
     await page.getByRole('button', { name: 'Fechar configurações' }).click();
     await expect(page.getByRole('radio')).toHaveCount(0);
+    await expect(page.getByLabel('Matéria (opcional)')).toHaveValue('');
+    await page.getByLabel('Matéria (opcional)').fill('  Cálculo   II ');
 
     const apiPath = new URL(apiUrl).pathname.replace(/\/+$/, '');
     const startResponsePromise = page.waitForResponse((response) =>
@@ -51,12 +53,14 @@ test.describe('Forja web', () => {
     await page.getByRole('button', { name: 'Iniciar foco' }).click();
     const startResponse = await startResponsePromise;
     expect(startResponse.status()).toBe(201);
-    const started = await startResponse.json() as { id: string; plannedDurationSeconds: number };
+    const started = await startResponse.json() as { id: string; plannedDurationSeconds: number; subject: string | null };
     expect(started.plannedDurationSeconds).toBe(900);
+    expect(started.subject).toBe('Cálculo II');
     await backdateStudySessionForE2e(started.id);
 
     await page.reload();
     await expect(page.getByRole('button', { name: 'Pausar sessão' })).toBeVisible();
+    await expect(page.getByTestId('study-session-subject')).toHaveText('Cálculo II');
     const pauseResponsePromise = page.waitForResponse((response) =>
       new URL(response.url()).origin === new URL(apiUrl).origin
       && new URL(response.url()).pathname.endsWith('/pause')
@@ -100,31 +104,33 @@ test.describe('Forja web', () => {
     expect(result).toEqual(expect.objectContaining({
       id: started.id,
       state: 'stopped_early',
-      subject: null,
+      subject: 'Cálculo II',
       remainingSeconds: 0,
     }));
     expect(result.durationValidSeconds).toBeGreaterThanOrEqual(300);
     expect(result.xpAwarded).toBeGreaterThan(0);
 
     await expect(page.getByTestId('study-session-result')).toContainText('Sessão encerrada antecipadamente');
+    await expect(page.getByTestId('study-session-result-subject')).toHaveText('Cálculo II');
     await expect(page.getByTestId('study-session-result')).toContainText(`Foco válido: ${String(Math.floor(result.durationValidSeconds / 60)).padStart(2, '0')}:${String(result.durationValidSeconds % 60).padStart(2, '0')}`);
     await expect(page.getByTestId('study-session-result')).toContainText(`XP confirmado: ${result.xpAwarded}`);
     await page.getByRole('link', { name: 'Acampamento' }).click();
     await expect(page.getByTestId('dashboard-progression')).toContainText(`${result.xpAwarded} XP total`);
     const dashboardActivityItem = page.getByTestId('dashboard-activity').locator(
-      '[aria-label^="Sessão: Encerrada antecipadamente · solo ·"]',
+      '[aria-label^="Sessão: Cálculo II · Encerrada antecipadamente · solo ·"]',
     );
     await expect(dashboardActivityItem).toHaveCount(1);
     await expect(dashboardActivityItem).toBeVisible();
     const expectedRecentLabel = await page.evaluate(({ endedAt, durationMinutes, xpAwarded }) => {
       const date = new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short', timeStyle: 'short' }).format(new Date(endedAt));
-      return `Sessão: Encerrada antecipadamente · solo · ${date} · ${durationMinutes} min · ${xpAwarded} XP`;
+      return `Sessão: Cálculo II · Encerrada antecipadamente · solo · ${date} · ${durationMinutes} min · ${xpAwarded} XP`;
     }, {
       endedAt: result.endedAt,
       durationMinutes: Math.floor(result.durationValidSeconds / 60),
       xpAwarded: result.xpAwarded,
     });
     await expect(dashboardActivityItem).toHaveAttribute('aria-label', expectedRecentLabel);
+    await expect(page.getByTestId('dashboard-activity')).toContainText('Cálculo II');
   });
 
   test('confirma cancelamento, preserva o histórico e atualiza o Dashboard sem XP', async ({ page }) => {
@@ -162,18 +168,19 @@ test.describe('Forja web', () => {
     expect(result.durationValidSeconds).toBeLessThan(300);
 
     await expect(page.getByTestId('study-session-result')).toContainText('Sessão cancelada');
+    await expect(page.getByTestId('study-session-result-subject')).toHaveText('Sem matéria');
     await expect(page.getByTestId('study-session-result')).toContainText('XP confirmado: 0');
     await expect(page.getByRole('button', { name: 'Nova sessão' })).toBeVisible();
     await page.getByRole('link', { name: 'Acampamento' }).click();
     await expect(page.getByTestId('dashboard-progression')).toContainText('0 XP total');
     const cancelledActivityItem = page.getByTestId('dashboard-activity').locator(
-      '[aria-label^="Sessão: Cancelada · solo ·"]',
+      '[aria-label^="Sessão: Sem matéria · Cancelada · solo ·"]',
     );
     await expect(cancelledActivityItem).toHaveCount(1);
     await expect(cancelledActivityItem).toBeVisible();
     const expectedCancelledLabel = await page.evaluate(({ endedAt, duration, xpAwarded }) => {
       const date = new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short', timeStyle: 'short' }).format(new Date(endedAt));
-      return `Sessão: Cancelada · solo · ${date} · ${duration} · ${xpAwarded} XP`;
+      return `Sessão: Sem matéria · Cancelada · solo · ${date} · ${duration} · ${xpAwarded} XP`;
     }, {
       endedAt: result.endedAt,
       duration: result.durationValidSeconds < 60
