@@ -160,4 +160,65 @@ describe('Guilds HTTP contract against MySQL', () => {
     expect((await call('GET', '/guilds?limit=21')).status).toBe(400);
     expect((await call('GET', '/guilds?cursor=bad')).status).toBe(400);
   });
+
+  it('lists the members to the guild only, oldest first, with a stable cursor', async () => {
+    const { id } = await (await call('POST', '/guilds', ana, { name: 'Ordem do Foco' })).json() as { id: string };
+    await call('POST', `/guilds/${id}/members`, bruno);
+    await call('POST', `/guilds/${id}/members`, carla);
+
+    expect((await call('GET', `/guilds/${id}/members`, null)).status).toBe(401);
+    const outsider = '00000000-0000-4000-8000-000000000a09';
+    await dataSource!.getRepository(User).insert({ id: outsider, email: 'fora@example.com', passwordHash: 'hash', displayName: 'Fora', planTier: 'free' });
+    expect((await call('GET', `/guilds/${id}/members`, outsider)).status).toBe(403);
+    expect((await call('GET', '/guilds/00000000-0000-4000-8000-0000000000ff/members', ana)).status).toBe(404);
+
+    const first = await (await call('GET', `/guilds/${id}/members?limit=2`, bruno)).json() as {
+      items: Array<{ userId: string; displayName: string; role: string; level: number }>; nextCursor: string | null;
+    };
+    expect(first.items.map((member) => [member.displayName, member.role, member.level])).toEqual([['Ana', 'leader', 1], ['Bruno', 'member', 1]]);
+    expect(first.nextCursor).not.toBeNull();
+
+    const second = await (await call('GET', `/guilds/${id}/members?limit=2&cursor=${first.nextCursor}`, bruno)).json() as {
+      items: Array<{ displayName: string }>; nextCursor: string | null;
+    };
+    expect(second.items.map((member) => member.displayName)).toEqual(['Carla']);
+    expect(second.nextCursor).toBeNull();
+    expect((await call('GET', `/guilds/${id}/members?limit=51`, ana)).status).toBe(400);
+  });
+
+  it('shows the leader in the guild detail', async () => {
+    const { id } = await (await call('POST', '/guilds', ana, { name: 'Ordem do Foco' })).json() as { id: string };
+
+    const detail = await (await call('GET', `/guilds/${id}`, bruno)).json();
+    expect(detail).toMatchObject({ id, memberCount: 1, leader: { userId: ana, displayName: 'Ana' } });
+  });
+
+  it('lets a member leave and passes leadership to the oldest remaining member', async () => {
+    const { id } = await (await call('POST', '/guilds', ana, { name: 'Ordem do Foco' })).json() as { id: string };
+    await call('POST', `/guilds/${id}/members`, bruno);
+    await call('POST', `/guilds/${id}/members`, carla);
+
+    expect((await call('DELETE', `/guilds/${id}/members/me`, carla)).status).toBe(204);
+    expect((await call('GET', '/guilds/me', carla)).status).toBe(404);
+
+    expect((await call('DELETE', `/guilds/${id}/members/me`, ana)).status).toBe(204);
+    const mine = await (await call('GET', '/guilds/me', bruno)).json();
+    expect(mine).toMatchObject({ role: 'leader', guild: { id, memberCount: 1, leader: { userId: bruno } } });
+  });
+
+  it('ends the guild when its last member leaves and lets the user start over', async () => {
+    const { id } = await (await call('POST', '/guilds', ana, { name: 'Ordem do Foco' })).json() as { id: string };
+
+    expect((await call('DELETE', `/guilds/${id}/members/me`, ana)).status).toBe(204);
+    expect((await call('GET', `/guilds/${id}`, ana)).status).toBe(404);
+    expect(await dataSource!.getRepository(Guild).count()).toBe(0);
+    expect((await call('POST', '/guilds', ana, { name: 'Ordem do Foco' })).status).toBe(201);
+  });
+
+  it('rejects leaving a guild the user is not in', async () => {
+    const { id } = await (await call('POST', '/guilds', ana, { name: 'Ordem do Foco' })).json() as { id: string };
+
+    expect((await call('DELETE', `/guilds/${id}/members/me`, bruno)).status).toBe(404);
+    expect(await dataSource!.getRepository(GuildMembership).count({ where: { guildId: id } })).toBe(1);
+  });
 });

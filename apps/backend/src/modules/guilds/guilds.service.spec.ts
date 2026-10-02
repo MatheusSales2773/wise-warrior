@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { Guild } from './entities/guild.entity';
@@ -8,10 +8,15 @@ import { GuildsService } from './guilds.service';
 const manager = {
   create: jest.fn((_entity: unknown, data: object) => ({ ...data })),
   save: jest.fn(),
+  find: jest.fn(),
+  delete: jest.fn(),
+  update: jest.fn(),
   transaction: jest.fn(),
 };
 const queryBuilder = {
   leftJoin: jest.fn().mockReturnThis(),
+  innerJoin: jest.fn().mockReturnThis(),
+  where: jest.fn().mockReturnThis(),
   select: jest.fn().mockReturnThis(),
   addSelect: jest.fn().mockReturnThis(),
   groupBy: jest.fn().mockReturnThis(),
@@ -32,6 +37,7 @@ const mockMemberships = {
   count: jest.fn(),
   create: jest.fn((data: object) => ({ ...data })),
   save: jest.fn(),
+  createQueryBuilder: jest.fn(() => queryBuilder),
 };
 
 const duplicateEntry = Object.assign(new Error('dup'), { code: 'ER_DUP_ENTRY' });
@@ -103,12 +109,14 @@ describe('GuildsService', () => {
 
   describe('findMine', () => {
     it('returns the guild and the role of the caller', async () => {
-      mockMemberships.findOne.mockResolvedValue({ guildId: 'guild-1', userId: 'user-1', role: 'leader' });
+      mockMemberships.findOne
+        .mockResolvedValueOnce({ guildId: 'guild-1', userId: 'user-1', role: 'leader' })
+        .mockResolvedValueOnce({ guildId: 'guild-1', userId: 'user-1', role: 'leader', user: { displayName: 'Ana' } });
       mockGuilds.findOne.mockResolvedValue({ id: 'guild-1', name: 'Ordem', level: 2 });
       mockMemberships.count.mockResolvedValue(3);
 
       await expect(service.findMine('user-1')).resolves.toEqual({
-        guild: { id: 'guild-1', name: 'Ordem', level: 2, memberCount: 3 },
+        guild: { id: 'guild-1', name: 'Ordem', level: 2, memberCount: 3, leader: { userId: 'user-1', displayName: 'Ana' } },
         role: 'leader',
       });
     });
@@ -195,6 +203,89 @@ describe('GuildsService', () => {
       mockMemberships.findOne.mockResolvedValueOnce(null).mockResolvedValueOnce({ guildId: 'guild-2' });
       mockMemberships.save.mockRejectedValueOnce(duplicateEntry);
       await expect(service.addMember('guild-1', 'user-2')).rejects.toBeInstanceOf(ConflictException);
+    });
+  });
+
+  describe('listMembers', () => {
+    const row = (id: string, userId: string, role: string, joinedAt: string) => ({
+      membershipId: id, userId, displayName: userId.toUpperCase(), level: '2', title: null, role, joinedAt: new Date(joinedAt),
+    });
+
+    it('is a 404 for an unknown guild and a 403 for someone outside it', async () => {
+      mockGuilds.findOne.mockResolvedValueOnce(null);
+      await expect(service.listMembers('missing', 'user-1', {})).rejects.toBeInstanceOf(NotFoundException);
+
+      mockGuilds.findOne.mockResolvedValue({ id: 'guild-1' });
+      mockMemberships.findOne.mockResolvedValue(null);
+      await expect(service.listMembers('guild-1', 'outsider', {})).rejects.toBeInstanceOf(ForbiddenException);
+    });
+
+    it('pages members oldest first with a cursor and defaults a missing character to level 1', async () => {
+      mockGuilds.findOne.mockResolvedValue({ id: 'guild-1' });
+      mockMemberships.findOne.mockResolvedValue({ guildId: 'guild-1', userId: 'user-1' });
+      queryBuilder.getRawMany.mockResolvedValue([
+        row('m1', 'a', 'leader', '2026-09-01T10:00:00Z'),
+        { ...row('m2', 'b', 'member', '2026-09-02T10:00:00Z'), level: null },
+        row('m3', 'c', 'member', '2026-09-03T10:00:00Z'),
+      ]);
+
+      const page = await service.listMembers('guild-1', 'user-1', { limit: 2 });
+
+      expect(queryBuilder.limit).toHaveBeenCalledWith(3);
+      expect(page.items.map((member) => [member.userId, member.role, member.level])).toEqual([['a', 'leader', 2], ['b', 'member', 1]]);
+      expect(page.nextCursor).not.toBeNull();
+
+      queryBuilder.getRawMany.mockResolvedValue([row('m3', 'c', 'member', '2026-09-03T10:00:00Z')]);
+      const next = await service.listMembers('guild-1', 'user-1', { limit: 2, cursor: page.nextCursor! });
+      expect(next.nextCursor).toBeNull();
+      expect(queryBuilder.andWhere).toHaveBeenCalledWith(
+        expect.stringContaining('membership.joinedAt >'),
+        { afterJoinedAt: new Date('2026-09-02T10:00:00Z'), afterId: 'm2' },
+      );
+    });
+
+    it('rejects a malformed cursor', async () => {
+      mockGuilds.findOne.mockResolvedValue({ id: 'guild-1' });
+      mockMemberships.findOne.mockResolvedValue({ guildId: 'guild-1', userId: 'user-1' });
+      await expect(service.listMembers('guild-1', 'user-1', { cursor: 'nope' })).rejects.toBeInstanceOf(BadRequestException);
+    });
+  });
+
+  describe('leave', () => {
+    const member = (id: string, userId: string, role: 'leader' | 'member') => ({ id, userId, role, guildId: 'guild-1' });
+
+    it('removes a regular member and leaves the leadership alone', async () => {
+      manager.find.mockResolvedValue([member('m1', 'ana', 'leader'), member('m2', 'bruno', 'member')]);
+
+      await service.leave('guild-1', 'bruno');
+
+      expect(manager.delete).toHaveBeenCalledWith(GuildMembership, { id: 'm2' });
+      expect(manager.update).not.toHaveBeenCalled();
+    });
+
+    it('promotes the oldest remaining member when the leader leaves', async () => {
+      manager.find.mockResolvedValue([member('m1', 'ana', 'leader'), member('m2', 'bruno', 'member'), member('m3', 'carla', 'member')]);
+
+      await service.leave('guild-1', 'ana');
+
+      expect(manager.delete).toHaveBeenCalledWith(GuildMembership, { id: 'm1' });
+      expect(manager.update).toHaveBeenCalledWith(GuildMembership, { id: 'm2' }, { role: 'leader' });
+    });
+
+    it('ends the guild when its last member leaves', async () => {
+      manager.find.mockResolvedValue([member('m1', 'ana', 'leader')]);
+
+      await service.leave('guild-1', 'ana');
+
+      expect(manager.delete).toHaveBeenCalledWith(Guild, { id: 'guild-1' });
+      expect(manager.delete).not.toHaveBeenCalledWith(GuildMembership, expect.anything());
+    });
+
+    it('is a 404 for someone who is not in the guild', async () => {
+      manager.find.mockResolvedValue([member('m1', 'ana', 'leader')]);
+
+      await expect(service.leave('guild-1', 'intruder')).rejects.toBeInstanceOf(NotFoundException);
+      expect(manager.delete).not.toHaveBeenCalled();
     });
   });
 });

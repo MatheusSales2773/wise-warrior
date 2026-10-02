@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   HttpCode,
   HttpStatus,
@@ -14,6 +15,7 @@ import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import type { JwtPayload } from '../auth/strategies/jwt.strategy';
 import { GuildsService } from './guilds.service';
 import { CreateGuildDto } from './dto/create-guild.dto';
+import { ListGuildMembersQueryDto } from './dto/list-guild-members-query.dto';
 import { ListGuildsQueryDto } from './dto/list-guilds-query.dto';
 
 @Controller('guilds')
@@ -41,6 +43,24 @@ export class GuildsController {
   @Get(':id')
   findOne(@Param('id') id: string) {
     return this.guilds.findById(id);
+  }
+
+  @Get(':id/members')
+  listMembers(
+    @CurrentUser() user: JwtPayload,
+    @Param('id') id: string,
+    @Query() query: ListGuildMembersQueryDto,
+  ) {
+    return this.guilds.listMembers(id, user.sub, query);
+  }
+
+  @Delete(':id/members/me')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async leave(
+    @CurrentUser() user: JwtPayload,
+    @Param('id') id: string,
+  ): Promise<void> {
+    await this.guilds.leave(id, user.sub);
   }
 
   @Post(':id/members')
