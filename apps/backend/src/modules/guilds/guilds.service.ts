@@ -76,16 +76,25 @@ function decodeCursor(cursor: string): { name: string; id: string } {
   throw new BadRequestException('Cursor inválido');
 }
 
-function encodeMemberCursor(joinedAt: Date, id: string): string {
-  return Buffer.from(JSON.stringify([new Date(joinedAt).toISOString(), id]), 'utf8').toString('base64url');
+/**
+ * `joinedAt` travels as the exact text MySQL produced (microseconds included): a round trip through a JavaScript
+ * Date keeps only milliseconds, so the cursor would sort just before the row it points at and repeat that row.
+ */
+const MYSQL_DATETIME_TEXT = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(\.\d{1,6})?$/;
+
+function encodeMemberCursor(joinedAtText: string, id: string): string {
+  return Buffer.from(JSON.stringify([joinedAtText, id]), 'utf8').toString('base64url');
 }
 
-function decodeMemberCursor(cursor: string): { joinedAt: Date; id: string } {
+function decodeMemberCursor(cursor: string): { joinedAt: string; id: string } {
   try {
     const parsed: unknown = JSON.parse(Buffer.from(cursor, 'base64url').toString('utf8'));
-    if (Array.isArray(parsed) && typeof parsed[0] === 'string' && typeof parsed[1] === 'string') {
-      const joinedAt = new Date(parsed[0]);
-      if (!Number.isNaN(joinedAt.getTime())) return { joinedAt, id: parsed[1] };
+    if (
+      Array.isArray(parsed)
+      && typeof parsed[0] === 'string' && MYSQL_DATETIME_TEXT.test(parsed[0])
+      && typeof parsed[1] === 'string'
+    ) {
+      return { joinedAt: parsed[0], id: parsed[1] };
     }
   } catch {
     // Falls through to the validation error below.
@@ -176,6 +185,7 @@ export class GuildsService {
       .addSelect('character.title', 'title')
       .addSelect('membership.role', 'role')
       .addSelect('membership.joinedAt', 'joinedAt')
+      .addSelect("DATE_FORMAT(membership.joinedAt, '%Y-%m-%d %H:%i:%s.%f')", 'joinedAtText')
       .where('membership.guildId = :guildId', { guildId })
       .orderBy('membership.joinedAt', 'ASC')
       .addOrderBy('membership.id', 'ASC')
@@ -197,6 +207,7 @@ export class GuildsService {
       title: string | null;
       role: GuildRole;
       joinedAt: Date;
+      joinedAtText: string;
     }>();
     const page = rows.slice(0, limit);
     const last = page[page.length - 1];
@@ -209,7 +220,7 @@ export class GuildsService {
         role: row.role,
         joinedAt: row.joinedAt,
       })),
-      nextCursor: rows.length > limit && last ? encodeMemberCursor(last.joinedAt, last.membershipId) : null,
+      nextCursor: rows.length > limit && last ? encodeMemberCursor(last.joinedAtText, last.membershipId) : null,
     };
   }
 

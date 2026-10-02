@@ -208,7 +208,8 @@ describe('GuildsService', () => {
 
   describe('listMembers', () => {
     const row = (id: string, userId: string, role: string, joinedAt: string) => ({
-      membershipId: id, userId, displayName: userId.toUpperCase(), level: '2', title: null, role, joinedAt: new Date(joinedAt),
+      membershipId: id, userId, displayName: userId.toUpperCase(), level: '2', title: null, role,
+      joinedAt: new Date(joinedAt), joinedAtText: joinedAt.replace('T', ' ').replace('Z', '.123456'),
     });
 
     it('is a 404 for an unknown guild and a 403 for someone outside it', async () => {
@@ -240,7 +241,7 @@ describe('GuildsService', () => {
       expect(next.nextCursor).toBeNull();
       expect(queryBuilder.andWhere).toHaveBeenCalledWith(
         expect.stringContaining('membership.joinedAt >'),
-        { afterJoinedAt: new Date('2026-09-02T10:00:00Z'), afterId: 'm2' },
+        { afterJoinedAt: '2026-09-02 10:00:00.123456', afterId: 'm2' },
       );
     });
 
