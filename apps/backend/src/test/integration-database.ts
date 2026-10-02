@@ -10,6 +10,7 @@ import { AddStudySessionPauseResume1788458880000 } from '../migrations/178845888
 import { UnifyStudySessionIdempotencyKeys1788459000000 } from '../migrations/1788459000000-unify-study-session-idempotency-keys';
 import { AddStudySessionEndedAtPrecision1788459060000 } from '../migrations/1788459060000-add-study-session-ended-at-precision';
 import { AddStudySessionStartReceiptSubject1788459120000 } from '../migrations/1788459120000-add-study-session-start-receipt-subject';
+import { EnforceSingleGuildPerUser1788459180000 } from '../migrations/1788459180000-enforce-single-guild-per-user';
 
 export const APPLICATION_MIGRATIONS: NonNullable<DataSourceOptions['migrations']> = [
   CreateWiseSchema1788458400000,
@@ -20,6 +21,7 @@ export const APPLICATION_MIGRATIONS: NonNullable<DataSourceOptions['migrations']
   UnifyStudySessionIdempotencyKeys1788459000000,
   AddStudySessionEndedAtPrecision1788459060000,
   AddStudySessionStartReceiptSubject1788459120000,
+  EnforceSingleGuildPerUser1788459180000,
 ];
 
 export interface IntegrationDatabase {

@@ -31,7 +31,7 @@ export class GuildMembership {
   user: User;
 
   @Column({ name: 'user_id', type: 'varchar', length: '36' })
-  @Index('IDX_guild_memberships_user_id')
+  @Index('UQ_guild_memberships_user_id', { unique: true })
   userId: string;
 
   @Column({ type: 'varchar', default: 'member' })
