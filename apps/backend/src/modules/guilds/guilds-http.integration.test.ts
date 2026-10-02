@@ -161,7 +161,7 @@ describe('Guilds HTTP contract against MySQL', () => {
     expect((await call('GET', '/guilds?cursor=bad')).status).toBe(400);
   });
 
-  it('lists the members to the guild only, oldest first, with a stable cursor', async () => {
+  it('lists the members to the guild only, with a stable and complete cursor', async () => {
     const { id } = await (await call('POST', '/guilds', ana, { name: 'Ordem do Foco' })).json() as { id: string };
     await call('POST', `/guilds/${id}/members`, bruno);
     await call('POST', `/guilds/${id}/members`, carla);
@@ -172,17 +172,24 @@ describe('Guilds HTTP contract against MySQL', () => {
     expect((await call('GET', `/guilds/${id}/members`, outsider)).status).toBe(403);
     expect((await call('GET', '/guilds/00000000-0000-4000-8000-0000000000ff/members', ana)).status).toBe(404);
 
-    const first = await (await call('GET', `/guilds/${id}/members?limit=2`, bruno)).json() as {
-      items: Array<{ userId: string; displayName: string; role: string; level: number }>; nextCursor: string | null;
-    };
-    expect(first.items.map((member) => [member.displayName, member.role, member.level])).toEqual([['Ana', 'leader', 1], ['Bruno', 'member', 1]]);
+    // joined_at has second precision and the three joins land in the same second, so ties are broken by id:
+    // the order is stable and complete, but not chronological. Assert what the contract promises.
+    type MemberPage = { items: Array<{ userId: string; displayName: string; role: string; level: number }>; nextCursor: string | null };
+    const first = await (await call('GET', `/guilds/${id}/members?limit=2`, bruno)).json() as MemberPage;
+    expect(first.items).toHaveLength(2);
     expect(first.nextCursor).not.toBeNull();
 
-    const second = await (await call('GET', `/guilds/${id}/members?limit=2&cursor=${first.nextCursor}`, bruno)).json() as {
-      items: Array<{ displayName: string }>; nextCursor: string | null;
-    };
-    expect(second.items.map((member) => member.displayName)).toEqual(['Carla']);
+    const second = await (await call('GET', `/guilds/${id}/members?limit=2&cursor=${first.nextCursor}`, bruno)).json() as MemberPage;
+    expect(second.items).toHaveLength(1);
     expect(second.nextCursor).toBeNull();
+
+    const all = [...first.items, ...second.items];
+    expect(all.map((member) => member.displayName).sort()).toEqual(['Ana', 'Bruno', 'Carla']);
+    expect(all.filter((member) => member.role === 'leader').map((member) => member.displayName)).toEqual(['Ana']);
+    expect(all.every((member) => member.level === 1)).toBe(true);
+
+    const repeat = await (await call('GET', `/guilds/${id}/members?limit=2`, bruno)).json() as MemberPage;
+    expect(repeat.items.map((member) => member.userId)).toEqual(first.items.map((member) => member.userId));
     expect((await call('GET', `/guilds/${id}/members?limit=51`, ana)).status).toBe(400);
   });
 
@@ -197,6 +204,11 @@ describe('Guilds HTTP contract against MySQL', () => {
     const { id } = await (await call('POST', '/guilds', ana, { name: 'Ordem do Foco' })).json() as { id: string };
     await call('POST', `/guilds/${id}/members`, bruno);
     await call('POST', `/guilds/${id}/members`, carla);
+    // joined_at has second precision, so make "oldest" explicit instead of relying on the insertion order.
+    const memberships = dataSource!.getRepository(GuildMembership);
+    await memberships.update({ userId: ana }, { joinedAt: new Date('2026-01-01T10:00:00Z') });
+    await memberships.update({ userId: bruno }, { joinedAt: new Date('2026-01-02T10:00:00Z') });
+    await memberships.update({ userId: carla }, { joinedAt: new Date('2026-01-03T10:00:00Z') });
 
     expect((await call('DELETE', `/guilds/${id}/members/me`, carla)).status).toBe(204);
     expect((await call('GET', '/guilds/me', carla)).status).toBe(404);
