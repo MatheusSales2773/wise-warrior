@@ -586,8 +586,28 @@ paths:
                     instance: /api/v1/sessions/{id}/complete
 
   /guilds:
+    get:
+      summary: Descobre guildas (busca por nome, paginação por cursor)
+      description: >
+        Ordenação estável por nome e id. `nextCursor` é opaco: reenvie-o em
+        `cursor` para a próxima página; `null` indica a última.
+      operationId: listGuilds
+      tags: [Guilds]
+      parameters:
+        - { name: search, in: query, required: false, schema: { type: string, maxLength: 60 } }
+        - { name: cursor, in: query, required: false, schema: { type: string, maxLength: 200 } }
+        - { name: limit, in: query, required: false, schema: { type: integer, minimum: 1, maximum: 20, default: 20 } }
+      responses:
+        "200":
+          description: Página de guildas
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/GuildPage" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
     post:
       summary: Cria uma guilda (o criador se torna líder)
+      description: Um usuário participa de no máximo uma guilda; quem já participa de uma recebe 409.
       operationId: createGuild
       tags: [Guilds]
       requestBody:
@@ -602,6 +622,20 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/Guild" }
         "409": { $ref: "#/components/responses/Conflict" }
+
+  /guilds/me:
+    get:
+      summary: Guilda do usuário autenticado e o papel dele nela
+      operationId: getMyGuild
+      tags: [Guilds]
+      responses:
+        "200":
+          description: Guilda do usuário
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MyGuild" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
 
   /guilds/{id}:
     get:
@@ -621,6 +655,9 @@ paths:
   /guilds/{id}/members:
     post:
       summary: Entra na guilda
+      description: >
+        Idempotente para a guilda em que o usuário já está. Se ele participa de
+        outra guilda, responde 409.
       operationId: joinGuild
       tags: [Guilds]
       parameters:
@@ -628,6 +665,7 @@ paths:
       responses:
         "204": { description: Membro adicionado }
         "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
 
   /raids/{id}:
     get:
@@ -979,6 +1017,22 @@ components:
         name: { type: string }
         level: { type: integer }
         memberCount: { type: integer }
+
+    MyGuild:
+      type: object
+      required: [guild, role]
+      properties:
+        guild: { $ref: "#/components/schemas/GuildDetail" }
+        role: { type: string, enum: [leader, member] }
+
+    GuildPage:
+      type: object
+      required: [items, nextCursor]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/GuildDetail" }
+        nextCursor: { type: [string, "null"] }
 
     RaidDetail:
       type: object

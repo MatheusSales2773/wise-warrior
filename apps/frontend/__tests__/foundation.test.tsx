@@ -14,7 +14,7 @@ describe('Expo foundation routes', () => {
     ['/', 'Acampamento', 'Carregando seu painel…'],
     ['/sessao', 'Forja', 'Buscando sua sessão ativa…'],
     ['/perfil', 'Personagem', 'Seu perfil está em preparação.'],
-    ['/guilda', 'Guilda', 'Sua guilda está em preparação.'],
+    ['/guilda', 'Guilda', 'Carregando sua guilda…'],
   ])('resolves %s directly with its initial state', async (pathname, title, message) => {
     const router = renderRouter('src/app', { initialUrl: pathname });
     await router;
