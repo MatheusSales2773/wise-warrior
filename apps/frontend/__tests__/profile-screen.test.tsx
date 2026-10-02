@@ -1,4 +1,4 @@
-﻿import { fireEvent, render, screen, waitFor } from '@testing-library/react-native';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Platform } from 'react-native';
 import { getMyProfile, type UserProfile } from '@/features/dashboard/api';
@@ -47,8 +47,8 @@ describe('ProfileScreen', () => {
 
     expect(await screen.findByText('Aventureiro')).toBeTruthy();
     expect(screen.getByTestId('profile-character-title').props.children).toBe('Aprendiz');
-    expect(screen.getByText('NÃ­vel 3')).toBeTruthy();
-    expect(screen.getByText('Faltam 50 XP para o nÃ­vel 4')).toBeTruthy();
+    expect(screen.getByText('Nível 3')).toBeTruthy();
+    expect(screen.getByText('Faltam 50 XP para o nível 4')).toBeTruthy();
     expect(screen.getByTestId('profile-plan').props.children).toBe('PLANO GRATUITO');
 
     expect(await screen.findByTestId('profile-device-dev-1')).toBeTruthy();
@@ -62,8 +62,8 @@ describe('ProfileScreen', () => {
     mockedDevices.mockResolvedValue([]);
     await renderProfile();
 
-    expect(await screen.findByText('Sem tÃ­tulo ainda')).toBeTruthy();
-    expect(await screen.findByText('Nenhum dispositivo com sessÃ£o ativa.')).toBeTruthy();
+    expect(await screen.findByText('Sem título ainda')).toBeTruthy();
+    expect(await screen.findByText('Nenhum dispositivo com sessão ativa.')).toBeTruthy();
   });
 
   it('shows a retryable error when the profile cannot be loaded', async () => {
