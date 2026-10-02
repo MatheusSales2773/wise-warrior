@@ -1,6 +1,6 @@
 import { getAuthenticatedHttpClient } from '@/core/api/api-client';
 import { ApiError } from '@/core/api/api-error';
-import { createGuild, getMyGuild, joinGuild, listGuilds } from '@/features/guild/api';
+import { createGuild, getMyGuild, joinGuild, leaveGuild, listGuildMembers, listGuilds } from '@/features/guild/api';
 import { formatGuildRole, formatMemberCount } from '@/features/guild/messages';
 import { validateGuildName } from '@/features/guild/validation';
 
@@ -50,6 +50,22 @@ describe('guild API', () => {
 
     expect(post).toHaveBeenNthCalledWith(1, '/guilds', { name: 'Ordem do Foco' });
     expect(post).toHaveBeenNthCalledWith(2, '/guilds/guild%201/members');
+  });
+});
+
+describe('guild members API', () => {
+  it('lists members with an encoded cursor and leaves through DELETE', async () => {
+    const get = jest.fn().mockResolvedValue({ status: 200, data: { items: [], nextCursor: null } });
+    const del = jest.fn().mockResolvedValue({ status: 204, data: undefined });
+    client({ get, delete: del });
+
+    await listGuildMembers('g 1');
+    await listGuildMembers('g1', { cursor: 'a+b/c=' });
+    await leaveGuild('g 1');
+
+    expect(get).toHaveBeenNthCalledWith(1, '/guilds/g%201/members', { signal: undefined });
+    expect(get).toHaveBeenNthCalledWith(2, '/guilds/g1/members?cursor=a%2Bb%2Fc%3D', { signal: undefined });
+    expect(del).toHaveBeenCalledWith('/guilds/g%201/members/me');
   });
 });
 
