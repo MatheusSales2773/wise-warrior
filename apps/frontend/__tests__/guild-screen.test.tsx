@@ -116,6 +116,19 @@ describe('GuildScreen', () => {
     expect(screen.getByTestId('guild-directory-item-id-Alfa')).toBeTruthy();
   });
 
+  it('reloads the guild when joining reveals the user already belongs to one', async () => {
+    mockedMine.mockResolvedValueOnce(null);
+    mockedList.mockResolvedValue(page(['Alfa']));
+    mockedJoin.mockRejectedValue(new ApiError('conflict', { status: 409 }));
+    await renderGuild();
+
+    mockedMine.mockResolvedValue({ ...mine, role: 'member' });
+    await fireEvent.press(await screen.findByTestId('guild-join-id-Alfa'));
+
+    expect(await screen.findByTestId('guild-mine')).toBeTruthy();
+    expect(screen.queryByTestId('guild-create')).toBeNull();
+  });
+
   it('searches by name and loads further pages', async () => {
     mockedMine.mockResolvedValue(null);
     mockedList.mockResolvedValueOnce(page(['Alfa'], 'next'));

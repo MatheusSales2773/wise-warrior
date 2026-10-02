@@ -89,6 +89,18 @@ describe('GuildsService', () => {
     });
   });
 
+  describe('create (name race)', () => {
+    it('reports the name, not the membership, when the guild-name index is what lost the race', async () => {
+      mockMemberships.findOne.mockResolvedValue(null);
+      mockGuilds.findOne.mockResolvedValue(null);
+      manager.transaction.mockRejectedValue(
+        Object.assign(new Error("Duplicate entry 'X' for key 'guilds.UQ_guilds_name'"), { code: 'ER_DUP_ENTRY' }),
+      );
+
+      await expect(service.create('user-1', { name: 'X' })).rejects.toThrow('Já existe uma guilda com esse nome');
+    });
+  });
+
   describe('findMine', () => {
     it('returns the guild and the role of the caller', async () => {
       mockMemberships.findOne.mockResolvedValue({ guildId: 'guild-1', userId: 'user-1', role: 'leader' });

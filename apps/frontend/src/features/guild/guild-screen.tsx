@@ -2,6 +2,7 @@ import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tansta
 import { useState } from 'react';
 import { Platform, StyleSheet, View, useWindowDimensions } from 'react-native';
 import { FeedbackMessage, ProgressBar, Screen, WiseButton, WiseCard, WiseField, WiseText, isDesktopLayout, theme } from '@/design-system';
+import { isApiError } from '@/core/api/api-error';
 import { createGuild, joinGuild, type GuildSummary, type MyGuild } from './api';
 import { createGuildErrorMessage, formatGuildRole, formatMemberCount, joinGuildErrorMessage } from './messages';
 import { guildDirectoryQueryOptions, guildKeys, myGuildQueryOptions } from './queries';
@@ -21,10 +22,12 @@ function GuildCard({ mine }: { mine: MyGuild }) {
   );
 }
 
-function CreateGuildCard({ onCreated }: { onCreated: () => void }) {
+type GuildActionCallbacks = { onConflict: (error: unknown) => void };
+
+function CreateGuildCard({ onCreated, onConflict }: { onCreated: () => void } & GuildActionCallbacks) {
   const [name, setName] = useState('');
   const [fieldError, setFieldError] = useState<string | undefined>();
-  const create = useMutation({ mutationFn: createGuild, onSuccess: onCreated });
+  const create = useMutation({ mutationFn: createGuild, onSuccess: onCreated, onError: onConflict });
 
   const submit = () => {
     if (create.isPending) return;
@@ -71,11 +74,11 @@ function DirectoryItem({ busy, guild, onJoin }: { busy: boolean; guild: GuildSum
   );
 }
 
-function DirectoryCard({ onJoined }: { onJoined: () => void }) {
+function DirectoryCard({ onJoined, onConflict }: { onJoined: () => void } & GuildActionCallbacks) {
   const [draft, setDraft] = useState('');
   const [search, setSearch] = useState('');
   const directory = useInfiniteQuery(guildDirectoryQueryOptions(search));
-  const join = useMutation({ mutationFn: joinGuild, onSuccess: onJoined });
+  const join = useMutation({ mutationFn: joinGuild, onSuccess: onJoined, onError: onConflict });
   const guilds = directory.data?.pages.flatMap((page) => page.items) ?? [];
 
   const runSearch = () => setSearch(draft.trim());
@@ -136,6 +139,10 @@ export function GuildScreen() {
   const queryClient = useQueryClient();
   const { width } = useWindowDimensions();
   const refreshGuild = () => queryClient.invalidateQueries({ queryKey: guildKeys.all });
+  // A 409 can mean the user already joined a guild elsewhere: reload so the screen reflects it.
+  const refreshOnConflict = (error: unknown) => {
+    if (isApiError(error) && error.category === 'conflict') void queryClient.invalidateQueries({ queryKey: guildKeys.mine() });
+  };
 
   if (mine.isPending) {
     return (
@@ -165,8 +172,8 @@ export function GuildScreen() {
       {mine.data
         ? <GuildCard mine={mine.data} />
         : <View style={[styles.grid, desktop && styles.desktopGrid]}>
-          <View style={styles.column}><CreateGuildCard onCreated={() => void refreshGuild()} /></View>
-          <View style={styles.column}><DirectoryCard onJoined={() => void refreshGuild()} /></View>
+          <View style={styles.column}><CreateGuildCard onConflict={refreshOnConflict} onCreated={() => void refreshGuild()} /></View>
+          <View style={styles.column}><DirectoryCard onConflict={refreshOnConflict} onJoined={() => void refreshGuild()} /></View>
         </View>}
     </Screen>
   );

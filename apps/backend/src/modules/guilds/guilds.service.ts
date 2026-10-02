@@ -29,6 +29,7 @@ export interface GuildPage {
 }
 
 const ALREADY_IN_GUILD = 'Você já participa de uma guilda';
+const NAME_TAKEN = 'Já existe uma guilda com esse nome';
 
 /** MySQL duplicate-key error, raised when a concurrent request wins the single-guild-per-user unique index. */
 function isDuplicateEntry(error: unknown): boolean {
@@ -70,7 +71,7 @@ export class GuildsService {
     }
     const existing = await this.guilds.findOne({ where: { name: dto.name } });
     if (existing) {
-      throw new ConflictException('Já existe uma guilda com esse nome');
+      throw new ConflictException(NAME_TAKEN);
     }
     try {
       return await this.guilds.manager.transaction(async (manager) => {
@@ -84,7 +85,10 @@ export class GuildsService {
       });
     } catch (error) {
       if (isDuplicateEntry(error)) {
-        throw new ConflictException(ALREADY_IN_GUILD);
+        // Two unique indexes can lose a race here: the guild name or the single-guild-per-user rule.
+        throw new ConflictException(
+          String((error as Error).message).includes('UQ_guilds_name') ? NAME_TAKEN : ALREADY_IN_GUILD,
+        );
       }
       throw error;
     }
