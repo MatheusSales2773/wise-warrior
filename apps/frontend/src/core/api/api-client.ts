@@ -30,6 +30,10 @@ export interface HttpClientWithPatch extends HttpClient {
   patch<T = unknown>(url: string, body?: unknown, options?: HttpRequestOptions): Promise<HttpResponse<T>>;
 }
 
+export interface HttpClientWithDelete extends HttpClientWithPatch {
+  delete<T = unknown>(url: string, options?: HttpRequestOptions): Promise<HttpResponse<T>>;
+}
+
 export type HttpClientConfig = {
   baseURL?: string;
   bearer?: () => string | null;
@@ -227,6 +231,7 @@ async function replayOnce<T>(
 }
 
 /** Restaura a Session uma única vez antes de repetir uma request protegida rejeitada. */
+export function createSessionAwareHttpClient(transport: HttpClientWithDelete): HttpClientWithDelete;
 export function createSessionAwareHttpClient(transport: HttpClientWithPatch): HttpClientWithPatch;
 export function createSessionAwareHttpClient(transport: HttpClient): HttpClient;
 export function createSessionAwareHttpClient(transport: HttpClient): HttpClient {
@@ -275,6 +280,7 @@ export function createSessionAwareHttpClient(transport: HttpClient): HttpClient 
   }
 
   const patchTransport = (transport as Partial<HttpClientWithPatch>).patch;
+  const deleteTransport = (transport as Partial<HttpClientWithDelete>).delete;
   return {
     get: <T>(url: string, options?: HttpRequestOptions) =>
       request(url, (requestOptions) => transport.get<T>(url, requestOptions), options),
@@ -283,6 +289,10 @@ export function createSessionAwareHttpClient(transport: HttpClient): HttpClient 
     ...(patchTransport ? {
       patch: <T>(url: string, body?: unknown, options?: HttpRequestOptions) =>
         request<T>(url, (requestOptions) => (transport as HttpClientWithPatch).patch<T>(url, body, requestOptions), options),
+    } : {}),
+    ...(deleteTransport ? {
+      delete: <T>(url: string, options?: HttpRequestOptions) =>
+        request<T>(url, (requestOptions) => (transport as HttpClientWithDelete).delete<T>(url, requestOptions), options),
     } : {}),
   };
 }
@@ -311,7 +321,7 @@ export function applyAuthorizationHeader(
  * access token em memória. Erros Axios são reduzidos à taxonomia pública antes
  * de atravessarem esta fronteira.
  */
-export function createHttpClient(config: HttpClientConfig = {}): HttpClientWithPatch {
+export function createHttpClient(config: HttpClientConfig = {}): HttpClientWithDelete {
   const instance = create(resolveAxiosConfig(config));
 
   const bearer = config.bearer;
@@ -353,10 +363,20 @@ export function createHttpClient(config: HttpClientConfig = {}): HttpClientWithP
         throw toApiError(error);
       }
     },
+    async delete<T>(url: string, options?: HttpRequestOptions): Promise<HttpResponse<T>> {
+      try {
+        const response = options?.signal
+          ? await instance.delete<T>(url, { signal: options.signal, headers: options.headers })
+          : await instance.delete<T>(url, { headers: options?.headers });
+        return { status: response.status, data: response.data };
+      } catch (error) {
+        throw toApiError(error);
+      }
+    },
   };
 }
 
-let authenticatedClient: HttpClientWithPatch | null = null;
+let authenticatedClient: HttpClientWithDelete | null = null;
 let bareClient: HttpClient | null = null;
 
 export function shouldSendBrowserCredentials(platform = Platform.OS): boolean {
@@ -364,7 +384,7 @@ export function shouldSendBrowserCredentials(platform = Platform.OS): boolean {
 }
 
 /** Cliente autenticado para rotas de produto; usa somente o bearer em memória. */
-export function getAuthenticatedHttpClient(): HttpClientWithPatch {
+export function getAuthenticatedHttpClient(): HttpClientWithDelete {
   if (!authenticatedClient) {
     authenticatedClient = createSessionAwareHttpClient(
       createHttpClient({ bearer: getAccessToken, withCredentials: false }),

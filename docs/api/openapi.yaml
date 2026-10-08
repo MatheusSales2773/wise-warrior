@@ -666,6 +666,42 @@ paths:
         "204": { description: Membro adicionado }
         "404": { $ref: "#/components/responses/NotFound" }
         "409": { $ref: "#/components/responses/Conflict" }
+    get:
+      summary: Lista os membros da guilda (apenas para membros)
+      description: >
+        Ordem estável por entrada (mais antigo primeiro) e id. `nextCursor` é
+        opaco; `null` indica a última página. Não-membros recebem 403.
+      operationId: listGuildMembers
+      tags: [Guilds]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: cursor, in: query, required: false, schema: { type: string, maxLength: 200 } }
+        - { name: limit, in: query, required: false, schema: { type: integer, minimum: 1, maximum: 50, default: 20 } }
+      responses:
+        "200":
+          description: Página de membros
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/GuildMemberPage" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /guilds/{id}/members/me:
+    delete:
+      summary: Sai da guilda
+      description: >
+        Se quem sai é o líder, o membro mais antigo restante assume a liderança.
+        Quando o último membro sai, a guilda é encerrada.
+      operationId: leaveGuild
+      tags: [Guilds]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "204": { description: Saída registrada }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
 
   /raids/{id}:
     get:
@@ -1009,7 +1045,7 @@ components:
         level: { type: integer }
         createdBy: { type: string, format: uuid }
 
-    GuildDetail:
+    GuildSummary:
       type: object
       required: [id, name, level, memberCount]
       properties:
@@ -1017,6 +1053,39 @@ components:
         name: { type: string }
         level: { type: integer }
         memberCount: { type: integer }
+
+    GuildDetail:
+      allOf:
+        - $ref: "#/components/schemas/GuildSummary"
+        - type: object
+          required: [leader]
+          properties:
+            leader:
+              type: [object, "null"]
+              required: [userId, displayName]
+              properties:
+                userId: { type: string, format: uuid }
+                displayName: { type: string }
+
+    GuildMember:
+      type: object
+      required: [userId, displayName, level, title, role, joinedAt]
+      properties:
+        userId: { type: string, format: uuid }
+        displayName: { type: string }
+        level: { type: integer }
+        title: { type: [string, "null"] }
+        role: { type: string, enum: [leader, member] }
+        joinedAt: { type: string, format: date-time }
+
+    GuildMemberPage:
+      type: object
+      required: [items, nextCursor]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/GuildMember" }
+        nextCursor: { type: [string, "null"] }
 
     MyGuild:
       type: object
@@ -1031,7 +1100,7 @@ components:
       properties:
         items:
           type: array
-          items: { $ref: "#/components/schemas/GuildDetail" }
+          items: { $ref: "#/components/schemas/GuildSummary" }
         nextCursor: { type: [string, "null"] }
 
     RaidDetail:

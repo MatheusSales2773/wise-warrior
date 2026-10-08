@@ -26,3 +26,11 @@ export function formatMemberCount(count: number): string {
 export function formatGuildRole(role: 'leader' | 'member'): string {
   return role === 'leader' ? 'Líder' : 'Membro';
 }
+
+export function leaveGuildErrorMessage(error: unknown): string {
+  if (isApiError(error)) {
+    if (error.status === 404) return 'Você já não participa dessa guilda. Atualize a tela.';
+    if (error.category === 'network') return 'Não foi possível sair da guilda. Verifique sua conexão e tente novamente.';
+  }
+  return 'Não foi possível sair da guilda agora. Tente novamente.';
+}

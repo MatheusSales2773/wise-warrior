@@ -10,9 +10,27 @@ export type GuildSummary = {
   memberCount: number;
 };
 
+export type GuildDetail = GuildSummary & {
+  leader: { userId: string; displayName: string } | null;
+};
+
 export type MyGuild = {
-  guild: GuildSummary;
+  guild: GuildDetail;
   role: GuildRole;
+};
+
+export type GuildMember = {
+  userId: string;
+  displayName: string;
+  level: number;
+  title: string | null;
+  role: GuildRole;
+  joinedAt: string;
+};
+
+export type GuildMemberPage = {
+  items: GuildMember[];
+  nextCursor: string | null;
 };
 
 export type GuildPage = {
@@ -48,4 +66,17 @@ export async function createGuild(name: string): Promise<void> {
 
 export async function joinGuild(guildId: string): Promise<void> {
   await getAuthenticatedHttpClient().post(`/guilds/${encodeURIComponent(guildId)}/members`);
+}
+
+export async function listGuildMembers(
+  guildId: string,
+  { cursor, signal }: { cursor?: string | null; signal?: AbortSignal } = {},
+): Promise<GuildMemberPage> {
+  const query = cursor ? `?cursor=${encodeURIComponent(cursor)}` : '';
+  const response = await getAuthenticatedHttpClient().get<GuildMemberPage>(`/guilds/${encodeURIComponent(guildId)}/members${query}`, { signal });
+  return response.data;
+}
+
+export async function leaveGuild(guildId: string): Promise<void> {
+  await getAuthenticatedHttpClient().delete(`/guilds/${encodeURIComponent(guildId)}/members/me`);
 }
