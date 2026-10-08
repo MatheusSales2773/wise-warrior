@@ -1,5 +1,3 @@
-import { PlaceholderScreen } from '@/design-system/components/PlaceholderScreen';
+import { ProfileScreen } from '@/features/profile/profile-screen';
 
-export default function CharacterScreen() {
-  return <PlaceholderScreen message="Seu perfil está em preparação." title="Personagem" />;
-}
+export default function CharacterScreen() { return <ProfileScreen />; }
