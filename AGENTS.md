@@ -70,7 +70,7 @@ Use the canonical labels `needs-triage`, `needs-info`, `ready-for-agent`, `ready
 
 ### Domain docs
 
-This is a single-context repository. The PRD and current ADR register live in `docs/PRD.md`; a root `CONTEXT.md` may be added later. See `docs/agents/domain.md`.
+This is a single-context repository. The PRD and current ADR register live in `docs/PRD.md`; the domain glossary lives in the root `CONTEXT.md`. See `docs/agents/domain.md`.
 
 ## Git & Commit Guidelines
 
