@@ -6,6 +6,7 @@ import {
   HttpStatus,
   Param,
   Post,
+  Query,
   UseGuards,
 } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -13,6 +14,7 @@ import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import type { JwtPayload } from '../auth/strategies/jwt.strategy';
 import { GuildsService } from './guilds.service';
 import { CreateGuildDto } from './dto/create-guild.dto';
+import { ListGuildsQueryDto } from './dto/list-guilds-query.dto';
 
 @Controller('guilds')
 @UseGuards(JwtAuthGuard)
@@ -23,6 +25,17 @@ export class GuildsController {
   @HttpCode(HttpStatus.CREATED)
   create(@CurrentUser() user: JwtPayload, @Body() dto: CreateGuildDto) {
     return this.guilds.create(user.sub, dto);
+  }
+
+  @Get()
+  list(@Query() query: ListGuildsQueryDto) {
+    return this.guilds.list(query);
+  }
+
+  /** Declared before `:id` so "me" is never parsed as a guild id. */
+  @Get('me')
+  findMine(@CurrentUser() user: JwtPayload) {
+    return this.guilds.findMine(user.sub);
   }
 
   @Get(':id')

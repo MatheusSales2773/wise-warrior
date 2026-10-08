@@ -1,5 +1,3 @@
-import { PlaceholderScreen } from '@/design-system/components/PlaceholderScreen';
+import { GuildScreen } from '@/features/guild/guild-screen';
 
-export default function GuildScreen() {
-  return <PlaceholderScreen message="Sua guilda está em preparação." title="Guilda" />;
-}
+export default function GuildRoute() { return <GuildScreen />; }
