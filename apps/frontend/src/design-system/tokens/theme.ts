@@ -94,6 +94,7 @@ export const theme = {
   layout: {
     touchTarget: 44,
     sidebarWidth: 248,
+    sidePanelWidth: 320,
     bottomNavigationHeight: 80,
     desktopBreakpoint: 900,
     contentMaxWidth: 1200,
