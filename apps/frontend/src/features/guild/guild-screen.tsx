@@ -1,11 +1,14 @@
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Platform, StyleSheet, View, useWindowDimensions } from 'react-native';
 import { FeedbackMessage, ProgressBar, Screen, WiseButton, WiseCard, WiseField, WiseText, isDesktopLayout, theme } from '@/design-system';
 import { isApiError } from '@/core/api/api-error';
-import { createGuild, joinGuild, leaveGuild, type GuildMember, type GuildSummary, type MyGuild } from './api';
-import { createGuildErrorMessage, formatGuildRole, formatMemberCount, joinGuildErrorMessage, leaveGuildErrorMessage } from './messages';
-import { guildDirectoryQueryOptions, guildKeys, guildMembersQueryOptions, myGuildQueryOptions } from './queries';
+import { createGuild, joinGuild, leaveGuild, type ActiveRaid, type GuildMember, type GuildSummary, type MyGuild } from './api';
+import {
+  RAID_REWARD_RULE, createGuildErrorMessage, formatGuildRole, formatMemberCount, formatRaidTimeLeft, formatRewardCategory,
+  joinGuildErrorMessage, leaveGuildErrorMessage, raidProgressPercent,
+} from './messages';
+import { activeRaidQueryOptions, guildDirectoryQueryOptions, guildKeys, guildMembersQueryOptions, myGuildQueryOptions } from './queries';
 import { GUILD_NAME_MAX_LENGTH, normalizeGuildName, validateGuildName } from './validation';
 
 function MemberItem({ member }: { member: GuildMember }) {
@@ -71,7 +74,7 @@ function LeaveGuildAction({ guildId, isLeader, onLeft, onConflict }: { guildId: 
   );
 }
 
-function GuildCard({ mine, onLeft, onConflict }: { mine: MyGuild; onLeft: () => void; onConflict: (error: unknown) => void }) {
+function GuildCard({ mine }: { mine: MyGuild }) {
   const { guild, role } = mine;
   return (
     <WiseCard accessibilityLabel="Sua guilda" role="region" testID="guild-mine" variant="ornamented">
@@ -81,7 +84,74 @@ function GuildCard({ mine, onLeft, onConflict }: { mine: MyGuild; onLeft: () => 
         <WiseText testID="guild-mine-level" variant="body">Nível {guild.level}</WiseText>
         <WiseText color="textSecondary" testID="guild-mine-members" variant="body">{formatMemberCount(guild.memberCount)}</WiseText>
         {guild.leader ? <WiseText color="textSecondary" testID="guild-mine-leader" variant="body">Líder: {guild.leader.displayName}</WiseText> : null}
-        <LeaveGuildAction guildId={guild.id} isLeader={role === 'leader'} onConflict={onConflict} onLeft={onLeft} />
+      </View>
+    </WiseCard>
+  );
+}
+
+function useNow(intervalMs: number): number {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), intervalMs);
+    return () => clearInterval(timer);
+  }, [intervalMs]);
+  return now;
+}
+
+function RaidDetails({ raid }: { raid: ActiveRaid }) {
+  const now = useNow(30_000);
+  const percent = raidProgressPercent(raid.progressXp, raid.goalXp);
+  return (
+    <>
+      <View accessibilityElementsHidden aria-hidden importantForAccessibility="no-hide-descendants" style={styles.raidImage} testID="guild-raid-image" />
+      <WiseText accessibilityRole="header" aria-level={3} variant="label">{raid.mission.name}</WiseText>
+      <WiseText color="textSecondary" variant="body">{raid.mission.description}</WiseText>
+      <View style={styles.stack}>
+        <ProgressBar
+          accessibilityLabel={`Progresso da Raid: ${raid.progressXp} de ${raid.goalXp} XP, ${percent}%`}
+          maximumValue={raid.goalXp}
+          size="tall"
+          testID="guild-raid-progress"
+          value={Math.min(raid.progressXp, raid.goalXp)}
+        />
+        <WiseText variant="body">{raid.progressXp} / {raid.goalXp} XP</WiseText>
+      </View>
+      <WiseText color="textSecondary" testID="guild-raid-time-left" variant="body">{formatRaidTimeLeft(new Date(raid.endsAt).getTime() - now)}</WiseText>
+      <View style={styles.stack} testID="guild-raid-reward">
+        <WiseText color="accentPrimary" variant="caption">RECOMPENSA DE RAID</WiseText>
+        <WiseText variant="label">{raid.reward.name}</WiseText>
+        <WiseText color="textSecondary" variant="body">{formatRewardCategory(raid.reward.category)}</WiseText>
+        <WiseText color="textSecondary" variant="caption">{RAID_REWARD_RULE}</WiseText>
+      </View>
+    </>
+  );
+}
+
+function RaidCard({ guildId }: { guildId: string }) {
+  const raid = useQuery(activeRaidQueryOptions(guildId));
+
+  const body = (() => {
+    if (raid.isPending) return <WiseText color="textSecondary" testID="guild-raid-loading" variant="body">Carregando a Raid da semana…</WiseText>;
+    if (raid.isError && raid.data === undefined) {
+      return <View style={styles.stack} testID="guild-raid-error">
+        <FeedbackMessage message="Não foi possível carregar a Raid da semana." title="Raid indisponível" variant="error" />
+        <WiseButton label="Tentar novamente" loading={raid.isRefetching} onPress={() => void raid.refetch()} variant="secondary" />
+      </View>;
+    }
+    if (!raid.data) {
+      return <WiseText color="textSecondary" testID="guild-raid-empty" variant="body">Sua guilda ainda não tem uma Raid nesta semana. Volte em breve.</WiseText>;
+    }
+    return <>
+      {raid.isError ? <FeedbackMessage message="Não foi possível atualizar a Raid." testID="guild-raid-stale" title="Dados desatualizados" variant="error" /> : null}
+      <RaidDetails raid={raid.data} />
+    </>;
+  })();
+
+  return (
+    <WiseCard accessibilityLabel="Raid da semana" role="region" testID="guild-raid">
+      <View style={styles.cardContent}>
+        <WiseText accessibilityRole="header" aria-level={2} variant="subtitle">Raid da semana</WiseText>
+        {body}
       </View>
     </WiseCard>
   );
@@ -235,10 +305,23 @@ export function GuildScreen() {
     <Screen safeAreaEdges={[]} testID="guild" title="Guilda">
       {mine.isError ? <FeedbackMessage message="Não foi possível atualizar sua guilda." testID="guild-refresh-error" title="Dados desatualizados" variant="error" /> : null}
       {mine.data
-        ? <View style={styles.stack}>
-          <GuildCard mine={mine.data} onConflict={refreshOnConflict} onLeft={() => void refreshGuild()} />
-          <MembersCard guildId={mine.data.guild.id} />
-        </View>
+        ? (() => {
+          const { guild, role } = mine.data;
+          const header = <GuildCard mine={mine.data} />;
+          const raid = <RaidCard guildId={guild.id} />;
+          const members = <MembersCard guildId={guild.id} />;
+          const leave = (
+            <View testID="guild-leave-section">
+              <LeaveGuildAction guildId={guild.id} isLeader={role === 'leader'} onConflict={refreshOnConflict} onLeft={() => void refreshGuild()} />
+            </View>
+          );
+          return desktop
+            ? <View style={styles.desktopGrid} testID="guild-layout-desktop">
+              <View style={[styles.column, styles.stack]} testID="guild-column-main">{header}{raid}</View>
+              <View style={[styles.column, styles.stack]} testID="guild-column-side">{members}{leave}</View>
+            </View>
+            : <View style={styles.stack} testID="guild-layout-stacked">{header}{raid}{members}{leave}</View>;
+        })()
         : <View style={[styles.grid, desktop && styles.desktopGrid]}>
           <View style={styles.column}><CreateGuildCard onConflict={refreshOnConflict} onCreated={() => void refreshGuild()} /></View>
           <View style={styles.column}><DirectoryCard onConflict={refreshOnConflict} onJoined={() => void refreshGuild()} /></View>
@@ -252,6 +335,8 @@ const styles = StyleSheet.create({
   grid: { gap: theme.space.stackDefault },
   desktopGrid: { flexDirection: 'row', alignItems: 'flex-start' },
   column: { flex: 1 },
+  raidImage: { height: 120, borderRadius: theme.radius.card, backgroundColor: theme.color.surfaceInset },
+
   cardContent: { padding: theme.space.cardInset, gap: theme.space.stackTight },
   directoryItem: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: theme.space.stackTight },
   directoryMain: { flex: 1, gap: theme.space.inlineHairline },

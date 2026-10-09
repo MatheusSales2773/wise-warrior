@@ -7,7 +7,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { EntityManager, Repository } from 'typeorm';
+import { EntityManager, In, Repository } from 'typeorm';
 import { User } from './entities/user.entity';
 import { ProgressionService } from '../progression/progression.service';
 import { CosmeticCategory, CosmeticItem } from './entities/cosmetic-item.entity';
@@ -107,6 +107,13 @@ export class UsersService {
       equippedCategories.add(starter.cosmeticItem.category);
       await inventory.update({ id: starter.id }, { equipped: true });
     }
+  }
+
+  /** Dados públicos de Cosmetic Items, para quem precisa exibir a Recompensa (ex.: Raids). */
+  async findCosmeticItems(ids: string[]): Promise<Array<Pick<CosmeticItem, 'id' | 'name' | 'category'>>> {
+    if (ids.length === 0) return [];
+    const items = await this.cosmeticItems.find({ where: { id: In(ids) } });
+    return items.map(({ id, name, category }) => ({ id, name, category }));
   }
 
   /** O Catálogo inteiro, com o estado de cada item no Inventário do usuário. A interface define a ordem. */

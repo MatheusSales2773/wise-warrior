@@ -1,12 +1,13 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react-native';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react-native';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { Platform } from 'react-native';
+import { Dimensions, Platform, StyleSheet } from 'react-native';
 import { ApiError } from '@/core/api/api-error';
-import { createGuild, getMyGuild, joinGuild, leaveGuild, listGuildMembers, listGuilds, type GuildMemberPage, type GuildPage, type MyGuild } from '@/features/guild/api';
+import { createGuild, getActiveRaid, getMyGuild, joinGuild, leaveGuild, listGuildMembers, listGuilds, type ActiveRaid, type GuildMemberPage, type GuildPage, type MyGuild } from '@/features/guild/api';
 import { GuildScreen } from '@/features/guild/guild-screen';
 
 jest.mock('@/features/guild/api', () => ({
   getMyGuild: jest.fn(),
+  getActiveRaid: jest.fn(),
   listGuilds: jest.fn(),
   createGuild: jest.fn(),
   joinGuild: jest.fn(),
@@ -20,6 +21,20 @@ const mockedCreate = createGuild as jest.MockedFunction<typeof createGuild>;
 const mockedJoin = joinGuild as jest.MockedFunction<typeof joinGuild>;
 const mockedMembers = listGuildMembers as jest.MockedFunction<typeof listGuildMembers>;
 const mockedLeave = leaveGuild as jest.MockedFunction<typeof leaveGuild>;
+const mockedRaid = getActiveRaid as jest.MockedFunction<typeof getActiveRaid>;
+
+const DAY = 24 * 60 * 60 * 1000;
+const raid = (overrides: Partial<ActiveRaid> = {}): ActiveRaid => ({
+  id: 'r1',
+  mission: { slug: 'cerco-ao-grimorio', name: 'Cerco ao Grimório', description: 'Cerque os capítulos mais difíceis.', imageUrl: null },
+  reward: { itemId: 'i1', name: 'Marcador do Grimório', category: 'badge' },
+  goalXp: 1000,
+  progressXp: 250,
+  startsAt: new Date(Date.now() - 2 * DAY).toISOString(),
+  endsAt: new Date(Date.now() + 2 * DAY + 3.5 * 60 * 60 * 1000).toISOString(),
+  status: 'active',
+  ...overrides,
+});
 
 const mine: MyGuild = {
   guild: { id: 'g1', name: 'Ordem do Foco', level: 2, memberCount: 3, leader: { userId: 'u1', displayName: 'Ana' } },
@@ -39,13 +54,16 @@ const page = (names: string[], nextCursor: string | null = null): GuildPage => (
 
 async function renderGuild() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
-  return render(<QueryClientProvider client={client}><GuildScreen /></QueryClientProvider>);
+  const view = await render(<QueryClientProvider client={client}><GuildScreen /></QueryClientProvider>);
+  return Object.assign(view, { client });
 }
 
 beforeEach(() => {
   Object.defineProperty(Platform, 'OS', { configurable: true, writable: true, value: 'web' });
+  Dimensions.set({ window: { width: 390, height: 844, scale: 1, fontScale: 1 } });
+  mockedRaid.mockResolvedValue(raid());
 });
-afterEach(() => { jest.clearAllMocks(); [mockedMine, mockedList, mockedCreate, mockedJoin, mockedMembers, mockedLeave].forEach((mock) => mock.mockReset()); });
+afterEach(() => { jest.clearAllMocks(); [mockedRaid, mockedMine, mockedList, mockedCreate, mockedJoin, mockedMembers, mockedLeave].forEach((mock) => mock.mockReset()); });
 
 describe('GuildScreen', () => {
   it('shows the guild of a member with level, size and role', async () => {
@@ -234,5 +252,110 @@ describe('GuildScreen', () => {
     mockedMine.mockResolvedValue(mine);
     await fireEvent.press(screen.getByLabelText('Tentar novamente'));
     expect(await screen.findByTestId('guild-mine')).toBeTruthy();
+  });
+
+  describe('Raid da semana', () => {
+    beforeEach(() => {
+      mockedMine.mockResolvedValue(mine);
+      mockedMembers.mockResolvedValue(members(['Ana']));
+    });
+
+    it('shows the Missão, the collective goal with an accessible progress bar, the time left and the reward', async () => {
+      await renderGuild();
+
+      expect(await screen.findByText('Cerco ao Grimório')).toBeTruthy();
+      expect(screen.getByText('Cerque os capítulos mais difíceis.')).toBeTruthy();
+      expect(mockedRaid).toHaveBeenCalledWith('g1', expect.anything());
+
+      const bar = screen.getByTestId('guild-raid-progress');
+      expect(bar.props.accessibilityRole).toBe('progressbar');
+      expect(bar.props.accessibilityLabel).toBe('Progresso da Raid: 250 de 1000 XP, 25%');
+      expect(bar.props.accessibilityValue).toMatchObject({ min: 0, max: 1000, now: 250 });
+      expect(screen.getByText('250 / 1000 XP')).toBeTruthy();
+      expect(screen.getByTestId('guild-raid-time-left').props.children).toBe('2 d 3 h restantes');
+      expect(screen.getByText('Marcador do Grimório')).toBeTruthy();
+      expect(screen.getByText(/Badge/)).toBeTruthy();
+      expect(screen.getByText(/contribua com ao menos uma sessão de guilda/)).toBeTruthy();
+    });
+
+    it('reserves a decorative image slot that screen readers skip', async () => {
+      await renderGuild();
+      const image = await screen.findByTestId('guild-raid-image', { includeHiddenElements: true });
+      expect(image.props['aria-hidden']).toBe(true);
+      expect(image.props.accessibilityElementsHidden).toBe(true);
+      expect(image.props.importantForAccessibility).toBe('no-hide-descendants');
+    });
+
+    it('says the Raid is ending once the time left reaches zero', async () => {
+      mockedRaid.mockResolvedValue(raid({ endsAt: new Date(Date.now() - 1000).toISOString() }));
+      await renderGuild();
+      expect((await screen.findByTestId('guild-raid-time-left')).props.children).toBe('Encerrando…');
+    });
+
+    it('shows a loading state while the Raid loads', async () => {
+      mockedRaid.mockReturnValue(new Promise(() => undefined));
+      await renderGuild();
+      expect(await screen.findByTestId('guild-raid-loading')).toBeTruthy();
+      expect(screen.getByTestId('guild-mine')).toBeTruthy();
+    });
+
+    it('shows an empty state when the Guild has no Raid this week', async () => {
+      mockedRaid.mockResolvedValue(null);
+      await renderGuild();
+      expect(await screen.findByTestId('guild-raid-empty')).toBeTruthy();
+    });
+
+    it('shows a retryable error without hiding the rest of the screen', async () => {
+      mockedRaid.mockRejectedValueOnce(new ApiError('server', { status: 500 }));
+      await renderGuild();
+      expect(await screen.findByTestId('guild-raid-error')).toBeTruthy();
+      expect(screen.getByTestId('guild-members')).toBeTruthy();
+
+      await fireEvent.press(screen.getByText('Tentar novamente'));
+      expect(await screen.findByText('Cerco ao Grimório')).toBeTruthy();
+    });
+
+    it('keeps the last Raid on screen and warns that it is outdated when a refresh fails', async () => {
+      const view = await renderGuild();
+      await screen.findByText('Cerco ao Grimório');
+
+      mockedRaid.mockRejectedValue(new ApiError('network', {}));
+      await view.client.refetchQueries({ queryKey: ['guild', 'raid', 'g1'] });
+
+      expect(await screen.findByTestId('guild-raid-stale')).toBeTruthy();
+      expect(screen.getByText('Cerco ao Grimório')).toBeTruthy();
+    });
+
+    it('stacks everything on a phone: guild, Raid, members, then leave', async () => {
+      await renderGuild();
+      await screen.findByText('Cerco ao Grimório');
+      expect(screen.getByTestId('guild-layout-stacked')).toBeTruthy();
+      expect(screen.queryByTestId('guild-column-main')).toBeNull();
+      const order = ['guild-mine', 'guild-raid', 'guild-members', 'guild-leave-section'];
+      const tree = JSON.stringify(screen.toJSON());
+      const positions = order.map((id) => tree.indexOf(`"testID":"${id}"`));
+      expect(positions.every((position) => position >= 0)).toBe(true);
+      expect([...positions].sort((a, b) => a - b)).toEqual(positions);
+    });
+
+    it('uses two columns on desktop: guild and Raid on the left, members and leave on the right', async () => {
+      Dimensions.set({ window: { width: 1280, height: 800, scale: 1, fontScale: 1 } });
+      await renderGuild();
+      await screen.findByText('Cerco ao Grimório');
+
+      const main = screen.getByTestId('guild-column-main');
+      const side = screen.getByTestId('guild-column-side');
+      expect(within(main).getByTestId('guild-mine')).toBeTruthy();
+      expect(within(main).getByTestId('guild-raid')).toBeTruthy();
+      expect(within(side).getByTestId('guild-members')).toBeTruthy();
+      expect(within(side).getByTestId('guild-leave-section')).toBeTruthy();
+      expect(within(side).queryByTestId('guild-raid')).toBeNull();
+    });
+
+    it('keeps the touch targets at 44×44 px', async () => {
+      await renderGuild();
+      const leave = StyleSheet.flatten((await screen.findByTestId('guild-leave')).props.style);
+      expect(leave).toMatchObject({ minWidth: 44, minHeight: 44 });
+    });
   });
 });

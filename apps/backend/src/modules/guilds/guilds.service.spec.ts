@@ -3,6 +3,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { Guild } from './entities/guild.entity';
 import { GuildMembership } from './entities/guild-membership.entity';
+import { RaidsService } from '../raids/raids.service';
 import { GuildsService } from './guilds.service';
 
 const manager = {
@@ -40,6 +41,8 @@ const mockMemberships = {
   createQueryBuilder: jest.fn(() => queryBuilder),
 };
 
+const mockRaids = { createForGuild: jest.fn() };
+
 const duplicateEntry = Object.assign(new Error('dup'), { code: 'ER_DUP_ENTRY' });
 
 describe('GuildsService', () => {
@@ -54,6 +57,7 @@ describe('GuildsService', () => {
         GuildsService,
         { provide: getRepositoryToken(Guild), useValue: mockGuilds },
         { provide: getRepositoryToken(GuildMembership), useValue: mockMemberships },
+        { provide: RaidsService, useValue: mockRaids },
       ],
     }).compile();
     service = module.get(GuildsService);
@@ -70,6 +74,7 @@ describe('GuildsService', () => {
       expect(manager.transaction).toHaveBeenCalledTimes(1);
       expect(manager.save).toHaveBeenCalledTimes(2);
       expect(manager.create).toHaveBeenCalledWith(GuildMembership, { guildId: 'guild-1', userId: 'user-1', role: 'leader' });
+      expect(mockRaids.createForGuild).toHaveBeenCalledWith(manager, 'guild-1', 1);
     });
 
     it('refuses a user who already belongs to a guild', async () => {

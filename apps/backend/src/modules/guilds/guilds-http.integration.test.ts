@@ -14,6 +14,15 @@ import { GuildMembership } from './entities/guild-membership.entity';
 import { UserCosmeticItem } from '../users/entities/user-cosmetic-item.entity';
 import { GuildsController } from './guilds.controller';
 import { GuildsService } from './guilds.service';
+import { CosmeticItem } from '../users/entities/cosmetic-item.entity';
+import { UsersService } from '../users/users.service';
+import { ProgressionService } from '../progression/progression.service';
+import { RealtimeGateway } from '../realtime/realtime.gateway';
+import { Mission } from '../raids/entities/mission.entity';
+import { Raid } from '../raids/entities/raid.entity';
+import { RaidContribution } from '../raids/entities/raid-contribution.entity';
+import { RAID_CLOCK, systemRaidClock } from '../raids/raid-clock';
+import { RaidsService } from '../raids/raids.service';
 
 describe('Guilds HTTP contract against MySQL', () => {
   jest.setTimeout(30_000);
@@ -53,6 +62,18 @@ describe('Guilds HTTP contract against MySQL', () => {
         GuildsService,
         { provide: getRepositoryToken(Guild), useValue: dataSource.getRepository(Guild) },
         { provide: getRepositoryToken(GuildMembership), useValue: dataSource.getRepository(GuildMembership) },
+        // Creating a Guild opens its Raid of the week through RaidsService, so the real one runs on the same database.
+        RaidsService,
+        UsersService,
+        { provide: getRepositoryToken(Raid), useValue: dataSource.getRepository(Raid) },
+        { provide: getRepositoryToken(RaidContribution), useValue: dataSource.getRepository(RaidContribution) },
+        { provide: getRepositoryToken(Mission), useValue: dataSource.getRepository(Mission) },
+        { provide: getRepositoryToken(User), useValue: dataSource.getRepository(User) },
+        { provide: getRepositoryToken(CosmeticItem), useValue: dataSource.getRepository(CosmeticItem) },
+        { provide: getRepositoryToken(UserCosmeticItem), useValue: dataSource.getRepository(UserCosmeticItem) },
+        { provide: RAID_CLOCK, useValue: systemRaidClock },
+        { provide: ProgressionService, useValue: {} },
+        { provide: RealtimeGateway, useValue: { emitToGuild: jest.fn() } },
       ],
     })
       .overrideGuard(JwtAuthGuard)

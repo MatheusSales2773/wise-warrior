@@ -122,11 +122,14 @@ describe('Cosmetics Catalog HTTP contract against MySQL', () => {
     const catalog = await response.json() as CatalogCosmeticItem[];
     expect(summarize(catalog)).toEqual([
       ['Aprendiz', true, true],
+      ['Brasão da Forja', false, false],
       ['Capuz do Erudito', true, true],
       ['Cem Sessões', false, false],
       ['Estudante Crepuscular', false, false],
+      ['Lanterna do Silêncio', false, false],
       ['Madrugador', false, false],
       ['Manto da Vigília', false, false],
+      ['Marcador do Grimório', false, false],
       ['Mestre da Aurora', false, false],
       ['Selo dos Madrugadores', false, false],
     ]);
@@ -142,7 +145,7 @@ describe('Cosmetics Catalog HTTP contract against MySQL', () => {
     expect(catalog).toContainEqual(expect.objectContaining({
       name: 'Selo dos Madrugadores',
       category: 'accessory',
-      unlockCondition: { type: 'raid', slug: '*' },
+      unlockCondition: { type: 'raid', slug: 'vigilia-da-aurora' },
     }));
   });
 
@@ -188,7 +191,7 @@ describe('Cosmetics Catalog HTTP contract against MySQL', () => {
 
     expect(response.status).toBe(200);
     const catalog = await response.json() as CatalogCosmeticItem[];
-    expect(catalog).toHaveLength(8);
+    expect(catalog).toHaveLength(11);
     expect(catalog.map((item) => item.name)).not.toContain('Quebrado');
   });
 
@@ -205,11 +208,14 @@ describe('Cosmetics Catalog HTTP contract against MySQL', () => {
     const catalog = await (await getCatalog(veteran)).json() as CatalogCosmeticItem[];
     expect(summarize(catalog)).toEqual([
       ['Aprendiz', true, false],
+      ['Brasão da Forja', false, false],
       ['Capuz do Erudito', true, false],
       ['Cem Sessões', true, false],
       ['Estudante Crepuscular', true, false],
+      ['Lanterna do Silêncio', false, false],
       ['Madrugador', true, false],
       ['Manto da Vigília', true, false],
+      ['Marcador do Grimório', false, false],
       ['Mestre da Aurora', false, false],
       ['Selo dos Madrugadores', false, false],
     ]);

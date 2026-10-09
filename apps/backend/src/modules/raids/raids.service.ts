@@ -1,11 +1,17 @@
 import {
   ForbiddenException,
+  Inject,
   Injectable,
   NotFoundException,
+  forwardRef,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { EntityManager, Repository } from 'typeorm';
+import { Mission } from './entities/mission.entity';
 import { Raid } from './entities/raid.entity';
+import { RAID_CLOCK, type RaidClock } from './raid-clock';
+import { missionIndexForWeek, proportionalGoalXp, raidWeekAt } from './domain/raid-week';
+import { UsersService } from '../users/users.service';
 import { RaidContribution } from './entities/raid-contribution.entity';
 import { GuildsService } from '../guilds/guilds.service';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
@@ -19,21 +25,101 @@ export interface RaidDetail {
   status: string;
 }
 
+export interface ActiveRaid {
+  id: string;
+  mission: { slug: string; name: string; description: string; imageUrl: string | null };
+  reward: { itemId: string; name: string; category: string };
+  goalXp: number;
+  progressXp: number;
+  startsAt: Date;
+  endsAt: Date;
+  status: string;
+}
+
 @Injectable()
 export class RaidsService {
   constructor(
     @InjectRepository(Raid) private readonly raids: Repository<Raid>,
     @InjectRepository(RaidContribution)
     private readonly contributions: Repository<RaidContribution>,
+    @InjectRepository(Mission) private readonly missions: Repository<Mission>,
+    @Inject(forwardRef(() => GuildsService))
     private readonly guilds: GuildsService,
+    private readonly users: UsersService,
     private readonly realtime: RealtimeGateway,
+    @Inject(RAID_CLOCK) private readonly clock: RaidClock,
   ) {}
+
+  /**
+   * Opens the Raid of the current week for a Guild, in the caller's transaction. The Missão comes from the
+   * weekly rotation and the goal is frozen from the member count at this moment.
+   */
+  async createForGuild(manager: EntityManager, guildId: string, memberCount: number): Promise<Raid> {
+    const now = this.clock();
+    const week = raidWeekAt(now);
+    const catalog = await manager.find(Mission, { order: { rotationOrder: 'ASC' } });
+    const mission = catalog[missionIndexForWeek(week.number, catalog.length)];
+    if (!mission) {
+      throw new Error('Catálogo de Missões vazio');
+    }
+    return manager.save(
+      manager.create(Raid, {
+        guildId,
+        missionId: mission.id,
+        goalXp: proportionalGoalXp(memberCount, week, now),
+        progressXp: 0,
+        startsAt: week.startsAt,
+        endsAt: week.endsAt,
+        status: 'active',
+      }),
+    );
+  }
+
+  /** The Guild's Raid for the current week. Only members may see it. */
+  async findActive(guildId: string, requesterId: string): Promise<ActiveRaid> {
+    if (!(await this.guilds.isMember(guildId, requesterId))) {
+      throw new ForbiddenException('Apenas membros da guilda podem ver a Raid');
+    }
+    const now = this.clock();
+    const raid = await this.raids
+      .createQueryBuilder('raid')
+      .innerJoinAndSelect('raid.mission', 'mission')
+      .where('raid.guildId = :guildId', { guildId })
+      // `completed` still belongs to the current week: the goal being reached must not hide the Raid.
+      .andWhere("raid.status IN ('active', 'completed')")
+      .andWhere('raid.startsAt <= :now', { now })
+      .andWhere('raid.endsAt >= :now', { now })
+      .orderBy('raid.startsAt', 'DESC')
+      .getOne();
+    if (!raid) {
+      throw new NotFoundException('A guilda não tem Raid ativa');
+    }
+    const [item] = await this.users.findCosmeticItems([raid.mission.rewardCosmeticItemId]);
+    if (!item) {
+      throw new Error(`Recompensa da Missão ${raid.mission.slug} não encontrada`);
+    }
+    return {
+      id: raid.id,
+      mission: {
+        slug: raid.mission.slug,
+        name: raid.mission.name,
+        description: raid.mission.description,
+        imageUrl: raid.mission.imageUrl,
+      },
+      reward: { itemId: item.id, name: item.name, category: item.category },
+      goalXp: raid.goalXp,
+      progressXp: raid.progressXp,
+      startsAt: raid.startsAt,
+      endsAt: raid.endsAt,
+      status: raid.status,
+    };
+  }
 
   async findById(raidId: string): Promise<RaidDetail> {
     const raid = await this.findActiveOrAnyRaid(raidId);
     return {
       id: raid.id,
-      title: raid.title,
+      title: raid.mission.name,
       goalXp: raid.goalXp,
       progressXp: raid.progressXp,
       endsAt: raid.endsAt,
@@ -116,7 +202,7 @@ export class RaidsService {
   }
 
   private async findActiveOrAnyRaid(raidId: string): Promise<Raid> {
-    const raid = await this.raids.findOne({ where: { id: raidId } });
+    const raid = await this.raids.findOne({ where: { id: raidId }, relations: ['mission'] });
     if (!raid) {
       throw new NotFoundException('Raid não encontrada');
     }

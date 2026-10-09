@@ -38,6 +38,19 @@ export type GuildPage = {
   nextCursor: string | null;
 };
 
+export type RaidRewardCategory = 'avatar' | 'badge' | 'title' | 'accessory';
+
+export type ActiveRaid = {
+  id: string;
+  mission: { slug: string; name: string; description: string; imageUrl: string | null };
+  reward: { itemId: string; name: string; category: RaidRewardCategory };
+  goalXp: number;
+  progressXp: number;
+  startsAt: string;
+  endsAt: string;
+  status: 'active' | 'completed' | 'expired';
+};
+
 /** `null` means the user is not in any guild (the API answers 404), which is a normal state, not a failure. */
 export async function getMyGuild({ signal }: { signal?: AbortSignal } = {}): Promise<MyGuild | null> {
   try {
@@ -79,4 +92,15 @@ export async function listGuildMembers(
 
 export async function leaveGuild(guildId: string): Promise<void> {
   await getAuthenticatedHttpClient().delete(`/guilds/${encodeURIComponent(guildId)}/members/me`);
+}
+
+/** `null` means the Guild has no Raid this week (the API answers 404), which is a normal state, not a failure. */
+export async function getActiveRaid(guildId: string, { signal }: { signal?: AbortSignal } = {}): Promise<ActiveRaid | null> {
+  try {
+    const response = await getAuthenticatedHttpClient().get<ActiveRaid>(`/guilds/${encodeURIComponent(guildId)}/raids/active`, { signal });
+    return response.data;
+  } catch (error) {
+    if (isApiError(error) && error.status === 404) return null;
+    throw error;
+  }
 }

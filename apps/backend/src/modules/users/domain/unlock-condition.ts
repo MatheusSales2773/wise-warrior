@@ -1,7 +1,7 @@
 /** Condição de desbloqueio de um Cosmetic Item, na forma estruturada que a API devolve. */
 export type UnlockCondition =
   | { type: 'level'; level: number }
-  /** `slug` `*` vale para qualquer Raid. */
+  /** `slug` é o da Missão (`raid:vigilia-da-aurora`); `*` vale para qualquer Raid. */
   | { type: 'raid'; slug: string };
 
 /** Lê a forma persistida (`level:5`, `raid:<slug>`). Devolve `null` para um valor fora desse formato. */
