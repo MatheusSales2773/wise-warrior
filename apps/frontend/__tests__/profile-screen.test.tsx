@@ -94,8 +94,12 @@ const mockedUnequip = unequipCosmeticItem as jest.MockedFunction<typeof unequipC
 const mockedRevoke = revokeMyDeviceSession as jest.MockedFunction<typeof revokeMyDeviceSession>;
 const mockedRevokeAll = revokeAllMyDeviceSessions as jest.MockedFunction<typeof revokeAllMyDeviceSessions>;
 
+// A mutation keeps a 5-minute GC timer by default, which would hold the Jest process open after the run.
+let queryClient: QueryClient | undefined;
+
 async function renderProfile() {
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 }, mutations: { gcTime: 0 } } });
+  queryClient = client;
   return render(<QueryClientProvider client={client}><ProfileScreen /></QueryClientProvider>);
 }
 
@@ -121,7 +125,11 @@ beforeEach(() => {
   setMockWindowWidth(390);
 });
 
-afterEach(() => jest.clearAllMocks());
+afterEach(() => {
+  queryClient?.clear();
+  queryClient = undefined;
+  jest.clearAllMocks();
+});
 
 describe('ProfileScreen', () => {
   // react-query notifies observers on a timer; flush it inside act before RNTL unmounts the tree.
@@ -702,7 +710,8 @@ describe('Prévia, Equipar and unequip', () => {
   });
 
   it('equips on Equipar, shows it at once and reloads the Catalog and the profile', async () => {
-    mockedEquip.mockImplementation(() => new Promise(() => undefined));
+    let finishEquip: () => void = () => undefined;
+    mockedEquip.mockImplementation(() => new Promise<void>((resolve) => { finishEquip = resolve; }));
     await renderProfile();
     await openPreview('Estudante Crepuscular');
 
@@ -713,6 +722,7 @@ describe('Prévia, Equipar and unequip', () => {
     expect(titleBanner()?.props.accessibilityLabel).toBe('Título: Estudante Crepuscular');
     expect(screen.getByRole('button', { name: 'Estudante Crepuscular, equipado' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Aprendiz, desbloqueado' })).toBeTruthy();
+    await act(async () => { finishEquip(); });
   });
 
   it('invalidates the Catalog and the profile once Equipar finishes', async () => {
