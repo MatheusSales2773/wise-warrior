@@ -10,6 +10,13 @@ import { clearCompletionIntent } from '@/features/study-session/completion-inten
 import { useStudySessionAppActive } from '@/features/study-session/use-study-session-app-active';
 import { dashboardKeys } from '@/features/dashboard/queries';
 
+// Without a Guild the Forja offers only solo sessions.
+jest.mock('@/features/guild/api', () => ({
+  getMyGuild: jest.fn(async () => null),
+  getActiveRaid: jest.fn(async () => null),
+  joinRaid: jest.fn(),
+}));
+
 jest.mock('@/features/study-session/api', () => ({
   STUDY_SESSION_PRESETS: [900, 1500, 3000],
   completeStudySession: jest.fn(),
@@ -33,7 +40,7 @@ let mockedNow: number;
 let studySessionTimerTick: (() => void) | undefined;
 const queryClients: QueryClient[] = [];
 const snapshot: StudySessionSnapshot = {
-  id: 'study-1', mode: 'solo', subject: null, state: 'running', plannedDurationSeconds: 1500,
+  id: 'study-1', mode: 'solo', raidId: null, subject: null, state: 'running', plannedDurationSeconds: 1500,
   startedAt: '2026-09-22T12:00:00.000Z', runDeadlineAt: '2026-09-22T12:25:00.000Z',
   pausedAt: null, pausedTotalSeconds: 0, durationValidSeconds: 0, remainingSeconds: 1500,
   serverNow: '2026-09-22T12:00:00.000Z', version: 1, endedAt: null, xpAwarded: 0,

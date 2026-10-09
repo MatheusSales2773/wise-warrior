@@ -54,6 +54,13 @@ export function formatRaidTimeLeft(milliseconds: number): string {
   return `${minutes} min restantes`;
 }
 
+/** Shown once the progress reached the goal; Contributions keep adding until the end of the week. */
+export const RAID_GOAL_REACHED = 'Meta batida! As sessões de guilda continuam contando até o fim da semana.';
+
+export function formatMyContribution(xp: number): string {
+  return xp > 0 ? `Sua contribuição: ${xp} XP` : 'Sua contribuição: 0 XP. Conclua uma sessão de guilda na Forja para somar.';
+}
+
 export function raidProgressPercent(progressXp: number, goalXp: number): number {
   return goalXp > 0 ? Math.min(100, Math.floor((progressXp / goalXp) * 100)) : 0;
 }
