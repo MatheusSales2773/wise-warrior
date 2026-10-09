@@ -410,6 +410,19 @@ describe('ProfileScreen', () => {
       await waitFor(() => expect(mockAuthState.logout).toHaveBeenCalledTimes(1));
     });
 
+    it('explains and reloads when leaving this device fails after every session was ended', async () => {
+      mockAuthState.logout.mockRejectedValueOnce(new ApiError('network'));
+      await openDevices();
+
+      await fireEvent.press(screen.getByRole('button', { name: 'Sair de todos os dispositivos' }));
+      await fireEvent.press(screen.getByRole('button', { name: 'Confirmar: sair de todos os dispositivos' }));
+
+      const notice = await screen.findByTestId('profile-devices-notice');
+      expect(within(notice).getByText('Todos os dispositivos foram desconectados, mas este ainda não concluiu a saída. Verifique sua conexão e tente de novo.')).toBeTruthy();
+      expect(screen.queryByText(/inclusive este/)).toBeNull();
+      await waitFor(() => expect(mockedDevices).toHaveBeenCalledTimes(2));
+    });
+
     it('cancels signing out of every device', async () => {
       await openDevices();
 

@@ -10,6 +10,8 @@ import { describeDevice } from './formatters';
 import { profileKeys } from './queries';
 
 type Notice = { variant: FeedbackMessageVariant; title: string; message: string };
+type Confirmation = { kind: 'one'; sessionId: string } | { kind: 'all' };
+type DeviceToEnd = { sessionId: string; name: string };
 
 function alreadyEndedNotice(name: string): Notice {
   return {
@@ -27,6 +29,12 @@ function failureNotice(error: unknown, action: string): Notice {
     message: `Não foi possível ${action}. ${offline ? 'Verifique sua conexão e tente novamente.' : 'Tente novamente em instantes.'}`,
   };
 }
+
+const LEAVE_PENDING: Notice = {
+  variant: 'error',
+  title: 'Saída incompleta',
+  message: 'Todos os dispositivos foram desconectados, mas este ainda não concluiu a saída. Verifique sua conexão e tente de novo.',
+};
 
 function ConfirmPanel({ children, testID }: { children: ReactNode; testID: string }) {
   return <View style={styles.confirm} testID={testID}>{children}</View>;
@@ -75,21 +83,20 @@ function DeviceItem({ current, device, confirming, ending, onAsk, onCancel, onCo
 export function DevicesContent({ currentSessionId, query }: { currentSessionId: string | null; query: UseQueryResult<DeviceSession[]> }) {
   const queryClient = useQueryClient();
   const { logout } = useAuth();
-  const [confirming, setConfirming] = useState<string | null>(null);
+  const [confirming, setConfirming] = useState<Confirmation | null>(null);
   const [notice, setNotice] = useState<Notice | null>(null);
   const reloadDevices = () => queryClient.invalidateQueries({ queryKey: profileKeys.devices() });
 
   const endOne = useMutation({
-    mutationFn: (sessionId: string) => revokeMyDeviceSession(sessionId),
+    mutationFn: ({ sessionId }: DeviceToEnd) => revokeMyDeviceSession(sessionId),
     onSuccess: () => {
       setConfirming(null);
       return reloadDevices();
     },
-    onError: (error, sessionId) => {
+    onError: (error, { name }) => {
       setConfirming(null);
       if (isApiError(error) && error.status === 404) {
-        const device = query.data?.find((candidate) => candidate.id === sessionId);
-        setNotice(alreadyEndedNotice(device ? describeDevice(device) : 'O dispositivo'));
+        setNotice(alreadyEndedNotice(name));
         return reloadDevices();
       }
       setNotice(failureNotice(error, 'encerrar o dispositivo'));
@@ -100,14 +107,19 @@ export function DevicesContent({ currentSessionId, query }: { currentSessionId: 
   const endAll = useMutation({
     mutationFn: () => revokeAllMyDeviceSessions(),
     // Every Session is already revoked, this one included; leaving locally sends the student to login.
-    onSuccess: () => logout().catch(() => reloadDevices()),
+    onSuccess: () => logout().catch(() => {
+      // Pressing "Sair de todos" again gets a 401 for the revoked Session, which also ends it locally.
+      setConfirming(null);
+      setNotice(LEAVE_PENDING);
+      return reloadDevices();
+    }),
     onError: (error) => {
       setConfirming(null);
       setNotice(failureNotice(error, 'sair de todos os dispositivos'));
     },
   });
 
-  const ask = (target: string) => {
+  const ask = (target: Confirmation) => {
     setNotice(null);
     setConfirming(target);
   };
@@ -130,18 +142,18 @@ export function DevicesContent({ currentSessionId, query }: { currentSessionId: 
           {devices.map((device, index) => (
             <View key={device.id} style={index > 0 && styles.divider}>
               <DeviceItem
-                confirming={confirming === device.id}
+                confirming={confirming?.kind === 'one' && confirming.sessionId === device.id}
                 current={device.id === currentSessionId}
                 device={device}
-                ending={endOne.isPending && endOne.variables === device.id}
-                onAsk={() => ask(device.id)}
+                ending={endOne.isPending && endOne.variables.sessionId === device.id}
+                onAsk={() => ask({ kind: 'one', sessionId: device.id })}
                 onCancel={() => setConfirming(null)}
-                onConfirm={() => endOne.mutate(device.id)}
+                onConfirm={() => endOne.mutate({ sessionId: device.id, name: describeDevice(device) })}
               />
             </View>
           ))}
         </View>
-        {confirming === 'all' ? (
+        {confirming?.kind === 'all' ? (
           <ConfirmPanel testID="profile-devices-confirm-all">
             <WiseText variant="label">Sair de todos os dispositivos?</WiseText>
             <WiseText color="textSecondary" variant="body">Todos os dispositivos serão desconectados, inclusive este. Você voltará para a tela de entrada.</WiseText>
@@ -151,7 +163,7 @@ export function DevicesContent({ currentSessionId, query }: { currentSessionId: 
             </View>
           </ConfirmPanel>
         ) : (
-          <WiseButton label="Sair de todos os dispositivos" onPress={() => ask('all')} testID="profile-devices-end-all" variant="danger" />
+          <WiseButton label="Sair de todos os dispositivos" onPress={() => ask({ kind: 'all' })} testID="profile-devices-end-all" variant="danger" />
         )}
       </>
     );
