@@ -54,11 +54,14 @@ describe('Cosmetics Catalog HTTP contract against MySQL', () => {
       dataSource.getRepository(User),
       dataSource.getRepository(UserCosmeticItem),
       dataSource.getRepository(CosmeticItem),
-      new ProgressionService(
-        dataSource.getRepository(Character),
-        { emitToUser: jest.fn() } as unknown as RealtimeGateway,
-      ),
+      {} as ProgressionService, // replaced below, once progression exists
     );
+    const progression = new ProgressionService(
+      dataSource.getRepository(Character),
+      { emitToUser: jest.fn() } as unknown as RealtimeGateway,
+      users,
+    );
+    Object.assign(users, { progression });
     auth = new AuthService(
       dataSource.getRepository(User),
       dataSource.getRepository(Character),

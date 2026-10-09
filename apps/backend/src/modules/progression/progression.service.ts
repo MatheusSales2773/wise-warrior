@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { forwardRef, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { type EntityManager, Repository } from 'typeorm';
 import { Character } from './entities/character.entity';
@@ -10,6 +10,7 @@ import {
   XpApplicationResult,
 } from './domain/progression-policy';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
+import { UsersService } from '../users/users.service';
 
 export interface CharacterProgressionSnapshot {
   xpTotal: number;
@@ -28,6 +29,8 @@ export class ProgressionService {
     @InjectRepository(Character)
     private readonly characters: Repository<Character>,
     private readonly realtime: RealtimeGateway,
+    @Inject(forwardRef(() => UsersService))
+    private readonly users: UsersService,
   ) {}
 
   getProjection(xpTotal: number): {
@@ -92,7 +95,12 @@ export class ProgressionService {
       throw new NotFoundException('Personagem não encontrado para este usuário');
     }
 
-    return this.persistXp(characters, character, xpGained);
+    const result = await this.persistXp(characters, character, xpGained);
+    if (result.leveledUp) {
+      // Mesma transação do XP: nível e Inventário nunca ficam inconsistentes.
+      await this.users.unlockCosmeticItems(manager, userId, result.newLevel);
+    }
+    return result;
   }
 
   publishAwardedXp(userId: string, xpGained: number, result: XpApplicationResult): void {

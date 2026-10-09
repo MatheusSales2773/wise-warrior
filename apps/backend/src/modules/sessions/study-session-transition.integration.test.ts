@@ -5,6 +5,8 @@ import { MAX_SUPPORTED_XP_TOTAL } from '../progression/domain/progression-policy
 import { ProgressionService } from '../progression/progression.service';
 import type { RealtimeGateway } from '../realtime/realtime.gateway';
 import { User } from '../users/entities/user.entity';
+import { CosmeticItem } from '../users/entities/cosmetic-item.entity';
+import { UserCosmeticItem } from '../users/entities/user-cosmetic-item.entity';
 import { UsersService } from '../users/users.service';
 import { StudySession } from './entities/study-session.entity';
 import { StudySessionStartService } from './study-session-start.service';
@@ -80,7 +82,13 @@ describe('Study Session transitions against MySQL', () => {
     });
     await dataSource.query('INSERT INTO active_study_sessions (user_id, study_session_id) VALUES (?, ?)', [userId, studySessionId]);
     realtime = { emitToUser: jest.fn() };
-    progression = new ProgressionService(dataSource.getRepository(Character), realtime as unknown as RealtimeGateway);
+    const users = new UsersService(
+      dataSource.getRepository(User),
+      dataSource.getRepository(UserCosmeticItem),
+      dataSource.getRepository(CosmeticItem),
+      {} as ProgressionService, // the profile read is not exercised here
+    );
+    progression = new ProgressionService(dataSource.getRepository(Character), realtime as unknown as RealtimeGateway, users);
     service = new StudySessionTransitionService(dataSource, { now: () => new Date(now) }, progression);
   });
 

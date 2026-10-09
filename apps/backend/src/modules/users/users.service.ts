@@ -1,5 +1,7 @@
 import {
+  forwardRef,
   ForbiddenException,
+  Inject,
   Injectable,
   Logger,
   NotFoundException,
@@ -57,6 +59,7 @@ export class UsersService {
     private readonly userCosmetics: Repository<UserCosmeticItem>,
     @InjectRepository(CosmeticItem)
     private readonly cosmeticItems: Repository<CosmeticItem>,
+    @Inject(forwardRef(() => ProgressionService))
     private readonly progression: ProgressionService,
   ) {}
 
