@@ -18,13 +18,13 @@ export class RaidsController {
   constructor(private readonly raids: RaidsService) {}
 
   @Get(':id')
-  findOne(@Param('id') id: string) {
-    return this.raids.findById(id);
+  findOne(@CurrentUser() user: JwtPayload, @Param('id') id: string) {
+    return this.raids.findById(user.sub, id);
   }
 
   @Get(':id/ranking')
-  ranking(@Param('id') id: string) {
-    return this.raids.ranking(id);
+  ranking(@CurrentUser() user: JwtPayload, @Param('id') id: string) {
+    return this.raids.ranking(user.sub, id);
   }
 
   @Post(':id/join')

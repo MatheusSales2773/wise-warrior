@@ -115,8 +115,8 @@ export class RaidsService {
     };
   }
 
-  async findById(raidId: string): Promise<RaidDetail> {
-    const raid = await this.findActiveOrAnyRaid(raidId);
+  async findById(userId: string, raidId: string): Promise<RaidDetail> {
+    const raid = await this.findRaidForMember(userId, raidId);
     return {
       id: raid.id,
       title: raid.mission.name,
@@ -181,7 +181,11 @@ export class RaidsService {
     });
   }
 
-  async ranking(raidId: string): Promise<Array<{ userId: string; xpContributed: number }>> {
+  async ranking(
+    userId: string,
+    raidId: string,
+  ): Promise<Array<{ userId: string; xpContributed: number }>> {
+    await this.findRaidForMember(userId, raidId);
     const rows = await this.contributions
       .createQueryBuilder('contribution')
       .select('contribution.userId', 'userId')
@@ -201,10 +205,14 @@ export class RaidsService {
     return raid.status !== 'active' || raid.endsAt.getTime() < Date.now();
   }
 
-  private async findActiveOrAnyRaid(raidId: string): Promise<Raid> {
+  /** Detalhe e ranking são só dos membros da Guild da Raid. */
+  private async findRaidForMember(userId: string, raidId: string): Promise<Raid> {
     const raid = await this.raids.findOne({ where: { id: raidId }, relations: ['mission'] });
     if (!raid) {
       throw new NotFoundException('Raid não encontrada');
+    }
+    if (!(await this.guilds.isMember(raid.guildId, userId))) {
+      throw new ForbiddenException('Usuário não pertence à guilda desta raid');
     }
     return raid;
   }

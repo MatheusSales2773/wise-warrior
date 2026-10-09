@@ -753,6 +753,7 @@ paths:
   /raids/{id}:
     get:
       summary: Detalhe de uma raid
+      description: Restrito aos membros da guilda da raid; quem é de fora recebe 403.
       operationId: getRaid
       tags: [Raids]
       parameters:
@@ -763,6 +764,8 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/RaidDetail" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
 
   /raids/{id}/ranking:
@@ -771,7 +774,8 @@ paths:
       description: >
         Sem paginação por decisão explícita: bounded pelo tamanho da guilda
         (tipicamente dezenas de membros, não milhares) — ver nota de
-        /users/me/sessions acima para o mesmo raciocínio.
+        /users/me/sessions acima para o mesmo raciocínio. Restrito aos
+        membros da guilda da raid; quem é de fora recebe 403.
       operationId: getRaidRanking
       tags: [Raids]
       parameters:
@@ -785,6 +789,8 @@ paths:
                 type: array
                 items: { $ref: "#/components/schemas/RaidRankingEntry" }
         "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
 
   /raids/{id}/join:
     post:
