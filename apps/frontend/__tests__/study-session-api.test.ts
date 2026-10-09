@@ -27,6 +27,17 @@ it('sends the Matéria only when one was chosen and keeps Sem matéria as absenc
   expect(post).toHaveBeenLastCalledWith('/sessions', { plannedDurationSeconds: 900 }, { headers: { 'Idempotency-Key': 'without-subject' } });
 });
 
+it('starts in guild mode only when a Raid is given', async () => {
+  const post = jest.fn().mockResolvedValue({ status: 201, data: { id: 'study-1', mode: 'guild', raidId: 'raid-1' } });
+  (getAuthenticatedHttpClient as jest.Mock).mockReturnValue({ post });
+  await startStudySession(1500, 'guild-start', null, 'raid-1');
+  expect(post).toHaveBeenLastCalledWith(
+    '/sessions',
+    { plannedDurationSeconds: 1500, mode: 'guild', raidId: 'raid-1' },
+    { headers: { 'Idempotency-Key': 'guild-start' } },
+  );
+});
+
 it('unwraps the recent Matérias and forwards the abort signal', async () => {
   const get = jest.fn().mockResolvedValue({ status: 200, data: { subjects: ['Física', 'Cálculo II'] } });
   (getAuthenticatedHttpClient as jest.Mock).mockReturnValue({ get });

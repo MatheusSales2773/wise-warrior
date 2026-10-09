@@ -33,11 +33,32 @@ export interface ActiveRaid {
   reward: { itemId: string; name: string; category: string };
   goalXp: number;
   progressXp: number;
+  goalReachedAt: Date | null;
   startsAt: Date;
   endsAt: Date;
   status: string;
-  me: { participating: boolean };
+  me: { participating: boolean; contributionXp: number };
 }
+
+/** O progresso coletivo logo depois de uma Contribuição, para o evento `raid:progress`. */
+export interface RaidProgress {
+  raidId: string;
+  guildId: string;
+  progressXp: number;
+  goalXp: number;
+  goalReachedAt: Date | null;
+}
+
+export interface GuildSessionContribution {
+  raidId: string;
+  userId: string;
+  studySessionId: string;
+  xpContributed: number;
+  /** O fim da Study Session: decide se ela ainda cabe na semana da Raid (RN01). */
+  endedAt: Date;
+}
+
+const RAID_ENDED_PROBLEM = 'https://wise.app/errors/raid-ended';
 
 @Injectable()
 export class RaidsService {
@@ -114,10 +135,14 @@ export class RaidsService {
       reward: { itemId: item.id, name: item.name, category: item.category },
       goalXp: raid.goalXp,
       progressXp: raid.progressXp,
+      goalReachedAt: raid.goalReachedAt,
       startsAt: raid.startsAt,
       endsAt: raid.endsAt,
       status: raid.status,
-      me: { participating: await this.participations.existsBy({ raidId: raid.id, userId: requesterId }) },
+      me: {
+        participating: await this.participations.existsBy({ raidId: raid.id, userId: requesterId }),
+        contributionXp: await this.contributionXpOf(raid.id, requesterId),
+      },
     };
   }
 
@@ -145,8 +170,8 @@ export class RaidsService {
     if (!(await this.guilds.isMember(raid.guildId, userId))) {
       throw new ForbiddenException('Usuário não pertence à guilda desta raid');
     }
-    if (raid.status === 'expired' || raid.endsAt.getTime() < this.clock().getTime()) {
-      throw new ConflictException('Raid encerrada'); // UC02 (A01) — Raid Expirada
+    if (!this.isOpenAt(raid, this.clock())) {
+      throw new ConflictException({ type: RAID_ENDED_PROBLEM, message: 'Raid encerrada' }); // UC02 (A01) — Raid Expirada
     }
     await this.participations
       .createQueryBuilder()
@@ -157,40 +182,98 @@ export class RaidsService {
   }
 
   /**
-   * RN01 (UC02): só sessões concluídas dentro do período oficial da raid
-   * contam como contribuição. Chamado pelo SessionsService após a validação
-   * antifraude — nunca recebe XP não-validado.
+   * Forja: uma Study Session de modo Guilda só começa na Raid ativa da Guild do usuário, e só para
+   * Participantes. Roda na transação do início, depois da trava do usuário.
    */
+  async assertCanStartGuildSession(manager: EntityManager, userId: string, raidId: string, now: Date): Promise<void> {
+    const raid = await manager.findOne(Raid, { where: { id: raidId } });
+    if (!raid) {
+      throw new NotFoundException('Raid não encontrada');
+    }
+    if (!(await this.guilds.isMember(raid.guildId, userId))) {
+      throw new ForbiddenException('Usuário não pertence à guilda desta raid');
+    }
+    if (!this.isOpenAt(raid, now)) {
+      throw new ConflictException({ type: RAID_ENDED_PROBLEM, message: 'Raid encerrada' });
+    }
+    if (!(await manager.exists(RaidParticipation, { where: { raidId, userId } }))) {
+      throw new ForbiddenException('Confirme a participação na Raid antes de iniciar uma sessão de guilda');
+    }
+  }
+
+  /**
+   * Grava a Contribuição na transação da conclusão da Study Session. Sessão concluída fora da semana
+   * da Raid (RN01) ou sem XP validado pelo antifraude não contribui, e a mesma Study Session conta
+   * no máximo uma vez. Devolve o progresso para publicar depois do commit, ou `null` se nada mudou.
+   */
+  async recordContributionInTransaction(
+    manager: EntityManager,
+    contribution: GuildSessionContribution,
+  ): Promise<RaidProgress | null> {
+    const { raidId, userId, studySessionId, xpContributed, endedAt } = contribution;
+    if (xpContributed <= 0) return null;
+    // Locking the Raid first keeps concurrent Contributions from deadlocking on the foreign key check.
+    const raid = await manager
+      .createQueryBuilder(Raid, 'raid')
+      .setLock('pessimistic_write')
+      .where('raid.id = :raidId', { raidId })
+      .getOne();
+    if (!raid || !this.isOpenAt(raid, endedAt)) return null;
+
+    const inserted = await manager
+      .createQueryBuilder()
+      .insert()
+      .into(RaidContribution)
+      .values({ raidId, userId, studySessionId, xpContributed })
+      .orIgnore() // `study_session_id` único: uma conclusão reprocessada não soma de novo
+      .execute();
+    if ((inserted.raw as { affectedRows: number }).affectedRows === 0) return null;
+
+    // Atomic in the database. MySQL evaluates the assignments left to right, so the goal check runs before the increment.
+    await manager.query(
+      `UPDATE raids
+       SET goal_reached_at = IF(goal_reached_at IS NULL AND progress_xp + ? >= goal_xp, ?, goal_reached_at),
+           progress_xp = progress_xp + ?
+       WHERE id = ?`,
+      [xpContributed, endedAt, xpContributed, raidId],
+    );
+    const updated = await manager.findOneOrFail(Raid, { where: { id: raidId } });
+    return {
+      raidId,
+      guildId: updated.guildId,
+      progressXp: updated.progressXp,
+      goalXp: updated.goalXp,
+      goalReachedAt: updated.goalReachedAt,
+    };
+  }
+
+  /** Depois do commit: todos os membros conectados veem o progresso (UC02 RE01). */
+  publishProgress(progress: RaidProgress): void {
+    this.realtime.emitToGuild(progress.guildId, 'raid:progress', {
+      raidId: progress.raidId,
+      progressXp: progress.progressXp,
+      goalXp: progress.goalXp,
+      goalReachedAt: progress.goalReachedAt,
+    });
+  }
+
+  /** Conclusão das Study Sessions legadas, sem estado canônico, que ainda não usam a transação da conclusão. */
   async recordContribution(
     raidId: string,
     userId: string,
     studySessionId: string,
     xpContributed: number,
   ): Promise<void> {
-    const raid = await this.raids.findOne({ where: { id: raidId } });
-    if (!raid) {
-      throw new NotFoundException('Raid não encontrada');
-    }
-    if (this.isExpired(raid)) {
-      // (E01)/(A01) — contribuição fora da janela oficial não é contabilizada.
-      return;
-    }
-
-    await this.contributions.save(
-      this.contributions.create({ raidId, userId, studySessionId, xpContributed }),
+    const progress = await this.raids.manager.transaction((manager) =>
+      this.recordContributionInTransaction(manager, {
+        raidId,
+        userId,
+        studySessionId,
+        xpContributed,
+        endedAt: this.clock(),
+      }),
     );
-    raid.progressXp += xpContributed;
-    if (raid.progressXp >= raid.goalXp) {
-      raid.status = 'completed';
-    }
-    await this.raids.save(raid);
-
-    this.realtime.emitToGuild(raid.guildId, 'raid:progress', {
-      raidId: raid.id,
-      progressXp: raid.progressXp,
-      goalXp: raid.goalXp,
-      status: raid.status,
-    });
+    if (progress) this.publishProgress(progress);
   }
 
   async ranking(
@@ -213,8 +296,20 @@ export class RaidsService {
     }));
   }
 
-  private isExpired(raid: Raid): boolean {
-    return raid.status !== 'active' || raid.endsAt.getTime() < Date.now();
+  /** A Raid aceita Participantes e Contribuições da segunda 00:00 ao domingo 23:59:59, mesmo depois da Meta batida. */
+  private isOpenAt(raid: Raid, at: Date): boolean {
+    return raid.status !== 'expired'
+      && raid.startsAt.getTime() <= at.getTime()
+      && at.getTime() <= raid.endsAt.getTime();
+  }
+
+  private async contributionXpOf(raidId: string, userId: string): Promise<number> {
+    const row = await this.contributions
+      .createQueryBuilder('contribution')
+      .select('COALESCE(SUM(contribution.xpContributed), 0)', 'total')
+      .where('contribution.raidId = :raidId AND contribution.userId = :userId', { raidId, userId })
+      .getRawOne<{ total: string }>();
+    return Number(row?.total ?? 0);
   }
 
   /** Detalhe e ranking são só dos membros da Guild da Raid. */

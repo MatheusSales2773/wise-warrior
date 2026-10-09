@@ -46,10 +46,12 @@ export type ActiveRaid = {
   reward: { itemId: string; name: string; category: RaidRewardCategory };
   goalXp: number;
   progressXp: number;
+  /** The first time the progress reached the goal (Meta batida); Contributions keep adding until `endsAt`. */
+  goalReachedAt: string | null;
   startsAt: string;
   endsAt: string;
   status: 'active' | 'completed' | 'expired';
-  me: { participating: boolean };
+  me: { participating: boolean; contributionXp: number };
 };
 
 /** `null` means the user is not in any guild (the API answers 404), which is a normal state, not a failure. */

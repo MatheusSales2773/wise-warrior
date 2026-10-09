@@ -106,10 +106,10 @@ describe('Cosmetic Item unlock on level-up through the Study Session API', () =>
       controllers: [SessionsController, UsersController],
       providers: [
         { provide: SessionsService, useValue: { usesCanonicalStudySessionState: async () => true } },
-        { provide: StudySessionStartService, useValue: new StudySessionStartService(dataSource, users) },
+        { provide: StudySessionStartService, useValue: new StudySessionStartService(dataSource, users, {} as never) },
         {
           provide: StudySessionTransitionService,
-          useValue: new StudySessionTransitionService(dataSource, { now: () => new Date(now) }, progression),
+          useValue: new StudySessionTransitionService(dataSource, { now: () => new Date(now) }, progression, {} as never),
         },
         { provide: UsersService, useValue: users },
         { provide: AuthService, useValue: auth },

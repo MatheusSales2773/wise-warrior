@@ -5,7 +5,7 @@ import { FeedbackMessage, ProgressBar, Screen, WiseButton, WiseCard, WiseField, 
 import { isApiError } from '@/core/api/api-error';
 import { createGuild, joinGuild, joinRaid, leaveGuild, type ActiveRaid, type GuildMember, type GuildSummary, type MyGuild } from './api';
 import {
-  RAID_REWARD_RULE, createGuildErrorMessage, formatGuildRole, formatMemberCount, formatRaidTimeLeft, formatRewardCategory,
+  RAID_GOAL_REACHED, RAID_REWARD_RULE, createGuildErrorMessage, formatGuildRole, formatMyContribution, formatMemberCount, formatRaidTimeLeft, formatRewardCategory,
   joinGuildErrorMessage, joinRaidErrorMessage, leaveGuildErrorMessage, raidProgressPercent,
 } from './messages';
 import { activeRaidQueryOptions, guildDirectoryQueryOptions, guildKeys, guildMembersQueryOptions, myGuildQueryOptions } from './queries';
@@ -104,7 +104,7 @@ function RaidParticipation({ guildId, raid }: { guildId: string; raid: ActiveRai
     mutationFn: () => joinRaid(raid.id),
     onSuccess: () => queryClient.setQueryData<ActiveRaid | null>(
       guildKeys.raid(guildId),
-      (current) => (current ? { ...current, me: { participating: true } } : current),
+      (current) => (current ? { ...current, me: { ...current.me, participating: true } } : current),
     ),
     // The Raid ended (409) or is gone: show the Raid that is current now.
     onError: (error) => {
@@ -115,7 +115,12 @@ function RaidParticipation({ guildId, raid }: { guildId: string; raid: ActiveRai
   });
 
   if (raid.me.participating) {
-    return <WiseText accessibilityLiveRegion="polite" color="accentPrimary" testID="guild-raid-participating" variant="label">Você está nesta Raid</WiseText>;
+    return (
+      <View style={styles.stack}>
+        <WiseText accessibilityLiveRegion="polite" color="accentPrimary" testID="guild-raid-participating" variant="label">Você está nesta Raid</WiseText>
+        <WiseText testID="guild-raid-my-contribution" variant="body">{formatMyContribution(raid.me.contributionXp)}</WiseText>
+      </View>
+    );
   }
   if (raid.status === 'expired') return null;
   return (
@@ -143,6 +148,11 @@ function RaidDetails({ guildId, raid }: { guildId: string; raid: ActiveRaid }) {
           value={Math.min(raid.progressXp, raid.goalXp)}
         />
         <WiseText variant="body">{raid.progressXp} / {raid.goalXp} XP</WiseText>
+        {raid.goalReachedAt ? (
+          <WiseText accessibilityLiveRegion="polite" color="accentPrimary" testID="guild-raid-goal-reached" variant="label">
+            {RAID_GOAL_REACHED}
+          </WiseText>
+        ) : null}
       </View>
       <WiseText color="textSecondary" testID="guild-raid-time-left" variant="body">{formatRaidTimeLeft(new Date(raid.endsAt).getTime() - now)}</WiseText>
       <View style={styles.stack} testID="guild-raid-reward">

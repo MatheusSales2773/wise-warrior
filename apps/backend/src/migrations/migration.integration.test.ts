@@ -12,6 +12,7 @@ import { AddCanonicalStudySessionStart1788458760000 } from './1788458760000-add-
 import { AddStudySessionPauseResume1788458880000 } from './1788458880000-add-study-session-pause-resume';
 import { AddRaidMissions1788459360000 } from './1788459360000-add-raid-missions';
 import { AddRaidParticipations1788459420000 } from './1788459420000-add-raid-participations';
+import { AddRaidGoalReachedAt1788459480000 } from './1788459480000-add-raid-goal-reached-at';
 import { DropCharacterTitle1788459300000 } from './1788459300000-drop-character-title';
 import { SeedInitialCosmeticItems1788459240000 } from './1788459240000-seed-initial-cosmetic-items';
 import { raidWeekAt } from '../modules/raids/domain/raid-week';
@@ -60,7 +61,7 @@ const expectedColumns: Record<string, string[]> = {
   ],
   guilds: ['id', 'name', 'level', 'created_by', 'created_at'],
   guild_memberships: ['id', 'guild_id', 'user_id', 'role', 'joined_at'],
-  raids: ['id', 'guild_id', 'mission_id', 'goal_xp', 'progress_xp', 'starts_at', 'ends_at', 'status'],
+  raids: ['id', 'guild_id', 'mission_id', 'goal_xp', 'progress_xp', 'starts_at', 'ends_at', 'status', 'goal_reached_at'],
   study_sessions: [
     'id',
     'user_id',
@@ -199,6 +200,8 @@ describe('TypeORM migrations against an empty MySQL schema', () => {
         'UQ_user_cosmetic_items_user_id_cosmetic_item_id',
         'user_id,cosmetic_item_id',
       ],
+      ['raid_contributions', 'UQ_raid_contributions_study_session_id', 'study_session_id'],
+      ['raid_participations', 'UQ_raid_participations_raid_id_user_id', 'raid_id,user_id'],
     ];
     for (const expected of expectedUniques) {
       expect(uniqueRows).toEqual(
@@ -376,7 +379,25 @@ describe('TypeORM migrations against an empty MySQL schema', () => {
       'DropCharacterTitle1788459300000',
       'AddRaidMissions1788459360000',
       'AddRaidParticipations1788459420000',
+      'AddRaidGoalReachedAt1788459480000',
     ]);
+
+    await dataSource.undoLastMigration(); // raid goal reached at, which sits above the raid participations
+    const goalRevertRows = await rows(
+      database!.admin,
+      `SELECT COLUMN_NAME FROM information_schema.COLUMNS
+       WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'raids' AND COLUMN_NAME = 'goal_reached_at'`,
+      [database!.name],
+    );
+    expect(goalRevertRows).toHaveLength(0);
+    const contributionIndexRevertRows = await rows(
+      database!.admin,
+      `SELECT INDEX_NAME, NON_UNIQUE FROM information_schema.STATISTICS
+       WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'raid_contributions' AND COLUMN_NAME = 'study_session_id'`,
+      [database!.name],
+    );
+    expect(contributionIndexRevertRows.map((row) => [row.INDEX_NAME, Number(row.NON_UNIQUE)]))
+      .toEqual([['IDX_raid_contributions_study_session_id', 1]]);
 
     await dataSource.undoLastMigration(); // raid participations, which sit above the raid missions
     const participationRevertRows = await rows(
@@ -598,7 +619,7 @@ await dataSource.undoLastMigration();
       { idempotency_key: 'rolling-transition-key', command_kind: 'resume' },
     ]);
 
-    for (let step = 0; step < 8; step += 1) await dataSource.undoLastMigration();
+    for (let step = 0; step < 9; step += 1) await dataSource.undoLastMigration();
     const leftoverTriggers = await rows(
       database.admin,
       `SELECT TRIGGER_NAME FROM information_schema.TRIGGERS
@@ -723,6 +744,7 @@ await dataSource.undoLastMigration();
     expect(receiptsWithSubject).toEqual([{ idempotency_key: 'solo-start-key', subject: 'Cálculo II' }]);
 
     // M6 revert: only the receipt column goes away; every persisted Matéria (including legacy Guild rows) stays.
+    await dataSource.undoLastMigration(); // raid goal reached at
     await dataSource.undoLastMigration(); // raid participations, which sit above the raid missions
     await dataSource.undoLastMigration(); // raid missions, which sit above the character title drop
     await dataSource.undoLastMigration(); // character title drop, which sits above the cosmetic seed
@@ -757,7 +779,7 @@ await dataSource.undoLastMigration();
     );
     expect(receiptsAfterReapply).toEqual([{ idempotency_key: 'solo-start-key', subject: null }]);
 
-    for (let step = 0; step < 10; step += 1) await dataSource.undoLastMigration();
+    for (let step = 0; step < 11; step += 1) await dataSource.undoLastMigration();
     const downgradedHistory = await rows(
       database.admin,
       `SELECT id, subject, mode, raid_id FROM ${database.identifier}.study_sessions ORDER BY id`,
@@ -848,7 +870,7 @@ await dataSource.undoLastMigration();
     );
     expect(leftoverArchives).toHaveLength(0);
 
-    for (let step = 0; step < 13; step += 1) await dataSource.undoLastMigration();
+    for (let step = 0; step < 14; step += 1) await dataSource.undoLastMigration();
     const remainingSchemaTables = await rows(
       database.admin,
       `SELECT TABLE_NAME FROM information_schema.TABLES
@@ -939,6 +961,7 @@ await dataSource.undoLastMigration();
     expect(owned('newcomer')).toEqual([['Capuz do Erudito', 1], ['Aprendiz', 1]]);
     expect(owned('collector')).toEqual([['Capuz do Erudito', 1], ['Aprendiz', 1], ['Madrugador', 0]]);
 
+    await dataSource.undoLastMigration(); // raid goal reached at
     await dataSource.undoLastMigration(); // raid participations, which sit above the raid missions
     await dataSource.undoLastMigration(); // raid missions, which sit above the character title drop
     await dataSource.undoLastMigration(); // character title drop, which sits above the seed
@@ -993,6 +1016,7 @@ await dataSource.undoLastMigration();
     );
     expect(columns.map((row) => row.COLUMN_NAME)).not.toContain('title');
 
+    await dataSource.undoLastMigration(); // raid goal reached at
     await dataSource.undoLastMigration(); // raid participations, which sit above the raid missions
     await dataSource.undoLastMigration(); // raid missions, which sit above the character title drop
     await dataSource.undoLastMigration();
@@ -1072,6 +1096,7 @@ await dataSource.undoLastMigration();
     expect(Number(current.goal_xp)).toBeGreaterThan(0);
     expect(Number(current.goal_xp)).toBeLessThanOrEqual(3000);
 
+    await dataSource.undoLastMigration(); // raid goal reached at
     await dataSource.undoLastMigration(); // raid participations
     await dataSource.undoLastMigration();
     const reverted = await rows(
@@ -1148,11 +1173,76 @@ await dataSource.undoLastMigration();
       [raidId],
     )).rejects.toThrow(/Duplicate entry/);
 
+    await dataSource.undoLastMigration(); // raid goal reached at
     await dataSource.undoLastMigration();
     expect(await rows(
       database.admin,
       `SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'raid_participations'`,
       [database.name],
     )).toEqual([]);
+  });
+
+  it('dates the Meta batida, reopens the Raids of the current week and keeps one Contribution per Study Session', async () => {
+    database = await createIntegrationDatabase('wise_migrations_test');
+    initialDataSource = new DataSource(database.options(
+      (APPLICATION_MIGRATIONS as unknown[]).filter((migration) => migration !== AddRaidGoalReachedAt1788459480000) as typeof APPLICATION_MIGRATIONS,
+    ));
+    await initialDataSource.initialize();
+    await initialDataSource.runMigrations();
+    const db = database.identifier;
+    await database.admin.query(
+      `INSERT INTO ${db}.users (id, email, password_hash, display_name, plan_tier) VALUES ('u', 'u@example.com', 'hash', 'U', 'free')`,
+    );
+    await database.admin.query(`INSERT INTO ${db}.guilds (id, name, created_by) VALUES ('g', 'Guilda', 'u')`);
+    await database.admin.query(`DELETE FROM ${db}.raids WHERE guild_id = 'g'`);
+    // A Raid of this week that reached the goal under the old rule, and one closed in the past.
+    await database.admin.query(
+      `INSERT INTO ${db}.raids (id, guild_id, mission_id, goal_xp, progress_xp, starts_at, ends_at, status)
+       SELECT 'current', 'g', id, 100, 150, UTC_TIMESTAMP() - INTERVAL 1 DAY, UTC_TIMESTAMP() + INTERVAL 1 DAY, 'completed'
+       FROM ${db}.missions ORDER BY rotation_order LIMIT 1`,
+    );
+    await database.admin.query(
+      `INSERT INTO ${db}.raids (id, guild_id, mission_id, goal_xp, progress_xp, starts_at, ends_at, status)
+       SELECT 'past', 'g', id, 100, 40, '2026-01-05 03:00:00', '2026-01-12 02:59:59', 'expired'
+       FROM ${db}.missions ORDER BY rotation_order LIMIT 1`,
+    );
+    await database.admin.query(
+      `INSERT INTO ${db}.study_sessions (id, user_id, subject, mode, raid_id, started_at) VALUES ('s1', 'u', NULL, 'guild', 'current', NOW())`,
+    );
+    // The same Study Session counted twice (50 XP each): the copy leaves and its XP comes off the progress.
+    await database.admin.query(
+      `INSERT INTO ${db}.raid_contributions (id, raid_id, user_id, study_session_id, xp_contributed, created_at) VALUES
+       ('c1', 'current', 'u', 's1', 50, '2026-10-06 10:00:00.000000'),
+       ('c2', 'current', 'u', 's1', 50, '2026-10-06 10:00:01.000000'),
+       ('c3', 'current', 'u', NULL, 50, '2026-10-07 09:00:00.000000')`,
+    );
+    await initialDataSource.destroy();
+    initialDataSource = undefined;
+
+    dataSource = new DataSource(database.options(APPLICATION_MIGRATIONS));
+    await dataSource.initialize();
+    await dataSource.runMigrations();
+
+    const raids = await rows(
+      database.admin,
+      `SELECT id, status, progress_xp, DATE_FORMAT(goal_reached_at, '%Y-%m-%d %H:%i:%s') AS goal_reached_at
+       FROM ${db}.raids WHERE guild_id = 'g' ORDER BY id`,
+    );
+    expect(raids).toEqual([
+      { id: 'current', status: 'active', progress_xp: 100, goal_reached_at: '2026-10-07 09:00:00' },
+      { id: 'past', status: 'expired', progress_xp: 40, goal_reached_at: null },
+    ]);
+    expect(await rows(database.admin, `SELECT id FROM ${db}.raid_contributions ORDER BY id`))
+      .toEqual([{ id: 'c1' }, { id: 'c3' }]);
+    await expect(database.admin.query(
+      `INSERT INTO ${db}.raid_contributions (id, raid_id, user_id, study_session_id, xp_contributed) VALUES ('c4', 'current', 'u', 's1', 10)`,
+    )).rejects.toThrow(/Duplicate entry/);
+
+    await dataSource.undoLastMigration();
+    expect(await rows(database.admin, `SELECT id, status FROM ${db}.raids WHERE guild_id = 'g' ORDER BY id`))
+      .toEqual([{ id: 'current', status: 'completed' }, { id: 'past', status: 'expired' }]);
+    await database.admin.query(
+      `INSERT INTO ${db}.raid_contributions (id, raid_id, user_id, study_session_id, xp_contributed) VALUES ('c4', 'current', 'u', 's1', 10)`,
+    );
   });
 });

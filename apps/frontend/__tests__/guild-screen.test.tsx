@@ -35,7 +35,8 @@ const raid = (overrides: Partial<ActiveRaid> = {}): ActiveRaid => ({
   startsAt: new Date(Date.now() - 2 * DAY).toISOString(),
   endsAt: new Date(Date.now() + 2 * DAY + 3.5 * 60 * 60 * 1000).toISOString(),
   status: 'active',
-  me: { participating: false },
+  goalReachedAt: null,
+  me: { participating: false, contributionXp: 0 },
   ...overrides,
 });
 
@@ -279,6 +280,16 @@ describe('GuildScreen', () => {
       expect(screen.getByText('Marcador do Grimório')).toBeTruthy();
       expect(screen.getByText(/Badge/)).toBeTruthy();
       expect(screen.getByText(/contribua com ao menos uma sessão de guilda/)).toBeTruthy();
+      expect(screen.queryByTestId('guild-raid-goal-reached')).toBeNull();
+    });
+
+    it('shows "Meta batida" once the goal is reached, with the progress past the goal', async () => {
+      mockedRaid.mockResolvedValue(raid({ progressXp: 1250, goalReachedAt: new Date(Date.now() - DAY).toISOString() }));
+      await renderGuild();
+
+      expect(await screen.findByTestId('guild-raid-goal-reached')).toHaveTextContent(/Meta batida!/);
+      expect(screen.getByText('1250 / 1000 XP')).toBeTruthy();
+      expect(screen.getByTestId('guild-raid-progress').props.accessibilityLabel).toBe('Progresso da Raid: 1250 de 1000 XP, 100%');
     });
 
     describe('participation', () => {
@@ -297,11 +308,25 @@ describe('GuildScreen', () => {
       });
 
       it('shows "Você está nesta Raid" straight away for a Participante, with no button', async () => {
-        mockedRaid.mockResolvedValue(raid({ me: { participating: true } }));
+        mockedRaid.mockResolvedValue(raid({ me: { participating: true, contributionXp: 0 } }));
         await renderGuild();
 
         expect(await screen.findByTestId('guild-raid-participating')).toBeTruthy();
         expect(screen.queryByTestId('guild-raid-join')).toBeNull();
+      });
+
+      it('shows the Participante own Contribution', async () => {
+        mockedRaid.mockResolvedValue(raid({ me: { participating: true, contributionXp: 300 } }));
+        await renderGuild();
+
+        expect(await screen.findByTestId('guild-raid-my-contribution')).toHaveTextContent('Sua contribuição: 300 XP');
+      });
+
+      it('invites a Participante without a Contribution yet to study in the Forja', async () => {
+        mockedRaid.mockResolvedValue(raid({ me: { participating: true, contributionXp: 0 } }));
+        await renderGuild();
+
+        expect(await screen.findByTestId('guild-raid-my-contribution')).toHaveTextContent(/Sua contribuição: 0 XP.*Forja/);
       });
 
       it('sends a single request on repeated presses while the first is in flight', async () => {
