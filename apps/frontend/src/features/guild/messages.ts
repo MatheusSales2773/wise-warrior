@@ -34,3 +34,26 @@ export function leaveGuildErrorMessage(error: unknown): string {
   }
   return 'Não foi possível sair da guilda agora. Tente novamente.';
 }
+
+const RAID_REWARD_CATEGORY_LABELS = { avatar: 'Avatar', badge: 'Badge', title: 'Título', accessory: 'Acessório' } as const;
+
+export function formatRewardCategory(category: keyof typeof RAID_REWARD_CATEGORY_LABELS): string {
+  return RAID_REWARD_CATEGORY_LABELS[category];
+}
+
+export const RAID_REWARD_RULE = 'Para receber o item, contribua com ao menos uma sessão de guilda e ajude a bater a meta até o fim da semana.';
+
+/** Remaining time shown on the Raid card; at zero the week is over and the next refetch brings the new Raid. */
+export function formatRaidTimeLeft(milliseconds: number): string {
+  const minutes = Math.floor(milliseconds / 60_000);
+  if (minutes <= 0) return 'Encerrando…';
+  const days = Math.floor(minutes / 1440);
+  const hours = Math.floor((minutes % 1440) / 60);
+  if (days > 0) return `${days} d ${hours} h restantes`;
+  if (hours > 0) return `${hours} h ${minutes % 60} min restantes`;
+  return `${minutes} min restantes`;
+}
+
+export function raidProgressPercent(progressXp: number, goalXp: number): number {
+  return goalXp > 0 ? Math.min(100, Math.floor((progressXp / goalXp) * 100)) : 0;
+}

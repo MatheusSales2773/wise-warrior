@@ -13,6 +13,7 @@ import { AddStudySessionStartReceiptSubject1788459120000 } from '../migrations/1
 import { EnforceSingleGuildPerUser1788459180000 } from '../migrations/1788459180000-enforce-single-guild-per-user';
 import { DropCharacterTitle1788459300000 } from '../migrations/1788459300000-drop-character-title';
 import { SeedInitialCosmeticItems1788459240000 } from '../migrations/1788459240000-seed-initial-cosmetic-items';
+import { AddRaidMissions1788459360000 } from '../migrations/1788459360000-add-raid-missions';
 
 export const APPLICATION_MIGRATIONS: NonNullable<DataSourceOptions['migrations']> = [
   CreateWiseSchema1788458400000,
@@ -26,6 +27,7 @@ export const APPLICATION_MIGRATIONS: NonNullable<DataSourceOptions['migrations']
   EnforceSingleGuildPerUser1788459180000,
   SeedInitialCosmeticItems1788459240000,
   DropCharacterTitle1788459300000,
+  AddRaidMissions1788459360000,
 ];
 
 export interface IntegrationDatabase {

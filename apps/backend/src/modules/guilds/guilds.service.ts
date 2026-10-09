@@ -2,11 +2,14 @@ import {
   BadRequestException,
   ConflictException,
   ForbiddenException,
+  Inject,
   Injectable,
   NotFoundException,
+  forwardRef,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+import { RaidsService } from '../raids/raids.service';
 import { Character } from '../progression/entities/character.entity';
 import { CosmeticItem } from '../users/entities/cosmetic-item.entity';
 import { UserCosmeticItem } from '../users/entities/user-cosmetic-item.entity';
@@ -114,6 +117,8 @@ export class GuildsService {
     @InjectRepository(Guild) private readonly guilds: Repository<Guild>,
     @InjectRepository(GuildMembership)
     private readonly memberships: Repository<GuildMembership>,
+    @Inject(forwardRef(() => RaidsService))
+    private readonly raids: RaidsService,
   ) {}
 
   async create(userId: string, dto: CreateGuildDto): Promise<Guild> {
@@ -132,6 +137,8 @@ export class GuildsService {
         await manager.save(
           manager.create(GuildMembership, { guildId: guild.id, userId, role: 'leader' }),
         );
+        // Toda Guild nasce com a Raid da semana corrente (ADR-001: via RaidsService, na mesma transação).
+        await this.raids.createForGuild(manager, guild.id, 1);
         return guild;
       });
     } catch (error) {

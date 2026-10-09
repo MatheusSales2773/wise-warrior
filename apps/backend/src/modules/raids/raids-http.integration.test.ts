@@ -13,7 +13,13 @@ import { GuildsService } from '../guilds/guilds.service';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
 import { HttpExceptionFilter } from '../../shared/filters/http-exception.filter';
 import { APPLICATION_MIGRATIONS, createIntegrationDatabase, type IntegrationDatabase } from '../../test/integration-database';
+import { CosmeticItem } from '../users/entities/cosmetic-item.entity';
+import { UserCosmeticItem } from '../users/entities/user-cosmetic-item.entity';
+import { UsersService } from '../users/users.service';
+import { ProgressionService } from '../progression/progression.service';
+import { Mission } from './entities/mission.entity';
 import { Raid } from './entities/raid.entity';
+import { RAID_CLOCK, systemRaidClock } from './raid-clock';
 import { RaidContribution } from './entities/raid-contribution.entity';
 import { RaidsController } from './raids.controller';
 import { RaidsService } from './raids.service';
@@ -53,7 +59,7 @@ describe('Raids HTTP access control against MySQL', () => {
     const raid = await dataSource.getRepository(Raid).save(
       dataSource.getRepository(Raid).create({
         guildId: guild.id,
-        title: 'Vigília',
+        missionId: (await dataSource.getRepository(Mission).findOneByOrFail({ slug: 'vigilia-da-aurora' })).id,
         goalXp: 1500,
         startsAt: new Date(Date.now() - 3_600_000),
         endsAt: new Date(Date.now() + 86_400_000),
@@ -66,6 +72,13 @@ describe('Raids HTTP access control against MySQL', () => {
       providers: [
         RaidsService,
         GuildsService,
+        UsersService,
+        { provide: RAID_CLOCK, useValue: systemRaidClock },
+        { provide: ProgressionService, useValue: {} },
+        { provide: getRepositoryToken(Mission), useValue: dataSource.getRepository(Mission) },
+        { provide: getRepositoryToken(User), useValue: dataSource.getRepository(User) },
+        { provide: getRepositoryToken(CosmeticItem), useValue: dataSource.getRepository(CosmeticItem) },
+        { provide: getRepositoryToken(UserCosmeticItem), useValue: dataSource.getRepository(UserCosmeticItem) },
         { provide: RealtimeGateway, useValue: { emitToGuild: jest.fn() } },
         { provide: getRepositoryToken(Raid), useValue: dataSource.getRepository(Raid) },
         { provide: getRepositoryToken(RaidContribution), useValue: dataSource.getRepository(RaidContribution) },

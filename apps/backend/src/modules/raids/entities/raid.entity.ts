@@ -7,6 +7,7 @@ import {
   PrimaryGeneratedColumn,
 } from 'typeorm';
 import { Guild } from '../../guilds/entities/guild.entity';
+import { Mission } from './mission.entity';
 
 export type RaidStatus = 'active' | 'completed' | 'expired';
 
@@ -23,8 +24,13 @@ export class Raid {
   @Column({ name: 'guild_id', type: 'varchar', length: '36' })
   guildId: string;
 
-  @Column()
-  title: string;
+  /** A Raid herda o título da Missão. */
+  @ManyToOne(() => Mission, { onDelete: 'RESTRICT' })
+  @JoinColumn({ name: 'mission_id', foreignKeyConstraintName: 'FK_raids_mission_id_missions' })
+  mission: Mission;
+
+  @Column({ name: 'mission_id', type: 'varchar', length: '36' })
+  missionId: string;
 
   @Column({ name: 'goal_xp' })
   goalXp: number;

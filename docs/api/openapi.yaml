@@ -728,6 +728,28 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
 
+  /guilds/{id}/raids/active:
+    get:
+      summary: Raid da semana da guilda
+      description: >
+        A Raid ativa da guilda (segunda 00:00 a domingo 23:59:59 em
+        `America/Sao_Paulo`, datas em UTC), com a Missão do rodízio semanal e a
+        Recompensa de Raid prevista. Só membros da guilda a veem. `404` quando a
+        guilda não tem Raid ativa.
+      operationId: getActiveGuildRaid
+      tags: [Raids]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: Raid ativa
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ActiveRaid" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
   /raids/{id}:
     get:
       summary: Detalhe de uma raid
@@ -1180,6 +1202,33 @@ components:
           type: array
           items: { $ref: "#/components/schemas/GuildSummary" }
         nextCursor: { type: [string, "null"] }
+
+    ActiveRaid:
+      type: object
+      required: [id, mission, reward, goalXp, progressXp, startsAt, endsAt, status]
+      properties:
+        id: { type: string, format: uuid }
+        mission:
+          type: object
+          required: [slug, name, description, imageUrl]
+          properties:
+            slug: { type: string, example: vigilia-da-aurora }
+            name: { type: string }
+            description: { type: string, maxLength: 140 }
+            imageUrl: { type: [string, "null"], description: Nulo enquanto a Missão não tem imagem }
+        reward:
+          type: object
+          description: Recompensa de Raid, o Cosmetic Item da Missão. Dado a quem tiver Contribuição numa Raid vencida.
+          required: [itemId, name, category]
+          properties:
+            itemId: { type: string, format: uuid }
+            name: { type: string }
+            category: { type: string, enum: [avatar, badge, title, accessory] }
+        goalXp: { type: integer, description: "Meta coletiva, congelada na criação da Raid" }
+        progressXp: { type: integer }
+        startsAt: { type: string, format: date-time }
+        endsAt: { type: string, format: date-time }
+        status: { type: string, enum: [active, completed, expired] }
 
     RaidDetail:
       type: object
