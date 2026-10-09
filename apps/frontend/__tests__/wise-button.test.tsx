@@ -1,9 +1,20 @@
 import { fireEvent, render, screen } from '@testing-library/react-native';
-import { Platform, StyleSheet } from 'react-native';
+import { Platform, StyleSheet, Text } from 'react-native';
 import { WiseButton } from '@/design-system/components/WiseButton';
 import { theme } from '@/design-system/tokens/theme';
 
 describe('WiseButton', () => {
+  it('renders a decorative leading glyph before the label without changing the accessible name', async () => {
+    await render(<WiseButton label="Trocar herói" leading={<Text testID="leading-glyph">⇄</Text>} variant="secondary" onPress={jest.fn()} />);
+    const button = screen.getByRole('button', { name: 'Trocar herói' });
+    const glyph = screen.getByTestId('leading-glyph', { includeHiddenElements: true });
+    expect(glyph).not.toBeVisible();
+    const tree = JSON.stringify(screen.toJSON());
+    expect(button).toBeTruthy();
+    // The first match is the Pressable's accessibilityLabel; the last one is the visible label text.
+    expect(tree.indexOf('⇄')).toBeLessThan(tree.lastIndexOf('Trocar herói'));
+  });
+
   it('uses contrast-safe secondary text when disabled', async () => {
     await render(<WiseButton disabled label="Salvar" onPress={jest.fn()} />);
     expect(StyleSheet.flatten(screen.getByText('Salvar').props.style).color).toBe(theme.color.textSecondary);

@@ -14,6 +14,8 @@ export type WiseButtonProps = Pick<PressableProps, 'onPress' | 'testID' | 'acces
   size?: WiseButtonSize;
   disabled?: boolean;
   loading?: boolean;
+  /** Decorative glyph rendered before the label, e.g. an action icon. */
+  leading?: ReactNode;
   /** Decorative glyph rendered after the label, e.g. a chevron. */
   trailing?: ReactNode;
 };
@@ -25,7 +27,7 @@ const variants = {
   danger: { background: 'surfaceInset', text: 'textPrimary', border: 'feedbackDanger', active: 'surfaceCardActive' },
 } satisfies Record<WiseButtonVariant, Record<'background' | 'text' | 'border' | 'active', SemanticColor>>;
 
-export function WiseButton({ label, variant = 'primary', size = 'medium', disabled = false, loading = false, accessibilityLabel, onPress, testID, trailing }: WiseButtonProps) {
+export function WiseButton({ label, variant = 'primary', size = 'medium', disabled = false, loading = false, accessibilityLabel, onPress, testID, leading, trailing }: WiseButtonProps) {
   const loadingId = useId();
   const [hovered, setHovered] = useState(false);
   const [pressed, setPressed] = useState(false);
@@ -77,6 +79,7 @@ export function WiseButton({ label, variant = 'primary', size = 'medium', disabl
           style={styles.gradient}
         />
       ) : null}
+      {leading ? <View aria-hidden accessibilityElementsHidden importantForAccessibility="no-hide-descendants">{leading}</View> : null}
       <Text allowFontScaling style={labelStyle}>{label}</Text>
       {trailing ? <View aria-hidden accessibilityElementsHidden importantForAccessibility="no-hide-descendants">{trailing}</View> : null}
       {/* Reserve the indicator slot in every state, including during font scaling. */}
