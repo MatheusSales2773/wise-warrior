@@ -5,17 +5,9 @@ import { DashboardScreen } from '@/features/dashboard/dashboard-screen';
 import { theme } from '@/design-system';
 import { getMyProfile, getRecentStudySessions, getSessionMetrics, type UserProfile, type RecentStudySession, type SessionMetrics } from '@/features/dashboard/api';
 import { dashboardKeys } from '@/features/dashboard/queries';
+import { resetMockWindowDimensions, setMockWindowDimensions } from '../test-utils/window-dimensions';
 
-const mockUseWindowDimensions = jest.fn(() => ({ width: 1024, height: 768, scale: 1, fontScale: 1 }));
-
-jest.mock('react-native', () => {
-  const actual = jest.requireActual('react-native');
-  return new Proxy(actual, {
-    get(target, property, receiver) {
-      return property === 'useWindowDimensions' ? mockUseWindowDimensions : Reflect.get(target, property, receiver);
-    },
-  });
-});
+jest.mock('react-native', () => require('../test-utils/window-dimensions').createReactNativeMock());
 
 jest.mock('@/features/dashboard/api', () => ({
   getMyProfile: jest.fn(),
@@ -61,7 +53,7 @@ beforeEach(() => {
 
 afterEach(() => {
   jest.clearAllMocks();
-  mockUseWindowDimensions.mockReturnValue({ width: 1024, height: 768, scale: 1, fontScale: 1 });
+  resetMockWindowDimensions();
   Object.defineProperty(Platform, 'OS', { configurable: true, writable: true, value: 'web' });
 });
 
@@ -173,7 +165,7 @@ describe('DashboardScreen', () => {
 
   it.each(['ios', 'android'] as const)('keeps the dashboard stacked on %s at wide widths', async (platform) => {
     jest.replaceProperty(Platform, 'OS', platform);
-    mockUseWindowDimensions.mockReturnValue({ width: 1200, height: 800, scale: 1, fontScale: 1 });
+    setMockWindowDimensions({ width: 1200, height: 800, fontScale: 1 });
     mockedProfile.mockResolvedValue(profile);
     mockedActivity.mockResolvedValue([]);
     await renderDashboard();
@@ -183,7 +175,7 @@ describe('DashboardScreen', () => {
   });
 
   it('keeps card content padded and columns shrinkable', async () => {
-    mockUseWindowDimensions.mockReturnValue({ width: 320, height: 700, scale: 1, fontScale: 1.4 });
+    setMockWindowDimensions({ width: 320, height: 700, fontScale: 1.4 });
     mockedProfile.mockResolvedValue({ ...profile, displayName: 'Aventureiro com um nome muito comprido para a viewport' });
     mockedActivity.mockResolvedValue([]);
     await renderDashboard();
@@ -200,7 +192,7 @@ describe('DashboardScreen', () => {
     const longDisplayName = 'Aventureiro com um nome deliberadamente longo para testar quebra de linha';
     const longTitle = 'Guardião das bibliotecas e do raciocínio paciente';
     const longSubject = 'Matemática aplicada, raciocínio lógico e resolução de problemas';
-    mockUseWindowDimensions.mockReturnValue({ width, height: 844, scale: 1, fontScale: 2 });
+    setMockWindowDimensions({ width, height: 844, fontScale: 2 });
     mockedProfile.mockResolvedValue({ ...profile, displayName: longDisplayName, title: longTitle });
     mockedActivity.mockResolvedValue([{ ...session, subject: longSubject, durationValidSeconds: 45, discardedReason: 'too_short' }]);
     await renderDashboard();
@@ -242,7 +234,7 @@ describe('DashboardScreen', () => {
   });
 
   it('uses named regions and preserves semantic card order on narrow screens', async () => {
-    mockUseWindowDimensions.mockReturnValue({ width: 390, height: 844, scale: 1, fontScale: 1 });
+    setMockWindowDimensions({ width: 390, height: 844, fontScale: 1 });
     mockedProfile.mockResolvedValue(profile);
     mockedActivity.mockResolvedValue([session]);
     await renderDashboard();
@@ -260,7 +252,7 @@ describe('DashboardScreen', () => {
   });
 
   it('uses two columns on wide web screens while keeping activity in the side column', async () => {
-    mockUseWindowDimensions.mockReturnValue({ width: 1200, height: 800, scale: 1, fontScale: 1 });
+    setMockWindowDimensions({ width: 1200, height: 800, fontScale: 1 });
     mockedProfile.mockResolvedValue(profile);
     mockedActivity.mockResolvedValue([session]);
     await renderDashboard();
@@ -420,7 +412,7 @@ describe('DashboardScreen', () => {
   });
 
   it('adds no empty status row to the metrics grid, which would double the gap before the next card', async () => {
-    mockUseWindowDimensions.mockReturnValue({ width: 375, height: 812, scale: 1, fontScale: 1 });
+    setMockWindowDimensions({ width: 375, height: 812, fontScale: 1 });
     mockedProfile.mockResolvedValue(profile);
     mockedActivity.mockResolvedValue([]);
     await renderDashboard();
