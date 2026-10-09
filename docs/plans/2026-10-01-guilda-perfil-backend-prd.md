@@ -123,14 +123,19 @@ Ordem pensada para que cada fatia entregue algo visível e para que a anterior d
 - Conquistas do UC04: modelo `achievements` + `user_achievements`, regras mínimas (primeira sessão, sequência de 7 dias, primeira raid concluída) e seção "Conquistas" na tela.
 - Pode escorregar para a Fase 2 sem bloquear o MVP.
 
-## 4. Decisões que precisam do time
+## 4. Decisões do time
 
-1. **Guilda única por usuário?** O schema permite várias (a unicidade é por par `guild_id + user_id`), mas a UI da tela Guilda (uma guilda por usuário) assume uma só. Recomendo uma guilda por usuário.
-2. **Fim da guilda quando o último membro sai:** encerrar (soft delete) ou manter vazia.
-3. **Origem das raids:** job semanal automático (recomendado), criação manual pelo líder ou ambos. Define também meta de XP (`goalXp`), por exemplo proporcional ao número de membros.
-4. **`POST /raids/:id/join`:** persistir participação ou remover do contrato.
-5. **Regra de nível da guilda:** definir (por exemplo, XP acumulado em raids concluídas) ou esconder o campo da UI até existir.
-6. **Entrada em guilda:** aberta (hoje) ou por convite/código. Impacta abuso e a privacidade do ranking.
+Fechadas em sessão de grilling em 08/10/2026. Glossário em `CONTEXT.md` (seção Guilda e Raid).
+
+1. **Guilda única por usuário:** sim, com índice único em `guild_memberships.user_id` (entregue na Fatia 1).
+2. **Fim da guilda quando o último membro sai:** a guilda é apagada, e suas raids vão junto; as Study Sessions mantêm o histórico (entregue na Fatia 2).
+3. **Origem das raids:** um job semanal cria uma raid por guilda, de segunda 00:00 a domingo 23:59:59 em `America/Sao_Paulo`. A meta é de 1.500 XP por membro, congelada na criação. Uma guilda criada no meio da semana ganha a raid na hora, com meta proporcional aos dias restantes. O título vem da **Missão** da semana, escolhida por rodízio igual para todas as guildas. Escolher Missões compradas na Loja fica para o futuro.
+4. **`POST /raids/:id/join`:** persiste a participação (UC02 e #18). A Forja oferece "Participar e iniciar" numa ação só.
+5. **Nível da guilda:** começa em 1 e sobe um nível a cada raid com Meta batida.
+6. **Entrada em guilda:** aberta. Convite fica para a Fase 2.
+7. **Meta batida antes do fim da semana:** a raid continua aceitando contribuições até `endsAt`, e o resultado é fechado só no fim.
+8. **Ranking interno:** é o ranking de contribuição da raid da semana; não existe outro.
+9. **Recompensa de raid:** o Cosmetic Item da Missão (`raid:<slug>`), dado no fim da raid com Meta batida a cada participante que ainda é membro e tem pelo menos uma contribuição.
 
 ## 5. Fora de escopo
 

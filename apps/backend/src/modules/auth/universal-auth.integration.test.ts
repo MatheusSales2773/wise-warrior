@@ -771,6 +771,24 @@ describe('Universal authentication security contract', () => {
     });
     expect(registrationStillActive.status).toBe(200);
 
+    for (const unknownSessionId of [
+      loginBody.sessionId,
+      registrationBBody.sessionId,
+      '00000000-0000-4000-8000-000000000000',
+    ]) {
+      const revokeUnknown = await remove(`/users/me/sessions/${unknownSessionId}`, {
+        authorization: `Bearer ${registrationBody.accessToken}`,
+        origin,
+      });
+      expect(revokeUnknown.status).toBe(404);
+    }
+    await expect(
+      get('/users/me', {
+        authorization: `Bearer ${registrationBBody.accessToken}`,
+        origin,
+      }),
+    ).resolves.toHaveProperty('status', 200);
+
     const revokeAll = await remove('/users/me/sessions', {
       authorization: `Bearer ${registrationBody.accessToken}`,
       origin,

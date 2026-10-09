@@ -3,10 +3,18 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { AccessibilityInfo, Platform, StyleSheet } from 'react-native';
 import { theme } from '@/design-system';
 import { getMyProfile, getSessionMetrics, type SessionMetrics, type UserProfile } from '@/features/dashboard/api';
-import { listCosmeticsCatalog, listMyDeviceSessions, type CatalogCosmeticItem, type DeviceSession } from '@/features/profile/api';
+import { ApiError } from '@/core/api/api-error';
+import {
+  listCosmeticsCatalog,
+  listMyDeviceSessions,
+  revokeAllMyDeviceSessions,
+  revokeMyDeviceSession,
+  type CatalogCosmeticItem,
+  type DeviceSession,
+} from '@/features/profile/api';
 import { cosmeticItemState, describeDevice, describeNextUnlock, formatPlanTier } from '@/features/profile/formatters';
 import { ProfileScreen } from '@/features/profile/profile-screen';
-import { updateMockAuthState } from '../test-utils/auth-context';
+import { mockAuthState, updateMockAuthState } from '../test-utils/auth-context';
 import { resetMockWindowDimensions, setMockWindowWidth } from '../test-utils/window-dimensions';
 
 jest.mock('@/core/auth/auth-context', () => require('../test-utils/auth-context').createAuthContextMock());
@@ -15,7 +23,12 @@ jest.mock('@/features/dashboard/api', () => ({
   getRecentStudySessions: jest.fn(),
   getSessionMetrics: jest.fn(),
 }));
-jest.mock('@/features/profile/api', () => ({ listCosmeticsCatalog: jest.fn(), listMyDeviceSessions: jest.fn() }));
+jest.mock('@/features/profile/api', () => ({
+  listCosmeticsCatalog: jest.fn(),
+  listMyDeviceSessions: jest.fn(),
+  revokeMyDeviceSession: jest.fn(),
+  revokeAllMyDeviceSessions: jest.fn(),
+}));
 
 jest.mock('react-native', () => require('../test-utils/window-dimensions').createReactNativeMock());
 
@@ -68,6 +81,8 @@ function cosmeticNames(categoryTestId: string) {
   return within(screen.getByTestId(categoryTestId)).getAllByTestId(/^profile-cosmetic-item-/)
     .map((item) => item.props.testID.replace('profile-cosmetic-item-item-', ''));
 }
+const mockedRevoke = revokeMyDeviceSession as jest.MockedFunction<typeof revokeMyDeviceSession>;
+const mockedRevokeAll = revokeAllMyDeviceSessions as jest.MockedFunction<typeof revokeAllMyDeviceSessions>;
 
 async function renderProfile() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
@@ -88,6 +103,8 @@ beforeEach(() => {
   mockedDevices.mockResolvedValue([]);
   mockedMetrics.mockResolvedValue(metrics);
   mockedCatalog.mockResolvedValue(starterCatalog);
+  mockedRevoke.mockResolvedValue(undefined);
+  mockedRevokeAll.mockResolvedValue(undefined);
   resetMockWindowDimensions();
   setMockWindowWidth(390);
 });
@@ -448,6 +465,108 @@ describe('ProfileScreen', () => {
     await waitFor(() => expect(screen.getByTestId('profile-devices-error')).toBeTruthy());
     expect(screen.getByTestId('profile-character')).toBeTruthy();
     expect(screen.getByText('Aventureiro')).toBeTruthy();
+  });
+
+  describe('ending devices', () => {
+    const otherDevice = 'Navegador no computador';
+
+    async function openDevices() {
+      mockedDevices.mockResolvedValue(devices);
+      await renderProfile();
+      await fireEvent.press(await screen.findByTestId('profile-tab-dispositivos'));
+      await screen.findByTestId('profile-device-dev-2');
+    }
+
+    it('offers an Encerrar button on every device except the current one', async () => {
+      await openDevices();
+
+      expect(screen.getByRole('button', { name: `Encerrar ${otherDevice}` })).toBeTruthy();
+      expect(screen.queryByRole('button', { name: 'Encerrar iPhone de Ana' })).toBeNull();
+      expect(within(screen.getByTestId('profile-device-dev-1')).queryByText('Encerrar')).toBeNull();
+    });
+
+    it('asks for confirmation and keeps the device when the student declines', async () => {
+      await openDevices();
+
+      await fireEvent.press(screen.getByRole('button', { name: `Encerrar ${otherDevice}` }));
+      expect(screen.getByText(`Encerrar o acesso de ${otherDevice}?`)).toBeTruthy();
+      await fireEvent.press(screen.getByRole('button', { name: `Manter ${otherDevice} conectado` }));
+
+      expect(screen.queryByText(`Encerrar o acesso de ${otherDevice}?`)).toBeNull();
+      expect(mockedRevoke).not.toHaveBeenCalled();
+    });
+
+    it('ends another device after confirmation and reloads the list without disconnecting', async () => {
+      await openDevices();
+      expect(mockedDevices).toHaveBeenCalledTimes(1);
+
+      await fireEvent.press(screen.getByRole('button', { name: `Encerrar ${otherDevice}` }));
+      await fireEvent.press(screen.getByRole('button', { name: `Confirmar: encerrar ${otherDevice}` }));
+
+      await waitFor(() => expect(mockedRevoke).toHaveBeenCalledWith('dev-2'));
+      await waitFor(() => expect(mockedDevices).toHaveBeenCalledTimes(2));
+      expect(mockAuthState.logout).not.toHaveBeenCalled();
+    });
+
+    it('explains a device that was already ended, reloads the list and keeps the student connected', async () => {
+      mockedRevoke.mockRejectedValue(new ApiError('unexpected', { status: 404 }));
+      await openDevices();
+
+      await fireEvent.press(screen.getByRole('button', { name: `Encerrar ${otherDevice}` }));
+      await fireEvent.press(screen.getByRole('button', { name: `Confirmar: encerrar ${otherDevice}` }));
+
+      const notice = await screen.findByTestId('profile-devices-notice');
+      expect(within(notice).getByText(`${otherDevice} já tinha sido desconectado em outro lugar. A lista foi atualizada.`)).toBeTruthy();
+      await waitFor(() => expect(mockedDevices).toHaveBeenCalledTimes(2));
+      expect(mockAuthState.logout).not.toHaveBeenCalled();
+    });
+
+    it('keeps the device and explains a failure that is not a missing device', async () => {
+      mockedRevoke.mockRejectedValue(new ApiError('network'));
+      await openDevices();
+
+      await fireEvent.press(screen.getByRole('button', { name: `Encerrar ${otherDevice}` }));
+      await fireEvent.press(screen.getByRole('button', { name: `Confirmar: encerrar ${otherDevice}` }));
+
+      const notice = await screen.findByTestId('profile-devices-notice');
+      expect(within(notice).getByText('Não foi possível encerrar o dispositivo. Verifique sua conexão e tente novamente.')).toBeTruthy();
+      expect(mockAuthState.logout).not.toHaveBeenCalled();
+    });
+
+    it('signs out of every device after confirmation and disconnects the student', async () => {
+      await openDevices();
+
+      await fireEvent.press(screen.getByRole('button', { name: 'Sair de todos os dispositivos' }));
+      expect(mockedRevokeAll).not.toHaveBeenCalled();
+      expect(screen.getByText(/inclusive este/)).toBeTruthy();
+      await fireEvent.press(screen.getByRole('button', { name: 'Confirmar: sair de todos os dispositivos' }));
+
+      await waitFor(() => expect(mockedRevokeAll).toHaveBeenCalledTimes(1));
+      await waitFor(() => expect(mockAuthState.logout).toHaveBeenCalledTimes(1));
+    });
+
+    it('explains and reloads when leaving this device fails after every session was ended', async () => {
+      mockAuthState.logout.mockRejectedValueOnce(new ApiError('network'));
+      await openDevices();
+
+      await fireEvent.press(screen.getByRole('button', { name: 'Sair de todos os dispositivos' }));
+      await fireEvent.press(screen.getByRole('button', { name: 'Confirmar: sair de todos os dispositivos' }));
+
+      const notice = await screen.findByTestId('profile-devices-notice');
+      expect(within(notice).getByText('Todos os dispositivos foram desconectados, mas este ainda não concluiu a saída. Verifique sua conexão e tente de novo.')).toBeTruthy();
+      expect(screen.queryByText(/inclusive este/)).toBeNull();
+      await waitFor(() => expect(mockedDevices).toHaveBeenCalledTimes(2));
+    });
+
+    it('cancels signing out of every device', async () => {
+      await openDevices();
+
+      await fireEvent.press(screen.getByRole('button', { name: 'Sair de todos os dispositivos' }));
+      await fireEvent.press(screen.getByRole('button', { name: 'Cancelar saída de todos os dispositivos' }));
+
+      expect(screen.queryByText(/inclusive este/)).toBeNull();
+      expect(mockedRevokeAll).not.toHaveBeenCalled();
+    });
   });
 });
 
