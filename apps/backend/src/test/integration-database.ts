@@ -14,6 +14,7 @@ import { EnforceSingleGuildPerUser1788459180000 } from '../migrations/1788459180
 import { DropCharacterTitle1788459300000 } from '../migrations/1788459300000-drop-character-title';
 import { SeedInitialCosmeticItems1788459240000 } from '../migrations/1788459240000-seed-initial-cosmetic-items';
 import { AddRaidMissions1788459360000 } from '../migrations/1788459360000-add-raid-missions';
+import { AddRaidParticipations1788459420000 } from '../migrations/1788459420000-add-raid-participations';
 
 export const APPLICATION_MIGRATIONS: NonNullable<DataSourceOptions['migrations']> = [
   CreateWiseSchema1788458400000,
@@ -28,6 +29,7 @@ export const APPLICATION_MIGRATIONS: NonNullable<DataSourceOptions['migrations']
   SeedInitialCosmeticItems1788459240000,
   DropCharacterTitle1788459300000,
   AddRaidMissions1788459360000,
+  AddRaidParticipations1788459420000,
 ];
 
 export interface IntegrationDatabase {

@@ -1,4 +1,5 @@
 import {
+  ConflictException,
   ForbiddenException,
   Inject,
   Injectable,
@@ -13,6 +14,7 @@ import { RAID_CLOCK, type RaidClock } from './raid-clock';
 import { missionIndexForWeek, proportionalGoalXp, raidWeekAt } from './domain/raid-week';
 import { UsersService } from '../users/users.service';
 import { RaidContribution } from './entities/raid-contribution.entity';
+import { RaidParticipation } from './entities/raid-participation.entity';
 import { GuildsService } from '../guilds/guilds.service';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
 
@@ -34,6 +36,7 @@ export interface ActiveRaid {
   startsAt: Date;
   endsAt: Date;
   status: string;
+  me: { participating: boolean };
 }
 
 @Injectable()
@@ -42,6 +45,8 @@ export class RaidsService {
     @InjectRepository(Raid) private readonly raids: Repository<Raid>,
     @InjectRepository(RaidContribution)
     private readonly contributions: Repository<RaidContribution>,
+    @InjectRepository(RaidParticipation)
+    private readonly participations: Repository<RaidParticipation>,
     @InjectRepository(Mission) private readonly missions: Repository<Mission>,
     @Inject(forwardRef(() => GuildsService))
     private readonly guilds: GuildsService,
@@ -112,6 +117,7 @@ export class RaidsService {
       startsAt: raid.startsAt,
       endsAt: raid.endsAt,
       status: raid.status,
+      me: { participating: await this.participations.existsBy({ raidId: raid.id, userId: requesterId }) },
     };
   }
 
@@ -127,21 +133,27 @@ export class RaidsService {
     };
   }
 
-  /** UC02 fluxo básico: usuário confirma participação numa raid ativa da sua guilda. */
+  /**
+   * UC02 fluxo básico: o membro confirma participação na Raid da sua Guild. Repetir é inofensivo.
+   * Uma Raid que já bateu a meta (`completed`) continua aberta até o fim da semana.
+   */
   async join(userId: string, raidId: string): Promise<void> {
     const raid = await this.raids.findOne({ where: { id: raidId } });
     if (!raid) {
       throw new NotFoundException('Raid não encontrada');
     }
-    if (this.isExpired(raid)) {
-      throw new ForbiddenException('Raid expirada'); // UC02 (A01) — Raid Expirada
-    }
-    const member = await this.guilds.isMember(raid.guildId, userId);
-    if (!member) {
+    if (!(await this.guilds.isMember(raid.guildId, userId))) {
       throw new ForbiddenException('Usuário não pertence à guilda desta raid');
     }
-    // "Participar" não precisa de uma tabela própria nesta fase — a
-    // participação é implícita na primeira contribuição registrada.
+    if (raid.status === 'expired' || raid.endsAt.getTime() < this.clock().getTime()) {
+      throw new ConflictException('Raid encerrada'); // UC02 (A01) — Raid Expirada
+    }
+    await this.participations
+      .createQueryBuilder()
+      .insert()
+      .values({ raidId, userId })
+      .orIgnore() // a unicidade por Raid e usuário torna a repetição um no-op, mesmo em corrida
+      .execute();
   }
 
   /**

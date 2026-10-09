@@ -21,6 +21,7 @@ import { RealtimeGateway } from '../realtime/realtime.gateway';
 import { Mission } from '../raids/entities/mission.entity';
 import { Raid } from '../raids/entities/raid.entity';
 import { RaidContribution } from '../raids/entities/raid-contribution.entity';
+import { RaidParticipation } from '../raids/entities/raid-participation.entity';
 import { RAID_CLOCK, systemRaidClock } from '../raids/raid-clock';
 import { RaidsService } from '../raids/raids.service';
 
@@ -67,6 +68,7 @@ describe('Guilds HTTP contract against MySQL', () => {
         UsersService,
         { provide: getRepositoryToken(Raid), useValue: dataSource.getRepository(Raid) },
         { provide: getRepositoryToken(RaidContribution), useValue: dataSource.getRepository(RaidContribution) },
+        { provide: getRepositoryToken(RaidParticipation), useValue: dataSource.getRepository(RaidParticipation) },
         { provide: getRepositoryToken(Mission), useValue: dataSource.getRepository(Mission) },
         { provide: getRepositoryToken(User), useValue: dataSource.getRepository(User) },
         { provide: getRepositoryToken(CosmeticItem), useValue: dataSource.getRepository(CosmeticItem) },

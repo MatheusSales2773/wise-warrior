@@ -21,6 +21,7 @@ import { RealtimeGateway } from '../realtime/realtime.gateway';
 import { Mission } from './entities/mission.entity';
 import { Raid } from './entities/raid.entity';
 import { RaidContribution } from './entities/raid-contribution.entity';
+import { RaidParticipation } from './entities/raid-participation.entity';
 import { RAID_CLOCK } from './raid-clock';
 import { GuildRaidsController } from './guild-raids.controller';
 import { RaidsController } from './raids.controller';
@@ -73,7 +74,7 @@ describe('Raid da semana against MySQL', () => {
         GuildsService,
         RaidsService,
         UsersService,
-        repo(Guild), repo(GuildMembership), repo(Raid), repo(RaidContribution), repo(Mission),
+        repo(Guild), repo(GuildMembership), repo(Raid), repo(RaidContribution), repo(RaidParticipation), repo(Mission),
         repo(User), repo(CosmeticItem), repo(UserCosmeticItem),
         { provide: RAID_CLOCK, useValue: () => now },
         { provide: ProgressionService, useValue: {} },
@@ -128,7 +129,19 @@ describe('Raid da semana against MySQL', () => {
       startsAt: '2026-10-05T03:00:00.000Z',
       endsAt: '2026-10-12T02:59:59.000Z',
       status: 'active',
+      me: { participating: false },
     });
+  });
+
+  it('reports me.participating once the member confirms, only for that member', async () => {
+    const guildId = await createGuild('Ordem do Foco');
+    await call('POST', `/guilds/${guildId}/members`, bruno);
+    const raid = await (await call('GET', `/guilds/${guildId}/raids/active`)).json() as { id: string };
+    expect((await call('POST', `/raids/${raid.id}/join`, bruno)).status).toBe(204);
+    const participating = async (as: string) =>
+      ((await (await call('GET', `/guilds/${guildId}/raids/active`, as)).json()) as { me: { participating: boolean } }).me.participating;
+    expect(await participating(bruno)).toBe(true);
+    expect(await participating(ana)).toBe(false);
   });
 
   it('gives the full 1.500 XP per member to a Guild created at the start of the week', async () => {
