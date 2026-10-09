@@ -281,6 +281,10 @@ paths:
   /users/me/sessions/{sessionId}:
     delete:
       summary: Encerra um dispositivo específico
+      description: >
+        Uma sessão inexistente, já revogada ou de outro usuário devolve 404,
+        e não 401, para que o cliente não confunda o caso com a própria
+        sessão expirada.
       operationId: revokeMySession
       tags: [Users]
       parameters:
@@ -288,6 +292,7 @@ paths:
       responses:
         "204": { description: Sessão revogada }
         "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
 
   /sessions:
     post:

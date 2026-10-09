@@ -1,6 +1,7 @@
 import {
   ConflictException,
   Injectable,
+  NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -358,10 +359,10 @@ export class AuthService {
 
   async revokeSession(userId: string, sessionId: string): Promise<void> {
     const session = await this.sessions.findOne({
-      where: { id: sessionId, userId },
+      where: { id: sessionId, userId, revokedAt: IsNull() },
     });
     if (!session) {
-      throw new UnauthorizedException('Sessão não encontrada');
+      throw new NotFoundException('Sessão não encontrada');
     }
     session.revokedAt = new Date();
     await this.sessions.save(session);
