@@ -1,58 +1,13 @@
-import { useQuery, type UseQueryResult } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 import { Platform, StyleSheet, View, useWindowDimensions } from 'react-native';
 import { useAuth } from '@/core/auth/auth-context';
 import { FeedbackMessage, ProgressBar, Screen, WiseButton, WiseText, isDesktopLayout, theme } from '@/design-system';
-import { formatSessionDate } from '@/features/dashboard/formatters';
 import { profileQueryOptions, sessionMetricsQueryOptions } from '@/features/dashboard/queries';
-import type { DeviceSession } from './api';
 import { CharacterPanel, CharacterStats } from './character-panel';
-import { describeDevice } from './formatters';
+import { DevicesContent } from './devices-tab';
 import { deviceSessionsQueryOptions } from './queries';
 import { ProfileTabs, type ProfileTab } from './profile-tabs';
-
-function DeviceItem({ current, device }: { current: boolean; device: DeviceSession }) {
-  const name = describeDevice(device);
-  const lastUsed = `Último acesso: ${formatSessionDate(device.lastUsedAt)}`;
-  return (
-    <View
-      accessible
-      accessibilityLabel={`${name}${current ? ', este dispositivo' : ''}. ${lastUsed}`}
-      style={styles.deviceItem}
-      testID={`profile-device-${device.id}`}
-    >
-      <View style={styles.deviceMain}>
-        <WiseText variant="label">{name}</WiseText>
-        <WiseText color="textSecondary" variant="body">{lastUsed}</WiseText>
-      </View>
-      {current ? <WiseText color="accentPrimary" testID={`profile-device-current-${device.id}`} variant="caption">ESTE DISPOSITIVO</WiseText> : null}
-    </View>
-  );
-}
-
-function DevicesContent({ currentSessionId, query }: { currentSessionId: string | null; query: UseQueryResult<DeviceSession[]> }) {
-  const body = (() => {
-    if (query.isPending && !query.data) {
-      return <WiseText color="textSecondary" testID="profile-devices-loading" variant="body">Carregando seus dispositivos…</WiseText>;
-    }
-    if (query.isError && !query.data) {
-      return <View style={styles.stack} testID="profile-devices-error">
-        <FeedbackMessage message="Não foi possível carregar seus dispositivos." title="Dispositivos indisponíveis" variant="error" />
-        <WiseButton label="Tentar novamente" loading={query.isRefetching} onPress={() => void query.refetch()} variant="secondary" />
-      </View>;
-    }
-    const devices = query.data ?? [];
-    if (!devices.length) return <WiseText color="textSecondary" variant="body">Nenhum dispositivo com sessão ativa.</WiseText>;
-    return devices.map((device) => <DeviceItem current={device.id === currentSessionId} device={device} key={device.id} />);
-  })();
-
-  return (
-    <View style={styles.stack} testID="profile-devices">
-      <WiseText accessibilityRole="header" aria-level={2} variant="subtitle">Dispositivos conectados</WiseText>
-      {body}
-    </View>
-  );
-}
 
 function ComingSoon({ body, testID, title }: { body: string; testID: string; title: string }) {
   return (
@@ -158,6 +113,4 @@ const styles = StyleSheet.create({
   desktopGrid: { flexDirection: 'row', alignItems: 'flex-start' },
   panelDesktop: { width: theme.layout.sidePanelWidth },
   column: { flex: 1 },
-  deviceItem: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: theme.space.stackTight },
-  deviceMain: { flex: 1, gap: theme.space.inlineHairline },
 });
