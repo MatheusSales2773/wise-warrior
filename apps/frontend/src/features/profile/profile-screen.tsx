@@ -7,8 +7,9 @@ import { formatSessionDate } from '@/features/dashboard/formatters';
 import { profileQueryOptions, sessionMetricsQueryOptions } from '@/features/dashboard/queries';
 import type { DeviceSession } from './api';
 import { CharacterPanel, CharacterStats } from './character-panel';
+import { CosmeticsCatalog } from './cosmetics-catalog';
 import { describeDevice } from './formatters';
-import { deviceSessionsQueryOptions } from './queries';
+import { cosmeticsQueryOptions, deviceSessionsQueryOptions } from './queries';
 import { ProfileTabs, type ProfileTab } from './profile-tabs';
 
 function DeviceItem({ current, device }: { current: boolean; device: DeviceSession }) {
@@ -63,18 +64,6 @@ function ComingSoon({ body, testID, title }: { body: string; testID: string; tit
   );
 }
 
-const cosmeticsTab: ProfileTab = {
-  id: 'cosmeticos',
-  label: 'Cosméticos',
-  content: (
-    <ComingSoon
-      body="Em breve você verá aqui o Catálogo e o Inventário do seu Character."
-      testID="profile-cosmetics-soon"
-      title="Cosméticos em breve"
-    />
-  ),
-};
-
 const companionTab: ProfileTab = {
   id: 'companheiro',
   label: 'Companheiro',
@@ -90,6 +79,7 @@ const companionTab: ProfileTab = {
 export function ProfileScreen() {
   const profile = useQuery(profileQueryOptions());
   const devices = useQuery(deviceSessionsQueryOptions());
+  const cosmetics = useQuery(cosmeticsQueryOptions());
   const metrics = useQuery(sessionMetricsQueryOptions());
   const { sessionId } = useAuth();
   const { width } = useWindowDimensions();
@@ -97,7 +87,7 @@ export function ProfileScreen() {
   const refresh = async () => {
     setRefreshing(true);
     try {
-      await Promise.all([profile.refetch(), devices.refetch(), metrics.refetch()]);
+      await Promise.all([profile.refetch(), cosmetics.refetch(), devices.refetch(), metrics.refetch()]);
     } finally {
       setRefreshing(false);
     }
@@ -141,7 +131,7 @@ export function ProfileScreen() {
         <View style={styles.column}>
           <ProfileTabs
             tabs={[
-              cosmeticsTab,
+              { id: 'cosmeticos', label: 'Cosméticos', content: <CosmeticsCatalog level={user.level} query={cosmetics} /> },
               companionTab,
               { id: 'dispositivos', label: 'Dispositivos', content: <DevicesContent currentSessionId={sessionId} query={devices} /> },
             ]}

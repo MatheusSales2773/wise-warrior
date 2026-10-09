@@ -240,6 +240,27 @@ paths:
               schema: { $ref: "#/components/schemas/UserProfile" }
         "401": { $ref: "#/components/responses/Unauthorized" }
 
+  /users/me/cosmetics:
+    get:
+      summary: Lista o Catálogo inteiro de Cosmetic Items com o estado no Inventário
+      description: >
+        Devolve todos os Cosmetic Items, desbloqueados ou não, ordenados por
+        categoria (avatar, badge, title, accessory), depois pela Condição de
+        desbloqueio por nível em ordem crescente e, por último, as de Raid.
+        Sem paginação por decisão explícita: o Catálogo é uma tabela versionada
+        pequena (seed por migration).
+      operationId: listMyCosmetics
+      tags: [Users]
+      responses:
+        "200":
+          description: Catálogo
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/CatalogCosmeticItem" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
   /users/me/cosmetics/{itemId}:
     patch:
       summary: Equipa um item cosmético já desbloqueado
@@ -876,6 +897,35 @@ components:
           maximum: 9000000000000000
           description: Experiência total acumulada.
         title: { type: [string, "null"] }
+
+    CatalogCosmeticItem:
+      type: object
+      description: >
+        `unlocked` indica que o item está no Inventário. `equipped` só é true
+        para itens desbloqueados, com no máximo um por categoria.
+      required: [id, category, name, requiresPremium, unlocked, equipped, unlockCondition]
+      properties:
+        id: { type: string, format: uuid }
+        category: { type: string, enum: [avatar, badge, title, accessory] }
+        name: { type: string }
+        requiresPremium: { type: boolean, description: "Item premium (✦), ADR-007." }
+        unlocked: { type: boolean }
+        equipped: { type: boolean }
+        unlockCondition: { $ref: "#/components/schemas/UnlockCondition" }
+
+    UnlockCondition:
+      description: Condição de desbloqueio estruturada, para a interface montar o texto.
+      oneOf:
+        - type: object
+          required: [type, level]
+          properties:
+            type: { type: string, const: level }
+            level: { type: integer, minimum: 1 }
+        - type: object
+          required: [type, slug]
+          properties:
+            type: { type: string, const: raid }
+            slug: { type: string, description: "Slug da Raid. `*` vale para qualquer Raid." }
 
     SessionSummary:
       type: object

@@ -27,6 +27,12 @@ export class UsersController {
     return this.users.getProfile(user.sub);
   }
 
+  /** O Catálogo inteiro de Cosmetic Items, com o que o usuário desbloqueou e equipou. */
+  @Get('cosmetics')
+  listCosmetics(@CurrentUser() user: JwtPayload) {
+    return this.users.listCatalog(user.sub);
+  }
+
   @Patch('cosmetics/:itemId')
   @HttpCode(HttpStatus.NO_CONTENT)
   async equipCosmetic(

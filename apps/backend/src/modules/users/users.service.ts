@@ -7,8 +7,10 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { EntityManager, Repository } from 'typeorm';
 import { User } from './entities/user.entity';
 import { ProgressionService } from '../progression/progression.service';
-import { CosmeticItem } from './entities/cosmetic-item.entity';
+import { CosmeticCategory, CosmeticItem } from './entities/cosmetic-item.entity';
 import { UserCosmeticItem } from './entities/user-cosmetic-item.entity';
+import { parseUnlockCondition, UnlockCondition } from './domain/unlock-condition';
+import { unlockCosmeticItems } from './cosmetic-unlocks';
 
 export interface UserProfile {
   id: string;
@@ -20,6 +22,26 @@ export interface UserProfile {
   levelStartXp: number;
   nextLevelXp: number;
   title: string | null;
+}
+
+export interface CatalogItem {
+  id: string;
+  category: CosmeticCategory;
+  name: string;
+  requiresPremium: boolean;
+  unlocked: boolean;
+  equipped: boolean;
+  unlockCondition: UnlockCondition;
+}
+
+const CATEGORY_ORDER: CosmeticCategory[] = ['avatar', 'badge', 'title', 'accessory'];
+
+/** Ordem estável do Catálogo: categoria, depois condições de nível crescentes e, por último, as de Raid. */
+function catalogOrder(a: CatalogItem, b: CatalogItem): number {
+  const rank = (condition: UnlockCondition) => (condition.type === 'level' ? condition.level : Number.MAX_SAFE_INTEGER);
+  return CATEGORY_ORDER.indexOf(a.category) - CATEGORY_ORDER.indexOf(b.category)
+    || rank(a.unlockCondition) - rank(b.unlockCondition)
+    || a.name.localeCompare(b.name, 'pt-BR');
 }
 
 @Injectable()
@@ -40,6 +62,31 @@ export class UsersService {
       lock: { mode: 'pessimistic_write' },
     });
     return user !== null;
+  }
+
+  /** Regra de Desbloqueio por nível, na transação de quem chama (criação do Character e level-up). */
+  unlockCosmeticItems(manager: EntityManager, userId: string, level: number): Promise<void> {
+    return unlockCosmeticItems(manager, userId, level);
+  }
+
+  /** O Catálogo inteiro, com o estado de cada item no Inventário do usuário. */
+  async listCatalog(userId: string): Promise<CatalogItem[]> {
+    const [catalog, inventory] = await Promise.all([
+      this.cosmeticItems.find(),
+      this.userCosmetics.find({ where: { userId } }),
+    ]);
+    const owned = new Map(inventory.map((row) => [row.cosmeticItemId, row]));
+    return catalog
+      .map((item) => ({
+        id: item.id,
+        category: item.category,
+        name: item.name,
+        requiresPremium: item.requiresPremium,
+        unlocked: owned.has(item.id),
+        equipped: owned.get(item.id)?.equipped ?? false,
+        unlockCondition: parseUnlockCondition(item.unlockCondition),
+      }))
+      .sort(catalogOrder);
   }
 
   async getProfile(userId: string): Promise<UserProfile> {
