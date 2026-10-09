@@ -321,9 +321,10 @@ describe('GuildScreen', () => {
       it('explains a Raid that already ended and reloads the Raid (UC02 A01)', async () => {
         mockedJoinRaid.mockRejectedValue(new ApiError('conflict', { status: 409 }));
         await renderGuild();
+        const button = await screen.findByTestId('guild-raid-join');
 
         mockedRaid.mockResolvedValue(raid({ id: 'r2', mission: { slug: 'marcha-do-silencio', name: 'Marcha do Silêncio', description: 'Marche.', imageUrl: null } }));
-        fireEvent.press(await screen.findByTestId('guild-raid-join'));
+        fireEvent.press(button);
 
         expect(await screen.findByText('Marcha do Silêncio')).toBeTruthy();
         await waitFor(() => expect(mockedRaid).toHaveBeenCalledTimes(2));
@@ -333,8 +334,9 @@ describe('GuildScreen', () => {
         mockedJoinRaid.mockRejectedValue(new ApiError('conflict', { status: 409 }));
         await renderGuild();
 
+        const button = await screen.findByTestId('guild-raid-join');
         mockedRaid.mockReturnValue(new Promise(() => undefined));
-        fireEvent.press(await screen.findByTestId('guild-raid-join'));
+        fireEvent.press(button);
 
         expect(await screen.findByTestId('guild-raid-join-error')).toBeTruthy();
         expect(screen.getByText(/já foi encerrada/)).toBeTruthy();
