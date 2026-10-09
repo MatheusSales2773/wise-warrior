@@ -10,6 +10,11 @@ import { AddStudySessionPauseResume1788458880000 } from '../migrations/178845888
 import { UnifyStudySessionIdempotencyKeys1788459000000 } from '../migrations/1788459000000-unify-study-session-idempotency-keys';
 import { AddStudySessionEndedAtPrecision1788459060000 } from '../migrations/1788459060000-add-study-session-ended-at-precision';
 import { AddStudySessionStartReceiptSubject1788459120000 } from '../migrations/1788459120000-add-study-session-start-receipt-subject';
+import { EnforceSingleGuildPerUser1788459180000 } from '../migrations/1788459180000-enforce-single-guild-per-user';
+import { DropCharacterTitle1788459300000 } from '../migrations/1788459300000-drop-character-title';
+import { SeedInitialCosmeticItems1788459240000 } from '../migrations/1788459240000-seed-initial-cosmetic-items';
+import { AddRaidMissions1788459360000 } from '../migrations/1788459360000-add-raid-missions';
+import { AddRaidParticipations1788459420000 } from '../migrations/1788459420000-add-raid-participations';
 
 export const APPLICATION_MIGRATIONS: NonNullable<DataSourceOptions['migrations']> = [
   CreateWiseSchema1788458400000,
@@ -20,6 +25,11 @@ export const APPLICATION_MIGRATIONS: NonNullable<DataSourceOptions['migrations']
   UnifyStudySessionIdempotencyKeys1788459000000,
   AddStudySessionEndedAtPrecision1788459060000,
   AddStudySessionStartReceiptSubject1788459120000,
+  EnforceSingleGuildPerUser1788459180000,
+  SeedInitialCosmeticItems1788459240000,
+  DropCharacterTitle1788459300000,
+  AddRaidMissions1788459360000,
+  AddRaidParticipations1788459420000,
 ];
 
 export interface IntegrationDatabase {

@@ -5,6 +5,7 @@ import type { RowDataPacket } from 'mysql2/promise';
 import { DataSource } from 'typeorm';
 import { Character } from '../progression/entities/character.entity';
 import { User } from '../users/entities/user.entity';
+import type { UsersService } from '../users/users.service';
 import { AuthService } from './auth.service';
 import { Session } from './entities/session.entity';
 import { RefreshTokenHistory } from './entities/refresh-token-history.entity';
@@ -68,6 +69,7 @@ describe('AuthService refresh rotation against independent MySQL connections', (
       new JwtService(),
       config,
       dataSource,
+      {} as UsersService,
     );
   }
 

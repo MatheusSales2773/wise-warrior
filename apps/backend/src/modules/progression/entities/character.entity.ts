@@ -31,9 +31,6 @@ export class Character {
   })
   xpTotal: number;
 
-  @Column({ nullable: true })
-  title?: string;
-
   /**
    * "Companheiro" (mascote RPG) fica fora do escopo da Fase 1 — ADR-004.
    * A coluna permanece reservada, sem uma tabela Companion nesta migration.

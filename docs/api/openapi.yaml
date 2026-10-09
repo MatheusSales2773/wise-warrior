@@ -240,16 +240,59 @@ paths:
               schema: { $ref: "#/components/schemas/UserProfile" }
         "401": { $ref: "#/components/responses/Unauthorized" }
 
+  /users/me/cosmetics:
+    get:
+      summary: Lista o Catálogo inteiro de Cosmetic Items com o estado no Inventário
+      description: >
+        Devolve todos os Cosmetic Items, desbloqueados ou não, sem ordem
+        garantida: a interface define a ordem de exibição. Sem paginação por
+        decisão explícita: o Catálogo é uma tabela versionada pequena (seed
+        por migration).
+      operationId: listCosmeticsCatalog
+      tags: [Users]
+      responses:
+        "200":
+          description: Catálogo
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/CatalogCosmeticItem" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
   /users/me/cosmetics/{itemId}:
     patch:
-      summary: Equipa um item cosmético já desbloqueado
+      summary: Equipa um Cosmetic Item do Inventário
+      description: >
+        Troca o item equipado da categoria: no máximo um item por categoria,
+        garantido mesmo com requisições simultâneas. Item fora do Inventário
+        (bloqueado ou inexistente) devolve 404. Item premium passa pela
+        checagem de entitlement (ADR-007), mas a política do MVP o libera para
+        todos enquanto `COSMETICS_PREMIUM_FOR_ALL` não for `false`; com a flag
+        desligada, um usuário `free` recebe 403.
       operationId: equipCosmeticItem
       tags: [Users]
       parameters:
         - { name: itemId, in: path, required: true, schema: { type: string, format: uuid } }
       responses:
         "204": { description: Item equipado }
+        "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /users/me/cosmetics/{itemId}/equipped:
+    delete:
+      summary: Desequipa um Cosmetic Item, de qualquer categoria
+      description: >
+        Idempotente: desequipar um item já desequipado devolve 204. Item fora
+        do Inventário (bloqueado, inexistente ou de outro usuário) devolve 404.
+      operationId: unequipCosmeticItem
+      tags: [Users]
+      parameters:
+        - { name: itemId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "204": { description: Item desequipado }
+        "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
 
   /users/me/sessions:
@@ -281,6 +324,10 @@ paths:
   /users/me/sessions/{sessionId}:
     delete:
       summary: Encerra um dispositivo específico
+      description: >
+        Uma sessão inexistente, já revogada ou de outro usuário devolve 404,
+        e não 401, para que o cliente não confunda o caso com a própria
+        sessão expirada.
       operationId: revokeMySession
       tags: [Users]
       parameters:
@@ -288,6 +335,7 @@ paths:
       responses:
         "204": { description: Sessão revogada }
         "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
 
   /sessions:
     post:
@@ -586,8 +634,28 @@ paths:
                     instance: /api/v1/sessions/{id}/complete
 
   /guilds:
+    get:
+      summary: Descobre guildas (busca por nome, paginação por cursor)
+      description: >
+        Ordenação estável por nome e id. `nextCursor` é opaco: reenvie-o em
+        `cursor` para a próxima página; `null` indica a última.
+      operationId: listGuilds
+      tags: [Guilds]
+      parameters:
+        - { name: search, in: query, required: false, schema: { type: string, maxLength: 60 } }
+        - { name: cursor, in: query, required: false, schema: { type: string, maxLength: 200 } }
+        - { name: limit, in: query, required: false, schema: { type: integer, minimum: 1, maximum: 20, default: 20 } }
+      responses:
+        "200":
+          description: Página de guildas
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/GuildPage" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
     post:
       summary: Cria uma guilda (o criador se torna líder)
+      description: Um usuário participa de no máximo uma guilda; quem já participa de uma recebe 409.
       operationId: createGuild
       tags: [Guilds]
       requestBody:
@@ -602,6 +670,20 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/Guild" }
         "409": { $ref: "#/components/responses/Conflict" }
+
+  /guilds/me:
+    get:
+      summary: Guilda do usuário autenticado e o papel dele nela
+      operationId: getMyGuild
+      tags: [Guilds]
+      responses:
+        "200":
+          description: Guilda do usuário
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MyGuild" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
 
   /guilds/{id}:
     get:
@@ -621,6 +703,9 @@ paths:
   /guilds/{id}/members:
     post:
       summary: Entra na guilda
+      description: >
+        Idempotente para a guilda em que o usuário já está. Se ele participa de
+        outra guilda, responde 409.
       operationId: joinGuild
       tags: [Guilds]
       parameters:
@@ -628,10 +713,71 @@ paths:
       responses:
         "204": { description: Membro adicionado }
         "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+    get:
+      summary: Lista os membros da guilda (apenas para membros)
+      description: >
+        Ordem estável por entrada (mais antigo primeiro) e id. `nextCursor` é
+        opaco; `null` indica a última página. Não-membros recebem 403.
+      operationId: listGuildMembers
+      tags: [Guilds]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: cursor, in: query, required: false, schema: { type: string, maxLength: 200 } }
+        - { name: limit, in: query, required: false, schema: { type: integer, minimum: 1, maximum: 50, default: 20 } }
+      responses:
+        "200":
+          description: Página de membros
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/GuildMemberPage" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /guilds/{id}/members/me:
+    delete:
+      summary: Sai da guilda
+      description: >
+        Se quem sai é o líder, o membro mais antigo restante assume a liderança.
+        Quando o último membro sai, a guilda é encerrada.
+      operationId: leaveGuild
+      tags: [Guilds]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "204": { description: Saída registrada }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /guilds/{id}/raids/active:
+    get:
+      summary: Raid da semana da guilda
+      description: >
+        A Raid ativa da guilda (segunda 00:00 a domingo 23:59:59 em
+        `America/Sao_Paulo`, datas em UTC), com a Missão do rodízio semanal e a
+        Recompensa de Raid prevista, e `me.participating` com a participação de
+        quem consulta. Só membros da guilda a veem. `404` quando a guilda não
+        tem Raid ativa.
+      operationId: getActiveGuildRaid
+      tags: [Raids]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: Raid ativa
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ActiveRaid" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
 
   /raids/{id}:
     get:
       summary: Detalhe de uma raid
+      description: Restrito aos membros da guilda da raid; quem é de fora recebe 403.
       operationId: getRaid
       tags: [Raids]
       parameters:
@@ -642,6 +788,8 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/RaidDetail" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
 
   /raids/{id}/ranking:
@@ -650,7 +798,8 @@ paths:
       description: >
         Sem paginação por decisão explícita: bounded pelo tamanho da guilda
         (tipicamente dezenas de membros, não milhares) — ver nota de
-        /users/me/sessions acima para o mesmo raciocínio.
+        /users/me/sessions acima para o mesmo raciocínio. Restrito aos
+        membros da guilda da raid; quem é de fora recebe 403.
       operationId: getRaidRanking
       tags: [Raids]
       parameters:
@@ -664,18 +813,27 @@ paths:
                 type: array
                 items: { $ref: "#/components/schemas/RaidRankingEntry" }
         "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
 
   /raids/{id}/join:
     post:
       summary: Confirma participação numa raid ativa da guilda do usuário (UC02)
+      description: >
+        Grava a participação do usuário na Raid. Idempotente: repetir a chamada
+        devolve 204 sem duplicar. Uma Raid com a meta batida continua aceitando
+        participação até o fim da semana. `403` para quem não é da guilda da
+        Raid; `409` quando a Raid já terminou (UC02 A01).
       operationId: joinRaid
       tags: [Raids]
       parameters:
         - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
       responses:
         "204": { description: Participação confirmada }
+        "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
 
 components:
   securitySchemes:
@@ -776,7 +934,7 @@ components:
       description: >
         A projeção mantém a coerência do progresso: levelStartXp <= xpTotal <
         nextLevelXp.
-      required: [id, email, displayName, planTier, level, levelStartXp, nextLevelXp, xpTotal, title]
+      required: [id, email, displayName, planTier, level, levelStartXp, nextLevelXp, xpTotal, title, equipped]
       properties:
         id: { type: string, format: uuid }
         email: { type: string, format: email }
@@ -801,7 +959,52 @@ components:
           minimum: 0
           maximum: 9000000000000000
           description: Experiência total acumulada.
-        title: { type: [string, "null"] }
+        title:
+          type: [string, "null"]
+          description: >
+            Nome do Cosmetic Item de categoria Título equipado (ADR-010), ou
+            null quando não há Título equipado.
+        equipped:
+          type: array
+          description: Cosmetic Items equipados, no máximo um por categoria.
+          items: { $ref: "#/components/schemas/EquippedCosmeticItem" }
+
+    EquippedCosmeticItem:
+      type: object
+      required: [category, itemId, name]
+      properties:
+        category: { type: string, enum: [avatar, badge, title, accessory] }
+        itemId: { type: string, format: uuid }
+        name: { type: string }
+
+    CatalogCosmeticItem:
+      type: object
+      description: >
+        `unlocked` indica que o item está no Inventário. `equipped` só é true
+        para itens desbloqueados, com no máximo um por categoria.
+      required: [id, category, name, requiresPremium, unlocked, equipped, unlockCondition]
+      properties:
+        id: { type: string, format: uuid }
+        category: { type: string, enum: [avatar, badge, title, accessory] }
+        name: { type: string }
+        requiresPremium: { type: boolean, description: "Item premium (✦), ADR-007." }
+        unlocked: { type: boolean }
+        equipped: { type: boolean }
+        unlockCondition: { $ref: "#/components/schemas/UnlockCondition" }
+
+    UnlockCondition:
+      description: Condição de desbloqueio estruturada, para a interface montar o texto.
+      oneOf:
+        - type: object
+          required: [type, level]
+          properties:
+            type: { type: string, const: level }
+            level: { type: integer, minimum: 1 }
+        - type: object
+          required: [type, slug]
+          properties:
+            type: { type: string, const: raid }
+            slug: { type: string, description: "Slug da Raid. `*` vale para qualquer Raid." }
 
     SessionSummary:
       type: object
@@ -971,7 +1174,7 @@ components:
         level: { type: integer }
         createdBy: { type: string, format: uuid }
 
-    GuildDetail:
+    GuildSummary:
       type: object
       required: [id, name, level, memberCount]
       properties:
@@ -979,6 +1182,89 @@ components:
         name: { type: string }
         level: { type: integer }
         memberCount: { type: integer }
+
+    GuildDetail:
+      allOf:
+        - $ref: "#/components/schemas/GuildSummary"
+        - type: object
+          required: [leader]
+          properties:
+            leader:
+              type: [object, "null"]
+              required: [userId, displayName]
+              properties:
+                userId: { type: string, format: uuid }
+                displayName: { type: string }
+
+    GuildMember:
+      type: object
+      required: [userId, displayName, level, title, role, joinedAt]
+      properties:
+        userId: { type: string, format: uuid }
+        displayName: { type: string }
+        level: { type: integer }
+        title:
+          type: [string, "null"]
+          description: Nome do Título equipado pelo membro (ADR-010), ou null.
+        role: { type: string, enum: [leader, member] }
+        joinedAt: { type: string, format: date-time }
+
+    GuildMemberPage:
+      type: object
+      required: [items, nextCursor]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/GuildMember" }
+        nextCursor: { type: [string, "null"] }
+
+    MyGuild:
+      type: object
+      required: [guild, role]
+      properties:
+        guild: { $ref: "#/components/schemas/GuildDetail" }
+        role: { type: string, enum: [leader, member] }
+
+    GuildPage:
+      type: object
+      required: [items, nextCursor]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/GuildSummary" }
+        nextCursor: { type: [string, "null"] }
+
+    ActiveRaid:
+      type: object
+      required: [id, mission, reward, goalXp, progressXp, startsAt, endsAt, status, me]
+      properties:
+        id: { type: string, format: uuid }
+        mission:
+          type: object
+          required: [slug, name, description, imageUrl]
+          properties:
+            slug: { type: string, example: vigilia-da-aurora }
+            name: { type: string }
+            description: { type: string, maxLength: 140 }
+            imageUrl: { type: [string, "null"], description: Nulo enquanto a Missão não tem imagem }
+        reward:
+          type: object
+          description: Recompensa de Raid, o Cosmetic Item da Missão. Dado a quem tiver Contribuição numa Raid vencida.
+          required: [itemId, name, category]
+          properties:
+            itemId: { type: string, format: uuid }
+            name: { type: string }
+            category: { type: string, enum: [avatar, badge, title, accessory] }
+        goalXp: { type: integer, description: "Meta coletiva, congelada na criação da Raid" }
+        progressXp: { type: integer }
+        startsAt: { type: string, format: date-time }
+        endsAt: { type: string, format: date-time }
+        status: { type: string, enum: [active, completed, expired] }
+        me:
+          type: object
+          required: [participating]
+          properties:
+            participating: { type: boolean, description: "Se quem consulta já confirmou participação nesta Raid" }
 
     RaidDetail:
       type: object

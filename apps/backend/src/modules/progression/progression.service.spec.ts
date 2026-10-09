@@ -4,6 +4,7 @@ import { getRepositoryToken } from '@nestjs/typeorm';
 import { ProgressionService } from './progression.service';
 import { Character } from './entities/character.entity';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
+import { UsersService } from '../users/users.service';
 import {
   MAX_SUPPORTED_XP_TOTAL,
   xpThresholdForLevel,
@@ -29,6 +30,7 @@ describe('ProgressionService', () => {
         ProgressionService,
         { provide: getRepositoryToken(Character), useValue: mockCharacterRepo },
         { provide: RealtimeGateway, useValue: mockRealtimeGateway },
+        { provide: UsersService, useValue: { unlockCosmeticItems: jest.fn() } },
       ],
     }).compile();
     service = module.get(ProgressionService);
@@ -54,13 +56,11 @@ describe('ProgressionService', () => {
       userId: 'user-1',
       xpTotal: 1_501,
       level: 2,
-      title: 'Scholar',
     });
 
     await expect(service.getCharacterSnapshot('user-1')).resolves.toEqual({
       xpTotal: 1_501,
       level: 2,
-      title: 'Scholar',
     });
   });
 

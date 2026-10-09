@@ -1,5 +1,5 @@
-import type { ReactNode } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import type { ReactElement, ReactNode } from 'react';
+import { Pressable, ScrollView, StyleSheet, Text, View, type RefreshControlProps } from 'react-native';
 import { WiseIcon, theme } from '@/design-system';
 import type { SessionMetrics, UserProfile } from '@/features/dashboard/api';
 import {
@@ -15,7 +15,7 @@ import {
   type HeroStatus,
 } from './catalog';
 import { GroundShadow, HeroGlow } from './character-art';
-import { HeroPill, LevelProgress, SectionHeader, SummaryRow, describeDevices, useFocusRing, type DevicesState } from './character-parts';
+import { HeroPill, LevelProgress, PreviewMark, SectionHeader, SummaryRow, describeDevices, useFocusRing, type DevicesState } from './character-parts';
 import { PixelSprite } from './PixelSprite';
 import { companionSprites, heroSprites, itemSprites } from './sprites';
 
@@ -30,8 +30,14 @@ type MobileCharacterProps = {
   metrics: SessionMetrics | undefined;
   notice: string | null;
   onEquipHero: () => void;
+  onOpenDevices: () => void;
   onOpenEquipment: (category: EquipmentCategory) => void;
   onSwapHero: () => void;
+  previewing: boolean;
+  /** Pull-to-refresh on touch platforms; omitted on web. */
+  refreshControl?: ReactElement<RefreshControlProps>;
+  /** Equipment and refresh errors, rendered above the identity. */
+  status: ReactNode;
   user: UserProfile;
 };
 
@@ -62,10 +68,11 @@ function HeroTop({ hero, onSwapHero }: { hero: HeroDefinition; onSwapHero: () =>
 
 /* ---------- Identidade ---------- */
 
-function Identity({ hero, user }: { hero: HeroDefinition; user: UserProfile }) {
+function Identity({ hero, previewing, user }: { hero: HeroDefinition; previewing: boolean; user: UserProfile }) {
   return <View style={styles.identity} testID="character-identity">
     <Text style={styles.identityEyebrow}>✦ Nível {user.level} · {hero.name}</Text>
-    <Text style={styles.identityTitle}>{user.title?.trim() || 'Aprendiz'}</Text>
+    <Text style={styles.identityTitle}>{user.title?.trim() || user.displayName}</Text>
+    {previewing ? <PreviewMark /> : null}
     <LevelProgress compact user={user} />
   </View>;
 }
@@ -149,15 +156,18 @@ function HeroesSection({ equippedHeroId, onEquip, user }: { equippedHeroId: Hero
 
 /* ---------- Mais ---------- */
 
-function MoreRow({ badge, children, description, first = false, testID, title }: {
+function MoreRow({ badge, children, description, first = false, onPress, testID, title }: {
   badge?: string;
   children: ReactNode;
   description: string;
   first?: boolean;
+  onPress?: () => void;
   testID: string;
   title: string;
 }) {
-  return <View accessible accessibilityLabel={`${title}. ${description}`} style={[styles.moreRow, !first && styles.moreRowDivided]} testID={testID}>
+  const { focusProps, focusStyle } = useFocusRing();
+  const style = [styles.moreRow, !first && styles.moreRowDivided];
+  const content = <>
     <View style={styles.moreIcon}>{children}</View>
     <View style={styles.moreCopy}>
       <Text style={styles.moreTitle}>{title}</Text>
@@ -165,16 +175,19 @@ function MoreRow({ badge, children, description, first = false, testID, title }:
     </View>
     {badge ? <Text style={styles.moreBadge}>{badge}</Text> : null}
     <WiseIcon color="textTertiary" name="chevron-forward" size="xsmall" />
-  </View>;
+  </>;
+  return onPress
+    ? <Pressable {...focusProps} accessibilityHint="Abre a lista de dispositivos" accessibilityLabel={`${title}. ${description}`} accessibilityRole="button" onPress={onPress} style={[...style, focusStyle]} testID={testID}>{content}</Pressable>
+    : <View accessible accessibilityLabel={`${title}. ${description}`} style={style} testID={testID}>{content}</View>;
 }
 
-function MoreSection({ devices }: { devices: DevicesState }) {
+function MoreSection({ devices, onOpenDevices }: { devices: DevicesState; onOpenDevices: () => void }) {
   return <View accessibilityLabel="Mais" role="region" style={styles.more} testID="character-more">
     <View style={styles.moreList}>
       <MoreRow description="Coruja de estudo · em breve" first testID="character-companion" title="Companheiro">
         <PixelSprite opacity={0.5} scale={3} sprite={companionSprites.coruja} />
       </MoreRow>
-      <MoreRow badge={devices.count !== null ? String(devices.count) : undefined} description={describeDevices(devices, true)} testID="character-devices" title="Dispositivos conectados">
+      <MoreRow badge={devices.count !== null ? String(devices.count) : undefined} description={describeDevices(devices, true)} onPress={onOpenDevices} testID="character-devices" title="Dispositivos conectados">
         <WiseIcon color="textSecondary" name="people-outline" size="compact" />
       </MoreRow>
     </View>
@@ -183,8 +196,8 @@ function MoreSection({ devices }: { devices: DevicesState }) {
 
 /* ---------- Tela ---------- */
 
-export function MobileCharacter({ devices, equipped, hero, metrics, notice, onEquipHero, onOpenEquipment, onSwapHero, user }: MobileCharacterProps) {
-  return <ScrollView showsVerticalScrollIndicator={false} testID="character-scroll">
+export function MobileCharacter({ devices, equipped, hero, metrics, notice, onEquipHero, onOpenDevices, onOpenEquipment, onSwapHero, previewing, refreshControl, status, user }: MobileCharacterProps) {
+  return <ScrollView refreshControl={refreshControl} showsVerticalScrollIndicator={false} testID="character-scroll">
     <View style={styles.column}>
       <HeroTop hero={hero} onSwapHero={onSwapHero} />
       {/* Outside the content gap flow so an empty live region takes no space. */}
@@ -192,12 +205,13 @@ export function MobileCharacter({ devices, equipped, hero, metrics, notice, onEq
         {notice ? <Text style={styles.noticeText}>{notice}</Text> : null}
       </View>
       <View style={styles.content} testID="character-content">
-        <Identity hero={hero} user={user} />
+        {status}
+        <Identity hero={hero} previewing={previewing} user={user} />
         <SummaryRow compact metrics={metrics} user={user} />
         <GearSection equipped={equipped} onOpen={onOpenEquipment} />
       </View>
       <HeroesSection equippedHeroId={hero.id} onEquip={onEquipHero} user={user} />
-      <MoreSection devices={devices} />
+      <MoreSection devices={devices} onOpenDevices={onOpenDevices} />
     </View>
   </ScrollView>;
 }

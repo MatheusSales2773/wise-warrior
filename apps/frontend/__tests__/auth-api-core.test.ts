@@ -12,6 +12,7 @@ import {
   setAuthenticationSnapshot,
   shouldSendBrowserCredentials,
   type HttpClient,
+  type HttpClientWithDelete,
   type HttpClientWithPatch,
   type HttpResponse,
 } from '@/core/api/api-client';
@@ -220,6 +221,37 @@ describe('http client configuration', () => {
       });
       expect(recover).toHaveBeenCalledTimes(1);
       expect(patchCalls).toHaveBeenCalledTimes(2);
+    } finally {
+      removeRecovery();
+    }
+  });
+
+  it('restores once and retries protected DELETE requests rejected with 401', async () => {
+    let restored = false;
+    const deleteCalls = jest.fn();
+    const transport: HttpClientWithDelete = {
+      get: async <T,>() => ({ status: 204, data: undefined as T }),
+      post: async <T,>() => ({ status: 204, data: undefined as T }),
+      patch: async <T,>() => ({ status: 204, data: undefined as T }),
+      delete: async <T,>() => {
+        deleteCalls();
+        if (!restored) {
+          throw { isAxiosError: true, response: { status: 401, data: {} } };
+        }
+        return { status: 204, data: undefined as T };
+      },
+    };
+    const recover = jest.fn(async () => {
+      restored = true;
+      return true;
+    });
+    const removeRecovery = setAuthenticationRecovery(recover);
+
+    try {
+      const client = createSessionAwareHttpClient(transport);
+      await expect(client.delete('/guilds/g1/members/me')).resolves.toEqual({ status: 204, data: undefined });
+      expect(recover).toHaveBeenCalledTimes(1);
+      expect(deleteCalls).toHaveBeenCalledTimes(2);
     } finally {
       removeRecovery();
     }

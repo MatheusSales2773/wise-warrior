@@ -1,10 +1,14 @@
 import { useQuery } from '@tanstack/react-query';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useCallback, useState, type PropsWithChildren } from 'react';
-import { Platform, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { useCallback, useState, type ReactNode } from 'react';
+import { Platform, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { useAuth } from '@/core/auth/auth-context';
 import { FeedbackMessage, ProgressBar, Screen, WiseButton, WiseIcon, WiseText, isDesktopLayout, theme } from '@/design-system';
 import type { SessionMetrics, UserProfile } from '@/features/dashboard/api';
 import { profileQueryOptions, sessionMetricsQueryOptions } from '@/features/dashboard/queries';
+import { profileWithEquipped } from '@/features/profile/equipment';
+import { cosmeticsCatalogQueryOptions, deviceSessionsQueryOptions } from '@/features/profile/queries';
+import { useCosmeticEquipment } from '@/features/profile/use-cosmetic-equipment';
 import {
   DEFAULT_HERO_ID,
   equipmentCategories,
@@ -23,18 +27,19 @@ import {
 } from './catalog';
 import { GroundShadow, HeroGlow } from './character-art';
 import { MobileCharacter } from './character-mobile';
-import { HeroPill, LevelProgress, SectionHeader, SummaryRow, describeDevices, useFocusRing, type DevicesState } from './character-parts';
+import { HeroPill, LevelProgress, PreviewMark, SectionHeader, SummaryRow, describeDevices, useFocusRing, type DevicesState } from './character-parts';
+import { DevicesPanel } from './devices-panel';
 import { EquipmentDrawer } from './equipment-drawer';
 import { PixelSprite } from './PixelSprite';
-import { deviceSessionsQueryOptions } from './queries';
 import { companionSprites, heroSprites, itemSprites } from './sprites';
 
 const HERO_SWAP_NOTICE = 'A troca de herói chega em breve. Seu progresso continua contando para todos eles.';
 
 /* ---------- Painel do herói ---------- */
 
-function HeroPanel({ desktop, hero, metrics, notice, onSwapHero, user }: {
+function HeroPanel({ desktop, hero, metrics, notice, onSwapHero, previewing, user }: {
   desktop: boolean;
+  previewing: boolean;
   hero: HeroDefinition;
   metrics: SessionMetrics | undefined;
   notice: string | null;
@@ -51,8 +56,9 @@ function HeroPanel({ desktop, hero, metrics, notice, onSwapHero, user }: {
     </View>
     <View style={styles.identity} testID="character-identity">
       <Text style={styles.identityEyebrow}>✦ Nível {user.level} · {hero.name}</Text>
-      <Text style={styles.identityTitle}>{user.title?.trim() || 'Aprendiz'}</Text>
-      <Text style={styles.identitySubtitle}>{user.displayName}</Text>
+      <Text style={styles.identityTitle}>{user.title?.trim() || user.displayName}</Text>
+      {previewing ? <PreviewMark /> : null}
+      <Text style={styles.identitySubtitle}>{user.title?.trim() ? user.displayName : user.email}</Text>
       <LevelProgress user={user} />
     </View>
     <View style={styles.summaryWrap}><SummaryRow metrics={metrics} user={user} /></View>
@@ -156,25 +162,29 @@ function HeroesSection({ equippedHeroId, onEquip, user }: { equippedHeroId: Hero
 
 /* ---------- Mais ---------- */
 
-function MoreRow({ children, description, testID, title }: PropsWithChildren<{ description: string; testID: string; title: string }>) {
-  return <View accessible accessibilityLabel={`${title}. ${description}`} style={styles.moreRow} testID={testID}>
+function MoreRow({ children, description, onPress, testID, title }: { children: ReactNode; description: string; onPress?: () => void; testID: string; title: string }) {
+  const { focusProps, focusStyle } = useFocusRing();
+  const content = <>
     <View style={styles.moreIcon}>{children}</View>
     <View style={styles.moreCopy}>
       <Text style={styles.moreTitle}>{title}</Text>
       <Text style={styles.moreDescription}>{description}</Text>
     </View>
     <WiseIcon color="textTertiary" name="chevron-forward" size="xsmall" />
-  </View>;
+  </>;
+  return onPress
+    ? <Pressable {...focusProps} accessibilityHint="Abre a lista de dispositivos" accessibilityLabel={`${title}. ${description}`} accessibilityRole="button" onPress={onPress} style={[styles.moreRow, focusStyle]} testID={testID}>{content}</Pressable>
+    : <View accessible accessibilityLabel={`${title}. ${description}`} style={styles.moreRow} testID={testID}>{content}</View>;
 }
 
-function MoreSection({ devices }: { devices: DevicesState }) {
+function MoreSection({ devices, onOpenDevices }: { devices: DevicesState; onOpenDevices: () => void }) {
   return <View accessibilityLabel="Mais" role="region" style={styles.section} testID="character-more">
     <SectionHeader>Mais</SectionHeader>
     <View style={styles.row}>
       <MoreRow description="Coruja de estudo · chega na Fase 2" testID="character-companion" title="Companheiro">
         <PixelSprite opacity={0.5} scale={3} sprite={companionSprites.coruja} />
       </MoreRow>
-      <MoreRow description={describeDevices(devices, false)} testID="character-devices" title="Dispositivos conectados">
+      <MoreRow description={describeDevices(devices, false)} onPress={onOpenDevices} testID="character-devices" title="Dispositivos conectados">
         <WiseIcon color="textSecondary" name="people-outline" size="regular" />
       </MoreRow>
     </View>
@@ -183,15 +193,42 @@ function MoreSection({ devices }: { devices: DevicesState }) {
 
 /* ---------- Tela ---------- */
 
+/** Equipment failures and a stale profile above the content; absent when there is nothing to say, so it takes no gap. */
+function StatusMessages({ messages }: { messages: { key: string; title: string; message: string }[] }) {
+  if (!messages.length) return null;
+  return <View style={styles.statusMessages} testID="character-status">
+    {messages.map(({ key, message, title }) => <FeedbackMessage key={key} message={message} testID={`character-status-${key}`} title={title} variant="error" />)}
+  </View>;
+}
+
 export function CharacterScreen() {
   const profile = useQuery(profileQueryOptions());
   const metrics = useQuery(sessionMetricsQueryOptions());
   const deviceSessions = useQuery(deviceSessionsQueryOptions());
+  const catalog = useQuery(cosmeticsCatalogQueryOptions());
+  const equipment = useCosmeticEquipment();
+  const { sessionId } = useAuth();
   const { width } = useWindowDimensions();
   const [drawerCategory, setDrawerCategory] = useState<EquipmentCategory | null>(null);
+  const [devicesOpen, setDevicesOpen] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
-  const closeDrawer = useCallback(() => setDrawerCategory(null), []);
+  const [refreshing, setRefreshing] = useState(false);
+  const { cancel } = equipment;
+  const closeDrawer = useCallback(() => {
+    cancel();
+    setDrawerCategory(null);
+  }, [cancel]);
+  const closeDevices = useCallback(() => setDevicesOpen(false), []);
+  const openDevices = useCallback(() => setDevicesOpen(true), []);
   const showHeroNotice = useCallback(() => setNotice(HERO_SWAP_NOTICE), []);
+  const refresh = async () => {
+    setRefreshing(true);
+    try {
+      await Promise.all([profile.refetch(), catalog.refetch(), deviceSessions.refetch(), metrics.refetch()]);
+    } finally {
+      setRefreshing(false);
+    }
+  };
 
   if (profile.isPending && !profile.data) {
     return <Screen safeAreaEdges={[]} testID="character" title="Personagem">
@@ -212,15 +249,27 @@ export function CharacterScreen() {
   const user = profile.data;
   if (!user) return null;
 
+  // The Prévia only changes what the panel shows; the cached profile and the server stay untouched.
+  const previewed = catalog.data?.find((item) => item.id === equipment.selectedId && item.unlocked && !item.equipped);
+  const shown: UserProfile = previewed ? profileWithEquipped(user, previewed) : user;
   const desktop = isDesktopLayout(Platform.OS, width);
+  const variant = desktop ? 'drawer' : 'sheet';
   const hero = heroById[DEFAULT_HERO_ID];
-  const equipped = equippedItems(user, hero.id);
+  const equipped = equippedItems(user);
   const devices: DevicesState = { count: deviceSessions.data?.length ?? null, failed: deviceSessions.isError };
-  const panel = <HeroPanel desktop={desktop} hero={hero} metrics={metrics.data} notice={notice} onSwapHero={showHeroNotice} user={user} />;
+  const statusMessages = [
+    ...(equipment.notice ? [{ key: 'equipment', ...equipment.notice }] : []),
+    ...(profile.isError ? [{ key: 'profile', title: 'Dados desatualizados', message: 'Não foi possível atualizar seu personagem.' }] : []),
+  ];
+  // Touch platforms refresh by pulling down; web relies on the queries refetching on their own.
+  const refreshControl = Platform.OS === 'web' ? undefined
+    : <RefreshControl colors={[theme.color.accentPrimary]} onRefresh={() => { void refresh(); }} progressBackgroundColor={theme.color.surfaceCard} refreshing={refreshing} tintColor={theme.color.accentPrimary} />;
+  const panel = <HeroPanel desktop={desktop} hero={hero} metrics={metrics.data} notice={notice} onSwapHero={showHeroNotice} previewing={Boolean(previewed)} user={shown} />;
   const content = <View style={[styles.content, desktop && styles.contentDesktop]} testID="character-content">
-    <GearSection equipped={equipped} onOpen={setDrawerCategory} />
+    <StatusMessages messages={statusMessages} />
+    <GearSection equipped={equippedItems(shown)} onOpen={setDrawerCategory} />
     <HeroesSection equippedHeroId={hero.id} onEquip={showHeroNotice} user={user} />
-    <MoreSection devices={devices} />
+    <MoreSection devices={devices} onOpenDevices={openDevices} />
   </View>;
 
   return <View style={styles.root} testID="character">
@@ -230,8 +279,23 @@ export function CharacterScreen() {
         <ScrollView contentContainerStyle={styles.panelScrollContent} style={styles.panelScroll}>{panel}</ScrollView>
         <ScrollView style={styles.contentScroll} testID="character-content-scroll">{content}</ScrollView>
       </View>
-      : <MobileCharacter devices={devices} equipped={equipped} hero={hero} metrics={metrics.data} notice={notice} onEquipHero={showHeroNotice} onOpenEquipment={setDrawerCategory} onSwapHero={showHeroNotice} user={user} />}
-    <EquipmentDrawer variant={desktop ? 'drawer' : 'sheet'} category={drawerCategory} equipped={equipped} isPremium={user.planTier === 'premium'} onCategoryChange={setDrawerCategory} onClose={closeDrawer} />
+      : <MobileCharacter
+        devices={devices}
+        equipped={equippedItems(shown)}
+        hero={hero}
+        metrics={metrics.data}
+        notice={notice}
+        onEquipHero={showHeroNotice}
+        onOpenDevices={openDevices}
+        onOpenEquipment={setDrawerCategory}
+        onSwapHero={showHeroNotice}
+        previewing={Boolean(previewed)}
+        refreshControl={refreshControl}
+        status={<StatusMessages messages={statusMessages} />}
+        user={shown}
+      />}
+    <EquipmentDrawer catalog={catalog} category={drawerCategory} equipment={equipment} equipped={equipped} level={user.level} onCategoryChange={(next) => { cancel(); setDrawerCategory(next); }} onClose={closeDrawer} planTier={user.planTier} variant={variant} />
+    {devicesOpen ? <DevicesPanel currentSessionId={sessionId} onClose={closeDevices} query={deviceSessions} variant={variant} /> : null}
   </View>;
 }
 
@@ -240,6 +304,7 @@ const mono = 'JetBrainsMono-Medium';
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: theme.color.backgroundCanvas },
+  statusMessages: { gap: theme.space.stackTight },
   loading: { gap: theme.space.stackDefault, padding: theme.space.cardInset },
   desktopLayout: { flex: 1, flexDirection: 'row' },
   panelScroll: { width: 460, flexGrow: 0, flexShrink: 0 },

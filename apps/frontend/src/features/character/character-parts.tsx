@@ -24,6 +24,11 @@ export function SectionHeader({ aside, children }: PropsWithChildren<{ aside?: R
   </View>;
 }
 
+/** Shown under the title while the equipment drawer previews an item. */
+export function PreviewMark() {
+  return <Text style={styles.previewMark} testID="character-preview">Prévia · nada foi salvo</Text>;
+}
+
 /* ---------- Dispositivos ---------- */
 
 export type DevicesState = { count: number | null; failed: boolean };
@@ -96,6 +101,8 @@ const styles = StyleSheet.create({
   sectionTitle: { flexDirection: 'row', alignItems: 'center', gap: theme.space.inlineTight },
   sectionTitleText: { fontFamily: cinzel, fontSize: 11, lineHeight: 15, color: theme.color.accentPrimary },
   sectionTitleLabel: { letterSpacing: 2.6, textTransform: 'uppercase' },
+
+  previewMark: { fontFamily: mono, fontSize: 10, lineHeight: 13, letterSpacing: 1, textTransform: 'uppercase', color: theme.color.accentHighlight },
 
   progression: { alignSelf: 'stretch', paddingTop: theme.space.inlineTight, gap: 6 },
   progressionCompact: { paddingTop: 6 },

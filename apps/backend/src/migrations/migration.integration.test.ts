@@ -10,6 +10,11 @@ import { AddSessionRefreshTokenHistory1788458460000 } from './1788458460000-add-
 import { AddStudySessionRecentIndex1788458520000 } from './1788458520000-add-study-session-recent-index';
 import { AddCanonicalStudySessionStart1788458760000 } from './1788458760000-add-canonical-study-session-start';
 import { AddStudySessionPauseResume1788458880000 } from './1788458880000-add-study-session-pause-resume';
+import { AddRaidMissions1788459360000 } from './1788459360000-add-raid-missions';
+import { AddRaidParticipations1788459420000 } from './1788459420000-add-raid-participations';
+import { DropCharacterTitle1788459300000 } from './1788459300000-drop-character-title';
+import { SeedInitialCosmeticItems1788459240000 } from './1788459240000-seed-initial-cosmetic-items';
+import { raidWeekAt } from '../modules/raids/domain/raid-week';
 import { StudySession } from '../modules/sessions/entities/study-session.entity';
 
 const expectedTables = [
@@ -29,11 +34,12 @@ const expectedTables = [
   'study_session_command_keys',
   'raid_contributions',
   'guild_chat_messages',
+  'raid_participations',
 ];
 
 const expectedColumns: Record<string, string[]> = {
   users: ['id', 'email', 'password_hash', 'display_name', 'plan_tier', 'created_at'],
-  characters: ['id', 'user_id', 'level', 'xp_total', 'title', 'companion_id'],
+  characters: ['id', 'user_id', 'level', 'xp_total', 'companion_id'],
   cosmetic_items: ['id', 'category', 'name', 'unlock_condition', 'requires_premium'],
   user_cosmetic_items: ['id', 'user_id', 'cosmetic_item_id', 'equipped', 'unlocked_at'],
   sessions: [
@@ -54,7 +60,7 @@ const expectedColumns: Record<string, string[]> = {
   ],
   guilds: ['id', 'name', 'level', 'created_by', 'created_at'],
   guild_memberships: ['id', 'guild_id', 'user_id', 'role', 'joined_at'],
-  raids: ['id', 'guild_id', 'title', 'goal_xp', 'progress_xp', 'starts_at', 'ends_at', 'status'],
+  raids: ['id', 'guild_id', 'mission_id', 'goal_xp', 'progress_xp', 'starts_at', 'ends_at', 'status'],
   study_sessions: [
     'id',
     'user_id',
@@ -91,6 +97,7 @@ const expectedColumns: Record<string, string[]> = {
     'created_at',
   ],
   guild_chat_messages: ['id', 'guild_id', 'user_id', 'body', 'sent_at'],
+  raid_participations: ['id', 'raid_id', 'user_id', 'created_at'],
 };
 
 type SchemaRow = RowDataPacket & Record<string, string | number>;
@@ -133,6 +140,7 @@ describe('TypeORM migrations against an empty MySQL schema', () => {
     );
     expect(tableRows.map((row) => row.TABLE_NAME)).toEqual([
       ...expectedTables.slice().sort(),
+      'missions',
       'migrations',
     ].sort());
 
@@ -222,6 +230,7 @@ describe('TypeORM migrations against an empty MySQL schema', () => {
         'IDX_session_refresh_token_history_session_id_retain_until',
         'session_id,retain_until',
       ],
+      ['raid_participations', 'IDX_raid_participations_user_id', 'user_id'],
       ['guild_chat_messages', 'IDX_guild_chat_messages_guild_id', 'guild_id'],
     ]) {
       expect(criticalIndexRows).toEqual(
@@ -305,6 +314,8 @@ describe('TypeORM migrations against an empty MySQL schema', () => {
       ['FK_guild_memberships_guild_id_guilds', 'guild_memberships', 'guild_id', 'guilds', 'id', 'CASCADE'],
       ['FK_guild_memberships_user_id_users', 'guild_memberships', 'user_id', 'users', 'id', 'CASCADE'],
       ['FK_raids_guild_id_guilds', 'raids', 'guild_id', 'guilds', 'id', 'CASCADE'],
+      ['FK_raids_mission_id_missions', 'raids', 'mission_id', 'missions', 'id', 'RESTRICT'],
+      ['FK_missions_reward_cosmetic_item_id_cosmetic_items', 'missions', 'reward_cosmetic_item_id', 'cosmetic_items', 'id', 'RESTRICT'],
       ['FK_study_sessions_user_id_users', 'study_sessions', 'user_id', 'users', 'id', 'CASCADE'],
       ['FK_study_sessions_raid_id_raids', 'study_sessions', 'raid_id', 'raids', 'id', 'SET NULL'],
       ['FK_raid_contributions_raid_id_raids', 'raid_contributions', 'raid_id', 'raids', 'id', 'CASCADE'],
@@ -317,6 +328,8 @@ describe('TypeORM migrations against an empty MySQL schema', () => {
         'id',
         'SET NULL',
       ],
+      ['FK_raid_participations_raid_id_raids', 'raid_participations', 'raid_id', 'raids', 'id', 'CASCADE'],
+      ['FK_raid_participations_user_id_users', 'raid_participations', 'user_id', 'users', 'id', 'CASCADE'],
       ['FK_guild_chat_messages_guild_id_guilds', 'guild_chat_messages', 'guild_id', 'guilds', 'id', 'CASCADE'],
       ['FK_guild_chat_messages_user_id_users', 'guild_chat_messages', 'user_id', 'users', 'id', 'CASCADE'],
       ['FK_user_cosmetic_items_user_id_users', 'user_cosmetic_items', 'user_id', 'users', 'id', 'CASCADE'],
@@ -358,7 +371,58 @@ describe('TypeORM migrations against an empty MySQL schema', () => {
       'UnifyStudySessionIdempotencyKeys1788459000000',
       'AddStudySessionEndedAtPrecision1788459060000',
       'AddStudySessionStartReceiptSubject1788459120000',
+      'EnforceSingleGuildPerUser1788459180000',
+      'SeedInitialCosmeticItems1788459240000',
+      'DropCharacterTitle1788459300000',
+      'AddRaidMissions1788459360000',
+      'AddRaidParticipations1788459420000',
     ]);
+
+    await dataSource.undoLastMigration(); // raid participations, which sit above the raid missions
+    const participationRevertRows = await rows(
+      database!.admin,
+      `SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'raid_participations'`,
+      [database!.name],
+    );
+    expect(participationRevertRows).toHaveLength(0);
+
+    await dataSource.undoLastMigration(); // raid missions, which sit above the character title drop
+    const missionRevertRows = await rows(
+      database!.admin,
+      `SELECT COLUMN_NAME FROM information_schema.COLUMNS
+       WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'raids' ORDER BY ORDINAL_POSITION`,
+      [database!.name],
+    );
+    expect(missionRevertRows.map((row) => row.COLUMN_NAME)).toEqual(
+      ['id', 'guild_id', 'title', 'goal_xp', 'progress_xp', 'starts_at', 'ends_at', 'status'],
+    );
+
+    await dataSource.undoLastMigration();
+    const titleRevertRows = await rows(
+      database!.admin,
+      `SELECT COLUMN_NAME FROM information_schema.COLUMNS
+       WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'characters' AND COLUMN_NAME = 'title'`,
+      [database!.name],
+    );
+    expect(titleRevertRows).toHaveLength(1);
+
+    await dataSource.undoLastMigration();
+    const seedRevertRows = await rows(
+      database!.admin,
+      `SELECT COUNT(*) AS total FROM ${database!.identifier}.cosmetic_items`,
+    );
+    expect(Number(seedRevertRows[0]?.total)).toBe(0);
+
+    await dataSource.undoLastMigration();
+    const singleGuildRevertRows = await rows(
+      database!.admin,
+      `SELECT INDEX_NAME, NON_UNIQUE FROM information_schema.STATISTICS
+       WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'guild_memberships' AND COLUMN_NAME = 'user_id'`,
+      [database!.name],
+    );
+    expect(singleGuildRevertRows.map((row) => [row.INDEX_NAME, Number(row.NON_UNIQUE)])).toEqual(
+      expect.arrayContaining([['IDX_guild_memberships_user_id', 1]]),
+    );
 
     await dataSource.undoLastMigration();
     const receiptSubjectRevertRows = await rows(
@@ -388,10 +452,10 @@ describe('TypeORM migrations against an empty MySQL schema', () => {
       [database!.name],
     );
     expect(remainingRows.map((row) => row.TABLE_NAME)).toEqual(
-      expectedTables.filter((tableName) => tableName !== 'study_session_command_keys').sort(),
+      expectedTables.filter((tableName) => tableName !== 'study_session_command_keys' && tableName !== 'raid_participations').sort(),
     );
 
-    await dataSource.undoLastMigration();
+await dataSource.undoLastMigration();
     const afterPauseResumeRevertRows = await rows(
       database!.admin,
       `SELECT TABLE_NAME FROM information_schema.TABLES
@@ -400,6 +464,7 @@ describe('TypeORM migrations against an empty MySQL schema', () => {
     );
     expect(afterPauseResumeRevertRows.map((row) => row.TABLE_NAME)).toEqual(
       expectedTables
+        .filter((tableName) => tableName !== 'raid_participations')
         .filter((tableName) => !['study_session_transition_receipts', 'study_session_command_keys'].includes(tableName))
         .sort(),
     );
@@ -413,6 +478,7 @@ describe('TypeORM migrations against an empty MySQL schema', () => {
     );
     expect(afterCanonicalRevertRows.map((row) => row.TABLE_NAME)).toEqual(
       expectedTables
+        .filter((tableName) => tableName !== 'raid_participations')
         .filter((tableName) => ![
           'active_study_sessions',
           'study_session_start_receipts',
@@ -432,6 +498,7 @@ describe('TypeORM migrations against an empty MySQL schema', () => {
     );
     expect(afterHistoryRevertRows.map((row) => row.TABLE_NAME)).toEqual(
       expectedTables
+        .filter((tableName) => tableName !== 'raid_participations')
         .filter((tableName) => !['session_refresh_token_history', 'active_study_sessions', 'study_session_start_receipts', 'study_session_transition_receipts', 'study_session_command_keys'].includes(tableName))
         .sort(),
     );
@@ -531,7 +598,7 @@ describe('TypeORM migrations against an empty MySQL schema', () => {
       { idempotency_key: 'rolling-transition-key', command_kind: 'resume' },
     ]);
 
-    for (let step = 0; step < 3; step += 1) await dataSource.undoLastMigration();
+    for (let step = 0; step < 8; step += 1) await dataSource.undoLastMigration();
     const leftoverTriggers = await rows(
       database.admin,
       `SELECT TRIGGER_NAME FROM information_schema.TRIGGERS
@@ -656,6 +723,11 @@ describe('TypeORM migrations against an empty MySQL schema', () => {
     expect(receiptsWithSubject).toEqual([{ idempotency_key: 'solo-start-key', subject: 'Cálculo II' }]);
 
     // M6 revert: only the receipt column goes away; every persisted Matéria (including legacy Guild rows) stays.
+    await dataSource.undoLastMigration(); // raid participations, which sit above the raid missions
+    await dataSource.undoLastMigration(); // raid missions, which sit above the character title drop
+    await dataSource.undoLastMigration(); // character title drop, which sits above the cosmetic seed
+    await dataSource.undoLastMigration(); // cosmetic seed, which sits above the single-guild index
+    await dataSource.undoLastMigration(); // single-guild index, which sits above the M6 receipt subject
     await dataSource.undoLastMigration();
     const receiptColumnsAfterRevert = await rows(
       database.admin,
@@ -685,7 +757,7 @@ describe('TypeORM migrations against an empty MySQL schema', () => {
     );
     expect(receiptsAfterReapply).toEqual([{ idempotency_key: 'solo-start-key', subject: null }]);
 
-    for (let step = 0; step < 5; step += 1) await dataSource.undoLastMigration();
+    for (let step = 0; step < 10; step += 1) await dataSource.undoLastMigration();
     const downgradedHistory = await rows(
       database.admin,
       `SELECT id, subject, mode, raid_id FROM ${database.identifier}.study_sessions ORDER BY id`,
@@ -776,7 +848,7 @@ describe('TypeORM migrations against an empty MySQL schema', () => {
     );
     expect(leftoverArchives).toHaveLength(0);
 
-    for (let step = 0; step < 8; step += 1) await dataSource.undoLastMigration();
+    for (let step = 0; step < 13; step += 1) await dataSource.undoLastMigration();
     const remainingSchemaTables = await rows(
       database.admin,
       `SELECT TABLE_NAME FROM information_schema.TABLES
@@ -788,5 +860,299 @@ describe('TypeORM migrations against an empty MySQL schema', () => {
       'study_session_start_receipts_downgrade_archive',
       'study_session_transition_receipts_downgrade_archive',
     ]);
+  });
+
+  it('seeds the Catalog, backfills existing Characters without re-equipping, and reverts the seed', async () => {
+    database = await createIntegrationDatabase('wise_migrations_test');
+    initialDataSource = new DataSource(database.options(
+      (APPLICATION_MIGRATIONS as unknown[]).filter((migration) => migration !== SeedInitialCosmeticItems1788459240000 && migration !== AddRaidMissions1788459360000 && migration !== AddRaidParticipations1788459420000) as typeof APPLICATION_MIGRATIONS,
+    ));
+    await initialDataSource.initialize();
+    await initialDataSource.runMigrations();
+    const insertUser = async (id: string, level: number) => {
+      await database!.admin.query(
+        `INSERT INTO ${database!.identifier}.users (id, email, password_hash, display_name, plan_tier)
+         VALUES (?, ?, 'hash', ?, 'free')`,
+        [id, `${id}@example.com`, id],
+      );
+      await database!.admin.query(
+        `INSERT INTO ${database!.identifier}.characters (id, user_id, level, xp_total) VALUES (?, ?, ?, 0)`,
+        [`${id}-character`, id, level],
+      );
+    };
+    await insertUser('veteran', 13);
+    await insertUser('newcomer', 1);
+    await insertUser('collector', 4);
+    // A title equipped before the seed must stay the only equipped title.
+    await database.admin.query(
+      `INSERT INTO ${database.identifier}.cosmetic_items (id, category, name, unlock_condition, requires_premium)
+       VALUES ('legacy-title', 'title', 'Veterano', 'raid:legacy', 0)`,
+    );
+    await database.admin.query(
+      `INSERT INTO ${database.identifier}.user_cosmetic_items (id, user_id, cosmetic_item_id, equipped)
+       VALUES ('legacy-row', 'veteran', 'legacy-title', 1)`,
+    );
+    await initialDataSource.destroy();
+    initialDataSource = undefined;
+
+    dataSource = new DataSource(database.options(APPLICATION_MIGRATIONS));
+    await dataSource.initialize();
+    await dataSource.runMigrations();
+
+    const catalog = await rows(
+      database.admin,
+      `SELECT category, name, unlock_condition, requires_premium FROM ${database.identifier}.cosmetic_items
+       WHERE id <> 'legacy-title' ORDER BY id`,
+    );
+    expect(catalog.map((row) => [row.category, row.name, row.unlock_condition, Number(row.requires_premium)])).toEqual([
+      ['avatar', 'Capuz do Erudito', 'level:1', 0],
+      ['title', 'Aprendiz', 'level:1', 0],
+      ['badge', 'Madrugador', 'level:3', 0],
+      ['title', 'Estudante Crepuscular', 'level:5', 0],
+      ['avatar', 'Manto da Vigília', 'level:8', 0],
+      ['badge', 'Cem Sessões', 'level:12', 0],
+      ['accessory', 'Selo dos Madrugadores', 'raid:vigilia-da-aurora', 0],
+      ['title', 'Mestre da Aurora', 'level:15', 1],
+      ['badge', 'Marcador do Grimório', 'raid:cerco-ao-grimorio', 0],
+      ['accessory', 'Lanterna do Silêncio', 'raid:marcha-do-silencio', 0],
+      ['badge', 'Brasão da Forja', 'raid:forja-dos-sabios', 0],
+    ]);
+
+    const inventory = await rows(
+      database.admin,
+      `SELECT uci.user_id, ci.name, uci.equipped FROM ${database.identifier}.user_cosmetic_items uci
+       JOIN ${database.identifier}.cosmetic_items ci ON ci.id = uci.cosmetic_item_id
+       ORDER BY uci.user_id, ci.id`,
+    );
+    const owned = (userId: string) => inventory
+      .filter((row) => row.user_id === userId)
+      .map((row) => [row.name, Number(row.equipped)]);
+    expect(owned('veteran')).toEqual([
+      ['Capuz do Erudito', 1],
+      ['Aprendiz', 0],
+      ['Madrugador', 0],
+      ['Estudante Crepuscular', 0],
+      ['Manto da Vigília', 0],
+      ['Cem Sessões', 0],
+      ['Veterano', 1],
+    ]);
+    expect(owned('newcomer')).toEqual([['Capuz do Erudito', 1], ['Aprendiz', 1]]);
+    expect(owned('collector')).toEqual([['Capuz do Erudito', 1], ['Aprendiz', 1], ['Madrugador', 0]]);
+
+    await dataSource.undoLastMigration(); // raid participations, which sit above the raid missions
+    await dataSource.undoLastMigration(); // raid missions, which sit above the character title drop
+    await dataSource.undoLastMigration(); // character title drop, which sits above the seed
+    await dataSource.undoLastMigration();
+    const afterRevert = await rows(
+      database.admin,
+      `SELECT uci.user_id, uci.cosmetic_item_id, uci.equipped FROM ${database.identifier}.user_cosmetic_items uci`,
+    );
+    expect(afterRevert.map((row) => [row.user_id, row.cosmetic_item_id, Number(row.equipped)])).toEqual([
+      ['veteran', 'legacy-title', 1],
+    ]);
+    const catalogAfterRevert = await rows(
+      database.admin,
+      `SELECT id FROM ${database.identifier}.cosmetic_items`,
+    );
+    expect(catalogAfterRevert).toEqual([{ id: 'legacy-title' }]);
+  });
+
+  it('drops the textual Character title and restores it from the equipped Título on downgrade', async () => {
+    database = await createIntegrationDatabase('wise_migrations_test');
+    initialDataSource = new DataSource(database.options(
+      (APPLICATION_MIGRATIONS as unknown[]).filter((migration) => migration !== DropCharacterTitle1788459300000) as typeof APPLICATION_MIGRATIONS,
+    ));
+    await initialDataSource.initialize();
+    await initialDataSource.runMigrations();
+    for (const [id, title] of [['titled', 'Legado'], ['untitled', null]] as const) {
+      await database.admin.query(
+        `INSERT INTO ${database.identifier}.users (id, email, password_hash, display_name, plan_tier)
+         VALUES (?, ?, 'hash', ?, 'free')`,
+        [id, `${id}@example.com`, id],
+      );
+      await database.admin.query(
+        `INSERT INTO ${database.identifier}.characters (id, user_id, level, xp_total, title) VALUES (?, ?, 1, 0, ?)`,
+        [`${id}-character`, id, title],
+      );
+    }
+    await database.admin.query(
+      `INSERT INTO ${database.identifier}.user_cosmetic_items (id, user_id, cosmetic_item_id, equipped)
+       VALUES ('titled-row', 'titled', 'c05e71c0-0000-4000-8000-000000000002', 1)`,
+    );
+    await initialDataSource.destroy();
+    initialDataSource = undefined;
+
+    dataSource = new DataSource(database.options(APPLICATION_MIGRATIONS));
+    await dataSource.initialize();
+    await dataSource.runMigrations();
+    const columns = await rows(
+      database.admin,
+      `SELECT COLUMN_NAME FROM information_schema.COLUMNS
+       WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'characters'`,
+      [database.name],
+    );
+    expect(columns.map((row) => row.COLUMN_NAME)).not.toContain('title');
+
+    await dataSource.undoLastMigration(); // raid participations, which sit above the raid missions
+    await dataSource.undoLastMigration(); // raid missions, which sit above the character title drop
+    await dataSource.undoLastMigration();
+    const restored = await rows(
+      database.admin,
+      `SELECT user_id, title FROM ${database.identifier}.characters ORDER BY user_id`,
+    );
+    expect(restored.map((row) => [row.user_id, row.title])).toEqual([
+      ['titled', 'Aprendiz'],
+      ['untitled', null],
+    ]);
+  });
+
+  it('seeds the Missões, links reward items, gives Raids a Missão and the current week to existing Guilds, and reverts', async () => {
+    database = await createIntegrationDatabase('wise_migrations_test');
+    initialDataSource = new DataSource(database.options(
+      (APPLICATION_MIGRATIONS as unknown[]).filter((migration) => migration !== AddRaidMissions1788459360000 && migration !== AddRaidParticipations1788459420000) as typeof APPLICATION_MIGRATIONS,
+    ));
+    await initialDataSource.initialize();
+    await initialDataSource.runMigrations();
+    for (const id of ['founder', 'second']) {
+      await database.admin.query(
+        `INSERT INTO ${database.identifier}.users (id, email, password_hash, display_name, plan_tier)
+         VALUES (?, ?, 'hash', ?, 'free')`,
+        [id, `${id}@example.com`, id],
+      );
+    }
+    await database.admin.query(
+      `INSERT INTO ${database.identifier}.guilds (id, name, created_by) VALUES ('old-guild', 'Velha Guarda', 'founder')`,
+    );
+    await database.admin.query(
+      `INSERT INTO ${database.identifier}.guild_memberships (id, guild_id, user_id, role)
+       VALUES ('m1', 'old-guild', 'founder', 'leader'), ('m2', 'old-guild', 'second', 'member')`,
+    );
+    await database.admin.query(
+      `INSERT INTO ${database.identifier}.raids (id, guild_id, title, goal_xp, starts_at, ends_at, status)
+       VALUES ('historical', 'old-guild', 'Antiga', 1000, '2026-01-05 03:00:00', '2026-01-12 02:59:59', 'expired')`,
+    );
+    await initialDataSource.destroy();
+    initialDataSource = undefined;
+
+    dataSource = new DataSource(database.options(APPLICATION_MIGRATIONS));
+    await dataSource.initialize();
+    const before = raidWeekAt(new Date());
+    await dataSource.runMigrations();
+
+    const missions = await rows(
+      database.admin,
+      `SELECT m.slug, m.name, m.image_url, ci.name AS reward, ci.unlock_condition
+       FROM ${database.identifier}.missions m
+       JOIN ${database.identifier}.cosmetic_items ci ON ci.id = m.reward_cosmetic_item_id
+       ORDER BY m.rotation_order`,
+    );
+    expect(missions.map((row) => [row.slug, row.name, row.image_url, row.reward, row.unlock_condition])).toEqual([
+      ['vigilia-da-aurora', 'Vigília da Aurora', null, 'Selo dos Madrugadores', 'raid:vigilia-da-aurora'],
+      ['cerco-ao-grimorio', 'Cerco ao Grimório', null, 'Marcador do Grimório', 'raid:cerco-ao-grimorio'],
+      ['marcha-do-silencio', 'Marcha do Silêncio', null, 'Lanterna do Silêncio', 'raid:marcha-do-silencio'],
+      ['forja-dos-sabios', 'Forja dos Sábios', null, 'Brasão da Forja', 'raid:forja-dos-sabios'],
+    ]);
+
+    const raids = await rows(
+      database.admin,
+      `SELECT r.id, r.goal_xp, r.status, CAST(r.starts_at AS CHAR) AS starts_at, CAST(r.ends_at AS CHAR) AS ends_at, m.slug
+       FROM ${database.identifier}.raids r JOIN ${database.identifier}.missions m ON m.id = r.mission_id
+       WHERE r.guild_id = 'old-guild' ORDER BY r.starts_at`,
+    );
+    expect(raids).toHaveLength(2);
+    expect(raids[0]).toMatchObject({ id: 'historical', status: 'expired', slug: expect.any(String) });
+    const current = raids[1]!;
+    expect(current.status).toBe('active');
+    // Stored in UTC; the admin connection is told nothing about time zones, so compare the raw text.
+    const utcText = (date: Date) => date.toISOString().slice(0, 19).replace('T', ' ');
+    expect(current.starts_at).toBe(utcText(before.startsAt));
+    expect(current.ends_at).toBe(utcText(before.endsAt));
+    expect(current.slug).toBe(missions[before.number % 4]!.slug);
+    expect(Number(current.goal_xp) % 50).toBe(0);
+    expect(Number(current.goal_xp)).toBeGreaterThan(0);
+    expect(Number(current.goal_xp)).toBeLessThanOrEqual(3000);
+
+    await dataSource.undoLastMigration(); // raid participations
+    await dataSource.undoLastMigration();
+    const reverted = await rows(
+      database.admin,
+      `SELECT title FROM ${database.identifier}.raids WHERE id = 'historical'`,
+    );
+    expect(reverted).toEqual([{ title: expect.any(String) }]);
+    expect(reverted[0]!.title).not.toBe('');
+    const tables = await rows(
+      database.admin,
+      `SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'missions'`,
+      [database.name],
+    );
+    expect(tables).toEqual([]);
+    const seal = await rows(
+      database.admin,
+      `SELECT unlock_condition FROM ${database.identifier}.cosmetic_items WHERE name = 'Selo dos Madrugadores'`,
+    );
+    expect(seal).toEqual([{ unlock_condition: 'raid:*' }]);
+    const newItems = await rows(
+      database.admin,
+      `SELECT name FROM ${database.identifier}.cosmetic_items WHERE name IN ('Marcador do Grimório', 'Lanterna do Silêncio', 'Brasão da Forja')`,
+    );
+    expect(newItems).toEqual([]);
+  });
+
+  it('turns earlier Contributors into Participantes and drops the table on downgrade', async () => {
+    database = await createIntegrationDatabase('wise_migrations_test');
+    initialDataSource = new DataSource(database.options(
+      (APPLICATION_MIGRATIONS as unknown[]).filter((migration) => migration !== AddRaidParticipations1788459420000) as typeof APPLICATION_MIGRATIONS,
+    ));
+    await initialDataSource.initialize();
+    await initialDataSource.runMigrations();
+    for (const id of ['founder', 'second']) {
+      await database.admin.query(
+        `INSERT INTO ${database.identifier}.users (id, email, password_hash, display_name, plan_tier)
+         VALUES (?, ?, 'hash', ?, 'free')`,
+        [id, `${id}@example.com`, id],
+      );
+    }
+    await database.admin.query(
+      `INSERT INTO ${database.identifier}.guilds (id, name, created_by) VALUES ('g', 'Guilda', 'founder')`,
+    );
+    const [[raid]] = await database.admin.query(
+      `SELECT id FROM ${database.identifier}.raids WHERE guild_id = 'g'`,
+    ) as unknown as [Array<{ id: string }>];
+    let raidId = raid?.id;
+    if (!raidId) {
+      raidId = 'raid-1';
+      await database.admin.query(
+        `INSERT INTO ${database.identifier}.raids (id, guild_id, mission_id, goal_xp, starts_at, ends_at, status)
+         SELECT 'raid-1', 'g', id, 1000, '2026-01-05 03:00:00', '2026-01-12 02:59:59', 'expired'
+         FROM ${database.identifier}.missions LIMIT 1`,
+      );
+    }
+    await database.admin.query(
+      `INSERT INTO ${database.identifier}.raid_contributions (id, raid_id, user_id, xp_contributed)
+       VALUES ('c1', ?, 'second', 100), ('c2', ?, 'second', 50)`,
+      [raidId, raidId],
+    );
+    await initialDataSource.destroy();
+    initialDataSource = undefined;
+
+    dataSource = new DataSource(database.options(APPLICATION_MIGRATIONS));
+    await dataSource.initialize();
+    await dataSource.runMigrations();
+    const participations = await rows(
+      database.admin,
+      `SELECT raid_id, user_id FROM ${database.identifier}.raid_participations`,
+    );
+    expect(participations).toEqual([{ raid_id: raidId, user_id: 'second' }]);
+    await expect(database.admin.query(
+      `INSERT INTO ${database.identifier}.raid_participations (id, raid_id, user_id) VALUES ('dup', ?, 'second')`,
+      [raidId],
+    )).rejects.toThrow(/Duplicate entry/);
+
+    await dataSource.undoLastMigration();
+    expect(await rows(
+      database.admin,
+      `SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'raid_participations'`,
+      [database.name],
+    )).toEqual([]);
   });
 });

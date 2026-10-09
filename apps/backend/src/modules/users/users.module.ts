@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { forwardRef, Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { UsersController } from './users.controller';
 import { UsersService } from './users.service';
@@ -11,8 +11,8 @@ import { ProgressionModule } from '../progression/progression.module';
 @Module({
   imports: [
     TypeOrmModule.forFeature([User, CosmeticItem, UserCosmeticItem]),
-    AuthModule,
-    ProgressionModule,
+    forwardRef(() => AuthModule),
+    forwardRef(() => ProgressionModule),
   ],
   controllers: [UsersController],
   providers: [UsersService],

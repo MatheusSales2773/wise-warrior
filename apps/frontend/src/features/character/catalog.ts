@@ -1,9 +1,11 @@
-import type { UserProfile } from '@/features/dashboard/api';
+import type { EquippedCosmeticItem, UserProfile } from '@/features/dashboard/api';
+import type { CatalogCosmeticItem } from '@/features/profile/api';
+import { describeUnlockCondition, orderCategoryItems } from '@/features/profile/formatters';
 import type { HeroSpriteName, ItemSpriteName } from './sprites';
 
 /*
- * Static catalog for the Personagem screen. The API exposes level, XP, title and plan tier, but
- * no hero roster or cosmetic inventory yet, so availability is derived from those fields here.
+ * Heroes are a static roster: the API has no hero selection yet, so availability is derived from level and plan.
+ * Cosmetics come from the real Catalog (`GET /users/me/cosmetics`); this module only adds the pixel art and wording.
  */
 
 export type HeroId = HeroSpriteName;
@@ -51,7 +53,7 @@ export function isHeroAvailable(status: HeroStatus): boolean {
   return status === 'equipped' || status === 'unlocked';
 }
 
-export type EquipmentCategory = 'avatar' | 'badge' | 'title' | 'accessory';
+export type EquipmentCategory = EquippedCosmeticItem['category'];
 
 export type EquipmentCategoryDefinition = { id: EquipmentCategory; label: string; slotLabel: string; noun: string; description: string };
 
@@ -64,51 +66,69 @@ export const equipmentCategoryById: Record<EquipmentCategory, EquipmentCategoryD
 
 export const equipmentCategories: readonly EquipmentCategoryDefinition[] = Object.values(equipmentCategoryById);
 
-export type CosmeticAvailability = { kind: 'owned'; caption: string } | { kind: 'premium' } | { kind: 'locked'; caption: string };
-
-export type CosmeticOption = {
-  id: string;
-  category: EquipmentCategory;
-  name: string;
-  sprite: ItemSpriteName;
-  availability: CosmeticAvailability;
+/** Pixel art per Catalog item (Figma "Sprites" page); unknown items fall back to their category's art. */
+const spriteByName: Record<string, ItemSpriteName> = {
+  'Capuz do Erudito': 'capuzDoErudito',
+  'Manto da Vigília': 'mantoDaVigilia',
+  Madrugador: 'madrugadorV',
+  'Cem Sessões': 'cemSessoes',
+  Aprendiz: 'estudanteCrepuscular',
+  'Estudante Crepuscular': 'estudanteCrepuscular',
+  'Mestre da Aurora': 'mestreDaAurora',
+  'Selo dos Madrugadores': 'seloDosMadrugadores',
 };
 
-export const INITIAL_TITLE = 'Aprendiz';
+const spriteByCategory: Record<EquipmentCategory, ItemSpriteName> = {
+  avatar: 'capuzDoErudito',
+  badge: 'madrugadorV',
+  title: 'estudanteCrepuscular',
+  accessory: 'cristalDaAurora',
+};
 
-const catalogOptions: readonly CosmeticOption[] = [
-  { id: 'capuz-do-erudito', category: 'avatar', name: 'Capuz do Erudito', sprite: 'capuzDoErudito', availability: { kind: 'owned', caption: 'Traje do Erudito' } },
-  { id: 'manto-da-vigilia', category: 'avatar', name: 'Manto da Vigília', sprite: 'mantoDaVigilia', availability: { kind: 'locked', caption: 'Recompensa da raid semanal' } },
-  { id: 'madrugador-v', category: 'badge', name: 'Madrugador V', sprite: 'madrugadorV', availability: { kind: 'locked', caption: 'Estude 5 manhãs seguidas' } },
-  { id: 'cem-sessoes', category: 'badge', name: 'Cem Sessões', sprite: 'cemSessoes', availability: { kind: 'locked', caption: 'Conclua 100 sessões de foco' } },
-  { id: 'aprendiz', category: 'title', name: INITIAL_TITLE, sprite: 'estudanteCrepuscular', availability: { kind: 'owned', caption: 'Título inicial' } },
-  { id: 'mestre-da-aurora', category: 'title', name: 'Mestre da Aurora', sprite: 'mestreDaAurora', availability: { kind: 'premium' } },
-  { id: 'guardiao-da-aurora', category: 'title', name: 'Guardião da Aurora', sprite: 'mestreDaAurora', availability: { kind: 'locked', caption: 'Recompensa da raid semanal' } },
-  { id: 'selo-dos-madrugadores', category: 'accessory', name: 'Selo dos Madrugadores', sprite: 'seloDosMadrugadores', availability: { kind: 'locked', caption: 'Recompensa da guilda' } },
-  { id: 'cristal-da-aurora', category: 'accessory', name: 'Cristal da Aurora', sprite: 'cristalDaAurora', availability: { kind: 'premium' } },
-];
-
-export type EquippedItems = Record<EquipmentCategory, CosmeticOption | null>;
-
-/** The profile title is the only equipped cosmetic the API reports; it may not exist in the local catalog. */
-function titleOption(title: string | null): CosmeticOption {
-  const name = title?.trim() || INITIAL_TITLE;
-  return catalogOptions.find((option) => option.category === 'title' && option.name === name)
-    ?? { id: `title:${name}`, category: 'title', name, sprite: 'estudanteCrepuscular', availability: { kind: 'owned', caption: 'Seu título atual' } };
+export function cosmeticSprite(item: Pick<EquippedCosmeticItem, 'category' | 'name'>): ItemSpriteName {
+  return spriteByName[item.name] ?? spriteByCategory[item.category];
 }
 
-export function equippedItems(profile: Pick<UserProfile, 'title'>, heroId: HeroId): EquippedItems {
-  return {
-    avatar: heroId === 'erudito' ? catalogOptions.find((option) => option.id === 'capuz-do-erudito') ?? null : null,
-    badge: null,
-    title: titleOption(profile.title),
-    accessory: null,
+export type EquippedSlot = { itemId: string; name: string; sprite: ItemSpriteName };
+export type EquippedItems = Record<EquipmentCategory, EquippedSlot | null>;
+
+export function equippedItems(profile: Pick<UserProfile, 'equipped'>): EquippedItems {
+  const slot = (category: EquipmentCategory): EquippedSlot | null => {
+    const item = profile.equipped.find((entry) => entry.category === category);
+    return item ? { itemId: item.itemId, name: item.name, sprite: cosmeticSprite(item) } : null;
   };
+  return { avatar: slot('avatar'), badge: slot('badge'), title: slot('title'), accessory: slot('accessory') };
 }
 
-/** Owned options first (the equipped one leading), then premium, then locked — the drawer's reading order. */
-export function optionsFor(category: EquipmentCategory, equipped: CosmeticOption | null): CosmeticOption[] {
-  const options = catalogOptions.filter((option) => option.category === category && option.id !== equipped?.id);
-  const rank = (option: CosmeticOption) => (option.availability.kind === 'owned' ? 0 : option.availability.kind === 'premium' ? 1 : 2);
-  return [...(equipped ? [equipped] : []), ...options.sort((left, right) => rank(left) - rank(right))];
+export type CosmeticAvailability = { kind: 'owned' } | { kind: 'premium' } | { kind: 'locked' };
+
+export type CosmeticOption = {
+  item: CatalogCosmeticItem;
+  sprite: ItemSpriteName;
+  availability: CosmeticAvailability;
+  /** Second line under the name, e.g. "Título inicial" or "Alcance o nível 15". */
+  caption: string;
+};
+
+function ownedCaption(item: CatalogCosmeticItem): string {
+  const { unlockCondition } = item;
+  if (unlockCondition.type === 'raid') return 'Conquistado em Raid';
+  if (unlockCondition.level <= 1) return `${equipmentCategoryById[item.category].label} inicial`;
+  return `Liberado no nível ${unlockCondition.level}`;
+}
+
+/**
+ * The drawer's options for one category, in reading order: equipped, owned, premium, then locked
+ * (develop's Catalog order). Premium items stay locked for free plans because equipping them is refused (ADR-007).
+ */
+export function optionsFor(catalog: readonly CatalogCosmeticItem[], category: EquipmentCategory, planTier: string): CosmeticOption[] {
+  const premiumBlocked = (item: CatalogCosmeticItem) => item.requiresPremium && planTier !== 'premium';
+  const rank = (option: CosmeticOption) => ({ owned: 0, premium: 1, locked: 2 })[option.availability.kind];
+  return orderCategoryItems(catalog.filter((item) => item.category === category))
+    .map((item): CosmeticOption => {
+      if (premiumBlocked(item) && !item.equipped) return { item, sprite: cosmeticSprite(item), availability: { kind: 'premium' }, caption: 'Plano premium' };
+      if (!item.unlocked) return { item, sprite: cosmeticSprite(item), availability: { kind: 'locked' }, caption: describeUnlockCondition(item.unlockCondition) };
+      return { item, sprite: cosmeticSprite(item), availability: { kind: 'owned' }, caption: ownedCaption(item) };
+    })
+    .sort((left, right) => rank(left) - rank(right));
 }

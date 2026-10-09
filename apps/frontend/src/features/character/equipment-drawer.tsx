@@ -1,9 +1,13 @@
-import { useContext, useEffect, useState } from 'react';
+import type { UseQueryResult } from '@tanstack/react-query';
+import { useContext, useEffect, useState, type ReactNode } from 'react';
 import { Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaInsetsContext } from 'react-native-safe-area-context';
 import { FeedbackMessage, WiseButton, WiseIcon, theme } from '@/design-system';
 import { useRuntimeMotionDuration } from '@/design-system/components/motion-runtime';
 import { controlStyles } from '@/design-system/components/control-styles';
+import type { CatalogCosmeticItem } from '@/features/profile/api';
+import { describeNextUnlock } from '@/features/profile/formatters';
+import type { CosmeticEquipment } from '@/features/profile/use-cosmetic-equipment';
 import { RadioMark } from './character-art';
 import { equipmentCategories, equipmentCategoryById, optionsFor, type CosmeticOption, type EquipmentCategory, type EquippedItems } from './catalog';
 import { PixelSprite } from './PixelSprite';
@@ -13,39 +17,31 @@ import { itemSprites } from './sprites';
 export type EquipmentPanelVariant = 'drawer' | 'sheet';
 
 type EquipmentDrawerProps = {
+  catalog: UseQueryResult<CatalogCosmeticItem[]>;
   category: EquipmentCategory | null;
+  equipment: CosmeticEquipment;
   equipped: EquippedItems;
-  isPremium: boolean;
+  level: number;
   onCategoryChange: (category: EquipmentCategory) => void;
   onClose: () => void;
+  planTier: string;
   variant: EquipmentPanelVariant;
 };
 
-function isSelectable(option: CosmeticOption, isPremium: boolean) {
-  return option.availability.kind === 'owned' || (option.availability.kind === 'premium' && isPremium);
-}
-
-function optionCaption(option: CosmeticOption, equipped: boolean) {
-  if (equipped) return 'Equipado agora';
-  return option.availability.kind === 'premium' ? 'Plano premium' : option.availability.caption;
-}
-
-function OptionRow({ equipped, isPremium, onSelect, option, selected, sheet }: {
-  equipped: boolean;
-  isPremium: boolean;
+function OptionRow({ onSelect, option, selected, sheet }: {
   onSelect: () => void;
   option: CosmeticOption;
   selected: boolean;
   sheet: boolean;
 }) {
   const [focused, setFocused] = useState(false);
-  const selectable = isSelectable(option, isPremium);
-  const dimmed = !selectable;
-  const caption = optionCaption(option, equipped);
+  const { item } = option;
+  const selectable = option.availability.kind === 'owned';
+  const caption = item.equipped ? 'Equipado agora' : option.caption;
   const status = selectable ? '' : option.availability.kind === 'premium' ? ', exclusivo do plano premium' : ', bloqueado';
 
   return <Pressable
-    accessibilityLabel={`${option.name}, ${caption}${status}`}
+    accessibilityLabel={`${item.name}, ${caption}${status}`}
     accessibilityRole="radio"
     accessibilityState={{ checked: selected, disabled: !selectable }}
     aria-checked={selected}
@@ -55,14 +51,14 @@ function OptionRow({ equipped, isPremium, onSelect, option, selected, sheet }: {
     onFocus={() => setFocused(true)}
     onPress={onSelect}
     style={[styles.option, selected && styles.optionSelected, focused && Platform.OS === 'web' && controlStyles.webFocus]}
-    testID={`equipment-option-${option.id}`}
+    testID={`equipment-option-${item.id}`}
   >
     <View style={[styles.optionArt, sheet && styles.optionArtSheet]}>
-      <PixelSprite opacity={dimmed ? 0.4 : 1} scale={sheet ? 4 : 5} sprite={itemSprites[option.sprite]} />
+      <PixelSprite opacity={selectable ? 1 : 0.4} scale={sheet ? 4 : 5} sprite={itemSprites[option.sprite]} />
     </View>
     <View style={styles.optionCopy}>
-      <Text numberOfLines={1} style={[styles.optionName, sheet && styles.optionNameSheet, dimmed && styles.optionNameDimmed]}>{option.name}</Text>
-      <Text numberOfLines={1} style={[styles.optionCaption, equipped && styles.optionCaptionEquipped]}>{caption}</Text>
+      <Text numberOfLines={1} style={[styles.optionName, sheet && styles.optionNameSheet, !selectable && styles.optionNameDimmed]}>{item.name}</Text>
+      <Text numberOfLines={1} style={[styles.optionCaption, item.equipped && styles.optionCaptionEquipped]}>{caption}</Text>
     </View>
     {selectable
       ? <RadioMark selected={selected} />
@@ -87,41 +83,61 @@ function CategoryTab({ active, label, onPress, sheet }: { active: boolean; label
   </Pressable>;
 }
 
-function PanelBody({ category, equipped, isPremium, onCategoryChange, onClose, variant }: EquipmentDrawerProps & { category: EquipmentCategory }) {
+function CatalogState({ catalog }: { catalog: UseQueryResult<CatalogCosmeticItem[]> }): ReactNode {
+  if (catalog.isPending && !catalog.data) {
+    return <Text style={styles.status} testID="equipment-loading">Carregando o Catálogo…</Text>;
+  }
+  return <View style={styles.options} testID="equipment-error">
+    <FeedbackMessage message="Não foi possível carregar o Catálogo." title="Catálogo indisponível" variant="error" />
+    <WiseButton label="Tentar novamente" loading={catalog.isRefetching} onPress={() => void catalog.refetch()} variant="secondary" />
+  </View>;
+}
+
+function PanelBody({ catalog, category, equipment, equipped, level, onCategoryChange, onClose, planTier, variant }: EquipmentDrawerProps & { category: EquipmentCategory }) {
   const sheet = variant === 'sheet';
-  const bottomInset = useContext(SafeAreaInsetsContext)?.bottom ?? 0;
+  const panelStyle = usePanelStyle(variant);
   const definition = equipmentCategoryById[category];
   const current = equipped[category];
-  const options = optionsFor(category, current);
-  const [selectedId, setSelectedId] = useState(current?.id ?? null);
-  const [unavailable, setUnavailable] = useState(false);
+  const options = catalog.data ? optionsFor(catalog.data, category, planTier) : [];
+  const currentItem = options.find((option) => option.item.equipped)?.item ?? null;
+  const [selectedId, setSelectedId] = useState(current?.itemId ?? null);
   const [closeFocused, setCloseFocused] = useState(false);
-  const selected = options.find((option) => option.id === selectedId) ?? null;
-  const keepsCurrent = selected !== null && selected.id === current?.id;
+  const selected = options.find((option) => option.item.id === selectedId && option.availability.kind === 'owned') ?? null;
+  const keepsCurrent = selected !== null && selected.item.equipped;
 
+  const select = (option: CosmeticOption) => {
+    setSelectedId(option.item.id);
+    // The hero panel previews the choice; nothing is saved until "Equipar".
+    if (option.item.equipped) equipment.cancel();
+    else equipment.preview(option.item);
+  };
   const confirm = () => {
-    if (!selected || keepsCurrent) {
-      onClose();
-      return;
-    }
-    // Equipping needs the cosmetic inventory API; until then the current item stays equipped.
-    setUnavailable(true);
+    if (selected && !keepsCurrent) equipment.equip(selected.item);
+    onClose();
+  };
+  const unequip = () => {
+    if (currentItem) equipment.unequip(currentItem);
+    onClose();
   };
 
   const tabs = <View accessibilityRole="tablist" style={styles.segmented}>
     {equipmentCategories.map((item) => <CategoryTab active={item.id === category} key={item.id} label={item.label} onPress={() => onCategoryChange(item.id)} sheet={sheet} />)}
   </View>;
-  const optionRows = options.map((option) => <OptionRow
-    equipped={option.id === current?.id}
-    isPremium={isPremium}
-    key={option.id}
-    onSelect={() => { setSelectedId(option.id); setUnavailable(false); }}
-    option={option}
-    selected={option.id === selectedId}
-    sheet={sheet}
-  />);
-  const feedback = unavailable
-    ? <FeedbackMessage message={`A troca de ${definition.noun} ainda não está disponível. ${current ? `${current.name} continua equipado.` : ''}`.trim()} testID="equipment-unavailable" variant="info" />
+  // A category with nothing unlocked tells how far the next item is (UC04 A01).
+  const nextUnlock = catalog.data && options.length && !options.some((option) => option.item.unlocked)
+    ? <Text style={styles.status} testID="equipment-next-unlock">{describeNextUnlock(options.map((option) => option.item), level)}</Text>
+    : null;
+  const optionRows = catalog.data
+    ? options.length
+      ? <>{nextUnlock}{options.map((option) => <OptionRow key={option.item.id} onSelect={() => select(option)} option={option} selected={option.item.id === selectedId} sheet={sheet} />)}</>
+      : <Text style={styles.status}>Nenhum item desta categoria no Catálogo ainda.</Text>
+    : <CatalogState catalog={catalog} />;
+  const equipLabel = keepsCurrent && sheet ? `Manter este ${definition.noun}` : `Equipar ${definition.noun}`;
+  // Not in the Figma frame: unequipping already existed on develop's Personagem screen, so it stays reachable here.
+  const unequipAction = currentItem
+    ? <Pressable accessibilityLabel={`Desequipar ${currentItem.name}`} accessibilityRole="button" disabled={equipment.busy} hitSlop={10} onPress={unequip} style={styles.unequip} testID="equipment-unequip">
+      <Text style={styles.unequipText}>Desequipar {currentItem.name}</Text>
+    </Pressable>
     : null;
 
   if (sheet) {
@@ -130,7 +146,7 @@ function PanelBody({ category, equipped, isPremium, onCategoryChange, onClose, v
       aria-modal
       accessibilityViewIsModal
       role="dialog"
-      style={[styles.sheet, { paddingBottom: 24 + bottomInset }]}
+      style={panelStyle}
       testID="equipment-drawer"
     >
       <Pressable accessibilityLabel="Fechar" accessibilityRole="button" hitSlop={{ top: 13, bottom: 13, left: 60, right: 60 }} onPress={onClose} style={styles.handle} testID="equipment-handle" />
@@ -140,8 +156,8 @@ function PanelBody({ category, equipped, isPremium, onCategoryChange, onClose, v
       </View>
       {tabs}
       <ScrollView accessibilityLabel={`Opções de ${definition.noun}`} accessibilityRole="radiogroup" contentContainerStyle={styles.optionsSheet} style={styles.sheetOptions}>{optionRows}</ScrollView>
-      {feedback}
-      <WiseButton disabled={!selected} label={keepsCurrent ? `Manter este ${definition.noun}` : `Equipar ${definition.noun}`} onPress={confirm} />
+      {unequipAction}
+      <WiseButton disabled={!selected || equipment.busy} label={equipLabel} onPress={confirm} />
     </View>;
   }
 
@@ -150,7 +166,7 @@ function PanelBody({ category, equipped, isPremium, onCategoryChange, onClose, v
     aria-modal
     accessibilityViewIsModal
     role="dialog"
-    style={styles.drawer}
+    style={panelStyle}
     testID="equipment-drawer"
   >
     <View style={styles.top}>
@@ -172,36 +188,34 @@ function PanelBody({ category, equipped, isPremium, onCategoryChange, onClose, v
     </View>
     {tabs}
     <View accessibilityLabel={`Opções de ${definition.noun}`} accessibilityRole="radiogroup" style={styles.options}>{optionRows}</View>
+    {unequipAction}
     <View style={styles.spacer} />
-    {feedback}
     <View style={styles.footer}>
       <View style={styles.footerAction}><WiseButton label="Cancelar" onPress={onClose} variant="secondary" /></View>
-      <View style={styles.footerAction}><WiseButton disabled={!selected} label={`Equipar ${definition.noun}`} onPress={confirm} /></View>
+      <View style={styles.footerAction}><WiseButton disabled={!selected || equipment.busy} label={equipLabel} onPress={confirm} /></View>
     </View>
   </View>;
 }
 
-export function EquipmentDrawer(props: EquipmentDrawerProps) {
-  const { category, onClose, variant } = props;
+/** Modal frame shared by the equipment and device panels: backdrop, Escape on web and the drawer/sheet motion. */
+export function CharacterModal({ children, onClose, testID, variant }: { children: ReactNode; onClose: () => void; testID: string; variant: EquipmentPanelVariant }) {
   const motionDuration = useRuntimeMotionDuration();
   const sheet = variant === 'sheet';
 
   useEffect(() => {
-    if (!category || Platform.OS !== 'web' || typeof document === 'undefined') return;
+    if (Platform.OS !== 'web' || typeof document === 'undefined') return;
     const closeOnEscape = (event: KeyboardEvent) => {
       if (event.key === 'Escape') onClose();
     };
     document.addEventListener('keydown', closeOnEscape);
     return () => document.removeEventListener('keydown', closeOnEscape);
-  }, [category, onClose]);
-
-  if (!category) return null;
+  }, [onClose]);
 
   return <Modal
     animationType={motionDuration === theme.motion.none ? 'none' : sheet ? 'slide' : 'fade'}
     onRequestClose={onClose}
     presentationStyle="overFullScreen"
-    testID="equipment-modal"
+    testID={testID}
     transparent
     visible
   >
@@ -213,12 +227,26 @@ export function EquipmentDrawer(props: EquipmentDrawerProps) {
         importantForAccessibility="no-hide-descendants"
         onPress={onClose}
         style={StyleSheet.absoluteFill}
-        testID="equipment-backdrop"
+        testID={`${testID}-backdrop`}
       />
-      {/* Remount per category so the selection starts at that category's equipped item. */}
-      <PanelBody {...props} category={category} key={category} />
+      {children}
     </View>
   </Modal>;
+}
+
+/** Container styles for a panel body inside `CharacterModal`. */
+export function usePanelStyle(variant: EquipmentPanelVariant) {
+  const bottomInset = useContext(SafeAreaInsetsContext)?.bottom ?? 0;
+  return variant === 'sheet' ? [styles.sheet, { paddingBottom: 24 + bottomInset }] : styles.drawer;
+}
+
+export function EquipmentDrawer(props: EquipmentDrawerProps) {
+  const { category, onClose, variant } = props;
+  if (!category) return null;
+  return <CharacterModal onClose={onClose} testID="equipment-modal" variant={variant}>
+    {/* Remount per category so the selection starts at that category's equipped item. */}
+    <PanelBody {...props} category={category} key={category} />
+  </CharacterModal>;
 }
 
 const inter = { regular: 'Inter-Regular', semiBold: 'Inter-SemiBold' } as const;
@@ -303,4 +331,7 @@ const styles = StyleSheet.create({
   optionNameDimmed: { color: theme.color.textSecondary },
   optionCaption: { fontFamily: inter.regular, fontSize: 12, lineHeight: 15, color: theme.color.textTertiary },
   optionCaptionEquipped: { color: theme.color.accentPrimary },
+  status: { fontFamily: inter.regular, fontSize: 13, lineHeight: 18, color: theme.color.textSecondary },
+  unequip: { alignSelf: 'center', paddingVertical: theme.space.inlineHairline },
+  unequipText: { fontFamily: inter.semiBold, fontSize: 13, lineHeight: 16, color: theme.color.textSecondary, textDecorationLine: 'underline' },
 });

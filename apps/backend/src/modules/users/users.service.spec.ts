@@ -43,7 +43,7 @@ describe('UsersService', () => {
     service = module.get(UsersService);
   });
 
-  it('derives profile level boundaries from the character XP projection', async () => {
+  it('derives the level boundaries from the XP projection and the Título from the equipped item', async () => {
     const xpTotal = 1_501;
     mockUsers.findOne.mockResolvedValue({
       id: 'user-1',
@@ -54,8 +54,11 @@ describe('UsersService', () => {
     mockProgression.getCharacterSnapshot.mockResolvedValue({
       xpTotal,
       level: 2,
-      title: 'Scholar',
     });
+    mockUserCosmetics.find.mockResolvedValue([
+      { cosmeticItem: { id: 'avatar-1', category: 'avatar', name: 'Capuz do Erudito' } },
+      { cosmeticItem: { id: 'title-1', category: 'title', name: 'Aprendiz' } },
+    ]);
     mockProgression.getProjection.mockReturnValue({
       level: 2,
       levelStartXp: 1_414,
@@ -71,7 +74,11 @@ describe('UsersService', () => {
       xpTotal,
       levelStartXp: 1_414,
       nextLevelXp: 2_598,
-      title: 'Scholar',
+      title: 'Aprendiz',
+      equipped: [
+        { category: 'avatar', itemId: 'avatar-1', name: 'Capuz do Erudito' },
+        { category: 'title', itemId: 'title-1', name: 'Aprendiz' },
+      ],
     });
     expect(mockProgression.getCharacterSnapshot).toHaveBeenCalledWith('user-1');
     expect(mockProgression.getProjection).toHaveBeenCalledWith(xpTotal);
@@ -85,6 +92,7 @@ describe('UsersService', () => {
       planTier: 'free',
     });
     mockProgression.getCharacterSnapshot.mockResolvedValue(null);
+    mockUserCosmetics.find.mockResolvedValue([]);
     mockProgression.getProjection.mockReturnValue({
       level: 1,
       levelStartXp: 0,
@@ -101,6 +109,7 @@ describe('UsersService', () => {
       levelStartXp: 0,
       nextLevelXp: 1_414,
       title: null,
+      equipped: [],
     });
     expect(mockProgression.getCharacterSnapshot).toHaveBeenCalledWith('user-1');
     expect(mockProgression.getProjection).toHaveBeenCalledWith(0);
