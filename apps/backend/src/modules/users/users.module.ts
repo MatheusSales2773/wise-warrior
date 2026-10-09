@@ -12,7 +12,7 @@ import { ProgressionModule } from '../progression/progression.module';
   imports: [
     TypeOrmModule.forFeature([User, CosmeticItem, UserCosmeticItem]),
     forwardRef(() => AuthModule),
-    ProgressionModule,
+    forwardRef(() => ProgressionModule),
   ],
   controllers: [UsersController],
   providers: [UsersService],

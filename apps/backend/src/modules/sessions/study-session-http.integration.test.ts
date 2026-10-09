@@ -51,15 +51,16 @@ describe('Study Session HTTP contract against MySQL', () => {
     ]);
 
     now = new Date();
-    const progression = new ProgressionService(
-      dataSource.getRepository(Character),
-      { emitToUser: jest.fn() } as unknown as RealtimeGateway,
-    );
     const users = new UsersService(
       dataSource.getRepository(User),
       dataSource.getRepository(UserCosmeticItem),
       dataSource.getRepository(CosmeticItem),
-      progression,
+      {} as ProgressionService, // the profile read is not exercised here
+    );
+    const progression = new ProgressionService(
+      dataSource.getRepository(Character),
+      { emitToUser: jest.fn() } as unknown as RealtimeGateway,
+      users,
     );
     const start = new StudySessionStartService(dataSource, users);
     const transitions = new StudySessionTransitionService(dataSource, { now: () => new Date(now) }, progression);
