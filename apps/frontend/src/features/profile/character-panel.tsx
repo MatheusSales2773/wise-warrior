@@ -86,7 +86,12 @@ function Seal({ icon, item, label }: { icon: WiseIconName; item: EquippedCosmeti
   );
 }
 
-export function CharacterPanel({ children, style, user }: { children: ReactNode; style?: StyleProp<ViewStyle>; user: UserProfile }) {
+export function CharacterPanel({ children, previewing = false, style, user }: {
+  children: ReactNode;
+  previewing?: boolean;
+  style?: StyleProp<ViewStyle>;
+  user: UserProfile;
+}) {
   const xpPercent = levelProgressPercent(user);
   const equippedIn = (category: EquippedCosmeticItem['category']) => user.equipped.find((item) => item.category === category);
   const title = equippedIn('title');
@@ -97,6 +102,9 @@ export function CharacterPanel({ children, style, user }: { children: ReactNode;
   return (
     <WiseCard accessibilityLabel="Personagem" role="region" style={style} testID="profile-character" variant="ornamented">
       <View style={styles.content}>
+        {previewing
+          ? <WiseText color="accentPrimary" testID="profile-preview-badge" variant="caption">PRÉVIA · NADA FOI SALVO</WiseText>
+          : null}
         <Portrait avatar={equippedIn('avatar')} />
         {title
           ? (

@@ -4,11 +4,14 @@ import { Platform, StyleSheet, View, useWindowDimensions } from 'react-native';
 import { useAuth } from '@/core/auth/auth-context';
 import { FeedbackMessage, ProgressBar, Screen, WiseButton, WiseText, isDesktopLayout, theme } from '@/design-system';
 import { profileQueryOptions, sessionMetricsQueryOptions } from '@/features/dashboard/queries';
+import type { UserProfile } from '@/features/dashboard/api';
 import { CharacterPanel, CharacterStats } from './character-panel';
 import { CosmeticsCatalog } from './cosmetics-catalog';
 import { DevicesContent } from './devices-tab';
 import { cosmeticsCatalogQueryOptions, deviceSessionsQueryOptions } from './queries';
+import { profileWithEquipped } from './equipment';
 import { ProfileTabs, type ProfileTab } from './profile-tabs';
+import { useCosmeticEquipment } from './use-cosmetic-equipment';
 
 function ComingSoon({ body, testID, title }: { body: string; testID: string; title: string }) {
   return (
@@ -36,6 +39,7 @@ export function ProfileScreen() {
   const devices = useQuery(deviceSessionsQueryOptions());
   const cosmeticsCatalog = useQuery(cosmeticsCatalogQueryOptions());
   const metrics = useQuery(sessionMetricsQueryOptions());
+  const equipment = useCosmeticEquipment();
   const { sessionId } = useAuth();
   const { width } = useWindowDimensions();
   const [refreshing, setRefreshing] = useState(false);
@@ -70,6 +74,9 @@ export function ProfileScreen() {
     );
   }
 
+  // A Prévia só muda o que o painel mostra; o perfil em cache e o servidor continuam intactos.
+  const previewed = cosmeticsCatalog.data?.find((item) => item.id === equipment.selectedId && item.unlocked && !item.equipped);
+  const shown: UserProfile = previewed ? profileWithEquipped(user, previewed) : user;
   const desktop = isDesktopLayout(Platform.OS, width);
   // Touch platforms refresh by pulling down; web has no such gesture and relies on the query's own refetching.
   const refreshProps = Platform.OS === 'web' ? {} : { refreshing, onRefresh: () => { void refresh(); } };
@@ -80,13 +87,14 @@ export function ProfileScreen() {
         ? <FeedbackMessage message="Não foi possível atualizar seu personagem." testID="profile-refresh-error" title="Dados desatualizados" variant="error" />
         : null}
       <View style={[styles.grid, desktop && styles.desktopGrid]} testID="profile-layout">
-        <CharacterPanel style={desktop ? styles.panelDesktop : undefined} user={user}>
+        <CharacterPanel previewing={Boolean(previewed)} style={desktop ? styles.panelDesktop : undefined} user={shown}>
           <CharacterStats query={metrics} />
         </CharacterPanel>
         <View style={styles.column}>
           <ProfileTabs
+            onTabChange={equipment.cancel}
             tabs={[
-              { id: 'cosmeticos', label: 'Cosméticos', content: <CosmeticsCatalog level={user.level} query={cosmeticsCatalog} /> },
+              { id: 'cosmeticos', label: 'Cosméticos', content: <CosmeticsCatalog equipment={equipment} level={user.level} query={cosmeticsCatalog} /> },
               companionTab,
               { id: 'dispositivos', label: 'Dispositivos', content: <DevicesContent currentSessionId={sessionId} query={devices} /> },
             ]}

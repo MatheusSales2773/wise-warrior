@@ -42,6 +42,16 @@ export class UsersController {
     await this.users.equipCosmeticItem(user.sub, itemId);
   }
 
+  /** Desequipa o item; idempotente, e 404 para item fora do Inventário. */
+  @Delete('cosmetics/:itemId/equipped')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async unequipCosmetic(
+    @CurrentUser() user: JwtPayload,
+    @Param('itemId') itemId: string,
+  ): Promise<void> {
+    await this.users.unequipCosmeticItem(user.sub, itemId);
+  }
+
   /** Lista dispositivos com sessão ativa (ADR-009). */
   @Get('sessions')
   listSessions(@CurrentUser() user: JwtPayload) {

@@ -5,7 +5,7 @@ import { WiseCard, WiseText, theme } from '@/design-system';
 export type ProfileTabId = 'cosmeticos' | 'companheiro' | 'dispositivos';
 export type ProfileTab = { id: ProfileTabId; label: string; content: ReactNode };
 
-export function ProfileTabs({ tabs }: { tabs: [ProfileTab, ...ProfileTab[]] }) {
+export function ProfileTabs({ onTabChange, tabs }: { onTabChange?: () => void; tabs: [ProfileTab, ...ProfileTab[]] }) {
   const [selectedId, setSelectedId] = useState<ProfileTabId>(tabs[0].id);
   const active = tabs.find((tab) => tab.id === selectedId) ?? tabs[0];
 
@@ -21,7 +21,10 @@ export function ProfileTabs({ tabs }: { tabs: [ProfileTab, ...ProfileTab[]] }) {
               accessibilityState={{ selected }}
               aria-selected={selected}
               key={tab.id}
-              onPress={() => setSelectedId(tab.id)}
+              onPress={() => {
+                setSelectedId(tab.id);
+                onTabChange?.();
+              }}
               style={[styles.tab, selected && styles.tabSelected]}
               testID={`profile-tab-${tab.id}`}
             >
