@@ -28,6 +28,16 @@ export async function listCosmeticsCatalog({ signal }: { signal?: AbortSignal } 
   return response.data;
 }
 
+/** Troca o item equipado da categoria; 403 quando a política de entitlement bloqueia o item premium (ADR-007). */
+export async function equipCosmeticItem(itemId: string): Promise<void> {
+  await getAuthenticatedHttpClient().patch(`/users/me/cosmetics/${encodeURIComponent(itemId)}`);
+}
+
+/** Desequipa o item; idempotente, 404 quando ele não está no Inventário. */
+export async function unequipCosmeticItem(itemId: string): Promise<void> {
+  await getAuthenticatedHttpClient().delete(`/users/me/cosmetics/${encodeURIComponent(itemId)}/equipped`);
+}
+
 export async function listMyDeviceSessions({ signal }: { signal?: AbortSignal } = {}): Promise<DeviceSession[]> {
   const response = await getAuthenticatedHttpClient().get<DeviceSession[]>('/users/me/sessions', { signal });
   return response.data;

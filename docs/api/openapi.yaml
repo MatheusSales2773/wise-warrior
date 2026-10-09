@@ -262,14 +262,37 @@ paths:
 
   /users/me/cosmetics/{itemId}:
     patch:
-      summary: Equipa um item cosmético já desbloqueado
+      summary: Equipa um Cosmetic Item do Inventário
+      description: >
+        Troca o item equipado da categoria: no máximo um item por categoria,
+        garantido mesmo com requisições simultâneas. Item fora do Inventário
+        (bloqueado ou inexistente) devolve 404. Item premium passa pela
+        checagem de entitlement (ADR-007), mas a política do MVP o libera para
+        todos enquanto `COSMETICS_PREMIUM_FOR_ALL` não for `false`; com a flag
+        desligada, um usuário `free` recebe 403.
       operationId: equipCosmeticItem
       tags: [Users]
       parameters:
         - { name: itemId, in: path, required: true, schema: { type: string, format: uuid } }
       responses:
         "204": { description: Item equipado }
+        "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /users/me/cosmetics/{itemId}/equipped:
+    delete:
+      summary: Desequipa um Cosmetic Item, de qualquer categoria
+      description: >
+        Idempotente: desequipar um item já desequipado devolve 204. Item fora
+        do Inventário (bloqueado, inexistente ou de outro usuário) devolve 404.
+      operationId: unequipCosmeticItem
+      tags: [Users]
+      parameters:
+        - { name: itemId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "204": { description: Item desequipado }
+        "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
 
   /users/me/sessions:

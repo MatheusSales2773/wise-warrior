@@ -5,7 +5,9 @@ import { theme } from '@/design-system';
 import { getMyProfile, getSessionMetrics, type SessionMetrics, type UserProfile } from '@/features/dashboard/api';
 import { ApiError } from '@/core/api/api-error';
 import {
+  equipCosmeticItem,
   listCosmeticsCatalog,
+  unequipCosmeticItem,
   listMyDeviceSessions,
   revokeAllMyDeviceSessions,
   revokeMyDeviceSession,
@@ -24,6 +26,8 @@ jest.mock('@/features/dashboard/api', () => ({
   getSessionMetrics: jest.fn(),
 }));
 jest.mock('@/features/profile/api', () => ({
+  equipCosmeticItem: jest.fn(),
+  unequipCosmeticItem: jest.fn(),
   listCosmeticsCatalog: jest.fn(),
   listMyDeviceSessions: jest.fn(),
   revokeMyDeviceSession: jest.fn(),
@@ -85,6 +89,8 @@ function cosmeticNames(categoryTestId: string) {
   return within(screen.getByTestId(categoryTestId)).getAllByTestId(/^profile-cosmetic-item-/)
     .map((item) => item.props.testID.replace('profile-cosmetic-item-item-', ''));
 }
+const mockedEquip = equipCosmeticItem as jest.MockedFunction<typeof equipCosmeticItem>;
+const mockedUnequip = unequipCosmeticItem as jest.MockedFunction<typeof unequipCosmeticItem>;
 const mockedRevoke = revokeMyDeviceSession as jest.MockedFunction<typeof revokeMyDeviceSession>;
 const mockedRevokeAll = revokeAllMyDeviceSessions as jest.MockedFunction<typeof revokeAllMyDeviceSessions>;
 
@@ -107,6 +113,8 @@ beforeEach(() => {
   mockedDevices.mockResolvedValue([]);
   mockedMetrics.mockResolvedValue(metrics);
   mockedCatalog.mockResolvedValue(starterCatalog);
+  mockedEquip.mockResolvedValue(undefined);
+  mockedUnequip.mockResolvedValue(undefined);
   mockedRevoke.mockResolvedValue(undefined);
   mockedRevokeAll.mockResolvedValue(undefined);
   resetMockWindowDimensions();
@@ -611,6 +619,182 @@ describe('ProfileScreen', () => {
       expect(screen.queryByText(/inclusive este/)).toBeNull();
       expect(mockedRevokeAll).not.toHaveBeenCalled();
     });
+  });
+});
+
+describe('Prévia, Equipar and unequip', () => {
+  afterEach(async () => {
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+  });
+
+  const unlockedCatalog: CatalogCosmeticItem[] = [
+    ...starterCatalog.filter((item) => item.category !== 'title'),
+    cosmetic('Aprendiz', 'title', { type: 'level', level: 1 }, { equipped: true }),
+    cosmetic('Estudante Crepuscular', 'title', { type: 'level', level: 5 }, { unlocked: true }),
+    cosmetic('Mestre da Aurora', 'title', { type: 'level', level: 15 }, { unlocked: true, requiresPremium: true }),
+  ];
+  const titleBanner = () => within(screen.getByTestId('profile-character')).queryByTestId('profile-title-banner');
+
+  async function openPreview(name: string) {
+    await fireEvent.press(await screen.findByRole('button', { name: new RegExp(`^${name},`) }));
+  }
+
+  beforeEach(() => {
+    mockedCatalog.mockResolvedValue(unlockedCatalog);
+    mockedProfile.mockResolvedValue({ ...profile, level: 15 });
+  });
+
+  it('applies the Prévia to the character panel without saving anything', async () => {
+    await renderProfile();
+
+    await openPreview('Estudante Crepuscular');
+
+    expect(titleBanner()?.props.accessibilityLabel).toBe('Título: Estudante Crepuscular');
+    expect(screen.getByTestId('profile-preview-badge')).toBeTruthy();
+    expect(within(screen.getByTestId('profile-cosmetics-preview')).getByText('Prévia: Estudante Crepuscular')).toBeTruthy();
+    expect(mockedEquip).not.toHaveBeenCalled();
+  });
+
+  it('discards the Prévia on Cancelar and restores the character', async () => {
+    await renderProfile();
+    await openPreview('Estudante Crepuscular');
+
+    await fireEvent.press(screen.getByRole('button', { name: 'Cancelar a prévia de Estudante Crepuscular' }));
+
+    expect(titleBanner()?.props.accessibilityLabel).toBe('Título: Aprendiz');
+    expect(screen.queryByTestId('profile-cosmetics-preview')).toBeNull();
+    expect(screen.queryByTestId('profile-preview-badge')).toBeNull();
+    expect(mockedEquip).not.toHaveBeenCalled();
+  });
+
+  it('previews one item at a time', async () => {
+    await renderProfile();
+    await openPreview('Estudante Crepuscular');
+
+    await openPreview('Mestre da Aurora');
+
+    expect(titleBanner()?.props.accessibilityLabel).toBe('Título: Mestre da Aurora');
+    expect(screen.getAllByTestId('profile-cosmetics-preview')).toHaveLength(1);
+    expect(screen.getByRole('button', { name: /^Mestre da Aurora,/ }).props.accessibilityState.selected).toBe(true);
+    expect(screen.getByRole('button', { name: /^Estudante Crepuscular,/ }).props.accessibilityState.selected).toBe(false);
+  });
+
+  it('drops the Prévia when the student leaves the Cosméticos tab', async () => {
+    await renderProfile();
+    await openPreview('Estudante Crepuscular');
+
+    await fireEvent.press(screen.getByTestId('profile-tab-companheiro'));
+
+    expect(titleBanner()?.props.accessibilityLabel).toBe('Título: Aprendiz');
+  });
+
+  it('opens no Prévia for a locked item and offers no way to equip it', async () => {
+    await renderProfile();
+    const locked = await screen.findByTestId('profile-cosmetic-item-item-Manto da Vigília');
+
+    await fireEvent.press(locked);
+
+    expect(screen.queryByRole('button', { name: /^Manto da Vigília,/ })).toBeNull();
+    expect(screen.queryByTestId('profile-cosmetics-preview')).toBeNull();
+    expect(mockedEquip).not.toHaveBeenCalled();
+  });
+
+  it('equips on Equipar, shows it at once and reloads the Catalog and the profile', async () => {
+    mockedEquip.mockImplementation(() => new Promise(() => undefined));
+    await renderProfile();
+    await openPreview('Estudante Crepuscular');
+
+    await fireEvent.press(screen.getByRole('button', { name: 'Equipar Estudante Crepuscular' }));
+
+    await waitFor(() => expect(mockedEquip).toHaveBeenCalledWith('item-Estudante Crepuscular'));
+    expect(screen.queryByTestId('profile-cosmetics-preview')).toBeNull();
+    expect(titleBanner()?.props.accessibilityLabel).toBe('Título: Estudante Crepuscular');
+    expect(screen.getByRole('button', { name: 'Estudante Crepuscular, equipado' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Aprendiz, desbloqueado' })).toBeTruthy();
+  });
+
+  it('invalidates the Catalog and the profile once Equipar finishes', async () => {
+    await renderProfile();
+    await screen.findByTestId('profile-cosmetics');
+    expect(mockedCatalog).toHaveBeenCalledTimes(1);
+    expect(mockedProfile).toHaveBeenCalledTimes(1);
+    await openPreview('Estudante Crepuscular');
+
+    await fireEvent.press(screen.getByRole('button', { name: 'Equipar Estudante Crepuscular' }));
+
+    await waitFor(() => expect(mockedCatalog).toHaveBeenCalledTimes(2));
+    expect(mockedProfile).toHaveBeenCalledTimes(2);
+  });
+
+  it('unequips an equipped item of any category, including the Título', async () => {
+    mockedUnequip.mockImplementation(async () => {
+      // The server's answer after the change, which the reload picks up.
+      mockedProfile.mockResolvedValue({ ...profile, level: 15, title: null, equipped: profile.equipped.filter((item) => item.category !== 'title') });
+      mockedCatalog.mockResolvedValue(unlockedCatalog.map((item) => (item.name === 'Aprendiz' ? { ...item, equipped: false } : item)));
+    });
+    await renderProfile();
+    await openPreview('Aprendiz');
+    expect(screen.queryByRole('button', { name: 'Equipar Aprendiz' })).toBeNull();
+
+    await fireEvent.press(screen.getByRole('button', { name: 'Desequipar Aprendiz' }));
+
+    await waitFor(() => expect(mockedUnequip).toHaveBeenCalledWith('item-Aprendiz'));
+    expect(titleBanner()).toBeNull();
+    expect(screen.getByRole('button', { name: 'Aprendiz, desbloqueado' })).toBeTruthy();
+    await waitFor(() => expect(mockedProfile).toHaveBeenCalledTimes(2));
+  });
+
+  it('rolls the optimistic change back and explains when the server refuses', async () => {
+    mockedEquip.mockRejectedValue(new ApiError('server', { status: 500 }));
+    await renderProfile();
+    await openPreview('Estudante Crepuscular');
+
+    await fireEvent.press(screen.getByRole('button', { name: 'Equipar Estudante Crepuscular' }));
+
+    const notice = await screen.findByTestId('profile-cosmetics-notice');
+    expect(within(notice).getByText('Nada foi equipado')).toBeTruthy();
+    expect(titleBanner()?.props.accessibilityLabel).toBe('Título: Aprendiz');
+    expect(screen.getByRole('button', { name: 'Aprendiz, equipado' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Estudante Crepuscular, desbloqueado' })).toBeTruthy();
+  });
+
+  it('rolls an unequip back when the server refuses', async () => {
+    mockedUnequip.mockRejectedValue(new ApiError('network'));
+    await renderProfile();
+    await openPreview('Aprendiz');
+
+    await fireEvent.press(screen.getByRole('button', { name: 'Desequipar Aprendiz' }));
+
+    const notice = await screen.findByTestId('profile-cosmetics-notice');
+    expect(within(notice).getByText('Nada foi desequipado')).toBeTruthy();
+    expect(titleBanner()?.props.accessibilityLabel).toBe('Título: Aprendiz');
+  });
+
+  it('gives a premium refusal its own message', async () => {
+    mockedEquip.mockRejectedValue(new ApiError('unexpected', { status: 403 }));
+    await renderProfile();
+    await openPreview('Mestre da Aurora');
+
+    await fireEvent.press(screen.getByRole('button', { name: 'Equipar Mestre da Aurora' }));
+
+    const notice = await screen.findByTestId('profile-cosmetics-notice');
+    expect(within(notice).getByText('Item exclusivo do plano premium')).toBeTruthy();
+    expect(within(notice).getByText(/Mestre da Aurora é exclusivo do plano premium/)).toBeTruthy();
+    expect(titleBanner()?.props.accessibilityLabel).toBe('Título: Aprendiz');
+  });
+
+  it('labels the controls for assistive technology', async () => {
+    await renderProfile();
+    await openPreview('Estudante Crepuscular');
+
+    const item = screen.getByRole('button', { name: 'Estudante Crepuscular, desbloqueado' });
+    expect(item.props.accessibilityState.selected).toBe(true);
+    const equip = screen.getByRole('button', { name: 'Equipar Estudante Crepuscular' });
+    const cancel = screen.getByRole('button', { name: 'Cancelar a prévia de Estudante Crepuscular' });
+    expect(equip.props.accessibilityRole).toBe('button');
+    expect(cancel.props.accessibilityRole).toBe('button');
   });
 });
 

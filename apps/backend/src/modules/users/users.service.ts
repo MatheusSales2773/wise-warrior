@@ -5,7 +5,9 @@ import {
   Injectable,
   Logger,
   NotFoundException,
+  Optional,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { EntityManager, Repository } from 'typeorm';
 import { User } from './entities/user.entity';
@@ -61,6 +63,7 @@ export class UsersService {
     private readonly cosmeticItems: Repository<CosmeticItem>,
     @Inject(forwardRef(() => ProgressionService))
     private readonly progression: ProgressionService,
+    @Optional() private readonly config?: ConfigService,
   ) {}
 
   /** Serializes work for a user inside the caller's transaction, including the first insert. */
@@ -173,41 +176,58 @@ export class UsersService {
   }
 
   /**
-   * Equipa um item cosmético já desbloqueado pelo usuário. Itens marcados
-   * como premium (Pitch) exigem `plan_tier = premium` — checagem de flag de
-   * entitlement (ADR-007), sem gateway de pagamento nesta fase.
+   * Política de entitlement do MVP (ADR-007): enquanto `COSMETICS_PREMIUM_FOR_ALL` não for
+   * `false`, os itens premium ficam liberados para todos. A checagem continua no caminho de Equipar.
+   */
+  private premiumReleasedToEveryone(): boolean {
+    return this.config?.get<string>('COSMETICS_PREMIUM_FOR_ALL') !== 'false';
+  }
+
+  /**
+   * Equipa um item do Inventário e desequipa o da mesma categoria. A transação trava a linha do
+   * usuário, então requisições simultâneas se serializam e sempre sobra um único item equipado.
    */
   async equipCosmeticItem(userId: string, cosmeticItemId: string): Promise<void> {
-    const target = await this.userCosmetics.findOne({
-      where: { userId, cosmeticItemId },
-      relations: ['cosmeticItem'],
-    });
-    if (!target) {
-      throw new NotFoundException('Item não desbloqueado por este usuário');
-    }
-
-    if (target.cosmeticItem.requiresPremium) {
-      const user = await this.users.findOne({ where: { id: userId } });
-      if (user?.planTier !== 'premium') {
+    await this.users.manager.transaction(async (manager) => {
+      const user = await manager.getRepository(User).findOne({
+        where: { id: userId },
+        lock: { mode: 'pessimistic_write' },
+      });
+      const inventory = manager.getRepository(UserCosmeticItem);
+      const target = user
+        ? await inventory.findOne({ where: { userId, cosmeticItemId }, relations: ['cosmeticItem'] })
+        : null;
+      if (!user || !target) {
+        throw new NotFoundException('Item não desbloqueado por este usuário');
+      }
+      if (target.cosmeticItem.requiresPremium && user.planTier !== 'premium' && !this.premiumReleasedToEveryone()) {
         throw new ForbiddenException('Item exclusivo do plano premium');
       }
-    }
 
-    // No máximo um item equipado por categoria (ex.: um avatar, um título).
-    const equipped = await this.userCosmetics.find({
-      where: { userId, equipped: true },
-      relations: ['cosmeticItem'],
+      const sameCategory = await inventory.find({
+        where: { userId, equipped: true, cosmeticItem: { category: target.cosmeticItem.category } },
+      });
+      const others = sameCategory.filter((row) => row.id !== target.id).map((row) => row.id);
+      if (others.length > 0) {
+        await inventory.update(others, { equipped: false });
+      }
+      await inventory.update({ id: target.id }, { equipped: true });
     });
-    const sameCategory = equipped.filter(
-      (item) => item.cosmeticItem.category === target.cosmeticItem.category,
-    );
-    if (sameCategory.length > 0) {
-      await this.userCosmetics.save(
-        sameCategory.map((item) => ({ ...item, equipped: false })),
-      );
-    }
+  }
 
-    target.equipped = true;
-    await this.userCosmetics.save(target);
+  /** Desequipa um item do Inventário; repetir a chamada não muda nada. */
+  async unequipCosmeticItem(userId: string, cosmeticItemId: string): Promise<void> {
+    await this.users.manager.transaction(async (manager) => {
+      const user = await manager.getRepository(User).findOne({
+        where: { id: userId },
+        lock: { mode: 'pessimistic_write' },
+      });
+      const inventory = manager.getRepository(UserCosmeticItem);
+      const row = user ? await inventory.findOne({ where: { userId, cosmeticItemId } }) : null;
+      if (!row) {
+        throw new NotFoundException('Item não desbloqueado por este usuário');
+      }
+      await inventory.update({ id: row.id }, { equipped: false });
+    });
   }
 }
