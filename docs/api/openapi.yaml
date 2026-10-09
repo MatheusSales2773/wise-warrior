@@ -875,7 +875,7 @@ components:
       description: >
         A projeção mantém a coerência do progresso: levelStartXp <= xpTotal <
         nextLevelXp.
-      required: [id, email, displayName, planTier, level, levelStartXp, nextLevelXp, xpTotal, title]
+      required: [id, email, displayName, planTier, level, levelStartXp, nextLevelXp, xpTotal, title, equipped]
       properties:
         id: { type: string, format: uuid }
         email: { type: string, format: email }
@@ -900,7 +900,23 @@ components:
           minimum: 0
           maximum: 9000000000000000
           description: Experiência total acumulada.
-        title: { type: [string, "null"] }
+        title:
+          type: [string, "null"]
+          description: >
+            Nome do Cosmetic Item de categoria Título equipado (ADR-010), ou
+            null quando não há Título equipado.
+        equipped:
+          type: array
+          description: Cosmetic Items equipados, no máximo um por categoria.
+          items: { $ref: "#/components/schemas/EquippedCosmeticItem" }
+
+    EquippedCosmeticItem:
+      type: object
+      required: [category, itemId, name]
+      properties:
+        category: { type: string, enum: [avatar, badge, title, accessory] }
+        itemId: { type: string, format: uuid }
+        name: { type: string }
 
     CatalogCosmeticItem:
       type: object
@@ -1128,7 +1144,9 @@ components:
         userId: { type: string, format: uuid }
         displayName: { type: string }
         level: { type: integer }
-        title: { type: [string, "null"] }
+        title:
+          type: [string, "null"]
+          description: Nome do Título equipado pelo membro (ADR-010), ou null.
         role: { type: string, enum: [leader, member] }
         joinedAt: { type: string, format: date-time }
 

@@ -11,6 +11,7 @@ import { UnifyStudySessionIdempotencyKeys1788459000000 } from '../migrations/178
 import { AddStudySessionEndedAtPrecision1788459060000 } from '../migrations/1788459060000-add-study-session-ended-at-precision';
 import { AddStudySessionStartReceiptSubject1788459120000 } from '../migrations/1788459120000-add-study-session-start-receipt-subject';
 import { EnforceSingleGuildPerUser1788459180000 } from '../migrations/1788459180000-enforce-single-guild-per-user';
+import { DropCharacterTitle1788459300000 } from '../migrations/1788459300000-drop-character-title';
 import { SeedInitialCosmeticItems1788459240000 } from '../migrations/1788459240000-seed-initial-cosmetic-items';
 
 export const APPLICATION_MIGRATIONS: NonNullable<DataSourceOptions['migrations']> = [
@@ -24,6 +25,7 @@ export const APPLICATION_MIGRATIONS: NonNullable<DataSourceOptions['migrations']
   AddStudySessionStartReceiptSubject1788459120000,
   EnforceSingleGuildPerUser1788459180000,
   SeedInitialCosmeticItems1788459240000,
+  DropCharacterTitle1788459300000,
 ];
 
 export interface IntegrationDatabase {

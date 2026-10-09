@@ -8,6 +8,8 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Character } from '../progression/entities/character.entity';
+import { CosmeticItem } from '../users/entities/cosmetic-item.entity';
+import { UserCosmeticItem } from '../users/entities/user-cosmetic-item.entity';
 import { User } from '../users/entities/user.entity';
 import { Guild } from './entities/guild.entity';
 import { GuildMembership, type GuildRole } from './entities/guild-membership.entity';
@@ -178,11 +180,23 @@ export class GuildsService {
       .createQueryBuilder('membership')
       .innerJoin(User, 'member', 'member.id = membership.userId')
       .leftJoin(Character, 'character', 'character.userId = membership.userId')
+      // ADR-010: o Título exibido é o Cosmetic Item de categoria Título equipado.
+      .leftJoin(
+        (sub) => sub
+          .select('equippedRow.userId', 'userId')
+          .addSelect('equippedItem.name', 'name')
+          .from(UserCosmeticItem, 'equippedRow')
+          .innerJoin(CosmeticItem, 'equippedItem', 'equippedItem.id = equippedRow.cosmeticItemId')
+          .where('equippedRow.equipped = 1')
+          .andWhere("equippedItem.category = 'title'"),
+        'equippedTitle',
+        'equippedTitle.userId = membership.userId',
+      )
       .select('membership.id', 'membershipId')
       .addSelect('membership.userId', 'userId')
       .addSelect('member.displayName', 'displayName')
       .addSelect('character.level', 'level')
-      .addSelect('character.title', 'title')
+      .addSelect('equippedTitle.name', 'title')
       .addSelect('membership.role', 'role')
       .addSelect('membership.joinedAt', 'joinedAt')
       .addSelect("DATE_FORMAT(membership.joinedAt, '%Y-%m-%d %H:%i:%s.%f')", 'joinedAtText')

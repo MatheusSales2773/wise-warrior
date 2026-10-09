@@ -14,7 +14,6 @@ import { RealtimeGateway } from '../realtime/realtime.gateway';
 export interface CharacterProgressionSnapshot {
   xpTotal: number;
   level: number;
-  title: string | null;
 }
 
 /**
@@ -62,7 +61,6 @@ export class ProgressionService {
     return {
       xpTotal: character.xpTotal,
       level: character.level,
-      title: character.title ?? null,
     };
   }
 

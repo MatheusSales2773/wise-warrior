@@ -10,6 +10,7 @@ import { AddSessionRefreshTokenHistory1788458460000 } from './1788458460000-add-
 import { AddStudySessionRecentIndex1788458520000 } from './1788458520000-add-study-session-recent-index';
 import { AddCanonicalStudySessionStart1788458760000 } from './1788458760000-add-canonical-study-session-start';
 import { AddStudySessionPauseResume1788458880000 } from './1788458880000-add-study-session-pause-resume';
+import { DropCharacterTitle1788459300000 } from './1788459300000-drop-character-title';
 import { SeedInitialCosmeticItems1788459240000 } from './1788459240000-seed-initial-cosmetic-items';
 import { StudySession } from '../modules/sessions/entities/study-session.entity';
 
@@ -34,7 +35,7 @@ const expectedTables = [
 
 const expectedColumns: Record<string, string[]> = {
   users: ['id', 'email', 'password_hash', 'display_name', 'plan_tier', 'created_at'],
-  characters: ['id', 'user_id', 'level', 'xp_total', 'title', 'companion_id'],
+  characters: ['id', 'user_id', 'level', 'xp_total', 'companion_id'],
   cosmetic_items: ['id', 'category', 'name', 'unlock_condition', 'requires_premium'],
   user_cosmetic_items: ['id', 'user_id', 'cosmetic_item_id', 'equipped', 'unlocked_at'],
   sessions: [
@@ -361,7 +362,17 @@ describe('TypeORM migrations against an empty MySQL schema', () => {
       'AddStudySessionStartReceiptSubject1788459120000',
       'EnforceSingleGuildPerUser1788459180000',
       'SeedInitialCosmeticItems1788459240000',
+      'DropCharacterTitle1788459300000',
     ]);
+
+    await dataSource.undoLastMigration();
+    const titleRevertRows = await rows(
+      database!.admin,
+      `SELECT COLUMN_NAME FROM information_schema.COLUMNS
+       WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'characters' AND COLUMN_NAME = 'title'`,
+      [database!.name],
+    );
+    expect(titleRevertRows).toHaveLength(1);
 
     await dataSource.undoLastMigration();
     const seedRevertRows = await rows(
@@ -552,7 +563,7 @@ describe('TypeORM migrations against an empty MySQL schema', () => {
       { idempotency_key: 'rolling-transition-key', command_kind: 'resume' },
     ]);
 
-    for (let step = 0; step < 5; step += 1) await dataSource.undoLastMigration();
+    for (let step = 0; step < 6; step += 1) await dataSource.undoLastMigration();
     const leftoverTriggers = await rows(
       database.admin,
       `SELECT TRIGGER_NAME FROM information_schema.TRIGGERS
@@ -677,6 +688,7 @@ describe('TypeORM migrations against an empty MySQL schema', () => {
     expect(receiptsWithSubject).toEqual([{ idempotency_key: 'solo-start-key', subject: 'Cálculo II' }]);
 
     // M6 revert: only the receipt column goes away; every persisted Matéria (including legacy Guild rows) stays.
+    await dataSource.undoLastMigration(); // character title drop, which sits above the cosmetic seed
     await dataSource.undoLastMigration(); // cosmetic seed, which sits above the single-guild index
     await dataSource.undoLastMigration(); // single-guild index, which sits above the M6 receipt subject
     await dataSource.undoLastMigration();
@@ -708,7 +720,7 @@ describe('TypeORM migrations against an empty MySQL schema', () => {
     );
     expect(receiptsAfterReapply).toEqual([{ idempotency_key: 'solo-start-key', subject: null }]);
 
-    for (let step = 0; step < 7; step += 1) await dataSource.undoLastMigration();
+    for (let step = 0; step < 8; step += 1) await dataSource.undoLastMigration();
     const downgradedHistory = await rows(
       database.admin,
       `SELECT id, subject, mode, raid_id FROM ${database.identifier}.study_sessions ORDER BY id`,
@@ -799,7 +811,7 @@ describe('TypeORM migrations against an empty MySQL schema', () => {
     );
     expect(leftoverArchives).toHaveLength(0);
 
-    for (let step = 0; step < 10; step += 1) await dataSource.undoLastMigration();
+    for (let step = 0; step < 11; step += 1) await dataSource.undoLastMigration();
     const remainingSchemaTables = await rows(
       database.admin,
       `SELECT TABLE_NAME FROM information_schema.TABLES
@@ -887,6 +899,7 @@ describe('TypeORM migrations against an empty MySQL schema', () => {
     expect(owned('newcomer')).toEqual([['Capuz do Erudito', 1], ['Aprendiz', 1]]);
     expect(owned('collector')).toEqual([['Capuz do Erudito', 1], ['Aprendiz', 1], ['Madrugador', 0]]);
 
+    await dataSource.undoLastMigration(); // character title drop, which sits above the seed
     await dataSource.undoLastMigration();
     const afterRevert = await rows(
       database.admin,
@@ -900,5 +913,52 @@ describe('TypeORM migrations against an empty MySQL schema', () => {
       `SELECT id FROM ${database.identifier}.cosmetic_items`,
     );
     expect(catalogAfterRevert).toEqual([{ id: 'legacy-title' }]);
+  });
+
+  it('drops the textual Character title and restores it from the equipped Título on downgrade', async () => {
+    database = await createIntegrationDatabase('wise_migrations_test');
+    initialDataSource = new DataSource(database.options(
+      (APPLICATION_MIGRATIONS as unknown[]).filter((migration) => migration !== DropCharacterTitle1788459300000) as typeof APPLICATION_MIGRATIONS,
+    ));
+    await initialDataSource.initialize();
+    await initialDataSource.runMigrations();
+    for (const [id, title] of [['titled', 'Legado'], ['untitled', null]] as const) {
+      await database.admin.query(
+        `INSERT INTO ${database.identifier}.users (id, email, password_hash, display_name, plan_tier)
+         VALUES (?, ?, 'hash', ?, 'free')`,
+        [id, `${id}@example.com`, id],
+      );
+      await database.admin.query(
+        `INSERT INTO ${database.identifier}.characters (id, user_id, level, xp_total, title) VALUES (?, ?, 1, 0, ?)`,
+        [`${id}-character`, id, title],
+      );
+    }
+    await database.admin.query(
+      `INSERT INTO ${database.identifier}.user_cosmetic_items (id, user_id, cosmetic_item_id, equipped)
+       VALUES ('titled-row', 'titled', 'c05e71c0-0000-4000-8000-000000000002', 1)`,
+    );
+    await initialDataSource.destroy();
+    initialDataSource = undefined;
+
+    dataSource = new DataSource(database.options(APPLICATION_MIGRATIONS));
+    await dataSource.initialize();
+    await dataSource.runMigrations();
+    const columns = await rows(
+      database.admin,
+      `SELECT COLUMN_NAME FROM information_schema.COLUMNS
+       WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'characters'`,
+      [database.name],
+    );
+    expect(columns.map((row) => row.COLUMN_NAME)).not.toContain('title');
+
+    await dataSource.undoLastMigration();
+    const restored = await rows(
+      database.admin,
+      `SELECT user_id, title FROM ${database.identifier}.characters ORDER BY user_id`,
+    );
+    expect(restored.map((row) => [row.user_id, row.title])).toEqual([
+      ['titled', 'Aprendiz'],
+      ['untitled', null],
+    ]);
   });
 });

@@ -11,6 +11,7 @@ import { HttpExceptionFilter } from '../../shared/filters/http-exception.filter'
 import { APPLICATION_MIGRATIONS, createIntegrationDatabase, type IntegrationDatabase } from '../../test/integration-database';
 import { Guild } from './entities/guild.entity';
 import { GuildMembership } from './entities/guild-membership.entity';
+import { UserCosmeticItem } from '../users/entities/user-cosmetic-item.entity';
 import { GuildsController } from './guilds.controller';
 import { GuildsService } from './guilds.service';
 
@@ -191,6 +192,27 @@ describe('Guilds HTTP contract against MySQL', () => {
     const repeat = await (await call('GET', `/guilds/${id}/members?limit=2`, bruno)).json() as MemberPage;
     expect(repeat.items.map((member) => member.userId)).toEqual(first.items.map((member) => member.userId));
     expect((await call('GET', `/guilds/${id}/members?limit=51`, ana)).status).toBe(400);
+  });
+
+  it('shows each member\'s equipped Título, and none when no Título is equipped', async () => {
+    const { id } = await (await call('POST', '/guilds', ana, { name: 'Ordem do Título' })).json() as { id: string };
+    await call('POST', `/guilds/${id}/members`, bruno);
+    // Ana equips "Aprendiz"; Bruno owns it too but has nothing equipped in the Título category.
+    const aprendiz = 'c05e71c0-0000-4000-8000-000000000002';
+    const capuz = 'c05e71c0-0000-4000-8000-000000000001';
+    await dataSource!.getRepository(UserCosmeticItem).insert([
+      { userId: ana, cosmeticItemId: aprendiz, equipped: true },
+      { userId: bruno, cosmeticItemId: aprendiz, equipped: false },
+      { userId: bruno, cosmeticItemId: capuz, equipped: true },
+    ]);
+
+    const page = await (await call('GET', `/guilds/${id}/members`, ana)).json() as {
+      items: Array<{ displayName: string; title: string | null }>;
+    };
+    expect(page.items.map(({ displayName, title }) => [displayName, title]).sort()).toEqual([
+      ['Ana', 'Aprendiz'],
+      ['Bruno', null],
+    ]);
   });
 
   it('shows the leader in the guild detail', async () => {

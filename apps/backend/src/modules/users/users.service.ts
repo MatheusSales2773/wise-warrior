@@ -26,7 +26,15 @@ export interface UserProfile {
   xpTotal: number;
   levelStartXp: number;
   nextLevelXp: number;
+  /** ADR-010: nome do Cosmetic Item de categoria Título equipado, ou `null`. */
   title: string | null;
+  equipped: EquippedCosmeticItem[];
+}
+
+export interface EquippedCosmeticItem {
+  category: CosmeticCategory;
+  itemId: string;
+  name: string;
 }
 
 export interface CatalogCosmeticItem {
@@ -136,7 +144,15 @@ export class UsersService {
     if (!user) {
       throw new NotFoundException('Usuário não encontrado');
     }
-    const character = await this.progression.getCharacterSnapshot(userId);
+    const [character, equippedRows] = await Promise.all([
+      this.progression.getCharacterSnapshot(userId),
+      this.userCosmetics.find({ where: { userId, equipped: true }, relations: ['cosmeticItem'] }),
+    ]);
+    const equipped = equippedRows.map(({ cosmeticItem }) => ({
+      category: cosmeticItem.category,
+      itemId: cosmeticItem.id,
+      name: cosmeticItem.name,
+    }));
     const xpTotal = character?.xpTotal ?? 0;
     const projection = this.progression.getProjection(xpTotal);
     return {
@@ -148,7 +164,8 @@ export class UsersService {
       xpTotal,
       levelStartXp: projection.levelStartXp,
       nextLevelXp: projection.nextLevelXp,
-      title: character?.title ?? null,
+      title: equipped.find((item) => item.category === 'title')?.name ?? null,
+      equipped,
     };
   }
 
