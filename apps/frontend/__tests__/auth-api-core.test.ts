@@ -85,6 +85,16 @@ describe('api error taxonomy', () => {
     expect(isApiError(new Error('x'))).toBe(false);
   });
 
+  it('keeps the problem type of a conflict but never its detail', () => {
+    const error = toApiError({
+      isAxiosError: true,
+      response: { status: 409, data: { type: 'https://wise.app/errors/raid-ended', detail: 'Raid encerrada' } },
+    });
+    expect(error).toMatchObject({ category: 'conflict', problemType: 'https://wise.app/errors/raid-ended' });
+    expect(JSON.stringify(error)).not.toContain('Raid encerrada');
+    expect(toApiError({ isAxiosError: true, response: { status: 409, data: 'texto' } }).problemType).toBeUndefined();
+  });
+
   it('uses one cancellation predicate for Axios, DOM and public API errors', () => {
     const axiosCancellation = new axios.CanceledError('cancelled');
     const abortError = Object.assign(new Error('aborted'), { name: 'AbortError' });

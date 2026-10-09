@@ -126,10 +126,11 @@ describe('Raid da semana against MySQL', () => {
       reward: { itemId: 'c05e71c0-0000-4000-8000-000000000009', name: 'Marcador do Grimório', category: 'badge' },
       goalXp: 1000, // 1.500 × 108h left of 168h = 964.3, up to a multiple of 50
       progressXp: 0,
+      goalReachedAt: null,
       startsAt: '2026-10-05T03:00:00.000Z',
       endsAt: '2026-10-12T02:59:59.000Z',
       status: 'active',
-      me: { participating: false },
+      me: { participating: false, contributionXp: 0 },
     });
   });
 

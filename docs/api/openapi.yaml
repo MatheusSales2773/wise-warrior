@@ -339,13 +339,17 @@ paths:
 
   /sessions:
     post:
-      summary: Inicia uma Study Session solo
+      summary: Inicia uma Study Session solo ou de modo Guilda
       description: >
         Aceita presets de 900, 1500 ou 3000 segundos; o padrão defensivo é
         1500. Idempotency-Key é única por usuário entre inícios e transições.
         Um replay idêntico devolve o snapshot original; reutilizar a chave por
-        outro comando, com duração diferente ou com outra Matéria devolve
-        conflito estável.
+        outro comando, com duração, Matéria ou modo diferente devolve
+        conflito estável. No modo `guild`, `raidId` precisa ser a Raid ativa da
+        Guild do usuário e ele precisa ser Participante: quem não é Participante
+        ou é de outra Guild recebe 403, e uma Raid encerrada recebe 409
+        (`raid-ended`). Ao concluir dentro da semana da Raid, o XP da sessão vira
+        Contribuição no progresso coletivo.
       operationId: startStudySession
       tags: [Sessions]
       parameters:
@@ -365,6 +369,8 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/StudySessionSnapshot" }
         "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
         "409": { $ref: "#/components/responses/StudySessionStartConflict" }
         "401": { $ref: "#/components/responses/Unauthorized" }
 
@@ -757,8 +763,8 @@ paths:
       description: >
         A Raid ativa da guilda (segunda 00:00 a domingo 23:59:59 em
         `America/Sao_Paulo`, datas em UTC), com a Missão do rodízio semanal e a
-        Recompensa de Raid prevista, e `me.participating` com a participação de
-        quem consulta. Só membros da guilda a veem. `404` quando a guilda não
+        Recompensa de Raid prevista, `goalReachedAt` com a Meta batida, e em `me`
+        a participação e a Contribuição de quem consulta. Só membros da guilda a veem. `404` quando a guilda não
         tem Raid ativa.
       operationId: getActiveGuildRaid
       tags: [Raids]
@@ -1032,6 +1038,15 @@ components:
             normalização e recusa quebras de linha e caracteres de controle
             junto de texto com 400 application/problem+json.
           example: Cálculo II
+        mode:
+          type: string
+          enum: [solo, guild]
+          default: solo
+          description: Uma sessão `guild` contribui para a Raid `raidId` ao ser concluída dentro da semana.
+        raidId:
+          type: string
+          format: uuid
+          description: Obrigatório no modo `guild` e recusado no modo `solo`.
 
     StudySessionTransitionRequest:
       type: object
@@ -1042,10 +1057,11 @@ components:
 
     StudySessionSnapshot:
       type: object
-      required: [id, mode, subject, state, plannedDurationSeconds, startedAt, runDeadlineAt, pausedAt, pausedTotalSeconds, durationValidSeconds, remainingSeconds, serverNow, version, endedAt, xpAwarded, terminalReason, discardedReason, canControl]
+      required: [id, mode, raidId, subject, state, plannedDurationSeconds, startedAt, runDeadlineAt, pausedAt, pausedTotalSeconds, durationValidSeconds, remainingSeconds, serverNow, version, endedAt, xpAwarded, terminalReason, discardedReason, canControl]
       properties:
         id: { type: string, format: uuid }
-        mode: { type: string, enum: [solo] }
+        mode: { type: string, enum: [solo, guild] }
+        raidId: { type: [string, "null"], format: uuid, description: A Raid que recebe a Contribuição; null no modo solo }
         subject:
           type: [string, "null"]
           description: Matéria normalizada definida no início; null é Sem matéria. Não muda depois do início.
@@ -1067,6 +1083,7 @@ components:
       example:
         id: 00000000-0000-4000-8000-000000000074
         mode: solo
+        raidId: null
         subject: null
         state: running
         plannedDurationSeconds: 1500
@@ -1236,7 +1253,7 @@ components:
 
     ActiveRaid:
       type: object
-      required: [id, mission, reward, goalXp, progressXp, startsAt, endsAt, status, me]
+      required: [id, mission, reward, goalXp, progressXp, goalReachedAt, startsAt, endsAt, status, me]
       properties:
         id: { type: string, format: uuid }
         mission:
@@ -1256,15 +1273,20 @@ components:
             name: { type: string }
             category: { type: string, enum: [avatar, badge, title, accessory] }
         goalXp: { type: integer, description: "Meta coletiva, congelada na criação da Raid" }
-        progressXp: { type: integer }
+        progressXp: { type: integer, description: "Soma das Contribuições; continua subindo depois da Meta batida até endsAt" }
+        goalReachedAt:
+          type: [string, "null"]
+          format: date-time
+          description: A primeira vez que o progresso alcançou a meta (Meta batida). Não muda o status.
         startsAt: { type: string, format: date-time }
         endsAt: { type: string, format: date-time }
         status: { type: string, enum: [active, completed, expired] }
         me:
           type: object
-          required: [participating]
+          required: [participating, contributionXp]
           properties:
             participating: { type: boolean, description: "Se quem consulta já confirmou participação nesta Raid" }
+            contributionXp: { type: integer, minimum: 0, description: "A Contribuição de quem consulta nesta Raid" }
 
     RaidDetail:
       type: object
@@ -1329,7 +1351,7 @@ components:
         application/problem+json:
           schema: { $ref: "#/components/schemas/Problem" }
     StudySessionStartConflict:
-      description: Study Session ativa ou reutilização incompatível de Idempotency-Key.
+      description: Study Session ativa, Raid encerrada no modo Guilda ou reutilização incompatível de Idempotency-Key.
       content:
         application/problem+json:
           schema: { $ref: "#/components/schemas/Problem" }
@@ -1348,7 +1370,15 @@ components:
                 type: https://wise.app/errors/idempotency-key-reused
                 title: ConflictException
                 status: 409
-                detail: Idempotency-Key já foi usada com outra duração ou Matéria
+                detail: Idempotency-Key já foi usada com outra duração, Matéria ou modo
+                instance: /api/v1/sessions
+            raidEnded:
+              summary: A Raid da sessão de modo Guilda já foi encerrada
+              value:
+                type: https://wise.app/errors/raid-ended
+                title: ConflictException
+                status: 409
+                detail: Raid encerrada
                 instance: /api/v1/sessions
     # Keep operation examples local: each RFC 7807 `instance` names its route.
     StudySessionPauseConflict:

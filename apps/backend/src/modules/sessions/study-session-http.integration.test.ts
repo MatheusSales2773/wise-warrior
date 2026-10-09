@@ -62,8 +62,8 @@ describe('Study Session HTTP contract against MySQL', () => {
       { emitToUser: jest.fn() } as unknown as RealtimeGateway,
       users,
     );
-    const start = new StudySessionStartService(dataSource, users);
-    const transitions = new StudySessionTransitionService(dataSource, { now: () => new Date(now) }, progression);
+    const start = new StudySessionStartService(dataSource, users, {} as never);
+    const transitions = new StudySessionTransitionService(dataSource, { now: () => new Date(now) }, progression, {} as never);
     const controllerModule = await Test.createTestingModule({
       controllers: [SessionsController],
       providers: [

@@ -7,6 +7,14 @@ import { getActiveStudySession, getRecentStudySessionSubjects, heartbeatStudySes
 import { STUDY_SESSION_HEARTBEAT_INTERVAL_MS } from '@/features/study-session/use-study-session-heartbeat';
 import { formatRemainingTime, remainingStudySeconds } from '@/features/study-session/timer';
 import { clearCompletionIntent } from '@/features/study-session/completion-intent';
+import { ApiError } from '@/core/api/api-error';
+import { getActiveRaid, getMyGuild, joinRaid, type ActiveRaid, type MyGuild } from '@/features/guild/api';
+
+jest.mock('@/features/guild/api', () => ({
+  getMyGuild: jest.fn(),
+  getActiveRaid: jest.fn(),
+  joinRaid: jest.fn(),
+}));
 
 jest.mock('@/features/study-session/api', () => ({
   STUDY_SESSION_PRESETS: [900, 1500, 3000],
@@ -20,11 +28,14 @@ const getActive = getActiveStudySession as jest.MockedFunction<typeof getActiveS
 const getRecent = getRecentStudySessionSubjects as jest.MockedFunction<typeof getRecentStudySessionSubjects>;
 const heartbeat = heartbeatStudySession as jest.MockedFunction<typeof heartbeatStudySession>;
 const start = startStudySession as jest.MockedFunction<typeof startStudySession>;
+const getMine = getMyGuild as jest.MockedFunction<typeof getMyGuild>;
+const getRaid = getActiveRaid as jest.MockedFunction<typeof getActiveRaid>;
+const joinGuildRaid = joinRaid as jest.MockedFunction<typeof joinRaid>;
 let heartbeatTick: (() => void) | undefined;
 let appStateListeners: Array<(state: AppStateStatus) => void>;
 let heartbeatIntervalId: ReturnType<typeof setInterval> | undefined;
 const snapshot: StudySessionSnapshot = {
-  id: 'study-1', mode: 'solo', subject: null, state: 'running', plannedDurationSeconds: 1500,
+  id: 'study-1', mode: 'solo', raidId: null, subject: null, state: 'running', plannedDurationSeconds: 1500,
   startedAt: '2026-09-22T12:00:00.000Z', runDeadlineAt: '2026-09-22T12:25:00.000Z',
   pausedAt: null, pausedTotalSeconds: 0, durationValidSeconds: 0, remainingSeconds: 1500,
   serverNow: '2026-09-22T12:00:00.000Z', version: 1, endedAt: null, xpAwarded: 0,
@@ -46,6 +57,8 @@ async function renderStudySession() {
 
 beforeEach(() => {
   getRecent.mockResolvedValue([]);
+  getMine.mockResolvedValue(null);
+  getRaid.mockResolvedValue(null);
   heartbeatTick = undefined;
   appStateListeners = [];
   heartbeatIntervalId = undefined;
@@ -370,6 +383,158 @@ describe('Recent Matéria suggestions on the Forja', () => {
     expect(view.queryByText(/recentes/i)).toBeNull();
     expect(view.getAllByRole('button').map((button) => button.props.accessibilityLabel))
       .toEqual(['Iniciar foco', 'Configurar duração']);
+    view.unmount();
+  });
+});
+
+describe('Sessão de guilda on the Forja', () => {
+  // Earlier tests leave past-deadline snapshots behind; each test here starts from an empty Forja.
+  beforeEach(() => clearCompletionIntent());
+  afterEach(() => clearCompletionIntent());
+
+  const mine: MyGuild = {
+    guild: { id: 'g1', name: 'Ordem do Foco', level: 1, memberCount: 3, leader: { userId: 'u1', displayName: 'Ana' } },
+    role: 'member',
+  };
+  const raid = (overrides: Partial<ActiveRaid> = {}): ActiveRaid => ({
+    id: 'raid-1',
+    mission: { slug: 'cerco-ao-grimorio', name: 'Cerco ao Grimório', description: 'Cerque os capítulos.', imageUrl: null },
+    reward: { itemId: 'i1', name: 'Marcador do Grimório', category: 'badge' },
+    goalXp: 1000,
+    progressXp: 0,
+    goalReachedAt: null,
+    startsAt: new Date(Date.now() - 86_400_000).toISOString(),
+    endsAt: new Date(Date.now() + 86_400_000).toISOString(),
+    status: 'active',
+    me: { participating: true, contributionXp: 0 },
+    ...overrides,
+  });
+  const guildSnapshot: StudySessionSnapshot = { ...snapshot, mode: 'guild', raidId: 'raid-1' };
+
+  it('hides the option for a student without a Guild', async () => {
+    getActive.mockResolvedValue(null);
+    const { view } = await renderStudySession();
+    await view.findByTestId('study-session-setup');
+    await waitFor(() => expect(getMine).toHaveBeenCalled());
+
+    expect(view.queryByRole('radio', { name: 'Sessão de guilda' })).toBeNull();
+    view.unmount();
+  });
+
+  it('hides the option when the Guild has no active Raid', async () => {
+    getActive.mockResolvedValue(null);
+    getMine.mockResolvedValue(mine);
+    const { view } = await renderStudySession();
+    await view.findByTestId('study-session-setup');
+    await waitFor(() => expect(getRaid).toHaveBeenCalledWith('g1', expect.anything()));
+
+    expect(view.queryByTestId('study-session-mode')).toBeNull();
+    view.unmount();
+  });
+
+  it('hides the option when the Raid already ended', async () => {
+    getActive.mockResolvedValue(null);
+    getMine.mockResolvedValue(mine);
+    getRaid.mockResolvedValue(raid({ status: 'expired' }));
+    const { view } = await renderStudySession();
+    await view.findByTestId('study-session-setup');
+    await waitFor(() => expect(getRaid).toHaveBeenCalled());
+
+    expect(view.queryByTestId('study-session-mode')).toBeNull();
+    view.unmount();
+  });
+
+  it('starts a Participante in guild mode for the active Raid', async () => {
+    getActive.mockResolvedValue(null);
+    getMine.mockResolvedValue(mine);
+    getRaid.mockResolvedValue(raid());
+    start.mockResolvedValue(guildSnapshot);
+    const { view } = await renderStudySession();
+
+    await view.findByTestId('study-session-mode');
+    const solo = view.getByRole('radio', { name: 'Sessão solo' });
+    expect(solo.props.accessibilityState.checked).toBe(true);
+    await fireEvent.press(view.getByRole('radio', { name: 'Sessão de guilda' }));
+    expect(view.getByTestId('study-session-guild-raid')).toHaveTextContent('O XP desta sessão conta para a Raid Cerco ao Grimório.');
+    await fireEvent.press(view.getByRole('button', { name: 'Iniciar foco' }));
+
+    await waitFor(() => expect(start).toHaveBeenCalledWith(1500, expect.any(String), null, 'raid-1'));
+    expect(joinGuildRaid).not.toHaveBeenCalled();
+    expect(await view.findByText('25 min de foco · Sessão de guilda')).toBeTruthy();
+    view.unmount();
+  });
+
+  it('turns the start into "Participar e iniciar" for a member who has not joined, and joins before starting', async () => {
+    getActive.mockResolvedValue(null);
+    getMine.mockResolvedValue(mine);
+    getRaid.mockResolvedValue(raid({ me: { participating: false, contributionXp: 0 } }));
+    joinGuildRaid.mockResolvedValue(undefined);
+    start.mockResolvedValue(guildSnapshot);
+    const { view } = await renderStudySession();
+
+    await view.findByTestId('study-session-mode');
+    await fireEvent.press(view.getByRole('radio', { name: 'Sessão de guilda' }));
+    expect(view.queryByRole('button', { name: 'Iniciar foco' })).toBeNull();
+    await fireEvent.press(view.getByRole('button', { name: 'Participar e iniciar' }));
+
+    await waitFor(() => expect(start).toHaveBeenCalledWith(1500, expect.any(String), null, 'raid-1'));
+    expect(joinGuildRaid).toHaveBeenCalledWith('raid-1');
+    expect(joinGuildRaid.mock.invocationCallOrder[0]).toBeLessThan(start.mock.invocationCallOrder[0]!);
+    view.unmount();
+  });
+
+  it('keeps solo sessions unchanged for a member of a Guild with a Raid', async () => {
+    getActive.mockResolvedValue(null);
+    getMine.mockResolvedValue(mine);
+    getRaid.mockResolvedValue(raid());
+    start.mockResolvedValue(snapshot);
+    const { view } = await renderStudySession();
+
+    await view.findByTestId('study-session-mode');
+    await fireEvent.press(view.getByRole('button', { name: 'Iniciar foco' }));
+
+    await waitFor(() => expect(start).toHaveBeenCalledWith(1500, expect.any(String), null));
+    view.unmount();
+  });
+
+  it('shows a message and returns to solo mode when the Raid ended before the start (409)', async () => {
+    getActive.mockResolvedValue(null);
+    getMine.mockResolvedValue(mine);
+    getRaid.mockResolvedValue(raid());
+    start.mockRejectedValueOnce(new ApiError('conflict', { status: 409, problemType: 'https://wise.app/errors/raid-ended' }));
+    const { view } = await renderStudySession();
+
+    await view.findByTestId('study-session-mode');
+    await fireEvent.press(view.getByRole('radio', { name: 'Sessão de guilda' }));
+    await fireEvent.press(view.getByRole('button', { name: 'Iniciar foco' }));
+
+    expect(await view.findByTestId('study-session-raid-ended')).toHaveTextContent(/A Raid foi encerrada/);
+    expect(view.queryByText('Não foi possível confirmar o início. Tente novamente.')).toBeNull();
+    await waitFor(() => expect(getRaid).toHaveBeenCalledTimes(2));
+
+    start.mockResolvedValue(snapshot);
+    await fireEvent.press(view.getByRole('button', { name: 'Iniciar foco' }));
+    await waitFor(() => expect(start).toHaveBeenLastCalledWith(1500, expect.any(String), null));
+    const [, guildKey] = start.mock.calls[0]!;
+    const [, soloKey] = start.mock.calls[1]!;
+    expect(soloKey).not.toBe(guildKey);
+    view.unmount();
+  });
+
+  it('keeps guild mode and the usual message for a conflict that is not an ended Raid', async () => {
+    getActive.mockResolvedValue(null);
+    getMine.mockResolvedValue(mine);
+    getRaid.mockResolvedValue(raid());
+    start.mockRejectedValueOnce(new ApiError('conflict', { status: 409, problemType: 'https://wise.app/errors/idempotency-key-reused' }));
+    const { view } = await renderStudySession();
+
+    await view.findByTestId('study-session-mode');
+    await fireEvent.press(view.getByRole('radio', { name: 'Sessão de guilda' }));
+    await fireEvent.press(view.getByRole('button', { name: 'Iniciar foco' }));
+
+    expect(await view.findByText('Não foi possível confirmar o início. Tente novamente.')).toBeTruthy();
+    expect(view.queryByTestId('study-session-raid-ended')).toBeNull();
+    expect(view.getByRole('radio', { name: 'Sessão de guilda' }).props.accessibilityState.checked).toBe(true);
     view.unmount();
   });
 });

@@ -44,6 +44,11 @@ export class Raid {
   @Column({ name: 'ends_at', type: 'datetime' })
   endsAt: Date;
 
+  /** A primeira vez que o progresso alcançou a meta. Não muda o status nem fecha a Raid. */
+  @Column({ name: 'goal_reached_at', type: 'datetime', precision: 3, nullable: true })
+  goalReachedAt: Date | null;
+
+  /** `active` durante a semana; só o fechamento decide `completed` (Meta batida) ou `expired`. */
   @Column({ type: 'varchar', default: 'active' })
   status: RaidStatus;
 }

@@ -1,4 +1,4 @@
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -22,6 +22,9 @@ import { formatRemainingTime, remainingStudySeconds } from './timer';
 import { MAX_SUBJECT_LENGTH, validateSubject, type SubjectValidation } from './subject';
 import { FeedbackMessage } from '@/design-system/components/FeedbackMessage';
 import { dashboardKeys } from '@/features/dashboard/queries';
+import { isApiError } from '@/core/api/api-error';
+import { joinRaid, type ActiveRaid } from '@/features/guild/api';
+import { activeRaidQueryOptions, guildKeys, myGuildQueryOptions } from '@/features/guild/queries';
 import {
   clearCompletionIntent,
   completionIntentCanRetryAt,
@@ -53,6 +56,7 @@ const TRANSITION_COPY: Record<TransitionAction, { status: string; action: string
 };
 
 const STUDY_SESSION_VERSION_CONFLICT = 'https://wise.app/errors/study-session-version-conflict';
+const RAID_ENDED = 'https://wise.app/errors/raid-ended';
 
 function ForgePageGradient() {
   return (
@@ -251,6 +255,56 @@ function RecentSubjectSuggestions({ selectedSubject, disabled, onSelect }: {
   );
 }
 
+type SessionMode = 'solo' | 'guild';
+type ForgeRaid = { guildId: string; raid: ActiveRaid };
+
+/**
+ * The Raid a guild-mode session would contribute to: the active Raid of the user's Guild. Without a
+ * Guild, without a Raid or on any failure there is none and the option stays hidden. A Raid that ends
+ * while cached is caught by the server, which answers the start with 409.
+ */
+function useForgeRaid(): ForgeRaid | null {
+  const mine = useQuery(myGuildQueryOptions());
+  const guildId = mine.data?.guild.id;
+  const raid = useQuery({ ...activeRaidQueryOptions(guildId ?? ''), enabled: guildId !== undefined });
+  if (!guildId || !raid.data || raid.data.status === 'expired') return null;
+  return { guildId, raid: raid.data };
+}
+
+function SessionModeOptions({ mode, disabled, onSelect }: {
+  mode: SessionMode;
+  disabled: boolean;
+  onSelect: (mode: SessionMode) => void;
+}) {
+  const [focusedMode, setFocusedMode] = useState<SessionMode | null>(null);
+  const options: { value: SessionMode; label: string }[] = [
+    { value: 'solo', label: 'Sessão solo' },
+    { value: 'guild', label: 'Sessão de guilda' },
+  ];
+  return (
+    <View accessibilityLabel="Tipo de sessão" accessibilityRole="radiogroup" style={styles.presets} testID="study-session-mode">
+      {options.map((option) => (
+        <Pressable
+          accessibilityLabel={option.label}
+          accessibilityRole="radio"
+          accessibilityState={{ checked: mode === option.value, disabled }}
+          aria-checked={mode === option.value}
+          aria-disabled={disabled}
+          disabled={disabled}
+          key={option.value}
+          onBlur={() => setFocusedMode((current) => (current === option.value ? null : current))}
+          onFocus={() => setFocusedMode(option.value)}
+          onPress={() => onSelect(option.value)}
+          style={[styles.preset, mode === option.value && styles.selected, focusedMode === option.value && Platform.OS === 'web' && controlStyles.webFocus]}
+          testID={`study-session-mode-${option.value}`}
+        >
+          <WiseText variant="label">{option.label}</WiseText>
+        </Pressable>
+      ))}
+    </View>
+  );
+}
+
 function isVersionConflict(error: unknown): boolean {
   if (typeof error !== 'object' || error === null) return false;
   const responseData = (error as { response?: { data?: unknown } }).response?.data;
@@ -266,6 +320,9 @@ export function StudySessionScreen() {
   const queryClient = useQueryClient();
   const [selected, setSelected] = useState<PlannedDurationSeconds>(1500);
   const [subjectInput, setSubjectInput] = useState('');
+  const [sessionMode, setSessionMode] = useState<SessionMode>('solo');
+  const [raidEndedNotice, setRaidEndedNotice] = useState(false);
+  const forgeRaid = useForgeRaid();
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [focusedDuration, setFocusedDuration] = useState<PlannedDurationSeconds | null>(null);
   const [now, setNow] = useState(0);
@@ -317,6 +374,8 @@ export function StudySessionScreen() {
       queryClient.invalidateQueries({ queryKey: dashboardKeys.profile() }),
       queryClient.invalidateQueries({ queryKey: dashboardKeys.recentActivity() }),
       queryClient.invalidateQueries({ queryKey: dashboardKeys.metrics() }),
+      // A guild-mode session may have become a Contribution: the Raid card shows the new progress.
+      ...(result.mode === 'guild' ? [queryClient.invalidateQueries({ queryKey: [...guildKeys.all, 'raid'] })] : []),
     ]);
   }, [queryClient]);
 
@@ -360,7 +419,18 @@ export function StudySessionScreen() {
   }, [observeCompletion]);
 
   const start = useMutation({
-    mutationFn: ({ duration, key, subject }: { duration: PlannedDurationSeconds; key: string; subject: string | null }) => startStudySession(duration, key, subject),
+    mutationFn: async ({ duration, key, subject, guild }: { duration: PlannedDurationSeconds; key: string; subject: string | null; guild: ForgeRaid | null }) => {
+      if (!guild) return startStudySession(duration, key, subject);
+      // "Participar e iniciar": confirm the participation first; joining again is harmless on the server.
+      if (!guild.raid.me.participating) {
+        await joinRaid(guild.raid.id);
+        queryClient.setQueryData<ActiveRaid | null>(
+          guildKeys.raid(guild.guildId),
+          (current) => (current ? { ...current, me: { ...current.me, participating: true } } : current),
+        );
+      }
+      return startStudySession(duration, key, subject, guild.raid.id);
+    },
     onSuccess(snapshot) {
       pendingKey.current = null;
       setSubjectInput('');
@@ -372,7 +442,14 @@ export function StudySessionScreen() {
       // The started Matéria is now the most recent one; a cached list would flash the old order on return.
       queryClient.removeQueries({ queryKey: recentStudySessionSubjectsQueryKey });
     },
-    onError() {
+    onError(error, { guild }) {
+      // The Raid ended before the start: fall back to a solo session. Other conflicts keep the usual handling.
+      if (guild && isApiError(error) && error.problemType === RAID_ENDED) {
+        pendingKey.current = null;
+        setSessionMode('solo');
+        setRaidEndedNotice(true);
+        void queryClient.invalidateQueries({ queryKey: [...guildKeys.all, 'raid'] });
+      }
       void refreshActive();
     },
   });
@@ -543,11 +620,22 @@ export function StudySessionScreen() {
     setSubjectInput(text);
   };
 
+  const guildSession = sessionMode === 'guild' ? forgeRaid : null;
+  const startLabel = guildSession && !guildSession.raid.me.participating ? 'Participar e iniciar' : 'Iniciar foco';
+
+  const changeSessionMode = (mode: SessionMode) => {
+    // Another mode is another start request, so it needs a new key.
+    if (mode !== sessionMode) pendingKey.current = null;
+    setRaidEndedNotice(false);
+    setSessionMode(mode);
+  };
+
   const begin = () => {
     if (subjectValidation.status !== 'valid') return;
     const key = pendingKey.current ?? newIdempotencyKey();
     pendingKey.current = key;
-    start.mutate({ duration: selected, key, subject: subjectValidation.subject });
+    setRaidEndedNotice(false);
+    start.mutate({ duration: selected, key, subject: subjectValidation.subject, guild: guildSession });
   };
 
   const changeSessionState = (action: TransitionAction) => {
@@ -638,7 +726,9 @@ export function StudySessionScreen() {
                 {snapshot.subject ?? NO_SUBJECT_LABEL}
               </Text>
               <Text accessibilityRole="header" allowFontScaling style={styles.stageTitle}>{snapshot.state === 'paused' ? 'Sessão pausada' : 'Sessão em andamento'}</Text>
-              <Text allowFontScaling style={styles.stageMeta}>{snapshot.plannedDurationSeconds / 60} min de foco</Text>
+              <Text allowFontScaling style={styles.stageMeta}>
+                {snapshot.plannedDurationSeconds / 60} min de foco{snapshot.mode === 'guild' ? ' · Sessão de guilda' : ''}
+              </Text>
             </View>
             <View style={styles.stageBody}>
               <ForgeTimer
@@ -806,14 +896,33 @@ export function StudySessionScreen() {
                 selectedSubject={subjectValidation.status === 'valid' ? subjectValidation.subject : null}
               />
             </View>
+            {forgeRaid ? (
+              <View style={styles.subjectSection}>
+                <SessionModeOptions disabled={start.isPending} mode={sessionMode} onSelect={changeSessionMode} />
+                {sessionMode === 'guild' ? (
+                  <Text allowFontScaling style={[styles.cardCopy, { color: theme.color.textSecondary }]} testID="study-session-guild-raid">
+                    {forgeRaid.raid.me.participating
+                      ? `O XP desta sessão conta para a Raid ${forgeRaid.raid.mission.name}.`
+                      : `Você vai confirmar sua participação na Raid ${forgeRaid.raid.mission.name} e começar a sessão.`}
+                  </Text>
+                ) : null}
+              </View>
+            ) : null}
             <View style={[styles.stageActions, width < 450 && styles.stageActionsCompact]}>
               {settingsOpen && !wideLayout ? <DurationSettings selected={selected} focusedDuration={focusedDuration} startPending={start.isPending} onSelect={(duration) => { pendingKey.current = null; setSelected(duration); }} onFocus={setFocusedDuration} onClose={() => setSettingsOpen(false)} inline /> : null}
               <View style={[styles.actionRow, width < 450 && styles.actionRowCompact]}>
                 <View style={styles.actionButtonPlaceholder} />
-                <ForgeAction icon="play" primary label="Iniciar foco" loading={start.isPending} disabled={subjectValidation.status !== 'valid'} onPress={begin} testID="study-session-start" />
+                <ForgeAction icon="play" primary label={startLabel} loading={start.isPending} disabled={subjectValidation.status !== 'valid'} onPress={begin} testID="study-session-start" />
                 <ForgeAction icon="settings-outline" iconOnly label="Configurar duração" expanded={settingsOpen} onPress={() => setSettingsOpen((open) => !open)} />
               </View>
-              {start.isError ? <WiseText color="feedbackDanger" variant="body">Não foi possível confirmar o início. Tente novamente.</WiseText> : null}
+              {raidEndedNotice ? (
+                <FeedbackMessage
+                  variant="error"
+                  title="A Raid foi encerrada"
+                  message="Não foi possível iniciar a sessão de guilda. Você pode iniciar uma sessão solo."
+                  testID="study-session-raid-ended"
+                />
+              ) : start.isError ? <WiseText color="feedbackDanger" variant="body">Não foi possível confirmar o início. Tente novamente.</WiseText> : null}
             </View>
           </WiseCard>
           <View style={[styles.sideColumn, wideLayout && styles.sideColumnWide]}>

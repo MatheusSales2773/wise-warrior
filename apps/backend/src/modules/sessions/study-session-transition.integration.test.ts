@@ -89,7 +89,7 @@ describe('Study Session transitions against MySQL', () => {
       {} as ProgressionService, // the profile read is not exercised here
     );
     progression = new ProgressionService(dataSource.getRepository(Character), realtime as unknown as RealtimeGateway, users);
-    service = new StudySessionTransitionService(dataSource, { now: () => new Date(now) }, progression);
+    service = new StudySessionTransitionService(dataSource, { now: () => new Date(now) }, progression, {} as never);
   });
 
   afterEach(async () => {
@@ -420,7 +420,7 @@ describe('Study Session transitions against MySQL', () => {
     });
 
     const startService = new StudySessionStartService(
-      dataSource!, new UsersService({} as never, {} as never, {} as never, {} as never),
+      dataSource!, new UsersService({} as never, {} as never, {} as never, {} as never), {} as never,
     );
     const nextSession = await startService.start(userId, authSessionId, { plannedDurationSeconds: 900 }, 'start-after-stop');
     expect(nextSession).toMatchObject({ state: 'running', mode: 'solo', subject: null, canControl: true });

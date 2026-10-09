@@ -20,6 +20,7 @@ const RETRYABLE: ReadonlySet<ApiErrorCategory> = new Set(['network', 'server']);
 export type ApiErrorOptions = {
   status?: number;
   sessionRevoked?: boolean;
+  problemType?: string;
 };
 
 export class ApiError extends Error {
@@ -27,6 +28,8 @@ export class ApiError extends Error {
   readonly status?: number;
   readonly retryable: boolean;
   readonly sessionRevoked: boolean;
+  /** The problem+json `type`: a stable identifier that tells apart failures sharing a status. */
+  readonly problemType?: string;
 
   constructor(category: ApiErrorCategory, options: ApiErrorOptions = {}) {
     super(`ApiError:${category}`);
@@ -35,6 +38,7 @@ export class ApiError extends Error {
     this.status = options.status;
     this.retryable = RETRYABLE.has(category);
     this.sessionRevoked = options.sessionRevoked ?? false;
+    this.problemType = options.problemType;
   }
 }
 
@@ -56,7 +60,7 @@ export function isCancelled(error: unknown): boolean {
 
 /**
  * Converte falhas de transporte em categorias sem expor o `detail` do
- * problem+json. A UI usa somente a taxonomia pública.
+ * problem+json. A UI usa somente a taxonomia pública e o `type` estável.
  */
 export function toApiError(error: unknown, options: ClassifyOptions = {}): ApiError {
   if (isApiError(error)) return error;
@@ -76,7 +80,13 @@ export function toApiError(error: unknown, options: ClassifyOptions = {}): ApiEr
 
   if (status === 400) return new ApiError('validation', { status });
   if (status === 401) return new ApiError(options.unauthorized ?? 'credentials', { status });
-  if (status === 409) return new ApiError('conflict', { status });
+  if (status === 409) return new ApiError('conflict', { status, problemType: problemTypeOf(response.data) });
   if (status >= 500) return new ApiError('server', { status });
   return new ApiError('unexpected', { status });
+}
+
+function problemTypeOf(body: unknown): string | undefined {
+  if (typeof body !== 'object' || body === null) return undefined;
+  const type = (body as { type?: unknown }).type;
+  return typeof type === 'string' ? type : undefined;
 }
