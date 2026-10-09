@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { forwardRef, Module } from '@nestjs/common';
 import { JwtModule } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
 import { TypeOrmModule } from '@nestjs/typeorm';
@@ -11,12 +11,15 @@ import { Session } from './entities/session.entity';
 import { RefreshTokenHistory } from './entities/refresh-token-history.entity';
 import { User } from '../users/entities/user.entity';
 import { Character } from '../progression/entities/character.entity';
+import { UsersModule } from '../users/users.module';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([User, Character, Session, RefreshTokenHistory]),
     PassportModule,
     JwtModule.register({}),
+    // Ciclo só entre módulos (Auth → Users → Progression → Realtime → Auth); os providers não se repetem nele.
+    forwardRef(() => UsersModule),
   ],
   controllers: [AuthController, NativeAuthController],
   providers: [AuthService, JwtStrategy, RejectBrowserOriginGuard],

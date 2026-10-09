@@ -5,8 +5,9 @@ import { useAuth } from '@/core/auth/auth-context';
 import { FeedbackMessage, ProgressBar, Screen, WiseButton, WiseText, isDesktopLayout, theme } from '@/design-system';
 import { profileQueryOptions, sessionMetricsQueryOptions } from '@/features/dashboard/queries';
 import { CharacterPanel, CharacterStats } from './character-panel';
+import { CosmeticsCatalog } from './cosmetics-catalog';
 import { DevicesContent } from './devices-tab';
-import { deviceSessionsQueryOptions } from './queries';
+import { cosmeticsCatalogQueryOptions, deviceSessionsQueryOptions } from './queries';
 import { ProfileTabs, type ProfileTab } from './profile-tabs';
 
 function ComingSoon({ body, testID, title }: { body: string; testID: string; title: string }) {
@@ -17,18 +18,6 @@ function ComingSoon({ body, testID, title }: { body: string; testID: string; tit
     </View>
   );
 }
-
-const cosmeticsTab: ProfileTab = {
-  id: 'cosmeticos',
-  label: 'Cosméticos',
-  content: (
-    <ComingSoon
-      body="Em breve você verá aqui o Catálogo e o Inventário do seu Character."
-      testID="profile-cosmetics-soon"
-      title="Cosméticos em breve"
-    />
-  ),
-};
 
 const companionTab: ProfileTab = {
   id: 'companheiro',
@@ -45,6 +34,7 @@ const companionTab: ProfileTab = {
 export function ProfileScreen() {
   const profile = useQuery(profileQueryOptions());
   const devices = useQuery(deviceSessionsQueryOptions());
+  const cosmeticsCatalog = useQuery(cosmeticsCatalogQueryOptions());
   const metrics = useQuery(sessionMetricsQueryOptions());
   const { sessionId } = useAuth();
   const { width } = useWindowDimensions();
@@ -52,7 +42,7 @@ export function ProfileScreen() {
   const refresh = async () => {
     setRefreshing(true);
     try {
-      await Promise.all([profile.refetch(), devices.refetch(), metrics.refetch()]);
+      await Promise.all([profile.refetch(), cosmeticsCatalog.refetch(), devices.refetch(), metrics.refetch()]);
     } finally {
       setRefreshing(false);
     }
@@ -96,7 +86,7 @@ export function ProfileScreen() {
         <View style={styles.column}>
           <ProfileTabs
             tabs={[
-              cosmeticsTab,
+              { id: 'cosmeticos', label: 'Cosméticos', content: <CosmeticsCatalog level={user.level} query={cosmeticsCatalog} /> },
               companionTab,
               { id: 'dispositivos', label: 'Dispositivos', content: <DevicesContent currentSessionId={sessionId} query={devices} /> },
             ]}

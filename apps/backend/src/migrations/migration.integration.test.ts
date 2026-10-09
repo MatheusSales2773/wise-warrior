@@ -10,6 +10,7 @@ import { AddSessionRefreshTokenHistory1788458460000 } from './1788458460000-add-
 import { AddStudySessionRecentIndex1788458520000 } from './1788458520000-add-study-session-recent-index';
 import { AddCanonicalStudySessionStart1788458760000 } from './1788458760000-add-canonical-study-session-start';
 import { AddStudySessionPauseResume1788458880000 } from './1788458880000-add-study-session-pause-resume';
+import { SeedInitialCosmeticItems1788459240000 } from './1788459240000-seed-initial-cosmetic-items';
 import { StudySession } from '../modules/sessions/entities/study-session.entity';
 
 const expectedTables = [
@@ -359,7 +360,15 @@ describe('TypeORM migrations against an empty MySQL schema', () => {
       'AddStudySessionEndedAtPrecision1788459060000',
       'AddStudySessionStartReceiptSubject1788459120000',
       'EnforceSingleGuildPerUser1788459180000',
+      'SeedInitialCosmeticItems1788459240000',
     ]);
+
+    await dataSource.undoLastMigration();
+    const seedRevertRows = await rows(
+      database!.admin,
+      `SELECT COUNT(*) AS total FROM ${database!.identifier}.cosmetic_items`,
+    );
+    expect(Number(seedRevertRows[0]?.total)).toBe(0);
 
     await dataSource.undoLastMigration();
     const singleGuildRevertRows = await rows(
@@ -543,7 +552,7 @@ describe('TypeORM migrations against an empty MySQL schema', () => {
       { idempotency_key: 'rolling-transition-key', command_kind: 'resume' },
     ]);
 
-    for (let step = 0; step < 4; step += 1) await dataSource.undoLastMigration();
+    for (let step = 0; step < 5; step += 1) await dataSource.undoLastMigration();
     const leftoverTriggers = await rows(
       database.admin,
       `SELECT TRIGGER_NAME FROM information_schema.TRIGGERS
@@ -668,6 +677,7 @@ describe('TypeORM migrations against an empty MySQL schema', () => {
     expect(receiptsWithSubject).toEqual([{ idempotency_key: 'solo-start-key', subject: 'Cálculo II' }]);
 
     // M6 revert: only the receipt column goes away; every persisted Matéria (including legacy Guild rows) stays.
+    await dataSource.undoLastMigration(); // cosmetic seed, which sits above the single-guild index
     await dataSource.undoLastMigration(); // single-guild index, which sits above the M6 receipt subject
     await dataSource.undoLastMigration();
     const receiptColumnsAfterRevert = await rows(
@@ -698,7 +708,7 @@ describe('TypeORM migrations against an empty MySQL schema', () => {
     );
     expect(receiptsAfterReapply).toEqual([{ idempotency_key: 'solo-start-key', subject: null }]);
 
-    for (let step = 0; step < 6; step += 1) await dataSource.undoLastMigration();
+    for (let step = 0; step < 7; step += 1) await dataSource.undoLastMigration();
     const downgradedHistory = await rows(
       database.admin,
       `SELECT id, subject, mode, raid_id FROM ${database.identifier}.study_sessions ORDER BY id`,
@@ -789,7 +799,7 @@ describe('TypeORM migrations against an empty MySQL schema', () => {
     );
     expect(leftoverArchives).toHaveLength(0);
 
-    for (let step = 0; step < 9; step += 1) await dataSource.undoLastMigration();
+    for (let step = 0; step < 10; step += 1) await dataSource.undoLastMigration();
     const remainingSchemaTables = await rows(
       database.admin,
       `SELECT TABLE_NAME FROM information_schema.TABLES
@@ -801,5 +811,94 @@ describe('TypeORM migrations against an empty MySQL schema', () => {
       'study_session_start_receipts_downgrade_archive',
       'study_session_transition_receipts_downgrade_archive',
     ]);
+  });
+
+  it('seeds the Catalog, backfills existing Characters without re-equipping, and reverts the seed', async () => {
+    database = await createIntegrationDatabase('wise_migrations_test');
+    initialDataSource = new DataSource(database.options(
+      (APPLICATION_MIGRATIONS as unknown[]).filter((migration) => migration !== SeedInitialCosmeticItems1788459240000) as typeof APPLICATION_MIGRATIONS,
+    ));
+    await initialDataSource.initialize();
+    await initialDataSource.runMigrations();
+    const insertUser = async (id: string, level: number) => {
+      await database!.admin.query(
+        `INSERT INTO ${database!.identifier}.users (id, email, password_hash, display_name, plan_tier)
+         VALUES (?, ?, 'hash', ?, 'free')`,
+        [id, `${id}@example.com`, id],
+      );
+      await database!.admin.query(
+        `INSERT INTO ${database!.identifier}.characters (id, user_id, level, xp_total) VALUES (?, ?, ?, 0)`,
+        [`${id}-character`, id, level],
+      );
+    };
+    await insertUser('veteran', 13);
+    await insertUser('newcomer', 1);
+    await insertUser('collector', 4);
+    // A title equipped before the seed must stay the only equipped title.
+    await database.admin.query(
+      `INSERT INTO ${database.identifier}.cosmetic_items (id, category, name, unlock_condition, requires_premium)
+       VALUES ('legacy-title', 'title', 'Veterano', 'raid:legacy', 0)`,
+    );
+    await database.admin.query(
+      `INSERT INTO ${database.identifier}.user_cosmetic_items (id, user_id, cosmetic_item_id, equipped)
+       VALUES ('legacy-row', 'veteran', 'legacy-title', 1)`,
+    );
+    await initialDataSource.destroy();
+    initialDataSource = undefined;
+
+    dataSource = new DataSource(database.options(APPLICATION_MIGRATIONS));
+    await dataSource.initialize();
+    await dataSource.runMigrations();
+
+    const catalog = await rows(
+      database.admin,
+      `SELECT category, name, unlock_condition, requires_premium FROM ${database.identifier}.cosmetic_items
+       WHERE id <> 'legacy-title' ORDER BY id`,
+    );
+    expect(catalog.map((row) => [row.category, row.name, row.unlock_condition, Number(row.requires_premium)])).toEqual([
+      ['avatar', 'Capuz do Erudito', 'level:1', 0],
+      ['title', 'Aprendiz', 'level:1', 0],
+      ['badge', 'Madrugador', 'level:3', 0],
+      ['title', 'Estudante Crepuscular', 'level:5', 0],
+      ['avatar', 'Manto da Vigília', 'level:8', 0],
+      ['badge', 'Cem Sessões', 'level:12', 0],
+      ['accessory', 'Selo dos Madrugadores', 'raid:*', 0],
+      ['title', 'Mestre da Aurora', 'level:15', 1],
+    ]);
+
+    const inventory = await rows(
+      database.admin,
+      `SELECT uci.user_id, ci.name, uci.equipped FROM ${database.identifier}.user_cosmetic_items uci
+       JOIN ${database.identifier}.cosmetic_items ci ON ci.id = uci.cosmetic_item_id
+       ORDER BY uci.user_id, ci.id`,
+    );
+    const owned = (userId: string) => inventory
+      .filter((row) => row.user_id === userId)
+      .map((row) => [row.name, Number(row.equipped)]);
+    expect(owned('veteran')).toEqual([
+      ['Capuz do Erudito', 1],
+      ['Aprendiz', 0],
+      ['Madrugador', 0],
+      ['Estudante Crepuscular', 0],
+      ['Manto da Vigília', 0],
+      ['Cem Sessões', 0],
+      ['Veterano', 1],
+    ]);
+    expect(owned('newcomer')).toEqual([['Capuz do Erudito', 1], ['Aprendiz', 1]]);
+    expect(owned('collector')).toEqual([['Capuz do Erudito', 1], ['Aprendiz', 1], ['Madrugador', 0]]);
+
+    await dataSource.undoLastMigration();
+    const afterRevert = await rows(
+      database.admin,
+      `SELECT uci.user_id, uci.cosmetic_item_id, uci.equipped FROM ${database.identifier}.user_cosmetic_items uci`,
+    );
+    expect(afterRevert.map((row) => [row.user_id, row.cosmetic_item_id, Number(row.equipped)])).toEqual([
+      ['veteran', 'legacy-title', 1],
+    ]);
+    const catalogAfterRevert = await rows(
+      database.admin,
+      `SELECT id FROM ${database.identifier}.cosmetic_items`,
+    );
+    expect(catalogAfterRevert).toEqual([{ id: 'legacy-title' }]);
   });
 });
