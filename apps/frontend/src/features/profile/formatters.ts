@@ -20,30 +20,33 @@ export function describeUnlockCondition(condition: UnlockCondition): string {
   return condition.slug === '*' ? 'Conclua uma Raid com sua Guilda' : `Conclua a Raid ${condition.slug}`;
 }
 
-function displayRank(item: CatalogCosmeticItem): [number, number] {
-  if (item.equipped) return [0, 0];
-  if (item.unlocked) return [1, 0];
-  if (item.unlockCondition.type === 'level') return [2, item.unlockCondition.level];
-  return [3, 0];
+export type CosmeticItemState = 'equipped' | 'unlocked' | 'lockedByLevel' | 'lockedByRaid';
+
+export function cosmeticItemState(item: CatalogCosmeticItem): CosmeticItemState {
+  if (item.equipped) return 'equipped';
+  if (item.unlocked) return 'unlocked';
+  return item.unlockCondition.type === 'level' ? 'lockedByLevel' : 'lockedByRaid';
+}
+
+const STATE_ORDER: Record<CosmeticItemState, number> = { equipped: 0, unlocked: 1, lockedByLevel: 2, lockedByRaid: 3 };
+
+function conditionLevel(item: CatalogCosmeticItem): number {
+  return item.unlockCondition.type === 'level' ? item.unlockCondition.level : 0;
 }
 
 /** Ordem dentro de uma categoria: equipado, desbloqueados, bloqueados pelo nível da condição e, por último, os de Raid. */
 export function orderCategoryItems(items: CatalogCosmeticItem[]): CatalogCosmeticItem[] {
-  return [...items].sort((a, b) => {
-    const [groupA, levelA] = displayRank(a);
-    const [groupB, levelB] = displayRank(b);
-    return groupA - groupB || levelA - levelB;
-  });
+  return [...items].sort((a, b) =>
+    STATE_ORDER[cosmeticItemState(a)] - STATE_ORDER[cosmeticItemState(b)]
+    || (cosmeticItemState(a) === 'lockedByLevel' ? conditionLevel(a) - conditionLevel(b) : 0));
 }
 
 /** Meta de uma categoria sem item desbloqueado (UC04 A01): quanto falta para o próximo item por nível. */
 export function describeNextUnlock(items: CatalogCosmeticItem[], level: number): string {
-  const next = items
-    .flatMap((item) => (item.unlockCondition.type === 'level' ? [{ name: item.name, level: item.unlockCondition.level }] : []))
-    .filter((item) => item.level > level)
-    .sort((a, b) => a.level - b.level)[0];
+  const next = orderCategoryItems(items).find((item) => cosmeticItemState(item) === 'lockedByLevel');
   if (!next) return 'Os itens desta categoria são conquistados em Raids com sua Guilda.';
-  const missing = next.level - level;
+  const missing = conditionLevel(next) - level;
+  if (missing <= 0) return `${next.name} já está liberado para o seu nível.`;
   return missing === 1
     ? `Falta 1 nível para desbloquear ${next.name}.`
     : `Faltam ${missing} níveis para desbloquear ${next.name}.`;

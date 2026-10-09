@@ -18,17 +18,7 @@ import { CosmeticItem } from './entities/cosmetic-item.entity';
 import { User } from './entities/user.entity';
 import { UserCosmeticItem } from './entities/user-cosmetic-item.entity';
 import { UsersController } from './users.controller';
-import { UsersService } from './users.service';
-
-interface CatalogItem {
-  id: string;
-  category: string;
-  name: string;
-  requiresPremium: boolean;
-  unlocked: boolean;
-  equipped: boolean;
-  unlockCondition: { type: 'level'; level: number } | { type: 'raid'; slug: string };
-}
+import { UsersService, type CatalogCosmeticItem } from './users.service';
 
 describe('Cosmetics Catalog HTTP contract against MySQL', () => {
   jest.setTimeout(30_000);
@@ -46,7 +36,10 @@ describe('Cosmetics Catalog HTTP contract against MySQL', () => {
     headers: as === null ? {} : { authorization: 'Bearer integration-token', 'x-test-user-id': as },
   });
 
-  const summarize = (items: CatalogItem[]) => items.map((item) => [item.name, item.unlocked, item.equipped]);
+  /** The UI owns the display order, so the contract is compared by name. */
+  const summarize = (items: CatalogCosmeticItem[]) => items
+    .map((item) => [item.name, item.unlocked, item.equipped])
+    .sort(([a], [b]) => String(a).localeCompare(String(b), 'pt-BR'));
 
   beforeEach(async () => {
     database = await createIntegrationDatabase('wise_cosmetics_http');
@@ -57,14 +50,6 @@ describe('Cosmetics Catalog HTTP contract against MySQL', () => {
     const config = {
       get: (key: string) => (key === 'JWT_ACCESS_SECRET' ? 'integration-access-secret' : undefined),
     } as ConfigService;
-    auth = new AuthService(
-      dataSource.getRepository(User),
-      dataSource.getRepository(Character),
-      dataSource.getRepository(Session),
-      new JwtService(),
-      config,
-      dataSource,
-    );
     users = new UsersService(
       dataSource.getRepository(User),
       dataSource.getRepository(UserCosmeticItem),
@@ -73,6 +58,15 @@ describe('Cosmetics Catalog HTTP contract against MySQL', () => {
         dataSource.getRepository(Character),
         { emitToUser: jest.fn() } as unknown as RealtimeGateway,
       ),
+    );
+    auth = new AuthService(
+      dataSource.getRepository(User),
+      dataSource.getRepository(Character),
+      dataSource.getRepository(Session),
+      new JwtService(),
+      config,
+      dataSource,
+      users,
     );
 
     const moduleRef = await Test.createTestingModule({
@@ -122,14 +116,14 @@ describe('Cosmetics Catalog HTTP contract against MySQL', () => {
     const response = await getCatalog(id);
 
     expect(response.status).toBe(200);
-    const catalog = await response.json() as CatalogItem[];
+    const catalog = await response.json() as CatalogCosmeticItem[];
     expect(summarize(catalog)).toEqual([
-      ['Capuz do Erudito', true, true],
-      ['Manto da Vigília', false, false],
-      ['Madrugador', false, false],
-      ['Cem Sessões', false, false],
       ['Aprendiz', true, true],
+      ['Capuz do Erudito', true, true],
+      ['Cem Sessões', false, false],
       ['Estudante Crepuscular', false, false],
+      ['Madrugador', false, false],
+      ['Manto da Vigília', false, false],
       ['Mestre da Aurora', false, false],
       ['Selo dos Madrugadores', false, false],
     ]);
@@ -149,6 +143,22 @@ describe('Cosmetics Catalog HTTP contract against MySQL', () => {
     }));
   });
 
+  it('leaves an item with a malformed unlock condition out of the Catalog instead of failing it', async () => {
+    await dataSource!.getRepository(User).insert({
+      id: veteran, email: 'veterano@example.com', passwordHash: 'hash', displayName: 'Veterano', planTier: 'free',
+    });
+    await dataSource!.getRepository(CosmeticItem).insert({
+      category: 'badge', name: 'Quebrado', unlockCondition: 'achievement:x', requiresPremium: false,
+    });
+
+    const response = await getCatalog(veteran);
+
+    expect(response.status).toBe(200);
+    const catalog = await response.json() as CatalogCosmeticItem[];
+    expect(catalog).toHaveLength(8);
+    expect(catalog.map((item) => item.name)).not.toContain('Quebrado');
+  });
+
   it('unlocks every item up to the character level without duplicating it when the rule runs again', async () => {
     await dataSource!.getRepository(User).insert({
       id: veteran, email: 'veterano@example.com', passwordHash: 'hash', displayName: 'Veterano', planTier: 'free',
@@ -159,17 +169,22 @@ describe('Cosmetics Catalog HTTP contract against MySQL', () => {
       await dataSource!.transaction((manager) => users.unlockCosmeticItems(manager, veteran, 12));
     }
 
-    const catalog = await (await getCatalog(veteran)).json() as CatalogItem[];
+    const catalog = await (await getCatalog(veteran)).json() as CatalogCosmeticItem[];
     expect(summarize(catalog)).toEqual([
-      ['Capuz do Erudito', true, false],
-      ['Manto da Vigília', true, false],
-      ['Madrugador', true, false],
-      ['Cem Sessões', true, false],
       ['Aprendiz', true, false],
+      ['Capuz do Erudito', true, false],
+      ['Cem Sessões', true, false],
       ['Estudante Crepuscular', true, false],
+      ['Madrugador', true, false],
+      ['Manto da Vigília', true, false],
       ['Mestre da Aurora', false, false],
       ['Selo dos Madrugadores', false, false],
     ]);
     expect(await dataSource!.getRepository(UserCosmeticItem).count({ where: { userId: veteran } })).toBe(6);
+
+    // Tolerating the repeated (user + item) row must not hide other failures, such as an unknown user.
+    await expect(dataSource!.transaction((manager) => users.unlockCosmeticItems(
+      manager, '00000000-0000-4000-8000-00000000dead', 3,
+    ))).rejects.toThrow();
   });
 });

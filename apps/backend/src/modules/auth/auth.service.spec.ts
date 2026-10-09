@@ -59,6 +59,7 @@ function serviceWithTransaction(
       jwt as never,
       config as never,
       dataSource as never,
+      {} as never,
     ),
     dataSource,
     manager,
@@ -295,6 +296,7 @@ describe('AuthService.issueSession', () => {
       jwt as never,
       config as never,
       dataSource as never,
+      {} as never,
     );
     return { dataSource, manager, service, users, jwt };
   }
@@ -406,6 +408,7 @@ describe('AuthService.register', () => {
         return undefined;
       }),
     };
+    const usersService = { grantStarterInventory: jest.fn().mockResolvedValue(undefined) };
     const service = new AuthService(
       users as never,
       characters as never,
@@ -413,13 +416,14 @@ describe('AuthService.register', () => {
       jwt as never,
       config as never,
       dataSource as never,
+      usersService as never,
     );
 
-    return { service, users, characters, sessions, dataSource, jwt };
+    return { service, users, characters, sessions, dataSource, jwt, manager, usersService };
   }
 
   it('persists User, Character and Session atomically with only a password hash', async () => {
-    const { service, users, characters, sessions, dataSource, jwt } = registrationService();
+    const { service, users, characters, sessions, dataSource, jwt, manager, usersService } = registrationService();
 
     const tokens = await service.register({
       email: 'hero@wise.app',
@@ -432,6 +436,7 @@ describe('AuthService.register', () => {
     expect(String(persisted.passwordHash)).toMatch(/^\$argon2id\$/);
     expect(JSON.stringify(persisted)).not.toContain('super-secret');
     expect(characters.save).toHaveBeenCalledWith({ userId: 'user-1', level: 1, xpTotal: 0 });
+    expect(usersService.grantStarterInventory).toHaveBeenCalledWith(manager, 'user-1');
     expect(sessions.save).toHaveBeenCalledWith(
       expect.objectContaining({ userId: 'user-1', deviceLabel: 'Wise Web' }),
     );

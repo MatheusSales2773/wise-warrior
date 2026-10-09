@@ -23,7 +23,7 @@ export type CatalogCosmeticItem = {
   unlockCondition: UnlockCondition;
 };
 
-export async function listMyCosmetics({ signal }: { signal?: AbortSignal } = {}): Promise<CatalogCosmeticItem[]> {
+export async function listCosmeticsCatalog({ signal }: { signal?: AbortSignal } = {}): Promise<CatalogCosmeticItem[]> {
   const response = await getAuthenticatedHttpClient().get<CatalogCosmeticItem[]>('/users/me/cosmetics', { signal });
   return response.data;
 }

@@ -1,6 +1,7 @@
 import {
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -9,8 +10,12 @@ import { User } from './entities/user.entity';
 import { ProgressionService } from '../progression/progression.service';
 import { CosmeticCategory, CosmeticItem } from './entities/cosmetic-item.entity';
 import { UserCosmeticItem } from './entities/user-cosmetic-item.entity';
-import { parseUnlockCondition, UnlockCondition } from './domain/unlock-condition';
-import { unlockCosmeticItems } from './cosmetic-unlocks';
+import {
+  isStarterItem,
+  isUnlockedAtLevel,
+  parseUnlockCondition,
+  UnlockCondition,
+} from './domain/unlock-condition';
 
 export interface UserProfile {
   id: string;
@@ -24,7 +29,7 @@ export interface UserProfile {
   title: string | null;
 }
 
-export interface CatalogItem {
+export interface CatalogCosmeticItem {
   id: string;
   category: CosmeticCategory;
   name: string;
@@ -34,18 +39,10 @@ export interface CatalogItem {
   unlockCondition: UnlockCondition;
 }
 
-const CATEGORY_ORDER: CosmeticCategory[] = ['avatar', 'badge', 'title', 'accessory'];
-
-/** Ordem estável do Catálogo: categoria, depois condições de nível crescentes e, por último, as de Raid. */
-function catalogOrder(a: CatalogItem, b: CatalogItem): number {
-  const rank = (condition: UnlockCondition) => (condition.type === 'level' ? condition.level : Number.MAX_SAFE_INTEGER);
-  return CATEGORY_ORDER.indexOf(a.category) - CATEGORY_ORDER.indexOf(b.category)
-    || rank(a.unlockCondition) - rank(b.unlockCondition)
-    || a.name.localeCompare(b.name, 'pt-BR');
-}
-
 @Injectable()
 export class UsersService {
+  private readonly logger = new Logger(UsersService.name);
+
   constructor(
     @InjectRepository(User) private readonly users: Repository<User>,
     @InjectRepository(UserCosmeticItem)
@@ -64,29 +61,74 @@ export class UsersService {
     return user !== null;
   }
 
-  /** Regra de Desbloqueio por nível, na transação de quem chama (criação do Character e level-up). */
-  unlockCosmeticItems(manager: EntityManager, userId: string, level: number): Promise<void> {
-    return unlockCosmeticItems(manager, userId, level);
+  /**
+   * Regra de Desbloqueio: concede todo Cosmetic Item cuja condição de nível seja
+   * ≤ `level` e que ainda não esteja no Inventário. Roda na transação de quem
+   * chama e é idempotente pelo índice único (usuário + item).
+   */
+  async unlockCosmeticItems(manager: EntityManager, userId: string, level: number): Promise<void> {
+    const unlocked = (await this.readCatalog(manager.getRepository(CosmeticItem)))
+      .filter(({ condition }) => isUnlockedAtLevel(condition, level));
+    if (unlocked.length === 0) return;
+    await manager
+      .createQueryBuilder()
+      .insert()
+      .into(UserCosmeticItem)
+      .values(unlocked.map(({ item }) => ({ userId, cosmeticItemId: item.id, equipped: false })))
+      // Só a linha repetida (usuário + item) é tolerada; qualquer outro erro continua sendo erro.
+      .orUpdate(['cosmetic_item_id'], ['user_id', 'cosmetic_item_id'])
+      .execute();
   }
 
-  /** O Catálogo inteiro, com o estado de cada item no Inventário do usuário. */
-  async listCatalog(userId: string): Promise<CatalogItem[]> {
+  /** Inventário de um Character recém-criado: os Itens iniciais, já equipados. */
+  async grantStarterInventory(manager: EntityManager, userId: string): Promise<void> {
+    await this.unlockCosmeticItems(manager, userId, 1);
+    const inventory = manager.getRepository(UserCosmeticItem);
+    const starters = (await inventory.find({ where: { userId }, relations: ['cosmeticItem'] }))
+      .filter((row) => {
+        const condition = parseUnlockCondition(row.cosmeticItem.unlockCondition);
+        return condition !== null && isStarterItem(condition);
+      });
+    const equippedCategories = new Set<CosmeticCategory>();
+    for (const starter of starters) {
+      // No máximo um item equipado por categoria, mesmo que o Catálogo ganhe outro Item inicial nela.
+      if (equippedCategories.has(starter.cosmeticItem.category)) continue;
+      equippedCategories.add(starter.cosmeticItem.category);
+      await inventory.update({ id: starter.id }, { equipped: true });
+    }
+  }
+
+  /** O Catálogo inteiro, com o estado de cada item no Inventário do usuário. A interface define a ordem. */
+  async listCatalog(userId: string): Promise<CatalogCosmeticItem[]> {
     const [catalog, inventory] = await Promise.all([
-      this.cosmeticItems.find(),
+      this.readCatalog(this.cosmeticItems),
       this.userCosmetics.find({ where: { userId } }),
     ]);
     const owned = new Map(inventory.map((row) => [row.cosmeticItemId, row]));
-    return catalog
-      .map((item) => ({
-        id: item.id,
-        category: item.category,
-        name: item.name,
-        requiresPremium: item.requiresPremium,
-        unlocked: owned.has(item.id),
-        equipped: owned.get(item.id)?.equipped ?? false,
-        unlockCondition: parseUnlockCondition(item.unlockCondition),
-      }))
-      .sort(catalogOrder);
+    return catalog.map(({ item, condition }) => ({
+      id: item.id,
+      category: item.category,
+      name: item.name,
+      requiresPremium: item.requiresPremium,
+      unlocked: owned.has(item.id),
+      equipped: owned.get(item.id)?.equipped ?? false,
+      unlockCondition: condition,
+    }));
+  }
+
+  /** Itens com Condição de desbloqueio fora do formato ficam fora do Catálogo, sem derrubar o resto. */
+  private async readCatalog(
+    repository: Repository<CosmeticItem>,
+  ): Promise<Array<{ item: CosmeticItem; condition: UnlockCondition }>> {
+    const catalog = await repository.find();
+    return catalog.flatMap((item) => {
+      const condition = parseUnlockCondition(item.unlockCondition);
+      if (condition === null) {
+        this.logger.warn(`Cosmetic Item ${item.id} ignorado: condição de desbloqueio inválida "${item.unlockCondition}"`);
+        return [];
+      }
+      return [{ item, condition }];
+    });
   }
 
   async getProfile(userId: string): Promise<UserProfile> {

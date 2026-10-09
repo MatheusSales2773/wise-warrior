@@ -1,8 +1,8 @@
 import { queryOptions } from '@tanstack/react-query';
-import { listMyCosmetics, listMyDeviceSessions } from './api';
+import { listCosmeticsCatalog, listMyDeviceSessions } from './api';
 
 export const profileKeys = {
-  cosmetics: () => ['profile', 'cosmetics'] as const,
+  cosmeticsCatalog: () => ['profile', 'cosmetics-catalog'] as const,
   devices: () => ['profile', 'devices'] as const,
 };
 
@@ -13,9 +13,9 @@ export const deviceSessionsQueryOptions = () => queryOptions({
   retry: false,
 });
 
-export const cosmeticsQueryOptions = () => queryOptions({
-  queryKey: profileKeys.cosmetics(),
-  queryFn: ({ signal }) => listMyCosmetics({ signal }),
+export const cosmeticsCatalogQueryOptions = () => queryOptions({
+  queryKey: profileKeys.cosmeticsCatalog(),
+  queryFn: ({ signal }) => listCosmeticsCatalog({ signal }),
   staleTime: 30_000,
   retry: false,
 });

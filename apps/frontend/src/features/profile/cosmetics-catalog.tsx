@@ -1,8 +1,8 @@
 import type { UseQueryResult } from '@tanstack/react-query';
 import { StyleSheet, View } from 'react-native';
-import { FeedbackMessage, WiseButton, WiseIcon, WiseText, theme } from '@/design-system';
+import { FeedbackMessage, WiseButton, WiseIcon, WiseText, theme, type WiseTextColor } from '@/design-system';
 import type { CatalogCosmeticItem, CosmeticCategory } from './api';
-import { describeNextUnlock, describeUnlockCondition, orderCategoryItems } from './formatters';
+import { cosmeticItemState, describeNextUnlock, describeUnlockCondition, orderCategoryItems, type CosmeticItemState } from './formatters';
 
 const CATEGORIES: { id: CosmeticCategory; label: string }[] = [
   { id: 'avatar', label: 'Avatares' },
@@ -11,38 +11,36 @@ const CATEGORIES: { id: CosmeticCategory; label: string }[] = [
   { id: 'accessory', label: 'Acessórios' },
 ];
 
-function itemStatus(item: CatalogCosmeticItem): string {
-  if (item.equipped) return 'EQUIPADO';
-  if (item.unlocked) return 'DESBLOQUEADO';
-  return describeUnlockCondition(item.unlockCondition);
-}
+type StatePresentation = { status: (item: CatalogCosmeticItem) => string; spoken: (item: CatalogCosmeticItem) => string; color: WiseTextColor };
 
-function itemLabel(item: CatalogCosmeticItem): string {
-  const premium = item.requiresPremium ? ', item premium' : '';
-  if (item.equipped) return `${item.name}${premium}, equipado`;
-  if (item.unlocked) return `${item.name}${premium}, desbloqueado`;
-  return `${item.name}${premium}, bloqueado. ${describeUnlockCondition(item.unlockCondition)}`;
-}
+const lockedPresentation: StatePresentation = {
+  status: (item) => describeUnlockCondition(item.unlockCondition),
+  spoken: (item) => `bloqueado. ${describeUnlockCondition(item.unlockCondition)}`,
+  color: 'textTertiary',
+};
+
+const STATE_PRESENTATION: Record<CosmeticItemState, StatePresentation> = {
+  equipped: { status: () => 'EQUIPADO', spoken: () => 'equipado', color: 'accentPrimary' },
+  unlocked: { status: () => 'DESBLOQUEADO', spoken: () => 'desbloqueado', color: 'textSecondary' },
+  lockedByLevel: lockedPresentation,
+  lockedByRaid: lockedPresentation,
+};
 
 function CosmeticTile({ item }: { item: CatalogCosmeticItem }) {
   const locked = !item.unlocked;
+  const presentation = STATE_PRESENTATION[cosmeticItemState(item)];
+  const premium = item.requiresPremium ? ', item premium' : '';
   return (
     <View
       accessible
-      accessibilityLabel={itemLabel(item)}
+      accessibilityLabel={`${item.name}${premium}, ${presentation.spoken(item)}`}
       style={[styles.tile, item.unlocked && styles.tileUnlocked, item.equipped && styles.tileEquipped]}
       testID={`profile-cosmetic-item-${item.id}`}
     >
       {item.requiresPremium ? <WiseText color="accentPrimary" style={styles.premium} variant="label">✦</WiseText> : null}
       {locked ? <View testID="profile-cosmetic-lock"><WiseIcon color="textTertiary" name="lock-closed" size="small" /></View> : null}
       <WiseText color={locked ? 'textTertiary' : 'textPrimary'} style={styles.centered} variant="label">{item.name}</WiseText>
-      <WiseText
-        color={item.equipped ? 'accentPrimary' : locked ? 'textTertiary' : 'textSecondary'}
-        style={styles.centered}
-        variant="caption"
-      >
-        {itemStatus(item)}
-      </WiseText>
+      <WiseText color={presentation.color} style={styles.centered} variant="caption">{presentation.status(item)}</WiseText>
     </View>
   );
 }

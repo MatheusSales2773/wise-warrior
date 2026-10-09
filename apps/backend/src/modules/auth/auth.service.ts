@@ -10,7 +10,7 @@ import * as argon2 from 'argon2';
 import { DataSource, IsNull, LessThanOrEqual, Repository } from 'typeorm';
 import { User } from '../users/entities/user.entity';
 import { Character } from '../progression/entities/character.entity';
-import { equipStarterItems, unlockCosmeticItems } from '../users/cosmetic-unlocks';
+import { UsersService } from '../users/users.service';
 import { Session } from './entities/session.entity';
 import { RefreshTokenHistory } from './entities/refresh-token-history.entity';
 import { RegisterDto } from './dto/register.dto';
@@ -70,6 +70,7 @@ export class AuthService {
     private readonly jwt: JwtService,
     private readonly config: ConfigService,
     private readonly dataSource: DataSource,
+    private readonly usersService: UsersService,
   ) {}
 
   private get maxSessionsPerUser(): number {
@@ -109,11 +110,10 @@ export class AuthService {
         throw error;
       }
 
-      const character = await characters.save(
+      await characters.save(
         characters.create({ userId: user.id, level: 1, xpTotal: 0 }),
       );
-      await unlockCosmeticItems(transactionalEntityManager, user.id, character.level);
-      await equipStarterItems(transactionalEntityManager, user.id);
+      await this.usersService.grantStarterInventory(transactionalEntityManager, user.id);
 
       return this.issueSessionWithRepository(user, device, sessions);
     });

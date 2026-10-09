@@ -244,12 +244,11 @@ paths:
     get:
       summary: Lista o Catálogo inteiro de Cosmetic Items com o estado no Inventário
       description: >
-        Devolve todos os Cosmetic Items, desbloqueados ou não, ordenados por
-        categoria (avatar, badge, title, accessory), depois pela Condição de
-        desbloqueio por nível em ordem crescente e, por último, as de Raid.
-        Sem paginação por decisão explícita: o Catálogo é uma tabela versionada
-        pequena (seed por migration).
-      operationId: listMyCosmetics
+        Devolve todos os Cosmetic Items, desbloqueados ou não, sem ordem
+        garantida: a interface define a ordem de exibição. Sem paginação por
+        decisão explícita: o Catálogo é uma tabela versionada pequena (seed
+        por migration).
+      operationId: listCosmeticsCatalog
       tags: [Users]
       responses:
         "200":

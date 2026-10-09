@@ -1,4 +1,4 @@
-import { isUnlockedAtLevel, parseUnlockCondition } from './unlock-condition';
+import { isStarterItem, isUnlockedAtLevel, parseUnlockCondition } from './unlock-condition';
 
 describe('parseUnlockCondition', () => {
   it('reads a level condition', () => {
@@ -11,9 +11,9 @@ describe('parseUnlockCondition', () => {
   });
 
   it.each(['level:0', 'level:-1', 'level:1.5', 'level:', 'raid:', 'achievement:x', ''])(
-    'rejects the malformed condition %p',
+    'reads the malformed condition %p as no condition',
     (raw) => {
-      expect(() => parseUnlockCondition(raw)).toThrow('Condição de desbloqueio inválida');
+      expect(parseUnlockCondition(raw)).toBeNull();
     },
   );
 });
@@ -26,5 +26,13 @@ describe('isUnlockedAtLevel', () => {
 
   it('never unlocks raid conditions by level', () => {
     expect(isUnlockedAtLevel({ type: 'raid', slug: '*' }, 99)).toBe(false);
+  });
+});
+
+describe('isStarterItem', () => {
+  it('marks only level-1 conditions as starter items', () => {
+    expect(isStarterItem({ type: 'level', level: 1 })).toBe(true);
+    expect(isStarterItem({ type: 'level', level: 3 })).toBe(false);
+    expect(isStarterItem({ type: 'raid', slug: '*' })).toBe(false);
   });
 });

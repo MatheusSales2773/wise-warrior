@@ -9,7 +9,7 @@ import type { DeviceSession } from './api';
 import { CharacterPanel, CharacterStats } from './character-panel';
 import { CosmeticsCatalog } from './cosmetics-catalog';
 import { describeDevice } from './formatters';
-import { cosmeticsQueryOptions, deviceSessionsQueryOptions } from './queries';
+import { cosmeticsCatalogQueryOptions, deviceSessionsQueryOptions } from './queries';
 import { ProfileTabs, type ProfileTab } from './profile-tabs';
 
 function DeviceItem({ current, device }: { current: boolean; device: DeviceSession }) {
@@ -79,7 +79,7 @@ const companionTab: ProfileTab = {
 export function ProfileScreen() {
   const profile = useQuery(profileQueryOptions());
   const devices = useQuery(deviceSessionsQueryOptions());
-  const cosmetics = useQuery(cosmeticsQueryOptions());
+  const cosmeticsCatalog = useQuery(cosmeticsCatalogQueryOptions());
   const metrics = useQuery(sessionMetricsQueryOptions());
   const { sessionId } = useAuth();
   const { width } = useWindowDimensions();
@@ -87,7 +87,7 @@ export function ProfileScreen() {
   const refresh = async () => {
     setRefreshing(true);
     try {
-      await Promise.all([profile.refetch(), cosmetics.refetch(), devices.refetch(), metrics.refetch()]);
+      await Promise.all([profile.refetch(), cosmeticsCatalog.refetch(), devices.refetch(), metrics.refetch()]);
     } finally {
       setRefreshing(false);
     }
@@ -131,7 +131,7 @@ export function ProfileScreen() {
         <View style={styles.column}>
           <ProfileTabs
             tabs={[
-              { id: 'cosmeticos', label: 'Cosméticos', content: <CosmeticsCatalog level={user.level} query={cosmetics} /> },
+              { id: 'cosmeticos', label: 'Cosméticos', content: <CosmeticsCatalog level={user.level} query={cosmeticsCatalog} /> },
               companionTab,
               { id: 'dispositivos', label: 'Dispositivos', content: <DevicesContent currentSessionId={sessionId} query={devices} /> },
             ]}

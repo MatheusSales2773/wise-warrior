@@ -3,8 +3,8 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { AccessibilityInfo, Platform, StyleSheet } from 'react-native';
 import { theme } from '@/design-system';
 import { getMyProfile, getSessionMetrics, type SessionMetrics, type UserProfile } from '@/features/dashboard/api';
-import { listMyCosmetics, listMyDeviceSessions, type CatalogCosmeticItem, type DeviceSession } from '@/features/profile/api';
-import { describeDevice, formatPlanTier } from '@/features/profile/formatters';
+import { listCosmeticsCatalog, listMyDeviceSessions, type CatalogCosmeticItem, type DeviceSession } from '@/features/profile/api';
+import { cosmeticItemState, describeDevice, describeNextUnlock, formatPlanTier } from '@/features/profile/formatters';
 import { ProfileScreen } from '@/features/profile/profile-screen';
 import { updateMockAuthState } from '../test-utils/auth-context';
 import { resetMockWindowDimensions, setMockWindowWidth } from '../test-utils/window-dimensions';
@@ -15,7 +15,7 @@ jest.mock('@/features/dashboard/api', () => ({
   getRecentStudySessions: jest.fn(),
   getSessionMetrics: jest.fn(),
 }));
-jest.mock('@/features/profile/api', () => ({ listMyCosmetics: jest.fn(), listMyDeviceSessions: jest.fn() }));
+jest.mock('@/features/profile/api', () => ({ listCosmeticsCatalog: jest.fn(), listMyDeviceSessions: jest.fn() }));
 
 jest.mock('react-native', () => require('../test-utils/window-dimensions').createReactNativeMock());
 
@@ -36,7 +36,7 @@ const metrics: SessionMetrics = {
 const mockedProfile = getMyProfile as jest.MockedFunction<typeof getMyProfile>;
 const mockedDevices = listMyDeviceSessions as jest.MockedFunction<typeof listMyDeviceSessions>;
 const mockedMetrics = getSessionMetrics as jest.MockedFunction<typeof getSessionMetrics>;
-const mockedCosmetics = listMyCosmetics as jest.MockedFunction<typeof listMyCosmetics>;
+const mockedCatalog = listCosmeticsCatalog as jest.MockedFunction<typeof listCosmeticsCatalog>;
 
 function cosmetic(
   name: string,
@@ -87,7 +87,7 @@ beforeEach(() => {
   mockedProfile.mockResolvedValue(profile);
   mockedDevices.mockResolvedValue([]);
   mockedMetrics.mockResolvedValue(metrics);
-  mockedCosmetics.mockResolvedValue(starterCatalog);
+  mockedCatalog.mockResolvedValue(starterCatalog);
   resetMockWindowDimensions();
   setMockWindowWidth(390);
 });
@@ -226,7 +226,7 @@ describe('ProfileScreen', () => {
   });
 
   it('tells equipped, unlocked, locked and premium items apart in text, not only in color', async () => {
-    mockedCosmetics.mockResolvedValue([
+    mockedCatalog.mockResolvedValue([
       ...starterCatalog.filter((item) => item.category !== 'title'),
       cosmetic('Aprendiz', 'title', { type: 'level', level: 1 }, { equipped: true }),
       cosmetic('Estudante Crepuscular', 'title', { type: 'level', level: 5 }, { unlocked: true }),
@@ -254,7 +254,7 @@ describe('ProfileScreen', () => {
   });
 
   it('orders each category as equipped, unlocked, locked by level and Raid items last', async () => {
-    mockedCosmetics.mockResolvedValue([
+    mockedCatalog.mockResolvedValue([
       cosmetic('Lenda da Guilda', 'title', { type: 'raid', slug: 'dragao-do-pantano' }),
       cosmetic('Mestre da Aurora', 'title', { type: 'level', level: 15 }, { requiresPremium: true }),
       cosmetic('Aprendiz', 'title', { type: 'level', level: 1 }, { unlocked: true }),
@@ -290,7 +290,7 @@ describe('ProfileScreen', () => {
   });
 
   it('shows a loading note while the Catalog loads', async () => {
-    mockedCosmetics.mockReturnValue(new Promise(() => {}));
+    mockedCatalog.mockReturnValue(new Promise(() => {}));
     await renderProfile();
 
     expect(await screen.findByTestId('profile-cosmetics-loading')).toBeTruthy();
@@ -299,7 +299,7 @@ describe('ProfileScreen', () => {
   });
 
   it('shows a retryable error when the Catalog cannot be loaded', async () => {
-    mockedCosmetics.mockRejectedValueOnce(new Error('boom'));
+    mockedCatalog.mockRejectedValueOnce(new Error('boom'));
     await renderProfile();
 
     const error = await screen.findByTestId('profile-cosmetics-error');
@@ -311,7 +311,7 @@ describe('ProfileScreen', () => {
 
   it('keeps the Catalog with a stale-data notice when its refresh fails', async () => {
     jest.replaceProperty(Platform, 'OS', 'ios');
-    mockedCosmetics.mockResolvedValueOnce(starterCatalog).mockRejectedValueOnce(new Error('boom'));
+    mockedCatalog.mockResolvedValueOnce(starterCatalog).mockRejectedValueOnce(new Error('boom'));
     await renderProfile();
 
     expect(await screen.findByTestId('profile-cosmetics')).toBeTruthy();
@@ -401,7 +401,7 @@ describe('ProfileScreen', () => {
     expect(mockedMetrics).toHaveBeenCalledTimes(2);
     expect(mockedProfile).toHaveBeenCalledTimes(2);
     expect(mockedDevices).toHaveBeenCalledTimes(2);
-    expect(mockedCosmetics).toHaveBeenCalledTimes(2);
+    expect(mockedCatalog).toHaveBeenCalledTimes(2);
   });
 
   it('keeps the character with a stale-data notice when the pull to refresh fails', async () => {
@@ -458,5 +458,24 @@ describe('profile formatters', () => {
     expect(describeDevice({ deviceLabel: ' Pixel ', userAgent: null })).toBe('Pixel');
     expect(describeDevice({ deviceLabel: null, userAgent: 'Dalvik Android 14' })).toBe('Dispositivo Android');
     expect(describeDevice({ deviceLabel: null, userAgent: null })).toBe('Dispositivo desconhecido');
+  });
+});
+
+describe('cosmetics formatters', () => {
+  it('reads one display state per Catalog item', () => {
+    expect(cosmeticItemState(cosmetic('A', 'title', { type: 'level', level: 1 }, { equipped: true }))).toBe('equipped');
+    expect(cosmeticItemState(cosmetic('B', 'title', { type: 'level', level: 1 }, { unlocked: true }))).toBe('unlocked');
+    expect(cosmeticItemState(cosmetic('C', 'title', { type: 'level', level: 5 }))).toBe('lockedByLevel');
+    expect(cosmeticItemState(cosmetic('D', 'title', { type: 'raid', slug: '*' }))).toBe('lockedByRaid');
+  });
+
+  it('does not send the student to Raids when a level item is already within reach but not yet granted', () => {
+    const items = [
+      cosmetic('Madrugador', 'badge', { type: 'level', level: 3 }),
+      cosmetic('Selo', 'badge', { type: 'raid', slug: '*' }),
+    ];
+
+    expect(describeNextUnlock(items, 4)).toBe('Madrugador já está liberado para o seu nível.');
+    expect(describeNextUnlock(items, 1)).toBe('Faltam 2 níveis para desbloquear Madrugador.');
   });
 });

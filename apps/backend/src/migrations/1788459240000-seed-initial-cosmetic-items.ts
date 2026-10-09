@@ -1,6 +1,6 @@
 import { MigrationInterface, QueryRunner } from 'typeorm';
 
-/** Tabela inicial de recompensas (#102). Os ids são fixos para que o seed seja versionado. */
+/** Catálogo inicial de Cosmetic Items (#102). Os ids são fixos para que o seed seja versionado. */
 const INITIAL_COSMETIC_ITEMS = [
   ['c05e71c0-0000-4000-8000-000000000001', 'avatar', 'Capuz do Erudito', 'level:1', 0],
   ['c05e71c0-0000-4000-8000-000000000002', 'title', 'Aprendiz', 'level:1', 0],
@@ -24,14 +24,16 @@ export class SeedInitialCosmeticItems1788459240000 implements MigrationInterface
       INITIAL_COSMETIC_ITEMS.flat(),
     );
 
-    // Regra de Desbloqueio aplicada uma vez aos Characters existentes. O índice único (usuário + item) a torna idempotente.
+    // Regra de Desbloqueio aplicada uma vez aos Characters existentes. O índice único (usuário + item) a torna
+    // idempotente; só a linha repetida é tolerada, qualquer outro erro interrompe a migration.
     await queryRunner.query(`
-      INSERT IGNORE INTO user_cosmetic_items (id, user_id, cosmetic_item_id, equipped)
+      INSERT INTO user_cosmetic_items (id, user_id, cosmetic_item_id, equipped)
       SELECT UUID(), c.user_id, ci.id, 0
       FROM characters c
       JOIN cosmetic_items ci
         ON ci.unlock_condition REGEXP '^level:[1-9][0-9]*$'
        AND CAST(SUBSTRING(ci.unlock_condition, 7) AS UNSIGNED) <= c.level
+      ON DUPLICATE KEY UPDATE cosmetic_item_id = user_cosmetic_items.cosmetic_item_id
     `);
 
     // Itens iniciais só são equipados nas categorias em que o Character ainda não tem item equipado.
