@@ -49,6 +49,7 @@ export type ActiveRaid = {
   startsAt: string;
   endsAt: string;
   status: 'active' | 'completed' | 'expired';
+  me: { participating: boolean };
 };
 
 /** `null` means the user is not in any guild (the API answers 404), which is a normal state, not a failure. */
@@ -103,4 +104,9 @@ export async function getActiveRaid(guildId: string, { signal }: { signal?: Abor
     if (isApiError(error) && error.status === 404) return null;
     throw error;
   }
+}
+
+/** Idempotent on the server: confirming twice is not an error. A 409 means the Raid already ended. */
+export async function joinRaid(raidId: string): Promise<void> {
+  await getAuthenticatedHttpClient().post(`/raids/${encodeURIComponent(raidId)}/join`);
 }

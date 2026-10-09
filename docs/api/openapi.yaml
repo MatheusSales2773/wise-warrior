@@ -757,8 +757,9 @@ paths:
       description: >
         A Raid ativa da guilda (segunda 00:00 a domingo 23:59:59 em
         `America/Sao_Paulo`, datas em UTC), com a Missão do rodízio semanal e a
-        Recompensa de Raid prevista. Só membros da guilda a veem. `404` quando a
-        guilda não tem Raid ativa.
+        Recompensa de Raid prevista, e `me.participating` com a participação de
+        quem consulta. Só membros da guilda a veem. `404` quando a guilda não
+        tem Raid ativa.
       operationId: getActiveGuildRaid
       tags: [Raids]
       parameters:
@@ -818,14 +819,21 @@ paths:
   /raids/{id}/join:
     post:
       summary: Confirma participação numa raid ativa da guilda do usuário (UC02)
+      description: >
+        Grava a participação do usuário na Raid. Idempotente: repetir a chamada
+        devolve 204 sem duplicar. Uma Raid com a meta batida continua aceitando
+        participação até o fim da semana. `403` para quem não é da guilda da
+        Raid; `409` quando a Raid já terminou (UC02 A01).
       operationId: joinRaid
       tags: [Raids]
       parameters:
         - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
       responses:
         "204": { description: Participação confirmada }
+        "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
 
 components:
   securitySchemes:
@@ -1228,7 +1236,7 @@ components:
 
     ActiveRaid:
       type: object
-      required: [id, mission, reward, goalXp, progressXp, startsAt, endsAt, status]
+      required: [id, mission, reward, goalXp, progressXp, startsAt, endsAt, status, me]
       properties:
         id: { type: string, format: uuid }
         mission:
@@ -1252,6 +1260,11 @@ components:
         startsAt: { type: string, format: date-time }
         endsAt: { type: string, format: date-time }
         status: { type: string, enum: [active, completed, expired] }
+        me:
+          type: object
+          required: [participating]
+          properties:
+            participating: { type: boolean, description: "Se quem consulta já confirmou participação nesta Raid" }
 
     RaidDetail:
       type: object

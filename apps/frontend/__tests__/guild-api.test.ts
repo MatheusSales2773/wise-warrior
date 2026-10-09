@@ -1,6 +1,6 @@
 import { getAuthenticatedHttpClient } from '@/core/api/api-client';
 import { ApiError } from '@/core/api/api-error';
-import { createGuild, getActiveRaid, getMyGuild, joinGuild, leaveGuild, listGuildMembers, listGuilds } from '@/features/guild/api';
+import { createGuild, getActiveRaid, getMyGuild, joinGuild, leaveGuild, listGuildMembers, listGuilds, joinRaid } from '@/features/guild/api';
 import { formatGuildRole, formatMemberCount } from '@/features/guild/messages';
 import { validateGuildName } from '@/features/guild/validation';
 
@@ -11,6 +11,17 @@ jest.mock('@/core/api/api-client', () => ({
 const client = (methods: Record<string, jest.Mock>) => (getAuthenticatedHttpClient as jest.Mock).mockReturnValue(methods);
 
 describe('guild API', () => {
+  it('confirms participation in a Raid and lets the failure through', async () => {
+    const post = jest.fn().mockResolvedValue({ status: 204 });
+    client({ post });
+    await expect(joinRaid('r 1')).resolves.toBeUndefined();
+    expect(post).toHaveBeenCalledWith('/raids/r%201/join');
+
+    const failure = new ApiError('conflict', { status: 409 });
+    client({ post: jest.fn().mockRejectedValue(failure) });
+    await expect(joinRaid('r1')).rejects.toBe(failure);
+  });
+
   it('reads the active Raid of a Guild and treats 404 as "no Raid this week"', async () => {
     const raid = { id: 'r1', goalXp: 1000 };
     const get = jest.fn().mockResolvedValue({ status: 200, data: raid });

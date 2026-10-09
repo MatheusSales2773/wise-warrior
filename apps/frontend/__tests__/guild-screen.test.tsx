@@ -2,7 +2,7 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Dimensions, Platform, StyleSheet } from 'react-native';
 import { ApiError } from '@/core/api/api-error';
-import { createGuild, getActiveRaid, getMyGuild, joinGuild, leaveGuild, listGuildMembers, listGuilds, type ActiveRaid, type GuildMemberPage, type GuildPage, type MyGuild } from '@/features/guild/api';
+import { createGuild, getActiveRaid, getMyGuild, joinGuild, joinRaid, leaveGuild, listGuildMembers, listGuilds, type ActiveRaid, type GuildMemberPage, type GuildPage, type MyGuild } from '@/features/guild/api';
 import { GuildScreen } from '@/features/guild/guild-screen';
 
 jest.mock('@/features/guild/api', () => ({
@@ -11,6 +11,7 @@ jest.mock('@/features/guild/api', () => ({
   listGuilds: jest.fn(),
   createGuild: jest.fn(),
   joinGuild: jest.fn(),
+  joinRaid: jest.fn(),
   listGuildMembers: jest.fn(),
   leaveGuild: jest.fn(),
 }));
@@ -21,6 +22,7 @@ const mockedCreate = createGuild as jest.MockedFunction<typeof createGuild>;
 const mockedJoin = joinGuild as jest.MockedFunction<typeof joinGuild>;
 const mockedMembers = listGuildMembers as jest.MockedFunction<typeof listGuildMembers>;
 const mockedLeave = leaveGuild as jest.MockedFunction<typeof leaveGuild>;
+const mockedJoinRaid = joinRaid as jest.MockedFunction<typeof joinRaid>;
 const mockedRaid = getActiveRaid as jest.MockedFunction<typeof getActiveRaid>;
 
 const DAY = 24 * 60 * 60 * 1000;
@@ -33,6 +35,7 @@ const raid = (overrides: Partial<ActiveRaid> = {}): ActiveRaid => ({
   startsAt: new Date(Date.now() - 2 * DAY).toISOString(),
   endsAt: new Date(Date.now() + 2 * DAY + 3.5 * 60 * 60 * 1000).toISOString(),
   status: 'active',
+  me: { participating: false },
   ...overrides,
 });
 
@@ -63,7 +66,7 @@ beforeEach(() => {
   Dimensions.set({ window: { width: 390, height: 844, scale: 1, fontScale: 1 } });
   mockedRaid.mockResolvedValue(raid());
 });
-afterEach(() => { jest.clearAllMocks(); [mockedRaid, mockedMine, mockedList, mockedCreate, mockedJoin, mockedMembers, mockedLeave].forEach((mock) => mock.mockReset()); });
+afterEach(() => { jest.clearAllMocks(); [mockedRaid, mockedMine, mockedList, mockedCreate, mockedJoin, mockedMembers, mockedLeave, mockedJoinRaid].forEach((mock) => mock.mockReset()); });
 
 describe('GuildScreen', () => {
   it('shows the guild of a member with level, size and role', async () => {
@@ -276,6 +279,91 @@ describe('GuildScreen', () => {
       expect(screen.getByText('Marcador do Grimório')).toBeTruthy();
       expect(screen.getByText(/Badge/)).toBeTruthy();
       expect(screen.getByText(/contribua com ao menos uma sessão de guilda/)).toBeTruthy();
+    });
+
+    describe('participation', () => {
+      it('offers "Participar" and, once confirmed, shows "Você está nesta Raid" without a refetch', async () => {
+        mockedJoinRaid.mockResolvedValue(undefined);
+        await renderGuild();
+
+        fireEvent.press(await screen.findByTestId('guild-raid-join'));
+
+        expect(await screen.findByTestId('guild-raid-participating')).toBeTruthy();
+        expect(screen.getByText('Você está nesta Raid')).toBeTruthy();
+        expect(screen.queryByTestId('guild-raid-join')).toBeNull();
+        expect(mockedJoinRaid).toHaveBeenCalledTimes(1);
+        expect(mockedJoinRaid).toHaveBeenCalledWith('r1');
+        expect(mockedRaid).toHaveBeenCalledTimes(1);
+      });
+
+      it('shows "Você está nesta Raid" straight away for a Participante, with no button', async () => {
+        mockedRaid.mockResolvedValue(raid({ me: { participating: true } }));
+        await renderGuild();
+
+        expect(await screen.findByTestId('guild-raid-participating')).toBeTruthy();
+        expect(screen.queryByTestId('guild-raid-join')).toBeNull();
+      });
+
+      it('sends a single request on repeated presses while the first is in flight', async () => {
+        let resolve: () => void = () => undefined;
+        mockedJoinRaid.mockReturnValue(new Promise<void>((done) => { resolve = done; }));
+        await renderGuild();
+
+        const button = await screen.findByTestId('guild-raid-join');
+        fireEvent.press(button);
+        await waitFor(() => expect(mockedJoinRaid).toHaveBeenCalledTimes(1));
+        fireEvent.press(screen.getByTestId('guild-raid-join'));
+        expect(mockedJoinRaid).toHaveBeenCalledTimes(1);
+        resolve();
+        expect(await screen.findByTestId('guild-raid-participating')).toBeTruthy();
+      });
+
+      it('explains a Raid that already ended and reloads the Raid (UC02 A01)', async () => {
+        mockedJoinRaid.mockRejectedValue(new ApiError('conflict', { status: 409 }));
+        await renderGuild();
+        const button = await screen.findByTestId('guild-raid-join');
+
+        mockedRaid.mockResolvedValue(raid({ id: 'r2', mission: { slug: 'marcha-do-silencio', name: 'Marcha do Silêncio', description: 'Marche.', imageUrl: null } }));
+        fireEvent.press(button);
+
+        expect(await screen.findByText('Marcha do Silêncio')).toBeTruthy();
+        await waitFor(() => expect(mockedRaid).toHaveBeenCalledTimes(2));
+      });
+
+      it('shows the message of a Raid that ended while the reload has not arrived yet', async () => {
+        mockedJoinRaid.mockRejectedValue(new ApiError('conflict', { status: 409 }));
+        await renderGuild();
+
+        const button = await screen.findByTestId('guild-raid-join');
+        mockedRaid.mockReturnValue(new Promise(() => undefined));
+        fireEvent.press(button);
+
+        expect(await screen.findByTestId('guild-raid-join-error')).toBeTruthy();
+        expect(screen.getByText(/já foi encerrada/)).toBeTruthy();
+      });
+
+      it('tells a non-member (403) they cannot participate and keeps the button', async () => {
+        mockedJoinRaid.mockRejectedValue(new ApiError('unexpected', { status: 403 }));
+        await renderGuild();
+
+        fireEvent.press(await screen.findByTestId('guild-raid-join'));
+
+        expect(await screen.findByText(/Apenas membros da guilda podem participar/)).toBeTruthy();
+        expect(screen.getByTestId('guild-raid-join')).toBeTruthy();
+        expect(mockedRaid).toHaveBeenCalledTimes(1);
+      });
+
+      it('lets the member retry after a network failure', async () => {
+        mockedJoinRaid.mockRejectedValueOnce(new ApiError('network', {})).mockResolvedValueOnce(undefined);
+        await renderGuild();
+
+        fireEvent.press(await screen.findByTestId('guild-raid-join'));
+        expect(await screen.findByText(/Verifique sua conexão/)).toBeTruthy();
+        fireEvent.press(screen.getByTestId('guild-raid-join'));
+
+        expect(await screen.findByTestId('guild-raid-participating')).toBeTruthy();
+        expect(screen.queryByTestId('guild-raid-join-error')).toBeNull();
+      });
     });
 
     it('reserves a decorative image slot that screen readers skip', async () => {

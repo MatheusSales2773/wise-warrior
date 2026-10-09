@@ -3,10 +3,10 @@ import { useEffect, useState } from 'react';
 import { Platform, StyleSheet, View, useWindowDimensions } from 'react-native';
 import { FeedbackMessage, ProgressBar, Screen, WiseButton, WiseCard, WiseField, WiseText, isDesktopLayout, theme } from '@/design-system';
 import { isApiError } from '@/core/api/api-error';
-import { createGuild, joinGuild, leaveGuild, type ActiveRaid, type GuildMember, type GuildSummary, type MyGuild } from './api';
+import { createGuild, joinGuild, joinRaid, leaveGuild, type ActiveRaid, type GuildMember, type GuildSummary, type MyGuild } from './api';
 import {
   RAID_REWARD_RULE, createGuildErrorMessage, formatGuildRole, formatMemberCount, formatRaidTimeLeft, formatRewardCategory,
-  joinGuildErrorMessage, leaveGuildErrorMessage, raidProgressPercent,
+  joinGuildErrorMessage, joinRaidErrorMessage, leaveGuildErrorMessage, raidProgressPercent,
 } from './messages';
 import { activeRaidQueryOptions, guildDirectoryQueryOptions, guildKeys, guildMembersQueryOptions, myGuildQueryOptions } from './queries';
 import { GUILD_NAME_MAX_LENGTH, normalizeGuildName, validateGuildName } from './validation';
@@ -98,7 +98,35 @@ function useNow(intervalMs: number): number {
   return now;
 }
 
-function RaidDetails({ raid }: { raid: ActiveRaid }) {
+function RaidParticipation({ guildId, raid }: { guildId: string; raid: ActiveRaid }) {
+  const queryClient = useQueryClient();
+  const join = useMutation({
+    mutationFn: () => joinRaid(raid.id),
+    onSuccess: () => queryClient.setQueryData<ActiveRaid | null>(
+      guildKeys.raid(guildId),
+      (current) => (current ? { ...current, me: { participating: true } } : current),
+    ),
+    // The Raid ended (409) or is gone: show the Raid that is current now.
+    onError: (error) => {
+      if (isApiError(error) && (error.category === 'conflict' || error.status === 404)) {
+        void queryClient.invalidateQueries({ queryKey: guildKeys.raid(guildId) });
+      }
+    },
+  });
+
+  if (raid.me.participating) {
+    return <WiseText accessibilityLiveRegion="polite" color="accentPrimary" testID="guild-raid-participating" variant="label">Você está nesta Raid</WiseText>;
+  }
+  if (raid.status === 'expired') return null;
+  return (
+    <View accessibilityLiveRegion="polite" style={styles.stack}>
+      {join.isError ? <FeedbackMessage message={joinRaidErrorMessage(join.error)} testID="guild-raid-join-error" title="Participação não confirmada" variant="error" /> : null}
+      <WiseButton label="Participar" loading={join.isPending} onPress={() => { if (!join.isPending) { join.reset(); join.mutate(); } }} testID="guild-raid-join" />
+    </View>
+  );
+}
+
+function RaidDetails({ guildId, raid }: { guildId: string; raid: ActiveRaid }) {
   const now = useNow(30_000);
   const percent = raidProgressPercent(raid.progressXp, raid.goalXp);
   return (
@@ -123,6 +151,7 @@ function RaidDetails({ raid }: { raid: ActiveRaid }) {
         <WiseText color="textSecondary" variant="body">{formatRewardCategory(raid.reward.category)}</WiseText>
         <WiseText color="textSecondary" variant="caption">{RAID_REWARD_RULE}</WiseText>
       </View>
+      <RaidParticipation guildId={guildId} raid={raid} />
     </>
   );
 }
@@ -143,7 +172,7 @@ function RaidCard({ guildId }: { guildId: string }) {
     }
     return <>
       {raid.isError ? <FeedbackMessage message="Não foi possível atualizar a Raid." testID="guild-raid-stale" title="Dados desatualizados" variant="error" /> : null}
-      <RaidDetails raid={raid.data} />
+      <RaidDetails guildId={guildId} raid={raid.data} />
     </>;
   })();
 

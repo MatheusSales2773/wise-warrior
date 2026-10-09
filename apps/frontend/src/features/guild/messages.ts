@@ -57,3 +57,12 @@ export function formatRaidTimeLeft(milliseconds: number): string {
 export function raidProgressPercent(progressXp: number, goalXp: number): number {
   return goalXp > 0 ? Math.min(100, Math.floor((progressXp / goalXp) * 100)) : 0;
 }
+
+export function joinRaidErrorMessage(error: unknown): string {
+  if (isApiError(error)) {
+    if (error.category === 'conflict') return 'Essa Raid já foi encerrada. Atualizamos a tela com a Raid da semana.';
+    if (error.status === 403) return 'Apenas membros da guilda podem participar da Raid.';
+    if (error.category === 'network') return 'Não foi possível confirmar sua participação. Verifique sua conexão e tente novamente.';
+  }
+  return 'Não foi possível confirmar sua participação agora. Tente novamente.';
+}
