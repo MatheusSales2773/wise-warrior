@@ -15,6 +15,8 @@ export const wiseIconNames = [
   'ellipsis-horizontal-circle-outline',
   'ellipsis-horizontal-circle',
   'lock-closed',
+  'ribbon',
+  'diamond',
 ] as const;
 
 export type WiseIconName = (typeof wiseIconNames)[number];

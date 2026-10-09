@@ -18,6 +18,7 @@ jest.mock('@/features/dashboard/api', () => ({
 const profile: UserProfile = {
   id: 'user-1', email: 'wise@example.com', displayName: 'Aventureiro', planTier: 'free',
   level: 3, levelStartXp: 100, nextLevelXp: 200, xpTotal: 150, title: 'Aprendiz',
+  equipped: [{ category: 'title', itemId: 'item-Aprendiz', name: 'Aprendiz' }],
 };
 const session: RecentStudySession = {
   id: 'session-1', subject: 'Matemática', mode: 'foco', state: 'completed', startedAt: '2026-09-16T18:00:00Z',

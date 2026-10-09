@@ -146,6 +146,36 @@ describe('Cosmetics Catalog HTTP contract against MySQL', () => {
     }));
   });
 
+  it('derives the profile Título and equipment from the equipped Cosmetic Items', async () => {
+    await auth.register({ email: 'titular@example.com', password: 'senha-forte-123', displayName: 'Titular' }, {});
+    const { id } = await dataSource!.getRepository(User).findOneByOrFail({ email: 'titular@example.com' });
+    const getProfile = async () => {
+      const response = await fetch(`${baseUrl}/api/v1/users/me`, {
+        headers: { authorization: 'Bearer integration-token', 'x-test-user-id': id },
+      });
+      expect(response.status).toBe(200);
+      return response.json() as Promise<{ title: string | null; equipped: unknown[] }>;
+    };
+
+    const starter = await getProfile();
+    expect(starter.title).toBe('Aprendiz');
+    expect(starter.equipped).toEqual(expect.arrayContaining([
+      { category: 'avatar', itemId: 'c05e71c0-0000-4000-8000-000000000001', name: 'Capuz do Erudito' },
+      { category: 'title', itemId: 'c05e71c0-0000-4000-8000-000000000002', name: 'Aprendiz' },
+    ]));
+    expect(starter.equipped).toHaveLength(2);
+
+    await dataSource!.transaction((manager) => users.unlockCosmeticItems(manager, id, 5));
+    expect((await fetch(`${baseUrl}/api/v1/users/me/cosmetics/c05e71c0-0000-4000-8000-000000000004`, {
+      method: 'PATCH',
+      headers: { authorization: 'Bearer integration-token', 'x-test-user-id': id },
+    })).status).toBe(204);
+    expect((await getProfile()).title).toBe('Estudante Crepuscular');
+
+    await dataSource!.getRepository(UserCosmeticItem).update({ userId: id }, { equipped: false });
+    expect(await getProfile()).toEqual(expect.objectContaining({ title: null, equipped: [] }));
+  });
+
   it('leaves an item with a malformed unlock condition out of the Catalog instead of failing it', async () => {
     await dataSource!.getRepository(User).insert({
       id: veteran, email: 'veterano@example.com', passwordHash: 'hash', displayName: 'Veterano', planTier: 'free',

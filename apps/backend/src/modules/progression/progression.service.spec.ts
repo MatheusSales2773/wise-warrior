@@ -56,13 +56,11 @@ describe('ProgressionService', () => {
       userId: 'user-1',
       xpTotal: 1_501,
       level: 2,
-      title: 'Scholar',
     });
 
     await expect(service.getCharacterSnapshot('user-1')).resolves.toEqual({
       xpTotal: 1_501,
       level: 2,
-      title: 'Scholar',
     });
   });
 

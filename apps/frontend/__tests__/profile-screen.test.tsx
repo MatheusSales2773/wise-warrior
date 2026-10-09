@@ -35,6 +35,10 @@ jest.mock('react-native', () => require('../test-utils/window-dimensions').creat
 const profile: UserProfile = {
   id: 'user-1', email: 'wise@example.com', displayName: 'Aventureiro', planTier: 'free',
   level: 3, levelStartXp: 100, nextLevelXp: 200, xpTotal: 150, title: 'Aprendiz',
+  equipped: [
+    { category: 'avatar', itemId: 'item-Capuz do Erudito', name: 'Capuz do Erudito' },
+    { category: 'title', itemId: 'item-Aprendiz', name: 'Aprendiz' },
+  ],
 };
 const devices: DeviceSession[] = [
   { id: 'dev-1', deviceLabel: 'iPhone de Ana', userAgent: null, createdAt: '2026-09-01T10:00:00Z', lastUsedAt: '2026-09-20T10:00:00Z' },
@@ -124,7 +128,7 @@ describe('ProfileScreen', () => {
     await renderProfile();
 
     expect(await screen.findByText('Aventureiro')).toBeTruthy();
-    expect(screen.getByTestId('profile-character-title').props.children).toBe('Aprendiz');
+    expect(screen.getByLabelText('Título: Aprendiz')).toBeTruthy();
     expect(screen.getByText('Nível 3')).toBeTruthy();
     expect(screen.getByText('Faltam 50 XP para o nível 4')).toBeTruthy();
     expect(screen.getByTestId('profile-plan').props.children).toBe('PLANO GRATUITO');
@@ -373,11 +377,51 @@ describe('ProfileScreen', () => {
     expect(StyleSheet.flatten(screen.getByTestId('profile-character').props.style).width).not.toBe(theme.layout.sidePanelWidth);
   });
 
-  it('falls back to a placeholder title when the character has none', async () => {
-    mockedProfile.mockResolvedValue({ ...profile, title: null });
+  it('shows the full equipment: Título banner, Badge and Acessório seals and the Avatar over the silhouette', async () => {
+    mockedProfile.mockResolvedValue({
+      ...profile,
+      title: 'Estudante Crepuscular',
+      equipped: [
+        { category: 'avatar', itemId: 'item-Manto da Vigília', name: 'Manto da Vigília' },
+        { category: 'badge', itemId: 'item-Madrugador', name: 'Madrugador' },
+        { category: 'title', itemId: 'item-Estudante Crepuscular', name: 'Estudante Crepuscular' },
+        { category: 'accessory', itemId: 'item-Selo dos Madrugadores', name: 'Selo dos Madrugadores' },
+      ],
+    });
     await renderProfile();
 
-    expect(await screen.findByText('Sem título ainda')).toBeTruthy();
+    const panel = await screen.findByTestId('profile-character');
+    expect(within(panel).getByLabelText('Título: Estudante Crepuscular')).toBeTruthy();
+    expect(within(panel).getByLabelText('Badge: Madrugador')).toBeTruthy();
+    expect(within(panel).getByLabelText('Acessório: Selo dos Madrugadores')).toBeTruthy();
+    expect(within(panel).getByLabelText('Avatar: Manto da Vigília').props.accessibilityRole).toBe('image');
+    expect(within(panel).getByTestId('profile-avatar')).toBeTruthy();
+  });
+
+  it('shows only what is equipped when the equipment is partial', async () => {
+    mockedProfile.mockResolvedValue({
+      ...profile,
+      equipped: [...profile.equipped, { category: 'badge', itemId: 'item-Madrugador', name: 'Madrugador' }],
+    });
+    await renderProfile();
+
+    const panel = await screen.findByTestId('profile-character');
+    expect(within(panel).getByLabelText('Avatar: Capuz do Erudito')).toBeTruthy();
+    expect(within(panel).getByLabelText('Título: Aprendiz')).toBeTruthy();
+    expect(within(panel).getByLabelText('Badge: Madrugador')).toBeTruthy();
+    expect(within(panel).queryByTestId('profile-seal-accessory')).toBeNull();
+  });
+
+  it('shows the default silhouette and no Título when nothing is equipped', async () => {
+    mockedProfile.mockResolvedValue({ ...profile, title: null, equipped: [] });
+    await renderProfile();
+
+    const panel = await screen.findByTestId('profile-character');
+    expect(within(panel).getByLabelText('Avatar: silhueta padrão')).toBeTruthy();
+    expect(within(panel).queryByTestId('profile-avatar')).toBeNull();
+    expect(within(panel).queryByTestId('profile-title-banner')).toBeNull();
+    expect(within(panel).queryByTestId('profile-seal-badge')).toBeNull();
+    expect(within(panel).queryByTestId('profile-seal-accessory')).toBeNull();
     await fireEvent.press(screen.getByTestId('profile-tab-dispositivos'));
     expect(await screen.findByText('Nenhum dispositivo com sessão ativa.')).toBeTruthy();
   });

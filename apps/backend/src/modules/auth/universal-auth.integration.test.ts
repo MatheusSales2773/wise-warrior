@@ -584,7 +584,8 @@ describe('Universal authentication security contract', () => {
         xpTotal: 0,
         levelStartXp: 0,
         nextLevelXp: 1_414,
-        title: null,
+        // ADR-010: the Título comes from the equipped Cosmetic Item, not from the Character.
+        title: 'Aprendiz',
       }),
     );
     expect(typeof profile.level).toBe('number');
