@@ -6,23 +6,25 @@ test.describe('personagem', () => {
     await registerThroughUi(page);
     await page.goto('/perfil');
 
-    // Um novo Character começa com o Título inicial equipado; desequipar deixa o painel sem banner.
-    const banner = page.getByTestId('profile-title-banner');
-    await expect(banner).toContainText('Aprendiz');
-    await page.getByRole('button', { name: /^Aprendiz,/ }).click();
+    // Um novo Character começa com o Título inicial equipado; desequipar esvazia o slot.
+    const titleSlot = page.getByTestId('character-slot-title');
+    await expect(titleSlot).toHaveAccessibleName('Título: Aprendiz');
+    await titleSlot.click();
     await page.getByRole('button', { name: 'Desequipar Aprendiz' }).click();
-    await expect(banner).toHaveCount(0);
+    await expect(titleSlot).toHaveAccessibleName('Título: vazio. Equipar título');
 
     // A Prévia aparece no painel sem salvar; Equipar confirma.
-    await page.getByRole('button', { name: /^Aprendiz,/ }).click();
-    await expect(banner).toContainText('Aprendiz');
-    await expect(page.getByTestId('profile-preview-badge')).toBeVisible();
-    await page.getByRole('button', { name: 'Equipar Aprendiz' }).click();
-    await expect(page.getByRole('button', { name: 'Aprendiz, equipado' })).toBeVisible();
+    await titleSlot.click();
+    await page.getByRole('radio', { name: /^Aprendiz,/ }).click();
+    await expect(page.getByTestId('character-identity')).toContainText('Aprendiz');
+    await expect(page.getByTestId('character-preview')).toBeVisible();
+    await page.getByRole('button', { name: 'Equipar título' }).click();
+    await expect(page.getByTestId('equipment-drawer')).toHaveCount(0);
+    await expect(titleSlot).toHaveAccessibleName('Título: Aprendiz');
 
     await page.reload();
 
-    await expect(page.getByTestId('profile-title-banner')).toContainText('Aprendiz');
-    await expect(page.getByRole('button', { name: 'Aprendiz, equipado' })).toBeVisible();
+    await expect(page.getByTestId('character-slot-title')).toHaveAccessibleName('Título: Aprendiz');
+    await expect(page.getByTestId('character-identity')).toContainText('Aprendiz');
   });
 });

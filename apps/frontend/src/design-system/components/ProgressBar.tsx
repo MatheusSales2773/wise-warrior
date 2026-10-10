@@ -9,8 +9,8 @@ export type ProgressBarProps = {
   maximumValue?: number;
   accessibilityLabel?: string;
   testID?: string;
-  /** `tall` matches the framed prototype bar: inset track, hairline border and gold gradient fill. */
-  size?: 'default' | 'tall';
+  /** `tall` matches the framed prototype bar: inset track, hairline border and gold gradient fill; `slim` is its 10px variant. */
+  size?: 'default' | 'tall' | 'slim';
 } & ({ indeterminate: true; value?: never } | { indeterminate?: false; value: number });
 
 export function ProgressBar({ minimumValue = 0, maximumValue = 100, value, indeterminate = false, accessibilityLabel, testID, size = 'default' }: ProgressBarProps) {
@@ -34,6 +34,7 @@ export function ProgressBar({ minimumValue = 0, maximumValue = 100, value, indet
   if (__DEV__ && minimumValue >= maximumValue) {
     throw new Error('ProgressBar minimumValue must be less than maximumValue.');
   }
+  const framed = size === 'tall' || size === 'slim';
   const fraction = maximumValue > minimumValue
     ? Math.max(0, Math.min(1, ((value ?? minimumValue) - minimumValue) / (maximumValue - minimumValue)))
     : 0;
@@ -50,16 +51,16 @@ export function ProgressBar({ minimumValue = 0, maximumValue = 100, value, indet
       aria-valuemax={maximumValue}
       aria-valuenow={indeterminate ? undefined : value}
       aria-busy={indeterminate}
-      style={[styles.track, size === 'tall' && styles.tallTrack]}
+      style={[styles.track, framed && styles.tallTrack, size === 'slim' && styles.slimTrack]}
     >
       <Animated.View
         testID={testID ? `${testID}-fill` : undefined}
         aria-hidden
         accessibilityElementsHidden
         importantForAccessibility="no-hide-descendants"
-        style={[styles.fill, size === 'tall' && styles.tallFill, { width: indeterminate ? theme.progress.indeterminateWidth : `${fraction * 100}%`, opacity: indeterminate && duration > 0 ? opacity : 1 }]}
+        style={[styles.fill, framed && styles.tallFill, { width: indeterminate ? theme.progress.indeterminateWidth : `${fraction * 100}%`, opacity: indeterminate && duration > 0 ? opacity : 1 }]}
       >
-        {size === 'tall' ? <LinearGradient colors={[theme.color.accentMuted, theme.color.accentPrimary]} end={{ x: 1, y: 0 }} start={{ x: 0, y: 0 }} style={StyleSheet.absoluteFill} /> : null}
+        {framed ? <LinearGradient colors={[theme.color.accentMuted, theme.color.accentPrimary]} end={{ x: 1, y: 0 }} start={{ x: 0, y: 0 }} style={StyleSheet.absoluteFill} /> : null}
       </Animated.View>
     </View>
   );
@@ -68,6 +69,7 @@ export function ProgressBar({ minimumValue = 0, maximumValue = 100, value, indet
 const styles = StyleSheet.create({
   track: { height: theme.space.inlineTight, overflow: 'hidden', borderRadius: theme.radius.pill, backgroundColor: theme.color.surfaceCard },
   tallTrack: { height: 12, borderRadius: 2, borderWidth: theme.border.standard, borderColor: theme.color.borderSoft, backgroundColor: theme.color.surfaceInset },
+  slimTrack: { height: 10 },
   tallFill: { borderRadius: 0, overflow: 'hidden' },
   fill: { height: '100%', borderRadius: theme.radius.pill, backgroundColor: theme.color.accentPrimary },
 });

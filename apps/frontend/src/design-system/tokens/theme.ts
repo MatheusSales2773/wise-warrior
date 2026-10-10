@@ -88,7 +88,7 @@ export const theme = {
       elevation: 8,
     },
   },
-  iconSize: { small: 16, medium: 24, large: 32 } as const,
+  iconSize: { xsmall: 14, small: 16, compact: 18, regular: 20, emblem: 22, medium: 24, large: 32 } as const,
   motion: { none: 0, quick: 120, standard: 180, deliberate: 240 },
   progress: { indeterminateWidth: '40%', indeterminateDimOpacity: 0.5 } as const,
   layout: {

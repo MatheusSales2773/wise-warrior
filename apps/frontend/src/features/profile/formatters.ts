@@ -1,9 +1,5 @@
 import type { CatalogCosmeticItem, DeviceSession, UnlockCondition } from './api';
 
-export function formatPlanTier(planTier: string): string {
-  return planTier === 'premium' ? 'Plano premium' : 'Plano gratuito';
-}
-
 /** Prefers the label the client sent at login; falls back to a coarse reading of the user agent. */
 export function describeDevice(device: Pick<DeviceSession, 'deviceLabel' | 'userAgent'>): string {
   const label = device.deviceLabel?.trim();

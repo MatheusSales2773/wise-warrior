@@ -1,3 +1,3 @@
-import { ProfileScreen } from '@/features/profile/profile-screen';
+import { CharacterScreen } from '@/features/character/character-screen';
 
-export default function CharacterScreen() { return <ProfileScreen />; }
+export default CharacterScreen;
