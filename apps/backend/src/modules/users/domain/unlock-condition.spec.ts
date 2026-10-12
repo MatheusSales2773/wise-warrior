@@ -1,4 +1,4 @@
-import { isStarterItem, isUnlockedAtLevel, parseUnlockCondition } from './unlock-condition';
+import { isStarterItem, isUnlockedAtLevel, isUnlockedByRaid, parseUnlockCondition } from './unlock-condition';
 
 describe('parseUnlockCondition', () => {
   it('reads a level condition', () => {
@@ -16,6 +16,18 @@ describe('parseUnlockCondition', () => {
       expect(parseUnlockCondition(raw)).toBeNull();
     },
   );
+});
+
+describe('isUnlockedByRaid', () => {
+  it('unlocks the item of the Missão that was won, and any-raid items', () => {
+    expect(isUnlockedByRaid({ type: 'raid', slug: 'cerco-ao-grimorio' }, 'cerco-ao-grimorio')).toBe(true);
+    expect(isUnlockedByRaid({ type: 'raid', slug: '*' }, 'cerco-ao-grimorio')).toBe(true);
+  });
+
+  it('never unlocks the item of another Missão, nor level items', () => {
+    expect(isUnlockedByRaid({ type: 'raid', slug: 'vigilia-da-aurora' }, 'cerco-ao-grimorio')).toBe(false);
+    expect(isUnlockedByRaid({ type: 'level', level: 1 }, 'cerco-ao-grimorio')).toBe(false);
+  });
 });
 
 describe('isUnlockedAtLevel', () => {
