@@ -53,6 +53,6 @@ test.describe('Guilda web', () => {
     await expect(rows.first()).toContainText('1º');
     await expect(rows.first()).toContainText('Ana E2E (você)');
     await expect(rows.first()).toContainText(`${stopped.xpAwarded} XP`);
-    await expect(rows.first()).toHaveAccessibleName(new RegExp(`^Posição 1: Ana E2E \\(você\\), nível \\d+, Aprendiz, ${stopped.xpAwarded} XP$`));
+    await expect(rows.first()).toHaveAttribute('aria-label', new RegExp(`^Posição 1: Ana E2E \\(você\\), nível \\d+, Aprendiz, ${stopped.xpAwarded} XP$`));
   });
 });
