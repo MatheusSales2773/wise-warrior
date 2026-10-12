@@ -5,11 +5,13 @@ import {
   HttpStatus,
   Param,
   Post,
+  Query,
   UseGuards,
 } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import type { JwtPayload } from '../auth/strategies/jwt.strategy';
+import { ListRaidRankingQueryDto } from './dto/list-raid-ranking-query.dto';
 import { RaidsService } from './raids.service';
 
 @Controller('raids')
@@ -23,8 +25,8 @@ export class RaidsController {
   }
 
   @Get(':id/ranking')
-  ranking(@CurrentUser() user: JwtPayload, @Param('id') id: string) {
-    return this.raids.ranking(user.sub, id);
+  ranking(@CurrentUser() user: JwtPayload, @Param('id') id: string, @Query() query: ListRaidRankingQueryDto) {
+    return this.raids.ranking(user.sub, id, query);
   }
 
   @Post(':id/join')

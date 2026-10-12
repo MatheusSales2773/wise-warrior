@@ -40,7 +40,7 @@ type ActiveRaidBody = {
   goalXp: number;
   goalReachedAt: string | null;
   status: string;
-  me: { participating: boolean; contributionXp: number };
+  me: { participating: boolean; contributionXp: number; position: number | null };
 };
 
 describe('Study Session de modo Guilda against MySQL', () => {

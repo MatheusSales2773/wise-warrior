@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ConflictException,
   ForbiddenException,
   Inject,
@@ -17,6 +18,7 @@ import { RaidContribution } from './entities/raid-contribution.entity';
 import { RaidParticipation } from './entities/raid-participation.entity';
 import { GuildsService } from '../guilds/guilds.service';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
+import { RAID_RANKING_PAGE_SIZE_DEFAULT, type ListRaidRankingQueryDto } from './dto/list-raid-ranking-query.dto';
 
 export interface RaidDetail {
   id: string;
@@ -37,7 +39,24 @@ export interface ActiveRaid {
   startsAt: Date;
   endsAt: Date;
   status: string;
-  me: { participating: boolean; contributionXp: number };
+  /** `position` is the caller's place in the Ranking interno, or `null` while they are not a Participant. */
+  me: { participating: boolean; contributionXp: number; position: number | null };
+}
+
+export interface RaidRankingEntry {
+  position: number;
+  userId: string;
+  displayName: string;
+  level: number;
+  /** The equipped Título (ADR-010); `null` when the slot is empty. */
+  title: string | null;
+  contributionXp: number;
+  isMe: boolean;
+}
+
+export interface RaidRankingPage {
+  items: RaidRankingEntry[];
+  nextCursor: string | null;
 }
 
 /** O progresso coletivo logo depois de uma Contribuição, para o evento `raid:progress`. */
@@ -59,6 +78,58 @@ export interface GuildSessionContribution {
 }
 
 const RAID_ENDED_PROBLEM = 'https://wise.app/errors/raid-ended';
+
+/**
+ * The Ranking interno of one Raid, numbered in a single pass. Order: Contribution desc, then who reached that
+ * total first (oldest last Contribution), then userId. Participants without Contribution have 0 XP and so end up
+ * last. Only current members of the Guild appear, but a former member's Contributions stay in `raids.progress_xp`.
+ * Parameters: the Raid id, four times.
+ */
+const RAID_RANKING_SQL = `
+  SELECT
+    ROW_NUMBER() OVER (ORDER BY COALESCE(c.xp, 0) DESC, c.last_at ASC, u.id ASC) AS rank_position,
+    u.id AS user_id,
+    u.display_name AS display_name,
+    COALESCE(ch.level, 1) AS level,
+    t.name AS title,
+    COALESCE(c.xp, 0) AS contribution_xp
+  FROM (
+    SELECT user_id FROM raid_participations WHERE raid_id = ?
+    UNION
+    SELECT user_id FROM raid_contributions WHERE raid_id = ?
+  ) participant
+  JOIN raids r ON r.id = ?
+  JOIN guild_memberships m ON m.guild_id = r.guild_id AND m.user_id = participant.user_id
+  JOIN users u ON u.id = participant.user_id
+  LEFT JOIN characters ch ON ch.user_id = u.id
+  LEFT JOIN (
+    SELECT user_id, SUM(xp_contributed) AS xp, MAX(created_at) AS last_at
+    FROM raid_contributions WHERE raid_id = ? GROUP BY user_id
+  ) c ON c.user_id = u.id
+  LEFT JOIN (
+    SELECT uci.user_id, ci.name
+    FROM user_cosmetic_items uci JOIN cosmetic_items ci ON ci.id = uci.cosmetic_item_id
+    WHERE uci.equipped = 1 AND ci.category = 'title'
+  ) t ON t.user_id = u.id`;
+
+const rankingParams = (raidId: string) => [raidId, raidId, raidId, raidId];
+
+/** The cursor is the position of the last row of the page: positions are dense and start at 1. */
+function encodeRankingCursor(position: number): string {
+  return Buffer.from(JSON.stringify({ p: position }), 'utf8').toString('base64url');
+}
+
+function decodeRankingCursor(cursor: string): number {
+  try {
+    const parsed = JSON.parse(Buffer.from(cursor, 'base64url').toString('utf8')) as { p?: unknown };
+    if (typeof parsed.p === 'number' && Number.isInteger(parsed.p) && parsed.p >= 1 && parsed.p <= 1_000_000) {
+      return parsed.p;
+    }
+  } catch {
+    // Falls through to the validation error below.
+  }
+  throw new BadRequestException('Cursor inválido');
+}
 
 @Injectable()
 export class RaidsService {
@@ -139,10 +210,7 @@ export class RaidsService {
       startsAt: raid.startsAt,
       endsAt: raid.endsAt,
       status: raid.status,
-      me: {
-        participating: await this.participations.existsBy({ raidId: raid.id, userId: requesterId }),
-        contributionXp: await this.contributionXpOf(raid.id, requesterId),
-      },
+      me: await this.myStanding(raid.id, requesterId),
     };
   }
 
@@ -276,24 +344,37 @@ export class RaidsService {
     if (progress) this.publishProgress(progress);
   }
 
-  async ranking(
-    userId: string,
-    raidId: string,
-  ): Promise<Array<{ userId: string; xpContributed: number }>> {
+  /** Ranking interno: members only, paginated by position, stable under the order documented in `RAID_RANKING_SQL`. */
+  async ranking(userId: string, raidId: string, query: ListRaidRankingQueryDto): Promise<RaidRankingPage> {
     await this.findRaidForMember(userId, raidId);
-    const rows = await this.contributions
-      .createQueryBuilder('contribution')
-      .select('contribution.userId', 'userId')
-      .addSelect('SUM(contribution.xpContributed)', 'xpContributed')
-      .where('contribution.raidId = :raidId', { raidId })
-      .groupBy('contribution.userId')
-      .orderBy('xpContributed', 'DESC')
-      .getRawMany<{ userId: string; xpContributed: string }>();
+    const limit = query.limit ?? RAID_RANKING_PAGE_SIZE_DEFAULT;
+    const after = query.cursor ? decodeRankingCursor(query.cursor) : 0;
 
-    return rows.map((row) => ({
-      userId: row.userId,
-      xpContributed: Number(row.xpContributed),
-    }));
+    const rows = await this.raids.manager.query<Array<{
+      rank_position: number | string;
+      user_id: string;
+      display_name: string;
+      level: number | string;
+      title: string | null;
+      contribution_xp: number | string;
+    }>>(
+      `SELECT * FROM (${RAID_RANKING_SQL}) ranked WHERE rank_position > ? ORDER BY rank_position LIMIT ?`,
+      [...rankingParams(raidId), after, limit + 1],
+    );
+    const page = rows.slice(0, limit);
+    const last = page[page.length - 1];
+    return {
+      items: page.map((row) => ({
+        position: Number(row.rank_position),
+        userId: row.user_id,
+        displayName: row.display_name,
+        level: Number(row.level),
+        title: row.title ?? null,
+        contributionXp: Number(row.contribution_xp),
+        isMe: row.user_id === userId,
+      })),
+      nextCursor: rows.length > limit && last ? encodeRankingCursor(Number(last.rank_position)) : null,
+    };
   }
 
   /** A Raid aceita Participantes e Contribuições da segunda 00:00 ao domingo 23:59:59, mesmo depois da Meta batida. */
@@ -301,6 +382,24 @@ export class RaidsService {
     return raid.status !== 'expired'
       && raid.startsAt.getTime() <= at.getTime()
       && at.getTime() <= raid.endsAt.getTime();
+  }
+
+  /** The caller's own line in the Raid: participation, Contribution and place in the Ranking interno. */
+  private async myStanding(raidId: string, userId: string): Promise<ActiveRaid['me']> {
+    const [participating, contributionXp, position] = await Promise.all([
+      this.participations.existsBy({ raidId, userId }),
+      this.contributionXpOf(raidId, userId),
+      this.positionOf(raidId, userId),
+    ]);
+    return { participating, contributionXp, position };
+  }
+
+  private async positionOf(raidId: string, userId: string): Promise<number | null> {
+    const rows = await this.raids.manager.query<Array<{ rank_position: number | string }>>(
+      `SELECT rank_position FROM (${RAID_RANKING_SQL}) ranked WHERE user_id = ?`,
+      [...rankingParams(raidId), userId],
+    );
+    return rows[0] ? Number(rows[0].rank_position) : null;
   }
 
   private async contributionXpOf(raidId: string, userId: string): Promise<number> {
