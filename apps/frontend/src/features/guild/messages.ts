@@ -87,3 +87,19 @@ export function rankingEntryLabel(entry: { position: number; displayName: string
   const who = [`${entry.displayName}${entry.isMe ? ' (você)' : ''}`, `nível ${entry.level}`, entry.title].filter(Boolean).join(', ');
   return `Posição ${entry.position}: ${who}, ${entry.contributionXp} XP`;
 }
+
+const RAID_WEEK_DAY = new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: '2-digit', timeZone: 'America/Sao_Paulo' });
+
+/** The Raid week as São Paulo reads it: Monday to Sunday. */
+export function formatRaidWeek(startsAt: string, endsAt: string): string {
+  return `Semana de ${RAID_WEEK_DAY.format(new Date(startsAt))} a ${RAID_WEEK_DAY.format(new Date(endsAt))}`;
+}
+
+export function formatPastRaidOutcome(status: 'completed' | 'expired'): string {
+  return status === 'completed' ? 'Meta batida · a guilda subiu de nível' : 'Meta não batida';
+}
+
+export function formatPastRaidMine(me: { participated: boolean; contributionXp: number; position: number | null }): string {
+  if (!me.participated) return 'Você não participou';
+  return me.position === null ? `Você: ${me.contributionXp} XP` : `Você: ${formatPosition(me.position)} · ${me.contributionXp} XP`;
+}

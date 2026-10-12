@@ -1,7 +1,7 @@
 import { getAuthenticatedHttpClient } from '@/core/api/api-client';
 import { ApiError } from '@/core/api/api-error';
-import { createGuild, getActiveRaid, getMyGuild, getRaidRanking, joinGuild, leaveGuild, listGuildMembers, listGuilds, joinRaid } from '@/features/guild/api';
-import { formatGuildRole, formatMemberCount, formatMyPosition, rankingEntryLabel } from '@/features/guild/messages';
+import { createGuild, getActiveRaid, getMyGuild, getRaidRanking, joinGuild, leaveGuild, listGuildMembers, listGuilds, listPastRaids, joinRaid } from '@/features/guild/api';
+import { formatGuildRole, formatMemberCount, formatMyPosition, formatPastRaidMine, formatPastRaidOutcome, formatRaidWeek, rankingEntryLabel } from '@/features/guild/messages';
 import { validateGuildName } from '@/features/guild/validation';
 
 jest.mock('@/core/api/api-client', () => ({
@@ -106,6 +106,30 @@ describe('raid ranking API', () => {
 
     expect(get).toHaveBeenNthCalledWith(1, '/raids/r%201/ranking', { signal });
     expect(get).toHaveBeenNthCalledWith(2, '/raids/r1/ranking?cursor=a%2Bb%3D', { signal: undefined });
+  });
+});
+
+describe('past raids API', () => {
+  it('lists the closed Raids of a Guild with an encoded cursor', async () => {
+    const get = jest.fn().mockResolvedValue({ status: 200, data: { items: [], nextCursor: null } });
+    client({ get });
+
+    await listPastRaids('g 1');
+    await listPastRaids('g1', { cursor: 'x/y=' });
+
+    expect(get).toHaveBeenNthCalledWith(1, '/guilds/g%201/raids', { signal: undefined });
+    expect(get).toHaveBeenNthCalledWith(2, '/guilds/g1/raids?cursor=x%2Fy%3D', { signal: undefined });
+  });
+});
+
+describe('past raid helpers', () => {
+  it('reads the week in São Paulo and describes the outcome and the own result', () => {
+    // Monday 00:00 and Sunday 23:59:59 in São Paulo are 03:00 and 02:59:59 in UTC.
+    expect(formatRaidWeek('2026-10-05T03:00:00.000Z', '2026-10-12T02:59:59.000Z')).toBe('Semana de 05/10 a 11/10');
+    expect(formatPastRaidOutcome('completed')).toMatch(/Meta batida/);
+    expect(formatPastRaidOutcome('expired')).toBe('Meta não batida');
+    expect(formatPastRaidMine({ participated: false, contributionXp: 0, position: null })).toBe('Você não participou');
+    expect(formatPastRaidMine({ participated: true, contributionXp: 0, position: 3 })).toBe('Você: 3º · 0 XP');
   });
 });
 
