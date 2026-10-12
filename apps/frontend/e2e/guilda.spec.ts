@@ -10,9 +10,11 @@ const isApi = (path: string, method: string) => (response: { url(): string; requ
 test.describe('Guilda web', () => {
   test('cria a guilda, participa pela Forja, conclui a sessão e vê o progresso e o Ranking interno', async ({ page }) => {
     await registerThroughUi(page, undefined, 'Ana E2E');
+    // O atalho "Guilda" do Acampamento repete o nome do link: a navegação usa só a barra lateral.
+    const sidebar = page.getByTestId('web-sidebar');
 
     // 1. Criar a Guild: a Raid da semana nasce com ela.
-    await page.getByRole('link', { name: 'Guilda' }).click();
+    await sidebar.getByRole('link', { name: 'Guilda' }).click();
     await page.getByLabel('Nome da guilda').fill(`Ordem E2E ${Date.now()}`);
     await page.getByRole('button', { name: 'Criar guilda' }).click();
     await expect(page.getByTestId('guild-mine')).toBeVisible();
@@ -23,7 +25,7 @@ test.describe('Guilda web', () => {
     await expect(page.getByTestId('guild-ranking-empty')).toBeVisible();
 
     // 3. "Participar e iniciar" na Forja, com uma sessão de guilda.
-    await page.getByRole('link', { name: 'Forja' }).click();
+    await sidebar.getByRole('link', { name: 'Forja' }).click();
     await expect(page.getByTestId('study-session-setup')).toBeVisible();
     await page.getByTestId('study-session-mode-guild').click();
     const startResponse = page.waitForResponse(isApi('/sessions', 'POST'));
@@ -40,7 +42,7 @@ test.describe('Guilda web', () => {
     expect(stopped.xpAwarded).toBeGreaterThan(0);
 
     // 5. Voltar à Guilda: progresso, posição e Ranking interno refletem a Contribuição.
-    await page.getByRole('link', { name: 'Guilda' }).click();
+    await sidebar.getByRole('link', { name: 'Guilda' }).click();
     await expect(page.getByTestId('guild-raid-participating')).toBeVisible();
     await expect(page.getByTestId('guild-raid-my-contribution')).toHaveText(`Sua contribuição: ${stopped.xpAwarded} XP`);
     await expect(page.getByTestId('guild-raid-progress')).toHaveAttribute('aria-label', new RegExp(`Progresso da Raid: ${stopped.xpAwarded} de \\d+ XP`));
