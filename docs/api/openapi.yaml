@@ -780,6 +780,31 @@ paths:
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
 
+  /guilds/{id}/raids:
+    get:
+      summary: Raids anteriores da guilda
+      description: >
+        As Raids já fechadas pelo fechamento semanal (`completed` com Meta batida,
+        `expired` sem), da mais recente para a mais antiga, com a Missão, a semana
+        e em `me` a participação, a Contribuição e a posição de quem consulta no
+        Ranking interno de cada uma. A Raid ativa não entra. Só membros da guilda
+        a veem. `nextCursor` é opaco; `null` indica a última página.
+      operationId: listPastGuildRaids
+      tags: [Raids]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: cursor, in: query, required: false, schema: { type: string, maxLength: 100 } }
+        - { name: limit, in: query, required: false, schema: { type: integer, minimum: 1, maximum: 20, default: 10 } }
+      responses:
+        "200":
+          description: Página de Raids anteriores
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PastRaidPage" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
   /raids/{id}:
     get:
       summary: Detalhe de uma raid
@@ -1253,6 +1278,39 @@ components:
         items:
           type: array
           items: { $ref: "#/components/schemas/GuildSummary" }
+        nextCursor: { type: [string, "null"] }
+
+    PastRaid:
+      type: object
+      required: [id, mission, startsAt, endsAt, status, goalXp, progressXp, me]
+      properties:
+        id: { type: string, format: uuid }
+        mission:
+          type: object
+          required: [slug, name]
+          properties:
+            slug: { type: string }
+            name: { type: string }
+        startsAt: { type: string, format: date-time }
+        endsAt: { type: string, format: date-time }
+        status: { type: string, enum: [completed, expired], description: "completed: Meta batida, a guilda subiu de nível; expired: meta não batida" }
+        goalXp: { type: integer, minimum: 1 }
+        progressXp: { type: integer, minimum: 0 }
+        me:
+          type: object
+          required: [participated, contributionXp, position]
+          properties:
+            participated: { type: boolean, description: "Se quem consulta confirmou participação ou contribuiu" }
+            contributionXp: { type: integer, minimum: 0 }
+            position: { type: [integer, "null"], minimum: 1, description: "Posição no Ranking interno dessa Raid; null sem participação" }
+
+    PastRaidPage:
+      type: object
+      required: [items, nextCursor]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/PastRaid" }
         nextCursor: { type: [string, "null"] }
 
     ActiveRaid:
