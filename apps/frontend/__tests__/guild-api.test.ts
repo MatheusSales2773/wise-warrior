@@ -1,7 +1,7 @@
 import { getAuthenticatedHttpClient } from '@/core/api/api-client';
 import { ApiError } from '@/core/api/api-error';
-import { createGuild, getActiveRaid, getMyGuild, joinGuild, leaveGuild, listGuildMembers, listGuilds, joinRaid } from '@/features/guild/api';
-import { formatGuildRole, formatMemberCount } from '@/features/guild/messages';
+import { createGuild, getActiveRaid, getMyGuild, getRaidRanking, joinGuild, leaveGuild, listGuildMembers, listGuilds, joinRaid } from '@/features/guild/api';
+import { formatGuildRole, formatMemberCount, formatMyPosition, rankingEntryLabel } from '@/features/guild/messages';
 import { validateGuildName } from '@/features/guild/validation';
 
 jest.mock('@/core/api/api-client', () => ({
@@ -92,6 +92,28 @@ describe('guild members API', () => {
     expect(get).toHaveBeenNthCalledWith(1, '/guilds/g%201/members', { signal: undefined });
     expect(get).toHaveBeenNthCalledWith(2, '/guilds/g1/members?cursor=a%2Bb%2Fc%3D', { signal: undefined });
     expect(del).toHaveBeenCalledWith('/guilds/g%201/members/me');
+  });
+});
+
+describe('raid ranking API', () => {
+  it('requests the ranking of a Raid with an encoded cursor', async () => {
+    const get = jest.fn().mockResolvedValue({ status: 200, data: { items: [], nextCursor: null } });
+    client({ get });
+    const signal = new AbortController().signal;
+
+    await getRaidRanking('r 1', { signal });
+    await getRaidRanking('r1', { cursor: 'a+b=' });
+
+    expect(get).toHaveBeenNthCalledWith(1, '/raids/r%201/ranking', { signal });
+    expect(get).toHaveBeenNthCalledWith(2, '/raids/r1/ranking?cursor=a%2Bb%3D', { signal: undefined });
+  });
+});
+
+describe('ranking helpers', () => {
+  it('describes the own place and each row for screen readers', () => {
+    expect(formatMyPosition(null)).toBeNull();
+    expect(formatMyPosition(3)).toBe('Sua posição: 3º no Ranking interno');
+    expect(rankingEntryLabel({ position: 1, displayName: 'Ana', level: 5, title: null, contributionXp: 0, isMe: true })).toBe('Posição 1: Ana (você), nível 5, 0 XP');
   });
 });
 
