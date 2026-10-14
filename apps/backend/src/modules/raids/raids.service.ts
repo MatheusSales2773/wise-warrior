@@ -89,6 +89,9 @@ export interface RaidClosure {
   raidId: string;
   guildId: string;
   status: Exclude<RaidStatus, 'active'>;
+  /** Participantes membros com Contribuição: só eles recebem a Recompensa de Raid. */
+  rewardedIds: string[];
+  rewardItemId: string | null;
 }
 
 /** O progresso coletivo logo depois de uma Contribuição, para o evento `raid:progress`. */
@@ -504,7 +507,10 @@ export class RaidsService {
     return opened;
   }
 
-  /** Fechamento idempotente: só uma Raid ainda `active` muda de status. Com Meta batida, a Guild sobe um nível. */
+  /**
+   * Fechamento idempotente: só uma Raid ainda `active` muda de status. Com Meta batida, a Guild sobe um nível
+   * e cada Participante membro com Contribuição recebe a Recompensa, tudo na mesma transação.
+   */
   private async closeRaid(raidId: string): Promise<RaidClosure | null> {
     return this.raids.manager.transaction(async (manager) => {
       const raid = await manager
@@ -517,8 +523,18 @@ export class RaidsService {
       const won = raid.goalReachedAt !== null || raid.progressXp >= raid.goalXp;
       const status = won ? 'completed' : 'expired';
       await manager.update(Raid, { id: raid.id }, { status });
-      if (won) await this.guilds.levelUpInTransaction(manager, raid.guildId);
-      return { raidId: raid.id, guildId: raid.guildId, status };
+      if (!won) return { raidId: raid.id, guildId: raid.guildId, status, rewardedIds: [], rewardItemId: null };
+
+      await this.guilds.levelUpInTransaction(manager, raid.guildId);
+      const members = new Set(await this.guilds.memberIds(raid.guildId, manager));
+      const contributors = ((await manager.query(
+        'SELECT DISTINCT user_id AS userId FROM raid_contributions WHERE raid_id = ?',
+        [raid.id],
+      )) as Array<{ userId: string }>).map((row) => row.userId);
+      const rewardedIds = contributors.filter((userId) => members.has(userId));
+      const mission = await manager.findOneByOrFail(Mission, { id: raid.missionId });
+      await this.users.unlockRaidReward(manager, rewardedIds, mission.slug);
+      return { raidId: raid.id, guildId: raid.guildId, status, rewardedIds, rewardItemId: mission.rewardCosmeticItemId };
     });
   }
 

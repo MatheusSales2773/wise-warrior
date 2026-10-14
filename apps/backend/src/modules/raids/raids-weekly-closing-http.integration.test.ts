@@ -4,6 +4,7 @@ import { Test } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import type { AddressInfo } from 'node:net';
 import { DataSource } from 'typeorm';
+import { AuthService } from '../auth/auth.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import type { JwtPayload } from '../auth/strategies/jwt.strategy';
 import { HttpExceptionFilter } from '../../shared/filters/http-exception.filter';
@@ -18,6 +19,7 @@ import { RealtimeGateway } from '../realtime/realtime.gateway';
 import { CosmeticItem } from '../users/entities/cosmetic-item.entity';
 import { UserCosmeticItem } from '../users/entities/user-cosmetic-item.entity';
 import { User } from '../users/entities/user.entity';
+import { UsersController } from '../users/users.controller';
 import { UsersService } from '../users/users.service';
 import { Mission } from './entities/mission.entity';
 import { Raid } from './entities/raid.entity';
@@ -40,10 +42,13 @@ type PastRaidsBody = {
   }>;
   nextCursor: string | null;
 };
+type CatalogBody = Array<{ id: string; unlocked: boolean; equipped: boolean }>;
 
+/** Marcador do Grimório: a Recompensa da Missão da semana de 05/10/2026 (Cerco ao Grimório). */
+const GRIMORIO_REWARD = 'c05e71c0-0000-4000-8000-000000000009';
 const APRENDIZ_TITLE = 'c05e71c0-0000-4000-8000-000000000002';
 
-describe('Fechamento semanal e Raids anteriores against MySQL', () => {
+describe('Fechamento semanal, Recompensa de Raid e Raids anteriores against MySQL', () => {
   jest.setTimeout(60_000);
 
   let database: IntegrationDatabase | undefined;
@@ -92,6 +97,8 @@ describe('Fechamento semanal e Raids anteriores against MySQL', () => {
   const join = async (userId: string) => {
     expect((await call('POST', `/raids/${raidId}/join`, userId)).status).toBe(204);
   };
+  const catalog = (as: string) => json<CatalogBody>('GET', '/users/me/cosmetics', as);
+  const reward = async (as: string) => (await catalog(as)).find((item) => item.id === GRIMORIO_REWARD);
 
   beforeEach(async () => {
     now = new Date('2026-10-07T15:00:00Z');
@@ -114,7 +121,7 @@ describe('Fechamento semanal e Raids anteriores against MySQL', () => {
       useValue: dataSource!.getRepository(entity),
     });
     const moduleRef = await Test.createTestingModule({
-      controllers: [GuildsController, GuildRaidsController, RaidsController],
+      controllers: [GuildsController, GuildRaidsController, RaidsController, UsersController],
       providers: [
         GuildsService,
         RaidsService,
@@ -124,6 +131,7 @@ describe('Fechamento semanal e Raids anteriores against MySQL', () => {
         repo(Guild), repo(GuildMembership), repo(Raid), repo(RaidContribution), repo(RaidParticipation), repo(Mission),
         repo(User), repo(CosmeticItem), repo(UserCosmeticItem), repo(Character),
         { provide: RAID_CLOCK, useValue: () => now },
+        { provide: AuthService, useValue: {} },
         { provide: RealtimeGateway, useValue: { emitToGuild: jest.fn() } },
       ],
     })
@@ -166,7 +174,7 @@ describe('Fechamento semanal e Raids anteriores against MySQL', () => {
     const weekTurn = new Date('2026-10-12T03:00:00Z'); // Monday 00:00 in São Paulo
     const guildLevel = async () => (await json<{ guild: { level: number } }>('GET', '/guilds/me')).guild.level;
 
-    it('closes a Raid with the goal reached as completed and levels the Guild up', async () => {
+    it('closes a Raid with the goal reached as completed, levels the Guild up and rewards only members with a Contribution', async () => {
       for (const member of [ana, bruno, carla, diego]) await join(member);
       await contribute(ana, 900);
       await contribute(bruno, 1500); // past the goal of 1.000, frozen when the Guild was founded alone
@@ -179,6 +187,10 @@ describe('Fechamento semanal e Raids anteriores against MySQL', () => {
 
       expect(await dataSource!.getRepository(Raid).findOneByOrFail({ id: raidId })).toMatchObject({ status: 'completed' });
       expect(await guildLevel()).toBe(2);
+      expect(await reward(ana)).toMatchObject({ unlocked: true, equipped: false });
+      expect(await reward(bruno)).toMatchObject({ unlocked: true, equipped: false });
+      expect(await reward(carla)).toMatchObject({ unlocked: false }); // confirmed, never contributed
+      expect(await reward(diego)).toMatchObject({ unlocked: false }); // left the Guild
 
       // The next week's Raid: the next Missão of the rotation, the full goal for the 3 members left.
       const next = await json<{ id: string; mission: { slug: string }; goalXp: number; status: string }>('GET', `/guilds/${guildId}/raids/active`);
@@ -186,7 +198,7 @@ describe('Fechamento semanal e Raids anteriores against MySQL', () => {
       expect(next.id).not.toBe(raidId);
     });
 
-    it('is idempotent: running again duplicates neither the level nor the next Raid', async () => {
+    it('is idempotent: running again, or winning the same Missão again, duplicates neither level, Raid nor item', async () => {
       await join(ana);
       await contribute(ana, 4000);
       now = weekTurn;
@@ -196,9 +208,15 @@ describe('Fechamento semanal e Raids anteriores against MySQL', () => {
 
       expect(await guildLevel()).toBe(2);
       expect(await dataSource!.getRepository(Raid).countBy({ guildId })).toBe(2);
+      expect(await dataSource!.getRepository(UserCosmeticItem).countBy({ userId: ana, cosmeticItemId: GRIMORIO_REWARD })).toBe(1);
+
+      // A later win of the same Missão keeps a single Inventory row, still not equipped.
+      await app!.get(UsersService).unlockRaidReward(dataSource!.manager, [ana], 'cerco-ao-grimorio');
+      expect(await dataSource!.getRepository(UserCosmeticItem).findBy({ userId: ana, cosmeticItemId: GRIMORIO_REWARD }))
+        .toEqual([expect.objectContaining({ equipped: false })]);
     });
 
-    it('closes a Raid without the goal reached as expired, with no level', async () => {
+    it('closes a Raid without the goal reached as expired, with no level and no reward', async () => {
       await join(ana);
       await join(carla);
       await contribute(ana, 100);
@@ -207,6 +225,7 @@ describe('Fechamento semanal e Raids anteriores against MySQL', () => {
 
       expect(await dataSource!.getRepository(Raid).findOneByOrFail({ id: raidId })).toMatchObject({ status: 'expired' });
       expect(await guildLevel()).toBe(1);
+      expect(await reward(ana)).toMatchObject({ unlocked: false });
     });
 
     it('closes a Raid nobody touched as expired', async () => {

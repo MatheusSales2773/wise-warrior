@@ -1,4 +1,4 @@
-import { isStarterItem, isUnlockedAtLevel, parseUnlockCondition } from './unlock-condition';
+import { isStarterItem, isUnlockedAtLevel, isUnlockedByRaid, parseUnlockCondition } from './unlock-condition';
 
 describe('parseUnlockCondition', () => {
   it('reads a level condition', () => {
@@ -34,5 +34,13 @@ describe('isStarterItem', () => {
     expect(isStarterItem({ type: 'level', level: 1 })).toBe(true);
     expect(isStarterItem({ type: 'level', level: 3 })).toBe(false);
     expect(isStarterItem({ type: 'raid', slug: '*' })).toBe(false);
+  });
+});
+
+describe('isUnlockedByRaid', () => {
+  it('unlocks only the raid condition of the won Missão', () => {
+    expect(isUnlockedByRaid({ type: 'raid', slug: 'cerco-ao-grimorio' }, 'cerco-ao-grimorio')).toBe(true);
+    expect(isUnlockedByRaid({ type: 'raid', slug: 'forja-dos-sabios' }, 'cerco-ao-grimorio')).toBe(false);
+    expect(isUnlockedByRaid({ type: 'level', level: 1 }, 'cerco-ao-grimorio')).toBe(false);
   });
 });

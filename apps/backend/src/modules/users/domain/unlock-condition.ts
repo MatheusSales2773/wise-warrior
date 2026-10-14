@@ -1,7 +1,7 @@
 /** Condição de desbloqueio de um Cosmetic Item, na forma estruturada que a API devolve. */
 export type UnlockCondition =
   | { type: 'level'; level: number }
-  /** `slug` é o da Missão (`raid:vigilia-da-aurora`); `*` vale para qualquer Raid. */
+  /** `slug` é o da Missão (`raid:vigilia-da-aurora`): só vencer a Raid dessa Missão cumpre a condição. */
   | { type: 'raid'; slug: string };
 
 /** Lê a forma persistida (`level:5`, `raid:<slug>`). Devolve `null` para um valor fora desse formato. */
@@ -21,4 +21,9 @@ export function isUnlockedAtLevel(condition: UnlockCondition, level: number): bo
 /** Item inicial: a condição é o nível 1, então todo Character começa com ele. */
 export function isStarterItem(condition: UnlockCondition): boolean {
   return condition.type === 'level' && condition.level === 1;
+}
+
+/** Regra de Desbloqueio da Recompensa de Raid: a condição `raid:<slug>` é cumprida ao vencer a Raid daquela Missão. */
+export function isUnlockedByRaid(condition: UnlockCondition, missionSlug: string): boolean {
+  return condition.type === 'raid' && condition.slug === missionSlug;
 }

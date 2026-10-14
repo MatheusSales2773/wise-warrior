@@ -17,6 +17,7 @@ import { UserCosmeticItem } from './entities/user-cosmetic-item.entity';
 import {
   isStarterItem,
   isUnlockedAtLevel,
+  isUnlockedByRaid,
   parseUnlockCondition,
   UnlockCondition,
 } from './domain/unlock-condition';
@@ -100,6 +101,25 @@ export class UsersService {
       // Só a linha repetida (usuário + item) é tolerada; qualquer outro erro continua sendo erro.
       .orUpdate(['cosmetic_item_id'], ['user_id', 'cosmetic_item_id'])
       .execute();
+  }
+
+  /**
+   * Recompensa de Raid: a mesma regra idempotente de Desbloqueio, para a condição `raid:<slug>` da Missão
+   * vencida. Roda na transação do fechamento; quem já tem o item continua com uma única linha, sem equipá-lo.
+   * Devolve os ids dos itens da Recompensa.
+   */
+  async unlockRaidReward(manager: EntityManager, userIds: string[], missionSlug: string): Promise<string[]> {
+    const rewards = (await this.readCatalog(manager.getRepository(CosmeticItem)))
+      .filter(({ condition }) => isUnlockedByRaid(condition, missionSlug));
+    if (rewards.length === 0 || userIds.length === 0) return rewards.map(({ item }) => item.id);
+    await manager
+      .createQueryBuilder()
+      .insert()
+      .into(UserCosmeticItem)
+      .values(userIds.flatMap((userId) => rewards.map(({ item }) => ({ userId, cosmeticItemId: item.id, equipped: false }))))
+      .orUpdate(['cosmetic_item_id'], ['user_id', 'cosmetic_item_id'])
+      .execute();
+    return rewards.map(({ item }) => item.id);
   }
 
   /** Nome, nível e Título equipado de vários usuários, para listas como o Ranking interno. */
