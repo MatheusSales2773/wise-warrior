@@ -1,0 +1,79 @@
+asyncapi: 3.0.0
+info:
+  title: Wise — eventos de tempo real
+  version: 0.1.0
+  description: >
+    Eventos que o backend emite pelo Socket.IO 4.x (ADR-009). A conexão é autenticada no handshake com o
+    access token (`auth.token`); uma Session revogada ou um token inválido recusam a conexão. Cada socket entra
+    na room `user:{id}` do usuário (todos os dispositivos dele recebem os mesmos eventos) e na room
+    `guild:{id}` da Guild atual do usuário. Criar, entrar ou sair de uma Guild move todos os sockets do usuário
+    para a room certa, sem reconectar. Os eventos saem só depois do commit da transação que os originou.
+    Este documento cobre os eventos da Guilda (#110); os demais eventos de progressão seguem no backlog da #4.
+
+servers:
+  api:
+    host: localhost:3000
+    protocol: ws
+    pathname: /socket.io
+    description: Mesmo host da API HTTP (Socket.IO 4.x, transports websocket e polling).
+    security:
+      - $ref: "#/components/securitySchemes/accessToken"
+
+channels:
+  guildRoom:
+    address: "guild:{guildId}"
+    description: Room de todos os sockets dos membros atuais da Guild.
+    parameters:
+      guildId:
+        description: Id da Guild.
+    messages:
+      raidProgress:
+        $ref: "#/components/messages/RaidProgress"
+
+operations:
+  receiveRaidProgress:
+    action: send
+    security:
+      - $ref: "#/components/securitySchemes/accessToken"
+    summary: Progresso da Raid depois de uma Contribuição (UC02 RE01).
+    channel:
+      $ref: "#/channels/guildRoom"
+    messages:
+      - $ref: "#/channels/guildRoom/messages/raidProgress"
+
+components:
+  securitySchemes:
+    accessToken:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: >
+        O access token vai em `auth.token` no handshake do Socket.IO. Depois de um refresh, o cliente reconecta
+        com o token novo.
+  messages:
+    RaidProgress:
+      name: "raid:progress"
+      title: Progresso da Raid
+      summary: >
+        Emitido na room da Guild depois do commit de cada Contribuição (Study Session de modo Guilda
+        concluída dentro da semana). O cliente atualiza o cache da Raid ativa e recarrega o Ranking interno.
+      payload:
+        type: object
+        additionalProperties: false
+        required: [raidId, progressXp, goalXp, goalReachedAt]
+        properties:
+          raidId: { type: string, format: uuid }
+          progressXp: { type: integer, minimum: 0, description: Progresso coletivo depois da Contribuição. }
+          goalXp: { type: integer, minimum: 1, description: "Meta coletiva, congelada na criação da Raid." }
+          goalReachedAt:
+            description: A primeira vez que o progresso alcançou a meta (Meta batida), ou null.
+            oneOf:
+              - { type: string, format: date-time }
+              - { type: "null" }
+      examples:
+        - name: metaBatida
+          payload:
+            raidId: 6f9b7d7e-1c1f-4a49-9a51-0d3f2b8b7c10
+            progressXp: 1550
+            goalXp: 1500
+            goalReachedAt: "2026-10-09T21:14:03.120Z"

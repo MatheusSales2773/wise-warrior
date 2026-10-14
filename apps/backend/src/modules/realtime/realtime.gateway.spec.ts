@@ -12,6 +12,7 @@ type Middleware = (
 function client(token?: string): Socket {
   return {
     data: {},
+    connected: true,
     disconnect: jest.fn(),
     join: jest.fn(),
     handshake: { auth: token ? { token } : {}, query: {} },
@@ -75,7 +76,7 @@ describe('RealtimeGateway authentication', () => {
     const next = jest.fn();
 
     await middlewareFor(gateway)(socket, next);
-    gateway.handleConnection(socket);
+    await gateway.handleConnection(socket);
 
     expect(jwt.verify).toHaveBeenCalledWith('access-token', {
       secret: 'access-secret',
@@ -92,6 +93,33 @@ describe('RealtimeGateway authentication', () => {
     });
     expect(socket.join).toHaveBeenCalledWith('user:user-1');
     expect(socket.disconnect).not.toHaveBeenCalled();
+  });
+
+  it('joins the room of the user Guild on connection, as told by the registered resolver', async () => {
+    const { gateway } = createGateway();
+    const resolver = jest.fn().mockResolvedValue('guild-1');
+    gateway.setGuildRoomResolver(resolver);
+    const socket = client('access-token');
+
+    await middlewareFor(gateway)(socket, jest.fn());
+    await gateway.handleConnection(socket);
+
+    expect(resolver).toHaveBeenCalledWith('user-1');
+    expect(socket.join).toHaveBeenCalledWith('user:user-1');
+    expect(socket.join).toHaveBeenCalledWith('guild:guild-1');
+  });
+
+  it('stays only in the user room when the user has no Guild or the lookup fails', async () => {
+    const { gateway } = createGateway();
+    const socket = client('access-token');
+    await middlewareFor(gateway)(socket, jest.fn());
+
+    gateway.setGuildRoomResolver(jest.fn().mockResolvedValue(null));
+    await gateway.handleConnection(socket);
+    gateway.setGuildRoomResolver(jest.fn().mockRejectedValue(new Error('db down')));
+    await gateway.handleConnection(socket);
+
+    expect((socket.join as jest.Mock).mock.calls).toEqual([['user:user-1'], ['user:user-1']]);
   });
 
   it('rejects a revoked Session before the Socket.IO connection is accepted', async () => {

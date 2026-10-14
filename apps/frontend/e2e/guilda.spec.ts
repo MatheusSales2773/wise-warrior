@@ -55,4 +55,46 @@ test.describe('Guilda web', () => {
     await expect(rows.first()).toContainText(`${stopped.xpAwarded} XP`);
     await expect(rows.first()).toHaveAttribute('aria-label', new RegExp(`^Posição 1: Ana E2E \\(você\\), nível \\d+, Aprendiz, ${stopped.xpAwarded} XP$`));
   });
+
+  test('mostra o progresso da Raid a outro membro com a tela Guilda aberta, sem recarregar (UC02 RE01)', async ({ browser, page }) => {
+    const guildName = `Vigia E2E ${Date.now().toString(36)}`;
+    await registerThroughUi(page, undefined, 'Fundadora');
+    const sidebarLink = (target: typeof page, name: string) =>
+      target.getByTestId('web-sidebar').getByRole('link', { name, exact: true });
+    await sidebarLink(page, 'Guilda').click();
+    await page.getByLabel('Nome da guilda').fill(guildName);
+    await page.getByRole('button', { name: 'Criar guilda' }).click();
+    await expect(page.getByTestId('guild-mine-name')).toHaveText(guildName);
+
+    const watcherContext = await browser.newContext({ ignoreHTTPSErrors: true });
+    try {
+      const watcher = await watcherContext.newPage();
+      await registerThroughUi(watcher, undefined, 'Sentinela');
+      await sidebarLink(watcher, 'Guilda').click();
+      await watcher.getByLabel('Buscar por nome').fill(guildName);
+      await watcher.getByRole('button', { name: 'Buscar', exact: true }).click();
+      await watcher.getByRole('button', { name: `Entrar na guilda ${guildName}` }).click();
+      await expect(watcher.getByTestId('guild-mine-name')).toHaveText(guildName);
+      await expect(watcher.getByTestId('guild-raid')).toContainText(/\b0 \/ \d+ XP/);
+
+      await sidebarLink(page, 'Forja').click();
+      await page.getByRole('radio', { name: 'Sessão de guilda' }).click();
+      const startResponse = page.waitForResponse((response) =>
+        new URL(response.url()).pathname.endsWith('/sessions') && response.request().method() === 'POST');
+      await page.getByRole('button', { name: 'Participar e iniciar' }).click();
+      const started = await (await startResponse).json() as { id: string };
+      await backdateStudySessionForE2e(started.id);
+      await page.reload();
+      const stopResponse = page.waitForResponse((response) =>
+        new URL(response.url()).pathname.endsWith('/stop') && response.request().method() === 'POST');
+      await page.getByRole('button', { name: 'Encerrar antecipadamente' }).click();
+      const { xpAwarded } = await (await stopResponse).json() as { xpAwarded: number };
+
+      // The watcher never reloads: `raid:progress` updates the Raid and the Ranking interno.
+      await expect(watcher.getByTestId('guild-raid')).toContainText(new RegExp(`\\b${xpAwarded} / \\d+ XP`));
+      await expect(watcher.getByTestId('guild-ranking').getByLabel(/^1º lugar: Fundadora/)).toContainText(`${xpAwarded} XP`);
+    } finally {
+      await watcherContext.close();
+    }
+  });
 });

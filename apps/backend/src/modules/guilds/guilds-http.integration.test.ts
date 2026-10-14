@@ -75,7 +75,7 @@ describe('Guilds HTTP contract against MySQL', () => {
         { provide: getRepositoryToken(UserCosmeticItem), useValue: dataSource.getRepository(UserCosmeticItem) },
         { provide: RAID_CLOCK, useValue: systemRaidClock },
         { provide: ProgressionService, useValue: {} },
-        { provide: RealtimeGateway, useValue: { emitToGuild: jest.fn() } },
+        { provide: RealtimeGateway, useValue: { emitToGuild: jest.fn(), emitToUser: jest.fn(), setGuildRoomResolver: jest.fn(), joinGuildRoom: jest.fn(), leaveGuildRoom: jest.fn() } },
       ],
     })
       .overrideGuard(JwtAuthGuard)

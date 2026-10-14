@@ -12,11 +12,16 @@ import type { Server, Socket } from 'socket.io';
 import { JwtStrategy } from '../auth/strategies/jwt.strategy';
 import type { JwtPayload } from '../auth/strategies/jwt.strategy';
 
+/** Diz a Guild atual de um usuário; registrado pelo módulo de Guildas, que é o dono da associação. */
+export type GuildRoomResolver = (userId: string) => Promise<string | null>;
+
 /**
  * Gateway único de tempo real. Toda conexão autenticada entra automaticamente
  * na room `user:{id}` (ADR-009) — múltiplos dispositivos do mesmo usuário
  * recebem o mesmo evento em paralelo. Rooms `guild:{id}` são usadas para
- * chat/ranking/raid (Documento de Arquitetura, seção 3.2).
+ * chat/ranking/raid (Documento de Arquitetura, seção 3.2): o socket entra na
+ * room da Guild do usuário ao conectar, e o módulo de Guildas move todos os
+ * sockets do usuário quando ele cria, entra ou sai de uma Guild.
  */
 @Injectable()
 @WebSocketGateway()
@@ -25,6 +30,8 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
 
   @WebSocketServer()
   server: Server;
+
+  private guildOf: GuildRoomResolver | null = null;
 
   constructor(
     private readonly jwt: JwtService,
@@ -38,7 +45,7 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
     });
   }
 
-  handleConnection(client: Socket): void {
+  async handleConnection(client: Socket): Promise<void> {
     if (
       typeof client.data?.userId !== 'string' ||
       typeof client.data?.sessionId !== 'string'
@@ -47,7 +54,19 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
       return;
     }
 
-    client.join(`user:${client.data.userId}`);
+    const userId: string = client.data.userId;
+    client.join(`user:${userId}`);
+    if (!this.guildOf) return;
+    try {
+      const guildId = await this.guildOf(userId);
+      if (guildId && client.connected) client.join(`guild:${guildId}`);
+    } catch (error) {
+      this.logger.warn(`Não foi possível colocar ${userId} na room da guilda: ${String(error)}`);
+    }
+  }
+
+  setGuildRoomResolver(resolver: GuildRoomResolver): void {
+    this.guildOf = resolver;
   }
 
   private async authenticate(
@@ -80,8 +99,14 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
     this.logger.debug(`Cliente desconectado: ${client.data?.userId ?? 'anônimo'}`);
   }
 
-  joinGuildRoom(client: Socket, guildId: string): void {
-    client.join(`guild:${guildId}`);
+  /** Todos os sockets do usuário, em todos os dispositivos, passam a receber os eventos da Guild. */
+  joinGuildRoom(userId: string, guildId: string): void {
+    this.server?.in(`user:${userId}`).socketsJoin(`guild:${guildId}`);
+  }
+
+  /** Todos os sockets do usuário deixam de receber os eventos da Guild, sem reconectar. */
+  leaveGuildRoom(userId: string, guildId: string): void {
+    this.server?.in(`user:${userId}`).socketsLeave(`guild:${guildId}`);
   }
 
   emitToUser(userId: string, event: string, payload: unknown): void {
