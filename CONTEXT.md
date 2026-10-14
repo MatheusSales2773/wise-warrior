@@ -39,7 +39,7 @@ O Cosmetic Item da categoria Título que está equipado no Character. Não exist
 _Avoid_: rank, cargo, título livre
 
 **Item inicial**:
-Um Cosmetic Item cuja Condição de desbloqueio é o nível 1, de modo que todo Character já começa com ele no Inventário.
+Um Cosmetic Item cuja Condição de desbloqueio é o nível 1, de modo que todo Character já começa com ele no Inventário e equipado.
 _Avoid_: item padrão, item grátis
 
 **Item premium** (✦):
