@@ -43,12 +43,12 @@ const snapshot: StudySessionSnapshot = {
   receivedAtMs: new Date('2026-09-22T12:00:00.000Z').getTime(),
 };
 
-async function renderStudySession() {
+async function renderStudySession({ initialMode }: { initialMode?: 'solo' | 'guild' } = {}) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 }, mutations: { retry: false, gcTime: 0 } } });
   const renderTree = (showScreen: boolean) => (
     <QueryClientProvider client={client}>
       <StudySessionHeartbeatRuntime />
-      {showScreen ? <StudySessionScreen /> : null}
+      {showScreen ? <StudySessionScreen initialMode={initialMode} /> : null}
     </QueryClientProvider>
   );
   const view = await render(renderTree(true));
@@ -461,6 +461,18 @@ describe('Sessão de guilda on the Forja', () => {
     await waitFor(() => expect(start).toHaveBeenCalledWith(1500, expect.any(String), null, 'raid-1'));
     expect(joinGuildRaid).not.toHaveBeenCalled();
     expect(await view.findByText('25 min de foco · Sessão de guilda')).toBeTruthy();
+    view.unmount();
+  });
+
+  it('opens with guild mode selected when the Raid sends the member to attack', async () => {
+    getActive.mockResolvedValue(null);
+    getMine.mockResolvedValue(mine);
+    getRaid.mockResolvedValue(raid());
+    const { view } = await renderStudySession({ initialMode: 'guild' });
+
+    await view.findByTestId('study-session-mode');
+    expect(view.getByRole('radio', { name: 'Sessão de guilda' }).props.accessibilityState.checked).toBe(true);
+    expect(view.getByTestId('study-session-guild-raid')).toHaveTextContent('O XP desta sessão conta para a Raid Cerco ao Grimório.');
     view.unmount();
   });
 

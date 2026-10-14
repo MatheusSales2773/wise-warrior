@@ -19,7 +19,10 @@ export const wiseIconNames = [
   'swap-horizontal-outline',
   'lock-closed',
   'chevron-forward',
+  'chevron-back',
   'people-outline',
+  'time-outline',
+  'play',
 ] as const;
 
 export type WiseIconName = (typeof wiseIconNames)[number];

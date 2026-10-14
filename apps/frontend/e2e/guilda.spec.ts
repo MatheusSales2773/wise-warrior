@@ -54,5 +54,15 @@ test.describe('Guilda web', () => {
     await expect(rows.first()).toContainText('Ana E2E (você)');
     await expect(rows.first()).toContainText(`${stopped.xpAwarded} XP`);
     await expect(rows.first()).toHaveAttribute('aria-label', new RegExp(`^Posição 1: Ana E2E \\(você\\), nível \\d+, Aprendiz, ${stopped.xpAwarded} XP$`));
+
+    // 6. A batalha (Figma 06b): o golpe aparece em horas de foco, e "Atacar com foco" abre a Forja em modo Guilda.
+    await page.getByTestId('guild-raid-battle').click();
+    await expect(page).toHaveURL(/\/guilda\/raid$/);
+    await expect(page.getByTestId('raid-strikes').locator('[data-testid^="raid-strike-"]').first())
+      .toHaveAttribute('aria-label', /^1º: você, \d+,\dh de foco$/);
+    await expect(page.getByTestId('raid-boss-life')).toHaveAttribute('aria-label', /^Vida do dragão: \d+%\./);
+    await page.getByRole('button', { name: /Atacar com foco/ }).click();
+    await expect(page).toHaveURL(/\/sessao\?modo=guilda$/);
+    await expect(page.getByTestId('study-session-mode-guild')).toHaveAttribute('aria-checked', 'true');
   });
 });

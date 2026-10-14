@@ -1,0 +1,102 @@
+import type { ReactNode } from 'react';
+import { StyleSheet, Text, View } from 'react-native';
+import { theme } from '@/design-system';
+import { PixelSprite } from '@/features/character/PixelSprite';
+import { partyHeroSprites, partyHeroWeapons, type PartyMember } from './raid-battle';
+import {
+  RAID_HERO_SIZE,
+  RAID_PARTY_ORIGIN,
+  RAID_PARTY_SPACING,
+  RAID_SCENE_BOSS_POSITION,
+  RAID_SCENE_HEIGHT,
+  RAID_SCENE_WIDTH,
+  RAID_SHADOW,
+  raidSceneBackground,
+  raidSceneBoss,
+  raidWeapons,
+} from './raid-scene-sprites';
+
+/**
+ * Maior escala inteira que cabe na largura, com folga para um corte pequeno nas bordas (o celular usa ×2 em 342px,
+ * como no Figma). Nunca menor que ×2 nem maior que ×6.
+ */
+export function raidSceneScale(width: number): number {
+  return Math.min(6, Math.max(2, Math.floor((width + 20) / RAID_SCENE_WIDTH)));
+}
+
+function slotOrigin(index: number) {
+  return { x: RAID_PARTY_ORIGIN.x + index * RAID_PARTY_SPACING, y: RAID_PARTY_ORIGIN.y };
+}
+
+function PartyHeroFigure({ index, member, scale }: { index: number; member: PartyMember; scale: number }) {
+  const origin = slotOrigin(index);
+  const weapon = raidWeapons[partyHeroWeapons[member.hero]];
+  return <>
+    <View style={[styles.layer, { left: (origin.x + RAID_SHADOW.x) * scale, top: (origin.y + RAID_SHADOW.y) * scale, width: RAID_SHADOW.width * scale, height: scale, backgroundColor: RAID_SHADOW.color }]} />
+    <PixelSprite scale={scale} sprite={partyHeroSprites[member.hero]} style={[styles.layer, { left: origin.x * scale, top: origin.y * scale }]} testID={`raid-scene-hero-${member.userId}`} />
+    <PixelSprite scale={scale} sprite={weapon.sprite} style={[styles.layer, { left: (origin.x + weapon.offset.x) * scale, top: (origin.y + weapon.offset.y) * scale }]} />
+  </>;
+}
+
+/** Nome e nível sob cada herói, como as etiquetas da cena no desktop. */
+function PartyTag({ index, member, scale }: { index: number; member: PartyMember; scale: number }) {
+  const origin = slotOrigin(index);
+  const center = (origin.x + RAID_HERO_SIZE.width / 2) * scale;
+  return <View
+    pointerEvents="none"
+    style={[styles.tagSlot, { left: center - TAG_SLOT_WIDTH / 2, top: (origin.y + RAID_HERO_SIZE.height) * scale - 8 }]}
+    testID={`raid-scene-tag-${member.userId}`}
+  >
+    <View style={[styles.tag, member.isMe && styles.tagMe]}>
+      <Text numberOfLines={1} style={[styles.tagName, member.isMe && styles.tagNameMe]}>{member.displayName}</Text>
+      <Text style={styles.tagLevel}>Nv {member.level}</Text>
+    </View>
+  </View>;
+}
+
+const TAG_SLOT_WIDTH = 140;
+
+/**
+ * A cena da batalha em pixel art. Decorativa para leitores de tela: o progresso e os membros aparecem como texto
+ * fora dela. `overlay` recebe os painéis que ficam por cima (tempo, vida do chefe).
+ */
+export function RaidScene({ overlay, party, scale, showTags, viewportWidth }: {
+  party: readonly PartyMember[];
+  scale: number;
+  showTags: boolean;
+  /** Largura visível; a cena fica centralizada e cortada nas bordas quando é mais larga. */
+  viewportWidth: number;
+  overlay?: ReactNode;
+}) {
+  const width = RAID_SCENE_WIDTH * scale;
+  const height = RAID_SCENE_HEIGHT * scale;
+  const visibleWidth = Math.min(viewportWidth, width);
+  return <View style={[styles.frame, { width: visibleWidth, height }]} testID="raid-scene">
+    <View accessibilityElementsHidden aria-hidden importantForAccessibility="no-hide-descendants" style={[styles.canvas, { width, height, left: (visibleWidth - width) / 2 }]}>
+      <PixelSprite scale={scale} sprite={raidSceneBackground} style={styles.layerOrigin} testID="raid-scene-background" />
+      {party.map((member, index) => <PartyHeroFigure index={index} key={member.userId} member={member} scale={scale} />)}
+      <PixelSprite scale={scale} sprite={raidSceneBoss} style={[styles.layer, { left: RAID_SCENE_BOSS_POSITION.x * scale, top: RAID_SCENE_BOSS_POSITION.y * scale }]} testID="raid-scene-boss" />
+      {showTags ? party.map((member, index) => <PartyTag index={index} key={member.userId} member={member} scale={scale} />) : null}
+    </View>
+    {/* Drawn over the pixels so the border does not crop the scene. */}
+    <View pointerEvents="none" style={[StyleSheet.absoluteFill, styles.frameBorder]} />
+    {overlay}
+  </View>;
+}
+
+const styles = StyleSheet.create({
+  frame: { alignSelf: 'center', overflow: 'hidden', borderRadius: theme.radius.card, backgroundColor: theme.color.surfaceInset },
+  frameBorder: { borderRadius: theme.radius.card, borderWidth: theme.border.standard, borderColor: theme.color.borderEmphasis },
+  canvas: { position: 'absolute', top: 0 },
+  layer: { position: 'absolute' },
+  layerOrigin: { position: 'absolute', left: 0, top: 0 },
+  tagSlot: { position: 'absolute', width: TAG_SLOT_WIDTH, alignItems: 'center' },
+  tag: {
+    flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 8, paddingVertical: 3, maxWidth: TAG_SLOT_WIDTH,
+    borderRadius: theme.radius.pill, borderWidth: theme.border.standard, borderColor: theme.color.borderEmphasis, backgroundColor: 'rgba(7, 7, 12, 0.72)',
+  },
+  tagMe: { borderColor: theme.color.accentPrimary },
+  tagName: { flexShrink: 1, fontFamily: 'Inter-SemiBold', fontSize: 11, lineHeight: 13, color: theme.color.textPrimary },
+  tagNameMe: { color: theme.color.accentHighlight },
+  tagLevel: { fontFamily: 'JetBrainsMono-Medium', fontSize: 9, lineHeight: 12, color: theme.color.textTertiary },
+});

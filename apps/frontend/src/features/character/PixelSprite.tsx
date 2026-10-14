@@ -5,6 +5,12 @@ import type { PixelSpriteData } from './sprites';
 
 type PixelRun = { x: number; y: number; width: number; color: string };
 
+/** `a`–`z` index the first 26 colours and `A`–`Z` the next 26, for scenes with a larger palette. */
+function paletteIndex(key: string): number {
+  const code = key.charCodeAt(0);
+  return code >= 97 ? code - 97 : code - 65 + 26;
+}
+
 /** Merges horizontal runs of the same colour so each row needs as few rects as possible. */
 function toRuns({ palette, rows }: PixelSpriteData): PixelRun[] {
   const runs: PixelRun[] = [];
@@ -14,7 +20,7 @@ function toRuns({ palette, rows }: PixelSpriteData): PixelRun[] {
       const key = row.charAt(x);
       let end = x + 1;
       while (end < row.length && row[end] === key) end += 1;
-      const color = key === '.' ? undefined : palette[key.charCodeAt(0) - 97];
+      const color = key === '.' ? undefined : palette[paletteIndex(key)];
       if (color) runs.push({ x, y, width: end - x, color });
       x = end;
     }

@@ -1,6 +1,6 @@
 /**
  * Pixel art exported from the "Sprites (pixel art)" page of the Wise Figma file.
- * Each row is one line of pixels; a letter indexes `palette` (a = 0, b = 1, …) and `.` is transparent.
+ * Each row is one line of pixels; a letter indexes `palette` (a = 0, b = 1, …, z = 25, A = 26, …) and `.` is transparent.
  * Sprites must only be scaled by integer factors so pixels stay crisp.
  */
 export type PixelSpriteData = {
