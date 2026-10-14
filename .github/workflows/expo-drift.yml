@@ -1,0 +1,67 @@
+name: Expo drift
+
+# `expo install --check` compares the installed packages with a list the Expo team updates on its own schedule.
+# Run inside the PR gate it fails unrelated PRs whenever a patch ships, so it runs here instead.
+on:
+  schedule:
+    - cron: "0 12 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  EXPO_NO_DOTENV: 1
+  EXPO_PUBLIC_API_URL: https://api.ci.invalid/v1
+
+jobs:
+  expo-check:
+    name: Expo SDK package versions
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Check Expo package versions
+        id: check
+        run: npm run expo:check --workspace apps/frontend 2>&1 | tee expo-check.log
+
+      - name: Open an issue about the drift
+        if: failure() && steps.check.outcome == 'failure'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          title="Expo SDK packages out of date"
+          if [ -n "$(gh issue list --state open --search "\"$title\" in:title" --json number --jq '.[].number')" ]; then
+            echo "An issue about this drift is already open."
+            exit 0
+          fi
+          {
+            echo "The weekly \`expo install --check\` found packages that differ from the versions the Expo SDK expects."
+            echo
+            echo "Run \`npx expo install --fix\` in \`apps/frontend\`, then \`npm run verify:m1\`, and open a PR."
+            echo
+            echo "Run: $RUN_URL"
+            echo
+            echo '```'
+            tail -n 20 expo-check.log
+            echo '```'
+          } > body.md
+          gh issue create --title "$title" --body-file body.md

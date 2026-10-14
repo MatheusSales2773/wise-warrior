@@ -191,11 +191,15 @@ nativo.
 #### Gates M1/M2 e tipos de saída
 
 ```bash
-# Tipos + lint + Jest + matriz Expo + Expo Doctor + bundles das três plataformas
+# Tipos + lint + Jest + Expo Doctor + bundles das três plataformas
 npm run verify:m1
 
 # Gate M1 completo + shell M2, bundle Web e fallback SPA no container
 npm run verify:m2
+
+# Matriz de versões do Expo SDK. Fora dos gates: a Expo publica patches sem aviso e
+# derrubaria PRs que não tocam nas dependências. O workflow semanal Expo drift roda isto.
+npm run expo:check --workspace apps/frontend
 
 # Somente o bundle Web pronto para servir
 npm run build --workspace apps/frontend
