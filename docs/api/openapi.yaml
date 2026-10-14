@@ -800,24 +800,28 @@ paths:
 
   /raids/{id}/ranking:
     get:
-      summary: Ranking de contribuição da raid
+      summary: Ranking interno da Raid
       description: >
-        Sem paginação por decisão explícita: bounded pelo tamanho da guilda
-        (tipicamente dezenas de membros, não milhares) — ver nota de
-        /users/me/sessions acima para o mesmo raciocínio. Restrito aos
-        membros da guilda da raid; quem é de fora recebe 403.
+        Participantes que ainda são membros da guilda, ordenados por
+        Contribuição em XP (decrescente), depois por quem chegou antes ao total
+        (última Contribuição mais antiga) e por `userId`. Participantes sem
+        Contribuição aparecem no fim com 0 XP. Quem saiu da guilda não aparece,
+        mas as Contribuições dele continuam no progresso coletivo. As posições
+        são densas e começam em 1; `nextCursor` é opaco e `null` marca a última
+        página. Restrito aos membros da guilda da raid; quem é de fora recebe 403.
       operationId: getRaidRanking
       tags: [Raids]
       parameters:
         - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: cursor, in: query, required: false, schema: { type: string, maxLength: 100 } }
+        - { name: limit, in: query, required: false, schema: { type: integer, minimum: 1, maximum: 50, default: 20 } }
       responses:
         "200":
-          description: Ranking ordenado por XP contribuído (desc)
+          description: Página do ranking
           content:
             application/json:
-              schema:
-                type: array
-                items: { $ref: "#/components/schemas/RaidRankingEntry" }
+              schema: { $ref: "#/components/schemas/RaidRankingPage" }
+        "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
@@ -1283,10 +1287,11 @@ components:
         status: { type: string, enum: [active, completed, expired] }
         me:
           type: object
-          required: [participating, contributionXp]
+          required: [participating, contributionXp, position]
           properties:
             participating: { type: boolean, description: "Se quem consulta já confirmou participação nesta Raid" }
             contributionXp: { type: integer, minimum: 0, description: "A Contribuição de quem consulta nesta Raid" }
+            position: { type: [integer, "null"], minimum: 1, description: "A posição de quem consulta no Ranking interno; null enquanto não participa" }
 
     RaidDetail:
       type: object
@@ -1301,10 +1306,24 @@ components:
 
     RaidRankingEntry:
       type: object
-      required: [userId, xpContributed]
+      required: [position, userId, displayName, level, title, contributionXp, isMe]
       properties:
+        position: { type: integer, minimum: 1 }
         userId: { type: string, format: uuid }
-        xpContributed: { type: integer }
+        displayName: { type: string }
+        level: { type: integer, minimum: 1 }
+        title: { type: [string, "null"], description: "O Título equipado (ADR-010); null com o espaço vazio" }
+        contributionXp: { type: integer, minimum: 0 }
+        isMe: { type: boolean, description: "Se a linha é de quem consulta" }
+
+    RaidRankingPage:
+      type: object
+      required: [items, nextCursor]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/RaidRankingEntry" }
+        nextCursor: { type: [string, "null"] }
 
     Problem:
       type: object

@@ -2,12 +2,13 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Dimensions, Platform, StyleSheet } from 'react-native';
 import { ApiError } from '@/core/api/api-error';
-import { createGuild, getActiveRaid, getMyGuild, joinGuild, joinRaid, leaveGuild, listGuildMembers, listGuilds, type ActiveRaid, type GuildMemberPage, type GuildPage, type MyGuild } from '@/features/guild/api';
+import { createGuild, getActiveRaid, getMyGuild, getRaidRanking, joinGuild, joinRaid, leaveGuild, listGuildMembers, listGuilds, type ActiveRaid, type GuildMemberPage, type GuildPage, type MyGuild, type RaidRankingEntry, type RaidRankingPage } from '@/features/guild/api';
 import { GuildScreen } from '@/features/guild/guild-screen';
 
 jest.mock('@/features/guild/api', () => ({
   getMyGuild: jest.fn(),
   getActiveRaid: jest.fn(),
+  getRaidRanking: jest.fn(),
   listGuilds: jest.fn(),
   createGuild: jest.fn(),
   joinGuild: jest.fn(),
@@ -24,6 +25,7 @@ const mockedMembers = listGuildMembers as jest.MockedFunction<typeof listGuildMe
 const mockedLeave = leaveGuild as jest.MockedFunction<typeof leaveGuild>;
 const mockedJoinRaid = joinRaid as jest.MockedFunction<typeof joinRaid>;
 const mockedRaid = getActiveRaid as jest.MockedFunction<typeof getActiveRaid>;
+const mockedRanking = getRaidRanking as jest.MockedFunction<typeof getRaidRanking>;
 
 const DAY = 24 * 60 * 60 * 1000;
 const raid = (overrides: Partial<ActiveRaid> = {}): ActiveRaid => ({
@@ -36,7 +38,7 @@ const raid = (overrides: Partial<ActiveRaid> = {}): ActiveRaid => ({
   endsAt: new Date(Date.now() + 2 * DAY + 3.5 * 60 * 60 * 1000).toISOString(),
   status: 'active',
   goalReachedAt: null,
-  me: { participating: false, contributionXp: 0 },
+  me: { participating: false, contributionXp: 0, position: null },
   ...overrides,
 });
 
@@ -66,8 +68,9 @@ beforeEach(() => {
   Object.defineProperty(Platform, 'OS', { configurable: true, writable: true, value: 'web' });
   Dimensions.set({ window: { width: 390, height: 844, scale: 1, fontScale: 1 } });
   mockedRaid.mockResolvedValue(raid());
+  mockedRanking.mockResolvedValue({ items: [], nextCursor: null });
 });
-afterEach(() => { jest.clearAllMocks(); [mockedRaid, mockedMine, mockedList, mockedCreate, mockedJoin, mockedMembers, mockedLeave, mockedJoinRaid].forEach((mock) => mock.mockReset()); });
+afterEach(() => { jest.clearAllMocks(); [mockedRaid, mockedRanking, mockedMine, mockedList, mockedCreate, mockedJoin, mockedMembers, mockedLeave, mockedJoinRaid].forEach((mock) => mock.mockReset()); });
 
 describe('GuildScreen', () => {
   it('shows the guild of a member with level, size and role', async () => {
@@ -308,7 +311,7 @@ describe('GuildScreen', () => {
       });
 
       it('shows "Você está nesta Raid" straight away for a Participante, with no button', async () => {
-        mockedRaid.mockResolvedValue(raid({ me: { participating: true, contributionXp: 0 } }));
+        mockedRaid.mockResolvedValue(raid({ me: { participating: true, contributionXp: 0, position: 1 } }));
         await renderGuild();
 
         expect(await screen.findByTestId('guild-raid-participating')).toBeTruthy();
@@ -316,14 +319,14 @@ describe('GuildScreen', () => {
       });
 
       it('shows the Participante own Contribution', async () => {
-        mockedRaid.mockResolvedValue(raid({ me: { participating: true, contributionXp: 300 } }));
+        mockedRaid.mockResolvedValue(raid({ me: { participating: true, contributionXp: 300, position: 1 } }));
         await renderGuild();
 
         expect(await screen.findByTestId('guild-raid-my-contribution')).toHaveTextContent('Sua contribuição: 300 XP');
       });
 
       it('invites a Participante without a Contribution yet to study in the Forja', async () => {
-        mockedRaid.mockResolvedValue(raid({ me: { participating: true, contributionXp: 0 } }));
+        mockedRaid.mockResolvedValue(raid({ me: { participating: true, contributionXp: 0, position: 1 } }));
         await renderGuild();
 
         expect(await screen.findByTestId('guild-raid-my-contribution')).toHaveTextContent(/Sua contribuição: 0 XP.*Forja/);
@@ -470,5 +473,105 @@ describe('GuildScreen', () => {
       const leave = StyleSheet.flatten((await screen.findByTestId('guild-leave')).props.style);
       expect(leave).toMatchObject({ minWidth: 44, minHeight: 44 });
     });
+  });
+});
+
+describe('Ranking interno', () => {
+  const row = (position: number, name: string, contributionXp: number, overrides: Partial<RaidRankingEntry> = {}): RaidRankingEntry => ({
+    position, userId: `u-${name}`, displayName: name, level: 3, title: null, contributionXp, isMe: false, ...overrides,
+  });
+  const rankingPage = (items: RaidRankingEntry[], nextCursor: string | null = null): RaidRankingPage => ({ items, nextCursor });
+
+  beforeEach(() => {
+    mockedMine.mockResolvedValue(mine);
+    mockedMembers.mockResolvedValue(members(['Ana']));
+  });
+
+  it('shows position, name, level, Título and Contribution of each Participante, zero-XP rows last', async () => {
+    mockedRanking.mockResolvedValue(rankingPage([
+      row(1, 'Bruno', 300, { title: 'Aprendiz', level: 4 }),
+      row(2, 'Ana', 300),
+      row(3, 'Dani', 0),
+    ]));
+    await renderGuild();
+
+    const first = await screen.findByTestId('guild-ranking-item-u-Bruno');
+    expect(within(first).getByText('1º')).toBeTruthy();
+    expect(within(first).getByText('Nível 4 · Aprendiz')).toBeTruthy();
+    expect(within(first).getByText('300 XP')).toBeTruthy();
+    expect(within(screen.getByTestId('guild-ranking-item-u-Dani')).getByText('0 XP')).toBeTruthy();
+    expect(mockedRanking).toHaveBeenCalledWith('r1', expect.objectContaining({ cursor: null }));
+  });
+
+  it('marks the own row with a label and a screen-reader sentence, not only with color', async () => {
+    mockedRanking.mockResolvedValue(rankingPage([row(1, 'Bruno', 300), row(2, 'Ana', 120, { isMe: true, title: 'Aprendiz' })]));
+    await renderGuild();
+
+    const mineRow = await screen.findByTestId('guild-ranking-item-u-Ana');
+    expect(within(mineRow).getByText('Ana (você)')).toBeTruthy();
+    expect(mineRow.props.accessibilityLabel).toBe('Posição 2: Ana (você), nível 3, Aprendiz, 120 XP');
+    expect(screen.getByTestId('guild-ranking-item-u-Bruno').props.accessibilityLabel).toBe('Posição 1: Bruno, nível 3, 300 XP');
+    expect(StyleSheet.flatten(mineRow.props.style).borderColor).not.toBe('transparent');
+  });
+
+  it('shows the own place in the Raid block for a Participante', async () => {
+    mockedRaid.mockResolvedValue(raid({ me: { participating: true, contributionXp: 120, position: 2 } }));
+    mockedRanking.mockResolvedValue(rankingPage([row(1, 'Bruno', 300), row(2, 'Ana', 120, { isMe: true })]));
+    await renderGuild();
+
+    expect(await screen.findByTestId('guild-raid-my-position')).toHaveTextContent('Sua posição: 2º no Ranking interno');
+  });
+
+  it('invites to participate when nobody has confirmed yet', async () => {
+    await renderGuild();
+
+    expect(await screen.findByTestId('guild-ranking-empty')).toBeTruthy();
+  });
+
+  it('shows a retryable error without hiding the Raid', async () => {
+    mockedRanking.mockRejectedValueOnce(new ApiError('server', { status: 500 }));
+    await renderGuild();
+
+    expect(await screen.findByTestId('guild-ranking-error')).toBeTruthy();
+    expect(screen.getByTestId('guild-raid-progress')).toBeTruthy();
+
+    mockedRanking.mockResolvedValue(rankingPage([row(1, 'Bruno', 300)]));
+    await fireEvent.press(within(screen.getByTestId('guild-ranking-error')).getByLabelText('Tentar novamente'));
+    expect(await screen.findByTestId('guild-ranking-item-u-Bruno')).toBeTruthy();
+  });
+
+  it('loads more rows with the cursor and keeps the positions of the first page', async () => {
+    mockedRanking.mockResolvedValueOnce(rankingPage([row(1, 'Bruno', 300), row(2, 'Ana', 200)], 'next'));
+    await renderGuild();
+    await screen.findByTestId('guild-ranking-item-u-Ana');
+
+    mockedRanking.mockResolvedValueOnce(rankingPage([row(3, 'Carla', 100)]));
+    await fireEvent.press(screen.getByTestId('guild-ranking-more'));
+
+    expect(await screen.findByTestId('guild-ranking-item-u-Carla')).toBeTruthy();
+    expect(mockedRanking).toHaveBeenLastCalledWith('r1', expect.objectContaining({ cursor: 'next' }));
+    expect(screen.queryByTestId('guild-ranking-more')).toBeNull();
+  });
+
+  it('refreshes the ranking, but not the Raid, when the user confirms participation', async () => {
+    mockedJoinRaid.mockResolvedValue(undefined);
+    mockedRanking.mockResolvedValueOnce(rankingPage([row(1, 'Bruno', 300)]));
+    await renderGuild();
+    await screen.findByTestId('guild-ranking-item-u-Bruno');
+
+    mockedRanking.mockResolvedValue(rankingPage([row(1, 'Bruno', 300), row(2, 'Ana', 0, { isMe: true })]));
+    await fireEvent.press(await screen.findByTestId('guild-raid-join'));
+
+    expect(await screen.findByTestId('guild-ranking-item-u-Ana')).toBeTruthy();
+    expect(mockedRaid).toHaveBeenCalledTimes(1);
+  });
+
+  it('has no ranking while the Guild has no Raid', async () => {
+    mockedRaid.mockResolvedValue(null);
+    await renderGuild();
+
+    expect(await screen.findByTestId('guild-raid-empty')).toBeTruthy();
+    expect(screen.queryByTestId('guild-ranking')).toBeNull();
+    expect(mockedRanking).not.toHaveBeenCalled();
   });
 });

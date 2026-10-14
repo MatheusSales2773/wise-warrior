@@ -133,7 +133,7 @@ describe('Raids HTTP access control against MySQL', () => {
     expect(await detail.json()).toMatchObject({ id: raidId, goalXp: 1500 });
     const ranking = await get(`/raids/${raidId}/ranking`, ana);
     expect(ranking.status).toBe(200);
-    expect(await ranking.json()).toEqual([]);
+    expect(await ranking.json()).toEqual({ items: [], nextCursor: null });
   });
 
   it('answers 403 to an authenticated user outside the guild', async () => {
