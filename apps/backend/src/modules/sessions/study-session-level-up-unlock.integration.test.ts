@@ -8,6 +8,7 @@ import { DataSource } from 'typeorm';
 import { AuthService } from '../auth/auth.service';
 import { Session } from '../auth/entities/session.entity';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { RateLimitGuard } from '../../shared/security/rate-limit';
 import type { JwtPayload } from '../auth/strategies/jwt.strategy';
 import { Character } from '../progression/entities/character.entity';
 import { ProgressionService } from '../progression/progression.service';
@@ -115,6 +116,8 @@ describe('Cosmetic Item unlock on level-up through the Study Session API', () =>
         { provide: AuthService, useValue: auth },
       ],
     })
+      .overrideGuard(RateLimitGuard)
+      .useValue({ canActivate: () => true })
       .overrideGuard(JwtAuthGuard)
       .useValue({
         canActivate(context: ExecutionContext) {

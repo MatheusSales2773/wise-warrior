@@ -9,6 +9,7 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import type { Request, Response } from 'express';
+import { RateLimit } from '../../shared/security/rate-limit';
 import { AuthService, AuthTokens } from './auth.service';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
@@ -22,6 +23,7 @@ export class AuthController {
   constructor(private readonly auth: AuthService) {}
 
   @Post('register')
+  @RateLimit('credentials')
   @HttpCode(HttpStatus.CREATED)
   async register(
     @Body() dto: RegisterDto,
@@ -37,6 +39,7 @@ export class AuthController {
   }
 
   @Post('login')
+  @RateLimit('credentials')
   @HttpCode(HttpStatus.OK)
   async login(
     @Body() dto: LoginDto,
@@ -52,6 +55,7 @@ export class AuthController {
   }
 
   @Post('refresh')
+  @RateLimit('refresh')
   @HttpCode(HttpStatus.OK)
   async refresh(
     @Req() req: Request,
