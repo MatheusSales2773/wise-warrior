@@ -64,7 +64,7 @@ export function applyRaidProgress(queryClient: QueryClient, event: RaidProgressE
  * catalog. The `['guild', 'raid']` prefix covers the active Raid, its ranking and the past Raids.
  */
 export function applyRaidComplete(queryClient: QueryClient): void {
-  void queryClient.invalidateQueries({ queryKey: ['guild', 'raid'] });
+  void queryClient.invalidateQueries({ queryKey: guildKeys.raids() });
   void queryClient.invalidateQueries({ queryKey: guildKeys.mine() });
   void queryClient.invalidateQueries({ queryKey: profileKeys.cosmeticsCatalog() });
 }
