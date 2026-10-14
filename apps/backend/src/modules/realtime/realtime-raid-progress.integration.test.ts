@@ -188,6 +188,36 @@ describe('raid:progress over Socket.IO against MySQL', () => {
     expect(secondBrunoDevice.events).toHaveLength(1);
   });
 
+  it('notifies every device of each Participant once when the Raid closes, and nobody else', async () => {
+    type RaidCompleteEvent = { raidId: string; guildId: string; status: string; rewardItemId: string | null };
+    const notices = (socket: Socket) => {
+      const received: RaidCompleteEvent[] = [];
+      socket.on('notification:raidComplete', (event: RaidCompleteEvent) => received.push(event));
+      return received;
+    };
+    const guildId = await createGuild();
+    await call('POST', `/guilds/${guildId}/members`, bruno);
+    const anaPhone = notices((await connect(ana)).socket);
+    const anaDesktop = notices((await connect(ana)).socket);
+    const brunoNotices = notices((await connect(bruno)).socket);
+    const outsiderNotices = notices((await connect(outsider)).socket);
+    const active = await dataSource!.getRepository(Raid).findOneByOrFail({ guildId, status: 'active' });
+    const raid = await contribute(guildId, ana, active.goalXp);
+    await dataSource!.getRepository(RaidParticipation).insert({ raidId: raid.id, userId: bruno });
+
+    const afterWeek = new Date(raid.endsAt.getTime() + 60_000);
+    await raids.runWeeklyClose(afterWeek);
+    await raids.runWeeklyClose(afterWeek);
+    await settle();
+
+    const reward = await dataSource!.getRepository(UserCosmeticItem).findOneByOrFail({ userId: ana });
+    const anaNotice = { raidId: raid.id, guildId, status: 'completed', rewardItemId: reward.cosmeticItemId };
+    expect(anaPhone).toEqual([anaNotice]);
+    expect(anaDesktop).toEqual([anaNotice]);
+    expect(brunoNotices).toEqual([{ ...anaNotice, rewardItemId: null }]);
+    expect(outsiderNotices).toEqual([]);
+  });
+
   it('joins the Guild room of a member at connection time', async () => {
     const guildId = await createGuild();
     const anaClient = await connect(ana);

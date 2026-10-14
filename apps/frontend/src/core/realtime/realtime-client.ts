@@ -3,9 +3,18 @@ import { io } from 'socket.io-client';
 import type { AuthenticationRecoveryResult } from '@/core/api/api-client';
 import type { ActiveRaid } from '@/features/guild/api';
 import { guildKeys } from '@/features/guild/queries';
+import { profileKeys } from '@/features/profile/queries';
 
 /** Payload of the `raid:progress` event (docs/api/asyncapi.yaml). */
 export type RaidProgressEvent = Pick<ActiveRaid, 'progressXp' | 'goalXp' | 'goalReachedAt'> & { raidId: string };
+
+/** Payload of the `notification:raidComplete` event (docs/api/asyncapi.yaml). */
+export type RaidCompleteEvent = {
+  raidId: string;
+  guildId: string;
+  status: 'completed' | 'expired';
+  rewardItemId: string | null;
+};
 
 type Listener = (...args: any[]) => void;
 
@@ -51,6 +60,16 @@ export function applyRaidProgress(queryClient: QueryClient, event: RaidProgressE
 }
 
 /**
+ * A closed Raid changes the Guild screen (result, Nível, next week's Raid) and, with a Recompensa, the cosmetics
+ * catalog. The `['guild', 'raid']` prefix covers the active Raid, its ranking and the past Raids.
+ */
+export function applyRaidComplete(queryClient: QueryClient): void {
+  void queryClient.invalidateQueries({ queryKey: guildKeys.raids() });
+  void queryClient.invalidateQueries({ queryKey: guildKeys.mine() });
+  void queryClient.invalidateQueries({ queryKey: profileKeys.cosmeticsCatalog() });
+}
+
+/**
  * Socket.IO client authenticated with the in-memory access token (ADR-009). One socket carries every listener,
  * registered once: automatic reconnections reuse it, and the `auth` callback runs on each attempt, so they carry
  * whatever token the HTTP layer holds by then. When the server turns the handshake down (an expired token), the
@@ -73,6 +92,7 @@ export function createRealtimeClient({
   });
 
   const onRaidProgress = (event: RaidProgressEvent) => applyRaidProgress(queryClient, event);
+  const onRaidComplete = () => applyRaidComplete(queryClient);
   const reconnectAfterRefresh = () => {
     if (disposed || socket.active || recovering) return;
     recovering = true;
@@ -87,6 +107,7 @@ export function createRealtimeClient({
   };
 
   socket.on('raid:progress', onRaidProgress);
+  socket.on('notification:raidComplete', onRaidComplete);
   socket.on('connect', onConnect);
   socket.on('connect_error', reconnectAfterRefresh);
   socket.on('disconnect', reconnectAfterRefresh);
@@ -96,6 +117,7 @@ export function createRealtimeClient({
     dispose() {
       disposed = true;
       socket.off('raid:progress', onRaidProgress);
+      socket.off('notification:raidComplete', onRaidComplete);
       socket.off('connect', onConnect);
       socket.off('connect_error', reconnectAfterRefresh);
       socket.off('disconnect', reconnectAfterRefresh);

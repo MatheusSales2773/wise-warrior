@@ -79,6 +79,8 @@ export interface RaidClosing {
   raidId: string;
   guildId: string;
   status: 'completed' | 'expired';
+  /** Everyone who confirmed participation, each told about the closing through `notification:raidComplete`. */
+  participantUserIds: string[];
   /** Participants who received the Recompensa de Raid; empty for an `expired` Raid. */
   rewardedUserIds: string[];
   /** The Cosmetic Items granted to each of them. */
@@ -409,7 +411,9 @@ export class RaidsService {
     const closings: RaidClosing[] = [];
     for (const { id } of due) {
       const closing = await this.raids.manager.transaction((manager) => this.closeRaid(manager, id, now));
-      if (closing) closings.push(closing);
+      if (!closing) continue;
+      closings.push(closing);
+      this.notifyRaidComplete(closing);
     }
 
     const week = raidWeekAt(now);
@@ -448,7 +452,25 @@ export class RaidsService {
       ({ rewardedUserIds, rewardItemIds } = await this.grantRaidReward(manager, raid));
     }
     await this.openWeekRaid(manager, raid.guildId, now);
-    return { raidId: raid.id, guildId: raid.guildId, status, rewardedUserIds, rewardItemIds };
+    const participations = await manager.find(RaidParticipation, { where: { raidId: raid.id }, select: { userId: true } });
+    const participantUserIds = participations.map(({ userId }) => userId);
+    return { raidId: raid.id, guildId: raid.guildId, status, participantUserIds, rewardedUserIds, rewardItemIds };
+  }
+
+  /**
+   * `notification:raidComplete` (#119) to every device of each Participant, after the closing committed. A closing
+   * that runs again finds the Raid already closed and returns nothing, so each Participant hears about it once.
+   */
+  private notifyRaidComplete(closing: RaidClosing): void {
+    const rewarded = new Set(closing.rewardedUserIds);
+    for (const userId of closing.participantUserIds) {
+      this.realtime.emitToUser(userId, 'notification:raidComplete', {
+        raidId: closing.raidId,
+        guildId: closing.guildId,
+        status: closing.status,
+        rewardItemId: rewarded.has(userId) ? closing.rewardItemIds[0] ?? null : null,
+      });
+    }
   }
 
   /**

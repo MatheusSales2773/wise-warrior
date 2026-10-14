@@ -108,7 +108,7 @@ describe('Recompensa de Raid against MySQL', () => {
         { provide: RAID_CLOCK, useValue: () => now },
         { provide: ProgressionService, useValue: {} },
         { provide: AuthService, useValue: {} },
-        { provide: RealtimeGateway, useValue: { emitToGuild: jest.fn(), syncGuildRoom: jest.fn() } },
+        { provide: RealtimeGateway, useValue: { emitToGuild: jest.fn(), emitToUser: jest.fn(), syncGuildRoom: jest.fn() } },
       ],
     })
       .overrideGuard(JwtAuthGuard)

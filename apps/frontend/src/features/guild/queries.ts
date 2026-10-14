@@ -6,6 +6,7 @@ export const guildKeys = {
   mine: () => ['guild', 'mine'] as const,
   directory: (search: string) => ['guild', 'directory', search] as const,
   members: (guildId: string) => ['guild', 'members', guildId] as const,
+  raids: () => ['guild', 'raid'] as const,
   raid: (guildId: string) => ['guild', 'raid', guildId] as const,
   // Nested under the Raid key: invalidating the Raid (as the Forja does after a guild session) refreshes the ranking too.
   raidRanking: (guildId: string, raidId: string) => ['guild', 'raid', guildId, 'ranking', raidId] as const,
