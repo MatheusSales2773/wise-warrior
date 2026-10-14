@@ -19,6 +19,9 @@ import { RaidParticipation } from './entities/raid-participation.entity';
 import { GuildsService } from '../guilds/guilds.service';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
 import { RAID_RANKING_PAGE_SIZE_DEFAULT, type ListRaidRankingQueryDto } from './dto/list-raid-ranking-query.dto';
+import { PAST_RAIDS_PAGE_SIZE_DEFAULT, type ListPastRaidsQueryDto } from './dto/list-past-raids-query.dto';
+import { Guild } from '../guilds/entities/guild.entity';
+import { GuildMembership } from '../guilds/entities/guild-membership.entity';
 
 export interface RaidDetail {
   id: string;
@@ -52,6 +55,30 @@ export interface RaidRankingEntry {
   title: string | null;
   contributionXp: number;
   isMe: boolean;
+}
+
+/** A closed Raid in the Guild's history, with the caller's own result in it. */
+export interface PastRaid {
+  id: string;
+  mission: { slug: string; name: string };
+  startsAt: Date;
+  endsAt: Date;
+  status: 'completed' | 'expired';
+  goalXp: number;
+  progressXp: number;
+  me: { participated: boolean; contributionXp: number; position: number | null };
+}
+
+export interface PastRaidPage {
+  items: PastRaid[];
+  nextCursor: string | null;
+}
+
+/** What one weekly closing did, for the log and for the hooks that come after it (#117, #119). */
+export interface RaidClosing {
+  raidId: string;
+  guildId: string;
+  status: 'completed' | 'expired';
 }
 
 export interface RaidRankingPage {
@@ -119,6 +146,23 @@ function encodeRankingCursor(position: number): string {
   return Buffer.from(JSON.stringify({ p: position }), 'utf8').toString('base64url');
 }
 
+function encodePastRaidsCursor(startsAt: Date): string {
+  return Buffer.from(JSON.stringify({ s: startsAt.toISOString() }), 'utf8').toString('base64url');
+}
+
+function decodePastRaidsCursor(cursor: string): Date {
+  try {
+    const parsed = JSON.parse(Buffer.from(cursor, 'base64url').toString('utf8')) as { s?: unknown };
+    if (typeof parsed.s === 'string') {
+      const startsAt = new Date(parsed.s);
+      if (!Number.isNaN(startsAt.getTime())) return startsAt;
+    }
+  } catch {
+    // Falls through to the validation error below.
+  }
+  throw new BadRequestException('Cursor inválido');
+}
+
 function decodeRankingCursor(cursor: string): number {
   try {
     const parsed = JSON.parse(Buffer.from(cursor, 'base64url').toString('utf8')) as { p?: unknown };
@@ -151,8 +195,7 @@ export class RaidsService {
    * Opens the Raid of the current week for a Guild, in the caller's transaction. The Missão comes from the
    * weekly rotation and the goal is frozen from the member count at this moment.
    */
-  async createForGuild(manager: EntityManager, guildId: string, memberCount: number): Promise<Raid> {
-    const now = this.clock();
+  async createForGuild(manager: EntityManager, guildId: string, memberCount: number, now: Date = this.clock()): Promise<Raid> {
     const week = raidWeekAt(now);
     const catalog = await manager.find(Mission, { order: { rotationOrder: 'ASC' } });
     const mission = catalog[missionIndexForWeek(week.number, catalog.length)];
@@ -342,6 +385,118 @@ export class RaidsService {
       }),
     );
     if (progress) this.publishProgress(progress);
+  }
+
+  /**
+   * Fechamento semanal (#116): closes every Raid whose week is over, then gives each Guild without one the Raid
+   * of the week that contains `now`. Weeks that passed entirely while the application was down get no Raid of
+   * their own: nobody could have played them. Each Raid and each Guild is its own transaction.
+   */
+  async runWeeklyClose(now: Date): Promise<{ closed: number; opened: number; closings: RaidClosing[] }> {
+    const due = await this.raids
+      .createQueryBuilder('raid')
+      .select('raid.id', 'id')
+      .where("raid.status = 'active'")
+      .andWhere('raid.endsAt < :now', { now })
+      .orderBy('raid.endsAt', 'ASC')
+      .getRawMany<{ id: string }>();
+    const closings: RaidClosing[] = [];
+    for (const { id } of due) {
+      const closing = await this.raids.manager.transaction((manager) => this.closeRaid(manager, id, now));
+      if (closing) closings.push(closing);
+    }
+
+    const week = raidWeekAt(now);
+    const withoutRaid = await this.raids.manager
+      .createQueryBuilder(Guild, 'guild')
+      .select('guild.id', 'id')
+      .leftJoin(Raid, 'raid', 'raid.guildId = guild.id AND raid.startsAt = :weekStart', { weekStart: week.startsAt })
+      .where('raid.id IS NULL')
+      .getRawMany<{ id: string }>();
+    let opened = 0;
+    for (const { id } of withoutRaid) {
+      const raid = await this.raids.manager.transaction((manager) => this.openWeekRaid(manager, id, now));
+      if (raid) opened += 1;
+    }
+    return { closed: closings.length, opened, closings };
+  }
+
+  /**
+   * Closes one Raid under a row lock, so running the closing twice, or in two processes, changes it once:
+   * Meta batida closes it `completed` and raises the Nível da Guild; otherwise it closes `expired`.
+   */
+  private async closeRaid(manager: EntityManager, raidId: string, now: Date): Promise<RaidClosing | null> {
+    const raid = await manager
+      .createQueryBuilder(Raid, 'raid')
+      .setLock('pessimistic_write')
+      .where('raid.id = :raidId', { raidId })
+      .getOne();
+    if (!raid || raid.status !== 'active' || raid.endsAt.getTime() >= now.getTime()) return null;
+
+    const status = raid.goalReachedAt !== null || raid.progressXp >= raid.goalXp ? 'completed' : 'expired';
+    await manager.update(Raid, { id: raid.id }, { status });
+    if (status === 'completed') {
+      await manager.increment(Guild, { id: raid.guildId }, 'level', 1);
+    }
+    await this.openWeekRaid(manager, raid.guildId, now);
+    return { raidId: raid.id, guildId: raid.guildId, status };
+  }
+
+  /**
+   * Opens the Raid of the week that contains `now` for a Guild that has none. The Guild row lock makes the check
+   * and the insert one step, so a Guild never gets two Raids in the same week.
+   */
+  private async openWeekRaid(manager: EntityManager, guildId: string, now: Date): Promise<Raid | null> {
+    const guild = await manager
+      .createQueryBuilder(Guild, 'guild')
+      .setLock('pessimistic_write')
+      .where('guild.id = :guildId', { guildId })
+      .getOne();
+    if (!guild) return null;
+    const week = raidWeekAt(now);
+    if (await manager.exists(Raid, { where: { guildId, startsAt: week.startsAt } })) return null;
+    const memberCount = await manager.count(GuildMembership, { where: { guildId } });
+    if (memberCount === 0) return null;
+    return this.createForGuild(manager, guildId, memberCount, now);
+  }
+
+  /** Raids anteriores of a Guild, most recent first. Members only, like the rest of the Raid. */
+  async listPast(guildId: string, requesterId: string, query: ListPastRaidsQueryDto): Promise<PastRaidPage> {
+    if (!(await this.guilds.isMember(guildId, requesterId))) {
+      throw new ForbiddenException('Apenas membros da guilda podem ver as Raids anteriores');
+    }
+    const limit = query.limit ?? PAST_RAIDS_PAGE_SIZE_DEFAULT;
+    const qb = this.raids
+      .createQueryBuilder('raid')
+      .innerJoinAndSelect('raid.mission', 'mission')
+      .where('raid.guildId = :guildId', { guildId })
+      .andWhere("raid.status IN ('completed', 'expired')")
+      .orderBy('raid.startsAt', 'DESC')
+      .take(limit + 1);
+    if (query.cursor) {
+      qb.andWhere('raid.startsAt < :before', { before: decodePastRaidsCursor(query.cursor) });
+    }
+    const rows = await qb.getMany();
+    const page = rows.slice(0, limit);
+    const items = await Promise.all(page.map(async (raid): Promise<PastRaid> => {
+      const [participation, contributionXp, position] = await Promise.all([
+        this.participations.existsBy({ raidId: raid.id, userId: requesterId }),
+        this.contributionXpOf(raid.id, requesterId),
+        this.positionOf(raid.id, requesterId),
+      ]);
+      return {
+        id: raid.id,
+        mission: { slug: raid.mission.slug, name: raid.mission.name },
+        startsAt: raid.startsAt,
+        endsAt: raid.endsAt,
+        status: raid.status as PastRaid['status'],
+        goalXp: raid.goalXp,
+        progressXp: raid.progressXp,
+        me: { participated: participation || contributionXp > 0, contributionXp, position },
+      };
+    }));
+    const last = page[page.length - 1];
+    return { items, nextCursor: rows.length > limit && last ? encodePastRaidsCursor(last.startsAt) : null };
   }
 
   /** Ranking interno: members only, paginated by position, stable under the order documented in `RAID_RANKING_SQL`. */

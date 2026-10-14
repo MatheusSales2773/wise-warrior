@@ -66,6 +66,23 @@ export type RaidRankingEntry = {
   isMe: boolean;
 };
 
+/** A Raid closed by the weekly closing: `completed` with Meta batida (the Guild went up a level), `expired` without. */
+export type PastRaid = {
+  id: string;
+  mission: { slug: string; name: string };
+  startsAt: string;
+  endsAt: string;
+  status: 'completed' | 'expired';
+  goalXp: number;
+  progressXp: number;
+  me: { participated: boolean; contributionXp: number; position: number | null };
+};
+
+export type PastRaidPage = {
+  items: PastRaid[];
+  nextCursor: string | null;
+};
+
 export type RaidRankingPage = {
   items: RaidRankingEntry[];
   nextCursor: string | null;
@@ -136,5 +153,14 @@ export async function getRaidRanking(
 ): Promise<RaidRankingPage> {
   const query = cursor ? `?cursor=${encodeURIComponent(cursor)}` : '';
   const response = await getAuthenticatedHttpClient().get<RaidRankingPage>(`/raids/${encodeURIComponent(raidId)}/ranking${query}`, { signal });
+  return response.data;
+}
+
+export async function listPastRaids(
+  guildId: string,
+  { cursor, signal }: { cursor?: string | null; signal?: AbortSignal } = {},
+): Promise<PastRaidPage> {
+  const query = cursor ? `?cursor=${encodeURIComponent(cursor)}` : '';
+  const response = await getAuthenticatedHttpClient().get<PastRaidPage>(`/guilds/${encodeURIComponent(guildId)}/raids${query}`, { signal });
   return response.data;
 }

@@ -2,13 +2,14 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Dimensions, Platform, StyleSheet } from 'react-native';
 import { ApiError } from '@/core/api/api-error';
-import { createGuild, getActiveRaid, getMyGuild, getRaidRanking, joinGuild, joinRaid, leaveGuild, listGuildMembers, listGuilds, type ActiveRaid, type GuildMemberPage, type GuildPage, type MyGuild, type RaidRankingEntry, type RaidRankingPage } from '@/features/guild/api';
+import { createGuild, getActiveRaid, getMyGuild, getRaidRanking, joinGuild, joinRaid, leaveGuild, listGuildMembers, listGuilds, listPastRaids, type ActiveRaid, type PastRaid, type GuildMemberPage, type GuildPage, type MyGuild, type RaidRankingEntry, type RaidRankingPage } from '@/features/guild/api';
 import { GuildScreen } from '@/features/guild/guild-screen';
 
 jest.mock('@/features/guild/api', () => ({
   getMyGuild: jest.fn(),
   getActiveRaid: jest.fn(),
   getRaidRanking: jest.fn(),
+  listPastRaids: jest.fn(),
   listGuilds: jest.fn(),
   createGuild: jest.fn(),
   joinGuild: jest.fn(),
@@ -26,6 +27,7 @@ const mockedLeave = leaveGuild as jest.MockedFunction<typeof leaveGuild>;
 const mockedJoinRaid = joinRaid as jest.MockedFunction<typeof joinRaid>;
 const mockedRaid = getActiveRaid as jest.MockedFunction<typeof getActiveRaid>;
 const mockedRanking = getRaidRanking as jest.MockedFunction<typeof getRaidRanking>;
+const mockedPast = listPastRaids as jest.MockedFunction<typeof listPastRaids>;
 
 const DAY = 24 * 60 * 60 * 1000;
 const raid = (overrides: Partial<ActiveRaid> = {}): ActiveRaid => ({
@@ -69,8 +71,9 @@ beforeEach(() => {
   Dimensions.set({ window: { width: 390, height: 844, scale: 1, fontScale: 1 } });
   mockedRaid.mockResolvedValue(raid());
   mockedRanking.mockResolvedValue({ items: [], nextCursor: null });
+  mockedPast.mockResolvedValue({ items: [], nextCursor: null });
 });
-afterEach(() => { jest.clearAllMocks(); [mockedRaid, mockedRanking, mockedMine, mockedList, mockedCreate, mockedJoin, mockedMembers, mockedLeave, mockedJoinRaid].forEach((mock) => mock.mockReset()); });
+afterEach(() => { jest.clearAllMocks(); [mockedRaid, mockedRanking, mockedPast, mockedMine, mockedList, mockedCreate, mockedJoin, mockedMembers, mockedLeave, mockedJoinRaid].forEach((mock) => mock.mockReset()); });
 
 describe('GuildScreen', () => {
   it('shows the guild of a member with level, size and role', async () => {
@@ -442,12 +445,12 @@ describe('GuildScreen', () => {
       expect(screen.getByText('Cerco ao Grimório')).toBeTruthy();
     });
 
-    it('stacks everything on a phone: guild, Raid, members, then leave', async () => {
+    it('stacks everything on a phone: guild, Raid, Raids anteriores, members, then leave', async () => {
       await renderGuild();
       await screen.findByText('Cerco ao Grimório');
       expect(screen.getByTestId('guild-layout-stacked')).toBeTruthy();
       expect(screen.queryByTestId('guild-column-main')).toBeNull();
-      const order = ['guild-mine', 'guild-raid', 'guild-members', 'guild-leave-section'];
+      const order = ['guild-mine', 'guild-raid', 'guild-past-raids', 'guild-members', 'guild-leave-section'];
       const tree = JSON.stringify(screen.toJSON());
       const positions = order.map((id) => tree.indexOf(`"testID":"${id}"`));
       expect(positions.every((position) => position >= 0)).toBe(true);
@@ -463,6 +466,7 @@ describe('GuildScreen', () => {
       const side = screen.getByTestId('guild-column-side');
       expect(within(main).getByTestId('guild-mine')).toBeTruthy();
       expect(within(main).getByTestId('guild-raid')).toBeTruthy();
+      expect(within(side).getByTestId('guild-past-raids')).toBeTruthy();
       expect(within(side).getByTestId('guild-members')).toBeTruthy();
       expect(within(side).getByTestId('guild-leave-section')).toBeTruthy();
       expect(within(side).queryByTestId('guild-raid')).toBeNull();
@@ -573,5 +577,77 @@ describe('Ranking interno', () => {
     expect(await screen.findByTestId('guild-raid-empty')).toBeTruthy();
     expect(screen.queryByTestId('guild-ranking')).toBeNull();
     expect(mockedRanking).not.toHaveBeenCalled();
+  });
+});
+
+describe('Raids anteriores', () => {
+  const past = (id: string, overrides: Partial<PastRaid> = {}): PastRaid => ({
+    id,
+    mission: { slug: 'cerco-ao-grimorio', name: 'Cerco ao Grimório' },
+    startsAt: '2026-10-05T03:00:00.000Z',
+    endsAt: '2026-10-12T02:59:59.000Z',
+    status: 'completed',
+    goalXp: 1000,
+    progressXp: 1250,
+    me: { participated: true, contributionXp: 300, position: 2 },
+    ...overrides,
+  });
+
+  beforeEach(() => {
+    mockedMine.mockResolvedValue(mine);
+    mockedMembers.mockResolvedValue(members(['Ana']));
+  });
+
+  it('shows Missão, week, outcome and the own result of each closed Raid', async () => {
+    mockedPast.mockResolvedValue({
+      items: [
+        past('p1'),
+        past('p2', { mission: { slug: 'vigilia-da-aurora', name: 'Vigília da Aurora' }, status: 'expired', progressXp: 200, startsAt: '2026-09-28T03:00:00.000Z', endsAt: '2026-10-05T02:59:59.000Z', me: { participated: false, contributionXp: 0, position: null } }),
+      ],
+      nextCursor: null,
+    });
+    await renderGuild();
+
+    const won = await screen.findByTestId('guild-past-raid-p1');
+    expect(within(won).getByText('Cerco ao Grimório')).toBeTruthy();
+    expect(within(won).getByText('Semana de 05/10 a 11/10')).toBeTruthy();
+    expect(screen.getByTestId('guild-past-raid-outcome-p1')).toHaveTextContent('✦ Meta batida · a guilda subiu de nível');
+    expect(screen.getByTestId('guild-past-raid-mine-p1')).toHaveTextContent('Você: 2º · 300 XP');
+    expect(won.props.accessibilityLabel).toBe('Cerco ao Grimório. Semana de 05/10 a 11/10. Meta batida · a guilda subiu de nível. 1250 de 1000 XP. Você: 2º · 300 XP.');
+
+    expect(screen.getByTestId('guild-past-raid-outcome-p2')).toHaveTextContent('Meta não batida');
+    expect(screen.getByTestId('guild-past-raid-mine-p2')).toHaveTextContent('Você não participou');
+    expect(mockedPast).toHaveBeenCalledWith('g1', expect.objectContaining({ cursor: null }));
+  });
+
+  it('explains when no Raid has closed yet', async () => {
+    await renderGuild();
+
+    expect(await screen.findByTestId('guild-past-raids-empty')).toBeTruthy();
+  });
+
+  it('shows a retryable error without hiding the rest of the Guild', async () => {
+    mockedPast.mockRejectedValueOnce(new ApiError('server', { status: 500 }));
+    await renderGuild();
+
+    expect(await screen.findByTestId('guild-past-raids-error')).toBeTruthy();
+    expect(screen.getByTestId('guild-mine')).toBeTruthy();
+
+    mockedPast.mockResolvedValue({ items: [past('p1')], nextCursor: null });
+    await fireEvent.press(within(screen.getByTestId('guild-past-raids-error')).getByLabelText('Tentar novamente'));
+    expect(await screen.findByTestId('guild-past-raid-p1')).toBeTruthy();
+  });
+
+  it('loads older Raids with the cursor', async () => {
+    mockedPast.mockResolvedValueOnce({ items: [past('p1')], nextCursor: 'older' });
+    await renderGuild();
+    await screen.findByTestId('guild-past-raid-p1');
+
+    mockedPast.mockResolvedValueOnce({ items: [past('p0', { startsAt: '2026-09-28T03:00:00.000Z' })], nextCursor: null });
+    await fireEvent.press(screen.getByTestId('guild-past-raids-more'));
+
+    expect(await screen.findByTestId('guild-past-raid-p0')).toBeTruthy();
+    expect(mockedPast).toHaveBeenLastCalledWith('g1', expect.objectContaining({ cursor: 'older' }));
+    expect(screen.queryByTestId('guild-past-raids-more')).toBeNull();
   });
 });
