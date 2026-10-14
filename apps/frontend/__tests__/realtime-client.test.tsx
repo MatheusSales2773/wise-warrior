@@ -7,6 +7,7 @@ import { RealtimeRuntime } from '@/core/realtime/realtime-runtime';
 import type { ActiveRaid } from '@/features/guild/api';
 import { GuildRealtimeEvents } from '@/features/guild/realtime-events';
 import { guildKeys } from '@/features/guild/queries';
+import { profileKeys } from '@/features/profile/queries';
 
 /** A Socket.IO client stand-in: records listeners and the token of each handshake, and lets the test emit events. */
 class FakeSocket implements RealtimeSocket {
@@ -196,6 +197,18 @@ describe('GuildRealtimeEvents', () => {
     });
 
     expect(client.getQueryData(guildKeys.raid('g1'))).toEqual(activeRaid);
+  });
+
+  it('invalidates the active Raid, the past Raids, the Guild level and the cosmetics catalog on notification:raidComplete', async () => {
+    const { client, socket } = await renderRuntime();
+    const keys = [guildKeys.raid('g1'), guildKeys.pastRaids('g1'), guildKeys.mine(), profileKeys.cosmeticsCatalog()];
+    keys.forEach((key) => client.setQueryData(key, {}));
+    client.setQueryData(guildKeys.members('g1'), {});
+
+    await act(async () => socket.emit('notification:raidComplete', { raidId: 'r1', guildId: 'g1', status: 'completed', rewardItemId: 'i1' }));
+
+    keys.forEach((key) => expect(client.getQueryState(key)?.isInvalidated).toBe(true));
+    expect(client.getQueryState(guildKeys.members('g1'))?.isInvalidated).toBe(false);
   });
 
   it('follows the access token refresh and closes the socket when the signed-in area unmounts', async () => {

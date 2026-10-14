@@ -56,6 +56,7 @@ describe('Fechamento semanal, Recompensa de Raid e Raids anteriores against MySQ
   let app: INestApplication | undefined;
   let baseUrl: string;
   let now: Date;
+  let realtime: Record<'emitToGuild' | 'emitToUser' | 'setGuildRoomResolver' | 'joinGuildRoom' | 'leaveGuildRoom', jest.Mock>;
   let guildId: string;
   let raidId: string;
 
@@ -99,6 +100,7 @@ describe('Fechamento semanal, Recompensa de Raid e Raids anteriores against MySQ
   };
   const catalog = (as: string) => json<CatalogBody>('GET', '/users/me/cosmetics', as);
   const reward = async (as: string) => (await catalog(as)).find((item) => item.id === GRIMORIO_REWARD);
+  const raidCompleteEvents = () => realtime.emitToUser.mock.calls.filter(([, event]) => event === 'notification:raidComplete');
 
   beforeEach(async () => {
     now = new Date('2026-10-07T15:00:00Z');
@@ -116,6 +118,7 @@ describe('Fechamento semanal, Recompensa de Raid e Raids anteriores against MySQ
     })));
     await dataSource.getRepository(UserCosmeticItem).insert({ userId: ana, cosmeticItemId: APRENDIZ_TITLE, equipped: true });
 
+    realtime = { emitToGuild: jest.fn(), emitToUser: jest.fn(), setGuildRoomResolver: jest.fn(), joinGuildRoom: jest.fn(), leaveGuildRoom: jest.fn() };
     const repo = (entity: Parameters<DataSource['getRepository']>[0]) => ({
       provide: getRepositoryToken(entity as never),
       useValue: dataSource!.getRepository(entity),
@@ -132,7 +135,7 @@ describe('Fechamento semanal, Recompensa de Raid e Raids anteriores against MySQ
         repo(User), repo(CosmeticItem), repo(UserCosmeticItem), repo(Character),
         { provide: RAID_CLOCK, useValue: () => now },
         { provide: AuthService, useValue: {} },
-        { provide: RealtimeGateway, useValue: { emitToGuild: jest.fn(), emitToUser: jest.fn(), setGuildRoomResolver: jest.fn(), joinGuildRoom: jest.fn(), leaveGuildRoom: jest.fn() } },
+        { provide: RealtimeGateway, useValue: realtime },
       ],
     })
       .overrideGuard(JwtAuthGuard)
@@ -192,13 +195,20 @@ describe('Fechamento semanal, Recompensa de Raid e Raids anteriores against MySQ
       expect(await reward(carla)).toMatchObject({ unlocked: false }); // confirmed, never contributed
       expect(await reward(diego)).toMatchObject({ unlocked: false }); // left the Guild
 
+      expect(raidCompleteEvents().map(([userId, , payload]) => [userId, payload]).sort()).toEqual([
+        [ana, { raidId, guildId, status: 'completed', rewardItemId: GRIMORIO_REWARD }],
+        [bruno, { raidId, guildId, status: 'completed', rewardItemId: GRIMORIO_REWARD }],
+        [carla, { raidId, guildId, status: 'completed', rewardItemId: null }],
+        [diego, { raidId, guildId, status: 'completed', rewardItemId: null }],
+      ].sort());
+
       // The next week's Raid: the next Missão of the rotation, the full goal for the 3 members left.
       const next = await json<{ id: string; mission: { slug: string }; goalXp: number; status: string }>('GET', `/guilds/${guildId}/raids/active`);
       expect(next).toMatchObject({ mission: { slug: 'marcha-do-silencio' }, goalXp: 4500, status: 'active' });
       expect(next.id).not.toBe(raidId);
     });
 
-    it('is idempotent: running again, or winning the same Missão again, duplicates neither level, Raid nor item', async () => {
+    it('is idempotent: running again, or winning the same Missão again, duplicates neither level, Raid, item nor notice', async () => {
       await join(ana);
       await contribute(ana, 4000);
       now = weekTurn;
@@ -208,6 +218,7 @@ describe('Fechamento semanal, Recompensa de Raid e Raids anteriores against MySQ
 
       expect(await guildLevel()).toBe(2);
       expect(await dataSource!.getRepository(Raid).countBy({ guildId })).toBe(2);
+      expect(raidCompleteEvents()).toHaveLength(1);
       expect(await dataSource!.getRepository(UserCosmeticItem).countBy({ userId: ana, cosmeticItemId: GRIMORIO_REWARD })).toBe(1);
 
       // A later win of the same Missão keeps a single Inventory row, still not equipped.
@@ -226,12 +237,17 @@ describe('Fechamento semanal, Recompensa de Raid e Raids anteriores against MySQ
       expect(await dataSource!.getRepository(Raid).findOneByOrFail({ id: raidId })).toMatchObject({ status: 'expired' });
       expect(await guildLevel()).toBe(1);
       expect(await reward(ana)).toMatchObject({ unlocked: false });
+      expect(raidCompleteEvents().map(([userId, , payload]) => [userId, payload]).sort()).toEqual([
+        [ana, { raidId, guildId, status: 'expired', rewardItemId: null }],
+        [carla, { raidId, guildId, status: 'expired', rewardItemId: null }],
+      ].sort());
     });
 
     it('closes a Raid nobody touched as expired', async () => {
       now = weekTurn;
       await app!.get(RaidWeeklyJob).handleWeekStart();
       expect(await dataSource!.getRepository(Raid).findOneByOrFail({ id: raidId })).toMatchObject({ status: 'expired' });
+      expect(raidCompleteEvents()).toEqual([]);
     });
 
     it('recovers missed weeks when the application starts', async () => {

@@ -29,6 +29,15 @@ channels:
     messages:
       raidProgress:
         $ref: "#/components/messages/RaidProgress"
+  userRoom:
+    address: "user:{userId}"
+    description: Room de todos os sockets (dispositivos) de um usuário.
+    parameters:
+      userId:
+        description: Id do usuário.
+    messages:
+      raidComplete:
+        $ref: "#/components/messages/RaidComplete"
 
 operations:
   receiveRaidProgress:
@@ -40,6 +49,15 @@ operations:
       $ref: "#/channels/guildRoom"
     messages:
       - $ref: "#/channels/guildRoom/messages/raidProgress"
+  receiveRaidComplete:
+    action: send
+    security:
+      - $ref: "#/components/securitySchemes/accessToken"
+    summary: Aviso de Raid fechada, para cada Participante.
+    channel:
+      $ref: "#/channels/userRoom"
+    messages:
+      - $ref: "#/channels/userRoom/messages/raidComplete"
 
 components:
   securitySchemes:
@@ -77,3 +95,35 @@ components:
             progressXp: 1550
             goalXp: 1500
             goalReachedAt: "2026-10-09T21:14:03.120Z"
+    RaidComplete:
+      name: "notification:raidComplete"
+      title: Raid fechada
+      summary: >
+        Emitido na room de cada Participante quando a virada semanal fecha a Raid, uma única vez por
+        Participante e Raid, mesmo se o fechamento rodar de novo. O cliente recarrega a Raid ativa, as Raids
+        anteriores, a Guild (nível) e o Catálogo de cosméticos. Nesta entrega não há toast nem popup.
+      payload:
+        type: object
+        additionalProperties: false
+        required: [raidId, guildId, status, rewardItemId]
+        properties:
+          raidId: { type: string, format: uuid }
+          guildId: { type: string, format: uuid }
+          status:
+            type: string
+            enum: [completed, expired]
+            description: "`completed` com Meta batida (a Guild subiu um nível); `expired` sem."
+          rewardItemId:
+            oneOf:
+              - { type: string, format: uuid }
+              - { type: "null" }
+            description: >
+              O Cosmetic Item da Missão, quando o Participante recebeu a Recompensa de Raid (ainda membro e com
+              pelo menos uma Contribuição numa Raid `completed`); null nos demais casos.
+      examples:
+        - name: vitoria
+          payload:
+            raidId: 6f9b7d7e-1c1f-4a49-9a51-0d3f2b8b7c10
+            guildId: 2b1e0a3c-5d4f-4e6a-8b7c-9d0e1f2a3b4c
+            status: completed
+            rewardItemId: c05e71c0-0000-4000-8000-000000000009

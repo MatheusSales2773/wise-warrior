@@ -84,11 +84,12 @@ export interface PastRaidPage {
   nextCursor: string | null;
 }
 
-/** O resultado de um fechamento. */
+/** O resultado de um fechamento, para avisar os Participantes depois do commit. */
 export interface RaidClosure {
   raidId: string;
   guildId: string;
   status: Exclude<RaidStatus, 'active'>;
+  participantIds: string[];
   /** Participantes membros com Contribuição: só eles recebem a Recompensa de Raid. */
   rewardedIds: string[];
   rewardItemId: string | null;
@@ -465,7 +466,7 @@ export class RaidsService {
     return { closed, opened };
   }
 
-  /** Fecha cada Raid `active` com `endsAt` vencido numa transação própria. */
+  /** Fecha cada Raid `active` com `endsAt` vencido numa transação própria e avisa os Participantes depois do commit. */
   async closeEndedRaids(): Promise<RaidClosure[]> {
     const ended = await this.raids.find({
       select: { id: true },
@@ -476,7 +477,10 @@ export class RaidsService {
     for (const { id } of ended) {
       try {
         const closure = await this.closeRaid(id);
-        if (closure) closures.push(closure);
+        if (closure) {
+          closures.push(closure);
+          this.publishClosure(closure);
+        }
       } catch (error) {
         this.logger.error(`Falha ao fechar a Raid ${id}`, error instanceof Error ? error.stack : String(error));
       }
@@ -523,7 +527,14 @@ export class RaidsService {
       const won = raid.goalReachedAt !== null || raid.progressXp >= raid.goalXp;
       const status = won ? 'completed' : 'expired';
       await manager.update(Raid, { id: raid.id }, { status });
-      if (!won) return { raidId: raid.id, guildId: raid.guildId, status, rewardedIds: [], rewardItemId: null };
+
+      const participantIds = ((await manager.query(
+        'SELECT user_id AS userId FROM raid_participations WHERE raid_id = ? UNION SELECT user_id FROM raid_contributions WHERE raid_id = ?',
+        [raid.id, raid.id],
+      )) as Array<{ userId: string }>).map((row) => row.userId);
+      if (!won) {
+        return { raidId: raid.id, guildId: raid.guildId, status, participantIds, rewardedIds: [], rewardItemId: null };
+      }
 
       await this.guilds.levelUpInTransaction(manager, raid.guildId);
       const members = new Set(await this.guilds.memberIds(raid.guildId, manager));
@@ -534,8 +545,28 @@ export class RaidsService {
       const rewardedIds = contributors.filter((userId) => members.has(userId));
       const mission = await manager.findOneByOrFail(Mission, { id: raid.missionId });
       await this.users.unlockRaidReward(manager, rewardedIds, mission.slug);
-      return { raidId: raid.id, guildId: raid.guildId, status, rewardedIds, rewardItemId: mission.rewardCosmeticItemId };
+      return {
+        raidId: raid.id,
+        guildId: raid.guildId,
+        status,
+        participantIds,
+        rewardedIds,
+        rewardItemId: mission.rewardCosmeticItemId,
+      };
     });
+  }
+
+  /** Depois do commit do fechamento, uma vez por Participante: todos os dispositivos dele recebem o aviso. */
+  private publishClosure(closure: RaidClosure): void {
+    const rewarded = new Set(closure.rewardedIds);
+    for (const userId of closure.participantIds) {
+      this.realtime.emitToUser(userId, 'notification:raidComplete', {
+        raidId: closure.raidId,
+        guildId: closure.guildId,
+        status: closure.status,
+        rewardItemId: rewarded.has(userId) ? closure.rewardItemId : null,
+      });
+    }
   }
 
   /**

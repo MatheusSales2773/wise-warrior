@@ -766,6 +766,7 @@ paths:
         Recompensa de Raid prevista, `goalReachedAt` com a Meta batida, e em `me`
         a participação, a Contribuição e a posição no Ranking interno de quem consulta. Só membros da guilda a
         veem. `404` quando a guilda não tem Raid ativa (por exemplo, entre o fim da semana e a virada semanal).
+        O progresso também chega em tempo real pelo evento `raid:progress` (docs/api/asyncapi.yaml).
       operationId: getActiveGuildRaid
       tags: [Raids]
       parameters:

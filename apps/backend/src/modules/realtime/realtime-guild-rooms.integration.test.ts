@@ -215,4 +215,27 @@ describe('Tempo real da Guilda (Socket.IO) against MySQL', () => {
     const toCarla = await received(carlaDevice, 'raid:progress', () => contribute(carla, 50));
     expect(toCarla).toEqual([expect.objectContaining({ raidId: newRaidId, progressXp: 50 })]);
   });
+
+  it('sends notification:raidComplete to both devices of a Participant once, and not to an outsider', async () => {
+    const brunoPhone = await connect(bruno);
+    const brunoDesktop = await connect(bruno);
+    const outsider = await connect(carla);
+    await contribute(bruno, 5000);
+
+    now = new Date(Date.now() + 8 * 24 * 60 * 60 * 1000); // past the end of the week
+    const closeTwice = async () => {
+      await app!.get(RaidsService).runWeeklyRollover();
+      await app!.get(RaidsService).runWeeklyRollover();
+    };
+    const [toPhone, toDesktop, toOutsider] = await Promise.all([
+      received(brunoPhone, 'notification:raidComplete', async () => undefined),
+      received(brunoDesktop, 'notification:raidComplete', async () => undefined),
+      received(outsider, 'notification:raidComplete', closeTwice),
+    ]);
+
+    const expected = { raidId, guildId, status: 'completed', rewardItemId: expect.any(String) };
+    expect(toPhone).toEqual([expected]);
+    expect(toDesktop).toEqual([expected]);
+    expect(toOutsider).toEqual([]);
+  });
 });

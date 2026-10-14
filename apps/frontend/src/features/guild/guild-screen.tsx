@@ -147,7 +147,7 @@ const RAID_TURN_GRACE_MS = 5_000;
 function RaidDetails({ guildId, raid }: { guildId: string; raid: ActiveRaid }) {
   const now = useNow(30_000);
   const queryClient = useQueryClient();
-  // "Encerrando…" lasts until this refetch.
+  // "Encerrando…" lasts until this refetch, also for members who get no `notification:raidComplete`.
   useEffect(() => {
     const delay = new Date(raid.endsAt).getTime() + RAID_TURN_GRACE_MS - Date.now();
     if (delay > 2_147_483_647) return undefined;
