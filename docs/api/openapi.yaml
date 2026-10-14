@@ -5,7 +5,7 @@ info:
   description: >
     Contrato REST da Fase 1 (dev/phase-1). Gerado a partir dos controllers
     NestJS reais em apps/backend/src/modules/**. Eventos WebSocket (Socket.IO)
-    estão documentados separadamente em docs/api/asyncapi.yaml (pendente).
+    estão documentados separadamente em docs/api/asyncapi.yaml.
   license:
     name: MIT
     url: https://opensource.org/licenses/MIT

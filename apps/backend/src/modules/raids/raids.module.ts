@@ -17,8 +17,8 @@ import { RealtimeModule } from '../realtime/realtime.module';
   imports: [
     TypeOrmModule.forFeature([Raid, RaidContribution, RaidParticipation, Mission]),
     forwardRef(() => GuildsModule),
-    UsersModule,
-    RealtimeModule,
+    forwardRef(() => UsersModule),
+    forwardRef(() => RealtimeModule),
   ],
   controllers: [RaidsController, GuildRaidsController],
   providers: [RaidsService, RaidWeeklyScheduler, { provide: RAID_CLOCK, useValue: systemRaidClock }],

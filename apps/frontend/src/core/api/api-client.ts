@@ -126,7 +126,7 @@ function recoveryFailure(error: unknown): AuthenticationRecoveryResult {
   return { status: 'unavailable', error: apiError };
 }
 
-function recoverAuthenticationOnce(): Promise<AuthenticationRecoveryResult> {
+export function recoverAuthenticationOnce(): Promise<AuthenticationRecoveryResult> {
   if (!authenticationRecovery) return Promise.resolve({ status: 'anonymous' });
   if (!recoveryInFlight) {
     const attempt = Promise.resolve()

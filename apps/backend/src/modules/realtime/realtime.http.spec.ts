@@ -6,6 +6,7 @@ import { createConnection } from 'node:net';
 import type { AddressInfo } from 'node:net';
 import { configureApp } from '../../app.setup';
 import { JwtStrategy } from '../auth/strategies/jwt.strategy';
+import { GuildsService } from '../guilds/guilds.service';
 import { RealtimeGateway } from './realtime.gateway';
 
 describe('Realtime HTTP transport contract', () => {
@@ -34,6 +35,7 @@ describe('Realtime HTTP transport contract', () => {
         RealtimeGateway,
         { provide: JwtService, useValue: { verify: jest.fn() } },
         { provide: JwtStrategy, useValue: { validate: jest.fn() } },
+        { provide: GuildsService, useValue: { findGuildIdOf: jest.fn() } },
       ],
     }).compile();
 

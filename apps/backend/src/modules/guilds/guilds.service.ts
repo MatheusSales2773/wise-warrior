@@ -10,6 +10,7 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { RaidsService } from '../raids/raids.service';
+import { RealtimeGateway } from '../realtime/realtime.gateway';
 import { Character } from '../progression/entities/character.entity';
 import { CosmeticItem } from '../users/entities/cosmetic-item.entity';
 import { UserCosmeticItem } from '../users/entities/user-cosmetic-item.entity';
@@ -119,6 +120,8 @@ export class GuildsService {
     private readonly memberships: Repository<GuildMembership>,
     @Inject(forwardRef(() => RaidsService))
     private readonly raids: RaidsService,
+    @Inject(forwardRef(() => RealtimeGateway))
+    private readonly realtime: RealtimeGateway,
   ) {}
 
   async create(userId: string, dto: CreateGuildDto): Promise<Guild> {
@@ -130,7 +133,7 @@ export class GuildsService {
       throw new ConflictException(NAME_TAKEN);
     }
     try {
-      return await this.guilds.manager.transaction(async (manager) => {
+      const created = await this.guilds.manager.transaction(async (manager) => {
         const guild = await manager.save(
           manager.create(Guild, { name: dto.name, level: 1, createdBy: userId }),
         );
@@ -141,6 +144,8 @@ export class GuildsService {
         await this.raids.createForGuild(manager, guild.id, 1);
         return guild;
       });
+      await this.realtime.syncGuildRoom(userId, created.id);
+      return created;
     } catch (error) {
       if (isDuplicateEntry(error)) {
         // Two unique indexes can lose a race here: the guild name or the single-guild-per-user rule.
@@ -270,6 +275,7 @@ export class GuildsService {
         await manager.update(GuildMembership, { id: others[0]!.id }, { role: 'leader' });
       }
     });
+    await this.realtime.syncGuildRoom(userId, null);
   }
 
   async findMine(userId: string): Promise<MyGuild> {
@@ -327,6 +333,7 @@ export class GuildsService {
     const current = await this.memberships.findOne({ where: { userId } });
     if (current) {
       if (current.guildId === guildId) {
+        await this.realtime.syncGuildRoom(userId, guildId);
         return;
       }
       throw new ConflictException(ALREADY_IN_GUILD);
@@ -345,6 +352,12 @@ export class GuildsService {
         throw new ConflictException(ALREADY_IN_GUILD);
       }
     }
+    await this.realtime.syncGuildRoom(userId, guildId);
+  }
+
+  async findGuildIdOf(userId: string): Promise<string | null> {
+    const membership = await this.memberships.findOne({ where: { userId } });
+    return membership?.guildId ?? null;
   }
 
   async isMember(guildId: string, userId: string): Promise<boolean> {

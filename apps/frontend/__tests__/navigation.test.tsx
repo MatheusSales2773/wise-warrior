@@ -11,6 +11,7 @@ import { theme } from '@/design-system/tokens/theme';
 import { mockAuthState } from '../test-utils/auth-context';
 
 jest.mock('@/core/auth/auth-context', () => require('../test-utils/auth-context').createAuthContextMock());
+jest.mock('@/core/realtime/realtime-runtime', () => ({ RealtimeRuntime: () => null }));
 
 const originalPlatform = Platform.OS;
 const originalWindow = Dimensions.get('window');
