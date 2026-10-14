@@ -226,12 +226,12 @@ fazem parte desse primeiro corte.
 - [x] `raids`: entrar, registrar contribuição, ranking
 - [x] `realtime`: gateway Socket.IO com rooms `user:{id}` e `guild:{id}`
 - [x] Frontend Web atual: shell responsivo e páginas de login/cadastro/dashboard/sessão/guilda/perfil
-- [ ] Frontend universal ADR-008: migrar para Expo e validar Web/iOS/Android conforme o design de 03/09/2026
+- [x] Frontend universal ADR-008: migrado para Expo e validado em Web/iOS/Android (M1–M5, `docs/validation/`)
 - [x] Contrato de API publicado e validado (`docs/api/openapi.yaml`, lint limpo — seção 10)
-- [ ] `docs/api/asyncapi.yaml` (contrato dos eventos WebSocket) — ainda não escrito
-- [ ] Migrations TypeORM versionadas (schema hoje só via `synchronize` em dev — ver seção 12)
+- [ ] `docs/api/asyncapi.yaml` (contrato dos eventos WebSocket) — publicado com `raid:progress` e o aviso de Raid encerrada; faltam `progress:xpUpdated` e as notificações de level-up
+- [x] Migrations TypeORM versionadas (`apps/backend/src/migrations`, com teste de upgrade e downgrade)
 - [ ] Provisionamento real da VM Oracle Always Free e primeiro deploy (ADR-006)
-- [ ] Boot do NestJS + testes de integração contra MySQL real (não verificável neste ambiente de execução — ver seção 16)
+- [x] Boot do NestJS + testes de integração contra MySQL real (job `backend` da CI, com serviço MySQL 8.0, e E2E Playwright via Docker Compose)
 
 ---
 
@@ -477,7 +477,7 @@ Nota de processo: numa rodada anterior deste documento, esta seção listava vá
 
 1. Provisionar a VM Oracle Cloud Always Free o quanto antes (ADR-006) — erros de "out of capacity" são comuns nessa modalidade; não deixar para o fim do prazo.
 2. Atualizar Documento de Visão (seção 4.4) e Documento de Arquitetura (tabela de tecnologias) para refletir Oracle Cloud em vez de AWS e a remoção do Koa.js (ADR-002/ADR-006) — `README.md` já foi atualizado nesta rodada.
-3. ~~Publicar `docs/api/openapi.yaml`~~ — feito nesta rodada, validado com `redocly lint` e testado contra mock Prism. Falta ainda `docs/api/asyncapi.yaml` para os eventos WebSocket.
-4. Escrever as migrations TypeORM versionadas (hoje o schema só existe via `synchronize` em dev — ver seção 7.5) antes de qualquer deploy real.
+3. ~~Publicar `docs/api/openapi.yaml`~~ — feito nesta rodada, validado com `redocly lint` e testado contra mock Prism. `docs/api/asyncapi.yaml` já cobre os eventos de Raid; faltam os eventos de XP e level-up.
+4. ~~Escrever as migrations TypeORM versionadas~~ — feito (ver seção 7.5).
 5. Decidir, na primeira ticket de infraestrutura, entre MySQL gerenciado (Oracle HeatWave Always Free) ou MySQL em container na mesma VM (seção 11).
-6. Validar o boot completo do backend contra MySQL real (`docker compose up`) — não verificável no sandbox usado para gerar este PRD e o código da Fase 1.
+6. ~~Validar o boot completo do backend contra MySQL real~~ — coberto pela CI (integração contra MySQL e E2E via Docker Compose).
