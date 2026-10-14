@@ -8,6 +8,7 @@ export type ApiErrorCategory =
   | 'validation'
   | 'credentials'
   | 'conflict'
+  | 'rate-limited'
   | 'session'
   | 'network'
   | 'server'
@@ -15,7 +16,8 @@ export type ApiErrorCategory =
   | 'cancelled'
   | 'unexpected';
 
-const RETRYABLE: ReadonlySet<ApiErrorCategory> = new Set(['network', 'server']);
+// `rate-limited` (429) só pede espera: um refresh limitado não pode encerrar a sessão local.
+const RETRYABLE: ReadonlySet<ApiErrorCategory> = new Set(['network', 'server', 'rate-limited']);
 
 export type ApiErrorOptions = {
   status?: number;
@@ -81,6 +83,7 @@ export function toApiError(error: unknown, options: ClassifyOptions = {}): ApiEr
   if (status === 400) return new ApiError('validation', { status });
   if (status === 401) return new ApiError(options.unauthorized ?? 'credentials', { status });
   if (status === 409) return new ApiError('conflict', { status, problemType: problemTypeOf(response.data) });
+  if (status === 429) return new ApiError('rate-limited', { status });
   if (status >= 500) return new ApiError('server', { status });
   return new ApiError('unexpected', { status });
 }
