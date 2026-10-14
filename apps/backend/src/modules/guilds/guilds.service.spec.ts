@@ -4,6 +4,7 @@ import { getRepositoryToken } from '@nestjs/typeorm';
 import { Guild } from './entities/guild.entity';
 import { GuildMembership } from './entities/guild-membership.entity';
 import { RaidsService } from '../raids/raids.service';
+import { RealtimeGateway } from '../realtime/realtime.gateway';
 import { GuildsService } from './guilds.service';
 
 const manager = {
@@ -58,6 +59,7 @@ describe('GuildsService', () => {
         { provide: getRepositoryToken(Guild), useValue: mockGuilds },
         { provide: getRepositoryToken(GuildMembership), useValue: mockMemberships },
         { provide: RaidsService, useValue: mockRaids },
+        { provide: RealtimeGateway, useValue: { syncGuildRoom: jest.fn() } },
       ],
     }).compile();
     service = module.get(GuildsService);

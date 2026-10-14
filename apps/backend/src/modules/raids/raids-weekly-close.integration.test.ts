@@ -110,7 +110,7 @@ describe('Fechamento semanal da Raid against MySQL', () => {
         repo(User), repo(CosmeticItem), repo(UserCosmeticItem),
         { provide: RAID_CLOCK, useValue: () => now },
         { provide: ProgressionService, useValue: {} },
-        { provide: RealtimeGateway, useValue: { emitToGuild: jest.fn() } },
+        { provide: RealtimeGateway, useValue: { emitToGuild: jest.fn(), syncGuildRoom: jest.fn() } },
       ],
     })
       .overrideGuard(JwtAuthGuard)

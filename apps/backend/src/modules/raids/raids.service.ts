@@ -190,7 +190,9 @@ export class RaidsService {
     @InjectRepository(Mission) private readonly missions: Repository<Mission>,
     @Inject(forwardRef(() => GuildsService))
     private readonly guilds: GuildsService,
+    @Inject(forwardRef(() => UsersService))
     private readonly users: UsersService,
+    @Inject(forwardRef(() => RealtimeGateway))
     private readonly realtime: RealtimeGateway,
     @Inject(RAID_CLOCK) private readonly clock: RaidClock,
   ) {}

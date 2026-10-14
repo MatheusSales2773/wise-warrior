@@ -4,6 +4,7 @@ import { queryClient } from '../src/core/query/query-runtime';
 import { theme } from '../src/design-system/tokens/theme';
 
 jest.mock('@/core/auth/auth-context', () => require('../test-utils/auth-context').createAuthContextMock());
+jest.mock('@/core/realtime/realtime-runtime', () => ({ RealtimeRuntime: () => null }));
 
 describe('Expo foundation routes', () => {
   beforeEach(() => {
