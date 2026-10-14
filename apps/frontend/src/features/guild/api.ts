@@ -69,6 +69,24 @@ export type RaidRankingPage = {
   nextCursor: string | null;
 };
 
+/** A Raid closed by the weekly turn: `completed` when the goal was reached, `expired` otherwise. */
+export type PastRaid = {
+  id: string;
+  mission: { slug: string; name: string; description: string; imageUrl: string | null };
+  goalXp: number;
+  progressXp: number;
+  goalReachedAt: string | null;
+  startsAt: string;
+  endsAt: string;
+  status: 'completed' | 'expired';
+  me: { participated: boolean; contributionXp: number; position: number | null };
+};
+
+export type PastRaidPage = {
+  items: PastRaid[];
+  nextCursor: string | null;
+};
+
 /** `null` means the user is not in any guild (the API answers 404), which is a normal state, not a failure. */
 export async function getMyGuild({ signal }: { signal?: AbortSignal } = {}): Promise<MyGuild | null> {
   try {
@@ -134,5 +152,14 @@ export async function getRaidRanking(
 ): Promise<RaidRankingPage> {
   const query = cursor ? `?cursor=${encodeURIComponent(cursor)}` : '';
   const response = await getAuthenticatedHttpClient().get<RaidRankingPage>(`/raids/${encodeURIComponent(raidId)}/ranking${query}`, { signal });
+  return response.data;
+}
+
+export async function listPastRaids(
+  guildId: string,
+  { cursor, signal }: { cursor?: string | null; signal?: AbortSignal } = {},
+): Promise<PastRaidPage> {
+  const query = cursor ? `?cursor=${encodeURIComponent(cursor)}` : '';
+  const response = await getAuthenticatedHttpClient().get<PastRaidPage>(`/guilds/${encodeURIComponent(guildId)}/raids${query}`, { signal });
   return response.data;
 }

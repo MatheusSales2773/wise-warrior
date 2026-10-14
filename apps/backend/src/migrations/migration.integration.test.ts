@@ -13,6 +13,7 @@ import { AddStudySessionPauseResume1788458880000 } from './1788458880000-add-stu
 import { AddRaidMissions1788459360000 } from './1788459360000-add-raid-missions';
 import { AddRaidParticipations1788459420000 } from './1788459420000-add-raid-participations';
 import { AddRaidGoalReachedAt1788459480000 } from './1788459480000-add-raid-goal-reached-at';
+import { AddRaidGuildWeekUnique1788459540000 } from './1788459540000-add-raid-guild-week-unique';
 import { DropCharacterTitle1788459300000 } from './1788459300000-drop-character-title';
 import { SeedInitialCosmeticItems1788459240000 } from './1788459240000-seed-initial-cosmetic-items';
 import { raidWeekAt } from '../modules/raids/domain/raid-week';
@@ -380,7 +381,25 @@ describe('TypeORM migrations against an empty MySQL schema', () => {
       'AddRaidMissions1788459360000',
       'AddRaidParticipations1788459420000',
       'AddRaidGoalReachedAt1788459480000',
+      'AddRaidGuildWeekUnique1788459540000',
     ]);
+
+    const weekIndexRows = await rows(
+      database!.admin,
+      `SELECT COLUMN_NAME, NON_UNIQUE FROM information_schema.STATISTICS
+       WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'raids' AND INDEX_NAME = 'UQ_raids_guild_id_starts_at'
+       ORDER BY SEQ_IN_INDEX`,
+      [database!.name],
+    );
+    expect(weekIndexRows.map((row) => [row.COLUMN_NAME, Number(row.NON_UNIQUE)]))
+      .toEqual([['guild_id', 0], ['starts_at', 0]]);
+    await dataSource.undoLastMigration(); // one Raid per Guild and week
+    expect(await rows(
+      database!.admin,
+      `SELECT INDEX_NAME FROM information_schema.STATISTICS
+       WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'raids' AND INDEX_NAME = 'UQ_raids_guild_id_starts_at'`,
+      [database!.name],
+    )).toEqual([]);
 
     await dataSource.undoLastMigration(); // raid goal reached at, which sits above the raid participations
     const goalRevertRows = await rows(
@@ -619,7 +638,7 @@ await dataSource.undoLastMigration();
       { idempotency_key: 'rolling-transition-key', command_kind: 'resume' },
     ]);
 
-    for (let step = 0; step < 9; step += 1) await dataSource.undoLastMigration();
+    for (let step = 0; step < 10; step += 1) await dataSource.undoLastMigration();
     const leftoverTriggers = await rows(
       database.admin,
       `SELECT TRIGGER_NAME FROM information_schema.TRIGGERS
@@ -744,6 +763,7 @@ await dataSource.undoLastMigration();
     expect(receiptsWithSubject).toEqual([{ idempotency_key: 'solo-start-key', subject: 'Cálculo II' }]);
 
     // M6 revert: only the receipt column goes away; every persisted Matéria (including legacy Guild rows) stays.
+    await dataSource.undoLastMigration(); // one Raid per Guild and week
     await dataSource.undoLastMigration(); // raid goal reached at
     await dataSource.undoLastMigration(); // raid participations, which sit above the raid missions
     await dataSource.undoLastMigration(); // raid missions, which sit above the character title drop
@@ -779,7 +799,7 @@ await dataSource.undoLastMigration();
     );
     expect(receiptsAfterReapply).toEqual([{ idempotency_key: 'solo-start-key', subject: null }]);
 
-    for (let step = 0; step < 11; step += 1) await dataSource.undoLastMigration();
+    for (let step = 0; step < 12; step += 1) await dataSource.undoLastMigration();
     const downgradedHistory = await rows(
       database.admin,
       `SELECT id, subject, mode, raid_id FROM ${database.identifier}.study_sessions ORDER BY id`,
@@ -870,7 +890,7 @@ await dataSource.undoLastMigration();
     );
     expect(leftoverArchives).toHaveLength(0);
 
-    for (let step = 0; step < 14; step += 1) await dataSource.undoLastMigration();
+    for (let step = 0; step < 15; step += 1) await dataSource.undoLastMigration();
     const remainingSchemaTables = await rows(
       database.admin,
       `SELECT TABLE_NAME FROM information_schema.TABLES
@@ -961,6 +981,7 @@ await dataSource.undoLastMigration();
     expect(owned('newcomer')).toEqual([['Capuz do Erudito', 1], ['Aprendiz', 1]]);
     expect(owned('collector')).toEqual([['Capuz do Erudito', 1], ['Aprendiz', 1], ['Madrugador', 0]]);
 
+    await dataSource.undoLastMigration(); // one Raid per Guild and week
     await dataSource.undoLastMigration(); // raid goal reached at
     await dataSource.undoLastMigration(); // raid participations, which sit above the raid missions
     await dataSource.undoLastMigration(); // raid missions, which sit above the character title drop
@@ -1016,6 +1037,7 @@ await dataSource.undoLastMigration();
     );
     expect(columns.map((row) => row.COLUMN_NAME)).not.toContain('title');
 
+    await dataSource.undoLastMigration(); // one Raid per Guild and week
     await dataSource.undoLastMigration(); // raid goal reached at
     await dataSource.undoLastMigration(); // raid participations, which sit above the raid missions
     await dataSource.undoLastMigration(); // raid missions, which sit above the character title drop
@@ -1096,6 +1118,7 @@ await dataSource.undoLastMigration();
     expect(Number(current.goal_xp)).toBeGreaterThan(0);
     expect(Number(current.goal_xp)).toBeLessThanOrEqual(3000);
 
+    await dataSource.undoLastMigration(); // one Raid per Guild and week
     await dataSource.undoLastMigration(); // raid goal reached at
     await dataSource.undoLastMigration(); // raid participations
     await dataSource.undoLastMigration();
@@ -1173,6 +1196,7 @@ await dataSource.undoLastMigration();
       [raidId],
     )).rejects.toThrow(/Duplicate entry/);
 
+    await dataSource.undoLastMigration(); // one Raid per Guild and week
     await dataSource.undoLastMigration(); // raid goal reached at
     await dataSource.undoLastMigration();
     expect(await rows(
@@ -1185,7 +1209,7 @@ await dataSource.undoLastMigration();
   it('dates the Meta batida, reopens the Raids of the current week and keeps one Contribution per Study Session', async () => {
     database = await createIntegrationDatabase('wise_migrations_test');
     initialDataSource = new DataSource(database.options(
-      (APPLICATION_MIGRATIONS as unknown[]).filter((migration) => migration !== AddRaidGoalReachedAt1788459480000) as typeof APPLICATION_MIGRATIONS,
+      (APPLICATION_MIGRATIONS as unknown[]).filter((migration) => migration !== AddRaidGoalReachedAt1788459480000 && migration !== AddRaidGuildWeekUnique1788459540000) as typeof APPLICATION_MIGRATIONS,
     ));
     await initialDataSource.initialize();
     await initialDataSource.runMigrations();
@@ -1237,7 +1261,13 @@ await dataSource.undoLastMigration();
     await expect(database.admin.query(
       `INSERT INTO ${db}.raid_contributions (id, raid_id, user_id, study_session_id, xp_contributed) VALUES ('c4', 'current', 'u', 's1', 10)`,
     )).rejects.toThrow(/Duplicate entry/);
+    // One Raid per Guild and week: a second Raid starting with the same week is refused.
+    await expect(database.admin.query(
+      `INSERT INTO ${db}.raids (id, guild_id, mission_id, goal_xp, progress_xp, starts_at, ends_at, status)
+       SELECT 'again', 'g', mission_id, 100, 0, starts_at, ends_at, 'active' FROM ${db}.raids WHERE id = 'past'`,
+    )).rejects.toThrow(/Duplicate entry/);
 
+    await dataSource.undoLastMigration(); // one Raid per Guild and week
     await dataSource.undoLastMigration();
     expect(await rows(database.admin, `SELECT id, status FROM ${db}.raids WHERE guild_id = 'g' ORDER BY id`))
       .toEqual([{ id: 'current', status: 'completed' }, { id: 'past', status: 'expired' }]);

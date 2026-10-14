@@ -1,16 +1,17 @@
 import {
-  BadRequestException,
   ConflictException,
   ForbiddenException,
+  BadRequestException,
   Inject,
   Injectable,
+  Logger,
   NotFoundException,
   forwardRef,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { EntityManager, Repository } from 'typeorm';
+import { EntityManager, LessThan, Repository } from 'typeorm';
 import { Mission } from './entities/mission.entity';
-import { Raid } from './entities/raid.entity';
+import { Raid, type RaidStatus } from './entities/raid.entity';
 import { RAID_PAGE_SIZE_DEFAULT, type RaidPageQueryDto } from './dto/raid-page-query.dto';
 import { RAID_CLOCK, type RaidClock } from './raid-clock';
 import { missionIndexForWeek, proportionalGoalXp, raidWeekAt } from './domain/raid-week';
@@ -43,6 +44,13 @@ export interface ActiveRaid {
   me: { participating: boolean; contributionXp: number; position: number | null };
 }
 
+interface MissionSummary {
+  slug: string;
+  name: string;
+  description: string;
+  imageUrl: string | null;
+}
+
 /** Uma linha do Ranking interno (ADR-010 para o Título). */
 export interface RankingEntry {
   position: number;
@@ -56,6 +64,31 @@ export interface RankingEntry {
 export interface RankingPage {
   items: RankingEntry[];
   nextCursor: string | null;
+}
+
+/** Uma Raid fechada, vista por um membro da Guild. */
+export interface PastRaid {
+  id: string;
+  mission: MissionSummary;
+  goalXp: number;
+  progressXp: number;
+  goalReachedAt: Date | null;
+  startsAt: Date;
+  endsAt: Date;
+  status: RaidStatus;
+  me: { participated: boolean; contributionXp: number; position: number | null };
+}
+
+export interface PastRaidPage {
+  items: PastRaid[];
+  nextCursor: string | null;
+}
+
+/** O resultado de um fechamento. */
+export interface RaidClosure {
+  raidId: string;
+  guildId: string;
+  status: Exclude<RaidStatus, 'active'>;
 }
 
 /** O progresso coletivo logo depois de uma Contribuição, para o evento `raid:progress`. */
@@ -92,31 +125,54 @@ interface RankRow {
 
 type RankCursor = Pick<RankRow, 'contributionXp' | 'sortAt' | 'userId'>;
 
-function encodeRankCursor(row: RankCursor): string {
-  return Buffer.from(JSON.stringify([row.contributionXp, row.sortAt, row.userId]), 'utf8').toString('base64url');
+function encodeCursor(values: unknown[]): string {
+  return Buffer.from(JSON.stringify(values), 'utf8').toString('base64url');
 }
 
-function decodeRankCursor(cursor: string): RankCursor {
+function decodeCursor(cursor: string): unknown[] {
   try {
     const parsed: unknown = JSON.parse(Buffer.from(cursor, 'base64url').toString('utf8'));
-    if (Array.isArray(parsed)) {
-      const [contributionXp, sortAt, userId] = parsed as unknown[];
-      if (
-        typeof contributionXp === 'number' && Number.isInteger(contributionXp)
-        && typeof sortAt === 'string' && MYSQL_DATETIME_TEXT.test(sortAt)
-        && typeof userId === 'string'
-      ) {
-        return { contributionXp, sortAt, userId };
-      }
-    }
+    if (Array.isArray(parsed)) return parsed;
   } catch {
     // Falls through to the validation error below.
   }
   throw new BadRequestException('Cursor inválido');
 }
 
+function decodeRankCursor(cursor: string): RankCursor {
+  const [contributionXp, sortAt, userId] = decodeCursor(cursor);
+  if (
+    typeof contributionXp !== 'number' || !Number.isInteger(contributionXp)
+    || typeof sortAt !== 'string' || !MYSQL_DATETIME_TEXT.test(sortAt)
+    || typeof userId !== 'string'
+  ) {
+    throw new BadRequestException('Cursor inválido');
+  }
+  return { contributionXp, sortAt, userId };
+}
+
+function decodePastRaidCursor(cursor: string): { startsAt: Date; id: string } {
+  const [startsAt, id] = decodeCursor(cursor);
+  const date = typeof startsAt === 'string' ? new Date(startsAt) : null;
+  if (!date || Number.isNaN(date.getTime()) || typeof id !== 'string') {
+    throw new BadRequestException('Cursor inválido');
+  }
+  return { startsAt: date, id };
+}
+
+function missionSummary(mission: Mission): MissionSummary {
+  return { slug: mission.slug, name: mission.name, description: mission.description, imageUrl: mission.imageUrl };
+}
+
+function isDuplicateEntry(error: unknown): boolean {
+  const candidate = error as { code?: string; driverError?: { code?: string } } | null;
+  return candidate?.code === 'ER_DUP_ENTRY' || candidate?.driverError?.code === 'ER_DUP_ENTRY';
+}
+
 @Injectable()
 export class RaidsService {
+  private readonly logger = new Logger(RaidsService.name);
+
   constructor(
     @InjectRepository(Raid) private readonly raids: Repository<Raid>,
     @InjectRepository(RaidContribution)
@@ -166,8 +222,8 @@ export class RaidsService {
       .createQueryBuilder('raid')
       .innerJoinAndSelect('raid.mission', 'mission')
       .where('raid.guildId = :guildId', { guildId })
-      // `completed` still belongs to the current week: the goal being reached must not hide the Raid.
-      .andWhere("raid.status IN ('active', 'completed')")
+      // The Meta batida (`goalReachedAt`) keeps the Raid `active`; only the weekly closing changes the status.
+      .andWhere("raid.status = 'active'")
       .andWhere('raid.startsAt <= :now', { now })
       .andWhere('raid.endsAt >= :now', { now })
       .orderBy('raid.startsAt', 'DESC')
@@ -179,14 +235,10 @@ export class RaidsService {
     if (!item) {
       throw new Error(`Recompensa da Missão ${raid.mission.slug} não encontrada`);
     }
+    const me = await this.participantSummary(raid, requesterId);
     return {
       id: raid.id,
-      mission: {
-        slug: raid.mission.slug,
-        name: raid.mission.name,
-        description: raid.mission.description,
-        imageUrl: raid.mission.imageUrl,
-      },
+      mission: missionSummary(raid.mission),
       reward: { itemId: item.id, name: item.name, category: item.category },
       goalXp: raid.goalXp,
       progressXp: raid.progressXp,
@@ -194,7 +246,49 @@ export class RaidsService {
       startsAt: raid.startsAt,
       endsAt: raid.endsAt,
       status: raid.status,
-      me: await this.participantSummary(raid, requesterId),
+      me: { participating: me.participated, contributionXp: me.contributionXp, position: me.position },
+    };
+  }
+
+  /** As Raids fechadas da Guild, da mais recente para a mais antiga. Só membros as veem. */
+  async listClosed(guildId: string, requesterId: string, query: RaidPageQueryDto): Promise<PastRaidPage> {
+    if (!(await this.guilds.isMember(guildId, requesterId))) {
+      throw new ForbiddenException('Apenas membros da guilda podem ver as Raids anteriores');
+    }
+    const limit = query.limit ?? RAID_PAGE_SIZE_DEFAULT;
+    const qb = this.raids
+      .createQueryBuilder('raid')
+      .innerJoinAndSelect('raid.mission', 'mission')
+      .where('raid.guildId = :guildId', { guildId })
+      .andWhere("raid.status IN ('completed', 'expired')")
+      .orderBy('raid.startsAt', 'DESC')
+      .addOrderBy('raid.id', 'DESC')
+      .limit(limit + 1);
+    if (query.cursor) {
+      const after = decodePastRaidCursor(query.cursor);
+      qb.andWhere('(raid.startsAt < :afterStartsAt OR (raid.startsAt = :afterStartsAt AND raid.id < :afterId))', {
+        afterStartsAt: after.startsAt,
+        afterId: after.id,
+      });
+    }
+    const rows = await qb.getMany();
+    const page = rows.slice(0, limit);
+    const memberIds = await this.guilds.memberIds(guildId);
+    const items = await Promise.all(page.map(async (raid) => ({
+      id: raid.id,
+      mission: missionSummary(raid.mission),
+      goalXp: raid.goalXp,
+      progressXp: raid.progressXp,
+      goalReachedAt: raid.goalReachedAt,
+      startsAt: raid.startsAt,
+      endsAt: raid.endsAt,
+      status: raid.status,
+      me: await this.participantSummary(raid, requesterId, memberIds),
+    })));
+    const last = page[page.length - 1];
+    return {
+      items,
+      nextCursor: rows.length > limit && last ? encodeCursor([last.startsAt.toISOString(), last.id]) : null,
     };
   }
 
@@ -212,7 +306,7 @@ export class RaidsService {
 
   /**
    * UC02 fluxo básico: o membro confirma participação na Raid da sua Guild. Repetir é inofensivo.
-   * Uma Raid que já bateu a meta (`completed`) continua aberta até o fim da semana.
+   * Uma Raid com Meta batida continua aberta até o fim da semana.
    */
   async join(userId: string, raidId: string): Promise<void> {
     const raid = await this.raids.findOne({ where: { id: raidId } });
@@ -354,22 +448,103 @@ export class RaidsService {
           contributionXp: row.contributionXp,
         };
       }),
-      nextCursor: rows.length > limit && last ? encodeRankCursor(last) : null,
+      nextCursor: rows.length > limit && last ? encodeCursor([last.contributionXp, last.sortAt, last.userId]) : null,
     };
   }
 
-  /** Participação, Contribuição e posição no Ranking interno de quem consulta a Raid ativa. */
+  /**
+   * Job semanal: fecha as Raids vencidas e abre a Raid da semana corrente de cada Guild que ainda não tem.
+   * Rodar de novo, ou depois de semanas com a aplicação fora do ar, não repete nada.
+   */
+  async runWeeklyRollover(): Promise<{ closed: RaidClosure[]; opened: number }> {
+    const closed = await this.closeEndedRaids();
+    const opened = await this.openCurrentWeekRaids();
+    return { closed, opened };
+  }
+
+  /** Fecha cada Raid `active` com `endsAt` vencido numa transação própria. */
+  async closeEndedRaids(): Promise<RaidClosure[]> {
+    const ended = await this.raids.find({
+      select: { id: true },
+      where: { status: 'active', endsAt: LessThan(this.clock()) },
+      order: { endsAt: 'ASC' },
+    });
+    const closures: RaidClosure[] = [];
+    for (const { id } of ended) {
+      try {
+        const closure = await this.closeRaid(id);
+        if (closure) closures.push(closure);
+      } catch (error) {
+        this.logger.error(`Falha ao fechar a Raid ${id}`, error instanceof Error ? error.stack : String(error));
+      }
+    }
+    return closures;
+  }
+
+  /** Abre a Raid da semana corrente para cada Guild sem uma; a meta é a do tamanho atual, proporcional ao que falta. */
+  async openCurrentWeekRaids(): Promise<number> {
+    const now = this.clock();
+    const week = raidWeekAt(now);
+    const covered = new Set((await this.raids.find({
+      select: { guildId: true },
+      where: { startsAt: week.startsAt },
+    })).map((raid) => raid.guildId));
+    let opened = 0;
+    for (const guild of await this.guilds.listForWeeklyRaid()) {
+      if (covered.has(guild.id)) continue;
+      try {
+        await this.raids.manager.transaction((manager) => this.createForGuild(manager, guild.id, guild.memberCount));
+        opened += 1;
+      } catch (error) {
+        // Outra execução abriu a mesma semana (índice único Guild + início) ou a Guild acabou de ser encerrada.
+        if (isDuplicateEntry(error)) continue;
+        this.logger.error(`Falha ao abrir a Raid da guilda ${guild.id}`, error instanceof Error ? error.stack : String(error));
+      }
+    }
+    return opened;
+  }
+
+  /** Fechamento idempotente: só uma Raid ainda `active` muda de status. Com Meta batida, a Guild sobe um nível. */
+  private async closeRaid(raidId: string): Promise<RaidClosure | null> {
+    return this.raids.manager.transaction(async (manager) => {
+      const raid = await manager
+        .createQueryBuilder(Raid, 'raid')
+        .setLock('pessimistic_write')
+        .where('raid.id = :raidId', { raidId })
+        .getOne();
+      if (!raid || raid.status !== 'active') return null;
+
+      const won = raid.goalReachedAt !== null || raid.progressXp >= raid.goalXp;
+      const status = won ? 'completed' : 'expired';
+      await manager.update(Raid, { id: raid.id }, { status });
+      if (won) await this.guilds.levelUpInTransaction(manager, raid.guildId);
+      return { raidId: raid.id, guildId: raid.guildId, status };
+    });
+  }
+
+  /**
+   * A Raid aceita Participantes e Contribuições da segunda 00:00 ao domingo 23:59:59, mesmo depois da Meta
+   * batida. Depois do fechamento (`completed` ou `expired`) não aceita mais nada.
+   */
+  private isOpenAt(raid: Raid, at: Date): boolean {
+    return raid.status === 'active'
+      && raid.startsAt.getTime() <= at.getTime()
+      && at.getTime() <= raid.endsAt.getTime();
+  }
+
+  /** Participação, Contribuição e posição de um usuário numa Raid. */
   private async participantSummary(
     raid: Raid,
     userId: string,
-  ): Promise<ActiveRaid['me']> {
-    const [participating, contributionXp, memberIds] = await Promise.all([
+    knownMemberIds?: string[],
+  ): Promise<{ participated: boolean; contributionXp: number; position: number | null }> {
+    const [participated, contributionXp, memberIds] = await Promise.all([
       this.participations.existsBy({ raidId: raid.id, userId }),
       this.contributionXpOf(raid.id, userId),
-      this.guilds.memberIds(raid.guildId),
+      knownMemberIds ?? this.guilds.memberIds(raid.guildId),
     ]);
     const [row] = await this.rankRows(raid.id, memberIds, { userId });
-    return { participating, contributionXp, position: row?.position ?? null };
+    return { participated: participated || contributionXp > 0, contributionXp, position: row?.position ?? null };
   }
 
   /**
@@ -431,13 +606,6 @@ export class RaidsService {
       sortAt: String(row.sortAt),
       position: Number(row.position),
     }));
-  }
-
-  /** A Raid aceita Participantes e Contribuições da segunda 00:00 ao domingo 23:59:59, mesmo depois da Meta batida. */
-  private isOpenAt(raid: Raid, at: Date): boolean {
-    return raid.status !== 'expired'
-      && raid.startsAt.getTime() <= at.getTime()
-      && at.getTime() <= raid.endsAt.getTime();
   }
 
   private async contributionXpOf(raidId: string, userId: string): Promise<number> {

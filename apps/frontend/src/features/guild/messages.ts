@@ -88,3 +88,20 @@ export function rankingRowLabel(row: { position: number; displayName: string; le
   const detail = [`nível ${row.level}`, row.title].filter(Boolean).join(', ');
   return `${formatRankingPosition(row.position)} lugar: ${who}, ${detail}. ${row.contributionXp} XP de contribuição.`;
 }
+
+const RAID_WEEK_DAY = new Intl.DateTimeFormat('pt-BR', { timeZone: 'America/Sao_Paulo', day: '2-digit', month: '2-digit' });
+
+/** The Raid week (Monday to Sunday in São Paulo), e.g. "05/10 a 11/10". */
+export function formatRaidWeek(startsAt: string, endsAt: string): string {
+  return `${RAID_WEEK_DAY.format(new Date(startsAt))} a ${RAID_WEEK_DAY.format(new Date(endsAt))}`;
+}
+
+export function formatPastRaidOutcome(status: 'completed' | 'expired'): string {
+  return status === 'completed' ? 'Meta batida' : 'Meta não batida';
+}
+
+export function formatPastRaidMine(me: { participated: boolean; contributionXp: number; position: number | null }): string {
+  if (!me.participated) return 'Você não participou';
+  const position = me.position === null ? null : `${formatRankingPosition(me.position)} lugar`;
+  return [position, `${me.contributionXp} XP`].filter(Boolean).join(' · ');
+}

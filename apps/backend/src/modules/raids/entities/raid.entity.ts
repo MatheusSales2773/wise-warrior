@@ -13,6 +13,8 @@ export type RaidStatus = 'active' | 'completed' | 'expired';
 
 @Entity('raids')
 @Index('IDX_raids_guild_id', ['guildId'])
+/** Uma Raid por Guild e semana: o job semanal pode rodar de novo sem duplicar. */
+@Index('UQ_raids_guild_id_starts_at', ['guildId', 'startsAt'], { unique: true })
 export class Raid {
   @PrimaryGeneratedColumn('uuid')
   id: string;

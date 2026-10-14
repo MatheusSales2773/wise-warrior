@@ -177,8 +177,13 @@ describe('Raids HTTP access control against MySQL', () => {
     });
 
     it('still accepts participation after the goal is reached, until the week ends', async () => {
-      await dataSource!.getRepository(Raid).update({ id: raidId }, { status: 'completed', progressXp: 1500 });
+      await dataSource!.getRepository(Raid).update({ id: raidId }, { goalReachedAt: new Date(), progressXp: 1500 });
       expect((await post(`/raids/${raidId}/join`, ana)).status).toBe(204);
+    });
+
+    it('answers 409 for a Raid already closed as completed', async () => {
+      await dataSource!.getRepository(Raid).update({ id: raidId }, { status: 'completed', progressXp: 1500 });
+      expect((await post(`/raids/${raidId}/join`, ana)).status).toBe(409);
     });
 
     it('answers 403 to a user outside the Guild and stores nothing', async () => {

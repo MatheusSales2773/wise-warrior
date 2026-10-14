@@ -177,11 +177,11 @@ describe('Raid da semana against MySQL', () => {
     expect((await call('GET', `/guilds/${guildId}/raids/active`)).status).toBe(404);
   });
 
-  it('keeps showing the Raid after its goal is reached', async () => {
+  it('keeps showing the Raid, still active, after its goal is reached', async () => {
     const guildId = await createGuild('Ordem do Foco');
-    await dataSource!.getRepository(Raid).update({ guildId }, { progressXp: 1000, status: 'completed' });
+    await dataSource!.getRepository(Raid).update({ guildId }, { progressXp: 1000, goalReachedAt: new Date('2026-10-07T14:00:00Z') });
     const response = await call('GET', `/guilds/${guildId}/raids/active`);
     expect(response.status).toBe(200);
-    expect(await response.json()).toMatchObject({ progressXp: 1000, status: 'completed' });
+    expect(await response.json()).toMatchObject({ progressXp: 1000, goalReachedAt: '2026-10-07T14:00:00.000Z', status: 'active' });
   });
 });

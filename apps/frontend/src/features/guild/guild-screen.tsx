@@ -4,12 +4,15 @@ import { Platform, StyleSheet, View, useWindowDimensions } from 'react-native';
 import { FeedbackMessage, ProgressBar, Screen, WiseButton, WiseCard, WiseField, WiseText, isDesktopLayout, theme } from '@/design-system';
 import { isApiError } from '@/core/api/api-error';
 import { profileQueryOptions } from '@/features/dashboard/queries';
-import { createGuild, joinGuild, joinRaid, leaveGuild, type ActiveRaid, type GuildMember, type GuildSummary, type MyGuild, type RaidRankingEntry } from './api';
+import { createGuild, joinGuild, joinRaid, leaveGuild, type ActiveRaid, type GuildMember, type GuildSummary, type MyGuild, type PastRaid, type RaidRankingEntry } from './api';
 import {
-  RAID_GOAL_REACHED, RAID_REWARD_RULE, createGuildErrorMessage, formatGuildRole, formatMyContribution, formatMyPosition, formatMemberCount, formatRaidTimeLeft,
-  formatRankingPosition, formatRewardCategory, joinGuildErrorMessage, joinRaidErrorMessage, leaveGuildErrorMessage, raidProgressPercent, rankingRowLabel,
+  RAID_GOAL_REACHED, RAID_REWARD_RULE, createGuildErrorMessage, formatGuildRole, formatMyContribution, formatMyPosition, formatMemberCount, formatPastRaidMine,
+  formatPastRaidOutcome, formatRaidTimeLeft, formatRaidWeek, formatRankingPosition, formatRewardCategory,
+  joinGuildErrorMessage, joinRaidErrorMessage, leaveGuildErrorMessage, raidProgressPercent, rankingRowLabel,
 } from './messages';
-import { activeRaidQueryOptions, guildDirectoryQueryOptions, guildKeys, guildMembersQueryOptions, myGuildQueryOptions, raidRankingQueryOptions } from './queries';
+import {
+  activeRaidQueryOptions, guildDirectoryQueryOptions, guildKeys, guildMembersQueryOptions, myGuildQueryOptions, pastRaidsQueryOptions, raidRankingQueryOptions,
+} from './queries';
 import { GUILD_NAME_MAX_LENGTH, normalizeGuildName, validateGuildName } from './validation';
 
 function MemberItem({ member }: { member: GuildMember }) {
@@ -138,8 +141,19 @@ function RaidParticipation({ guildId, raid }: { guildId: string; raid: ActiveRai
   );
 }
 
+/** Grace after `endsAt` for the weekly turn (Monday 00:00 in São Paulo) to close this Raid and open the next one. */
+const RAID_TURN_GRACE_MS = 5_000;
+
 function RaidDetails({ guildId, raid }: { guildId: string; raid: ActiveRaid }) {
   const now = useNow(30_000);
+  const queryClient = useQueryClient();
+  // "Encerrando…" lasts until this refetch.
+  useEffect(() => {
+    const delay = new Date(raid.endsAt).getTime() + RAID_TURN_GRACE_MS - Date.now();
+    if (delay > 2_147_483_647) return undefined;
+    const timer = setTimeout(() => void queryClient.invalidateQueries({ queryKey: guildKeys.raid(guildId) }), Math.max(0, delay));
+    return () => clearTimeout(timer);
+  }, [guildId, queryClient, raid.endsAt]);
   const percent = raidProgressPercent(raid.progressXp, raid.goalXp);
   return (
     <>
@@ -260,6 +274,53 @@ function RankingCard({ guildId }: { guildId: string }) {
     <WiseCard accessibilityLabel="Ranking interno da Raid" role="region" testID="guild-ranking">
       <View style={styles.cardContent}>
         <WiseText accessibilityRole="header" aria-level={2} variant="subtitle">Ranking interno</WiseText>
+        {body}
+      </View>
+    </WiseCard>
+  );
+}
+
+function PastRaidItem({ raid }: { raid: PastRaid }) {
+  const week = formatRaidWeek(raid.startsAt, raid.endsAt);
+  const outcome = formatPastRaidOutcome(raid.status);
+  const mine = formatPastRaidMine(raid.me);
+  return (
+    <View accessible accessibilityLabel={`${raid.mission.name}, semana de ${week}. ${outcome}. ${mine}.`} style={styles.stackTight} testID={`guild-past-raid-${raid.id}`}>
+      <WiseText variant="label">{raid.mission.name}</WiseText>
+      <WiseText color="textSecondary" variant="body">Semana de {week}</WiseText>
+      <WiseText color={raid.status === 'completed' ? 'accentPrimary' : 'textSecondary'} variant="body">{outcome}</WiseText>
+      <WiseText color="textSecondary" variant="body">{mine}</WiseText>
+    </View>
+  );
+}
+
+function PastRaidsCard({ guildId }: { guildId: string }) {
+  const past = useInfiniteQuery(pastRaidsQueryOptions(guildId));
+  const raids = past.data?.pages.flatMap((page) => page.items) ?? [];
+
+  const body = (() => {
+    if (past.isPending) return <WiseText color="textSecondary" testID="guild-past-raids-loading" variant="body">Carregando as Raids anteriores…</WiseText>;
+    if (past.isError && !past.data) {
+      return <View style={styles.stack} testID="guild-past-raids-error">
+        <FeedbackMessage message="Não foi possível carregar as Raids anteriores." title="Histórico indisponível" variant="error" />
+        <WiseButton label="Tentar novamente" loading={past.isRefetching} onPress={() => void past.refetch()} variant="secondary" />
+      </View>;
+    }
+    if (!raids.length) return <WiseText color="textSecondary" testID="guild-past-raids-empty" variant="body">Nenhuma Raid encerrada ainda. O resultado aparece aqui depois do fim da semana.</WiseText>;
+    return <>
+      {past.isError && !past.isFetchNextPageError ? <FeedbackMessage message="Não foi possível atualizar o histórico." testID="guild-past-raids-stale" title="Dados desatualizados" variant="error" /> : null}
+      {raids.map((raid) => <PastRaidItem key={raid.id} raid={raid} />)}
+      {past.isFetchNextPageError ? <FeedbackMessage message="Não foi possível carregar mais Raids." title="Lista incompleta" variant="error" /> : null}
+      {past.hasNextPage
+        ? <WiseButton label="Carregar mais Raids" loading={past.isFetchingNextPage} onPress={() => void past.fetchNextPage()} testID="guild-past-raids-more" variant="ghost" />
+        : null}
+    </>;
+  })();
+
+  return (
+    <WiseCard accessibilityLabel="Raids anteriores" role="region" testID="guild-past-raids">
+      <View style={styles.cardContent}>
+        <WiseText accessibilityRole="header" aria-level={2} variant="subtitle">Raids anteriores</WiseText>
         {body}
       </View>
     </WiseCard>
@@ -410,8 +471,12 @@ export function GuildScreen() {
   }
 
   const desktop = isDesktopLayout(Platform.OS, width);
+  // Pull to refresh is the native gesture; the web relies on refetch on focus.
+  const refreshProps = Platform.OS !== 'web'
+    ? { refreshing: mine.isRefetching, onRefresh: () => { void refreshGuild(); } }
+    : {};
   return (
-    <Screen safeAreaEdges={[]} testID="guild" title="Guilda">
+    <Screen {...refreshProps} safeAreaEdges={[]} testID="guild" title="Guilda">
       {mine.isError ? <FeedbackMessage message="Não foi possível atualizar sua guilda." testID="guild-refresh-error" title="Dados desatualizados" variant="error" /> : null}
       {mine.data
         ? (() => {
@@ -420,6 +485,7 @@ export function GuildScreen() {
           const raid = <RaidCard guildId={guild.id} />;
           const ranking = <RankingCard guildId={guild.id} />;
           const members = <MembersCard guildId={guild.id} />;
+          const past = <PastRaidsCard guildId={guild.id} />;
           const leave = (
             <View testID="guild-leave-section">
               <LeaveGuildAction guildId={guild.id} isLeader={role === 'leader'} onConflict={refreshOnConflict} onLeft={() => void refreshGuild()} />
@@ -428,9 +494,9 @@ export function GuildScreen() {
           return desktop
             ? <View style={styles.desktopGrid} testID="guild-layout-desktop">
               <View style={[styles.column, styles.stack]} testID="guild-column-main">{header}{raid}{ranking}</View>
-              <View style={[styles.column, styles.stack]} testID="guild-column-side">{members}{leave}</View>
+              <View style={[styles.column, styles.stack]} testID="guild-column-side">{members}{past}{leave}</View>
             </View>
-            : <View style={styles.stack} testID="guild-layout-stacked">{header}{raid}{ranking}{members}{leave}</View>;
+            : <View style={styles.stack} testID="guild-layout-stacked">{header}{raid}{ranking}{members}{past}{leave}</View>;
         })()
         : <View style={[styles.grid, desktop && styles.desktopGrid]}>
           <View style={styles.column}><CreateGuildCard onConflict={refreshOnConflict} onCreated={() => void refreshGuild()} /></View>
@@ -442,6 +508,7 @@ export function GuildScreen() {
 
 const styles = StyleSheet.create({
   stack: { gap: theme.space.stackDefault },
+  stackTight: { gap: theme.space.inlineHairline },
   grid: { gap: theme.space.stackDefault },
   desktopGrid: { flexDirection: 'row', alignItems: 'flex-start' },
   column: { flex: 1 },

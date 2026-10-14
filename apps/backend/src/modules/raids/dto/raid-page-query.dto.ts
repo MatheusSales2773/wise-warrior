@@ -4,7 +4,7 @@ import { IsInt, IsOptional, IsString, Max, MaxLength, Min } from 'class-validato
 export const RAID_PAGE_SIZE_DEFAULT = 20;
 export const RAID_PAGE_SIZE_MAX = 50;
 
-/** Paginação por cursor do Ranking interno. */
+/** Paginação por cursor do Ranking interno e das Raids anteriores. */
 export class RaidPageQueryDto {
   @IsOptional()
   @IsString()

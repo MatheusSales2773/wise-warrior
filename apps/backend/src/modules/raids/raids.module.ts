@@ -8,6 +8,7 @@ import { RaidsService } from './raids.service';
 import { RaidsController } from './raids.controller';
 import { GuildRaidsController } from './guild-raids.controller';
 import { RAID_CLOCK, systemRaidClock } from './raid-clock';
+import { RaidWeeklyJob } from './raid-weekly.job';
 import { GuildsModule } from '../guilds/guilds.module';
 import { UsersModule } from '../users/users.module';
 import { RealtimeModule } from '../realtime/realtime.module';
@@ -20,7 +21,7 @@ import { RealtimeModule } from '../realtime/realtime.module';
     RealtimeModule,
   ],
   controllers: [RaidsController, GuildRaidsController],
-  providers: [RaidsService, { provide: RAID_CLOCK, useValue: systemRaidClock }],
+  providers: [RaidsService, RaidWeeklyJob, { provide: RAID_CLOCK, useValue: systemRaidClock }],
   exports: [RaidsService],
 })
 export class RaidsModule {}

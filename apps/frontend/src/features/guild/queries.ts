@@ -1,5 +1,5 @@
 import { infiniteQueryOptions, queryOptions } from '@tanstack/react-query';
-import { getActiveRaid, getMyGuild, getRaidRanking, listGuildMembers, listGuilds } from './api';
+import { getActiveRaid, getMyGuild, getRaidRanking, listGuildMembers, listGuilds, listPastRaids } from './api';
 
 export const guildKeys = {
   all: ['guild'] as const,
@@ -8,6 +8,7 @@ export const guildKeys = {
   members: (guildId: string) => ['guild', 'members', guildId] as const,
   raid: (guildId: string) => ['guild', 'raid', guildId] as const,
   ranking: (raidId: string) => ['guild', 'ranking', raidId] as const,
+  pastRaids: (guildId: string) => ['guild', 'past-raids', guildId] as const,
 };
 
 export const myGuildQueryOptions = () => queryOptions({
@@ -45,6 +46,15 @@ export const activeRaidQueryOptions = (guildId: string) => queryOptions({
 export const raidRankingQueryOptions = (raidId: string) => infiniteQueryOptions({
   queryKey: guildKeys.ranking(raidId),
   queryFn: ({ pageParam, signal }) => getRaidRanking(raidId, { cursor: pageParam, signal }),
+  initialPageParam: null as string | null,
+  getNextPageParam: (lastPage) => lastPage.nextCursor,
+  staleTime: 30_000,
+  retry: false,
+});
+
+export const pastRaidsQueryOptions = (guildId: string) => infiniteQueryOptions({
+  queryKey: guildKeys.pastRaids(guildId),
+  queryFn: ({ pageParam, signal }) => listPastRaids(guildId, { cursor: pageParam, signal }),
   initialPageParam: null as string | null,
   getNextPageParam: (lastPage) => lastPage.nextCursor,
   staleTime: 30_000,

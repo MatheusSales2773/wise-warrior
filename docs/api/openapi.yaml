@@ -765,7 +765,7 @@ paths:
         `America/Sao_Paulo`, datas em UTC), com a Missão do rodízio semanal e a
         Recompensa de Raid prevista, `goalReachedAt` com a Meta batida, e em `me`
         a participação, a Contribuição e a posição no Ranking interno de quem consulta. Só membros da guilda a
-        veem. `404` quando a guilda não tem Raid ativa.
+        veem. `404` quando a guilda não tem Raid ativa (por exemplo, entre o fim da semana e a virada semanal).
       operationId: getActiveGuildRaid
       tags: [Raids]
       parameters:
@@ -779,6 +779,30 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
+
+  /guilds/{id}/raids:
+    get:
+      summary: Raids anteriores da guilda
+      description: >
+        As Raids já fechadas pela virada semanal (`completed` com Meta batida, `expired` sem), da mais
+        recente para a mais antiga, paginadas por cursor. Em `me`, a participação, a Contribuição e a posição de
+        quem consulta no Ranking interno daquela Raid (só membros atuais entram no ranking). Restrito aos
+        membros da guilda; quem é de fora recebe 403.
+      operationId: listPastGuildRaids
+      tags: [Raids]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: cursor, in: query, required: false, schema: { type: string, maxLength: 300 } }
+        - { name: limit, in: query, required: false, schema: { type: integer, minimum: 1, maximum: 50, default: 20 } }
+      responses:
+        "200":
+          description: Página de Raids anteriores
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PastRaidPage" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
 
   /raids/{id}:
     get:
@@ -831,7 +855,7 @@ paths:
         Grava a participação do usuário na Raid. Idempotente: repetir a chamada
         devolve 204 sem duplicar. Uma Raid com a meta batida continua aceitando
         participação até o fim da semana. `403` para quem não é da guilda da
-        Raid; `409` quando a Raid já terminou (UC02 A01).
+        Raid; `409` quando a Raid já terminou ou já foi fechada (UC02 A01).
       operationId: joinRaid
       tags: [Raids]
       parameters:
@@ -1293,6 +1317,42 @@ components:
               type: [integer, "null"]
               minimum: 1
               description: Posição de quem consulta no Ranking interno; null enquanto não é Participante.
+
+    PastRaid:
+      type: object
+      required: [id, mission, goalXp, progressXp, goalReachedAt, startsAt, endsAt, status, me]
+      properties:
+        id: { type: string, format: uuid }
+        mission:
+          type: object
+          required: [slug, name, description, imageUrl]
+          properties:
+            slug: { type: string }
+            name: { type: string }
+            description: { type: string, maxLength: 140 }
+            imageUrl: { type: [string, "null"] }
+        goalXp: { type: integer }
+        progressXp: { type: integer }
+        goalReachedAt: { type: [string, "null"], format: date-time }
+        startsAt: { type: string, format: date-time, description: Início da semana da Raid }
+        endsAt: { type: string, format: date-time, description: Fim da semana da Raid }
+        status: { type: string, enum: [completed, expired], description: "`completed` quando a Meta foi batida" }
+        me:
+          type: object
+          required: [participated, contributionXp, position]
+          properties:
+            participated: { type: boolean }
+            contributionXp: { type: integer, minimum: 0 }
+            position: { type: [integer, "null"], minimum: 1 }
+
+    PastRaidPage:
+      type: object
+      required: [items, nextCursor]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/PastRaid" }
+        nextCursor: { type: [string, "null"] }
 
     RaidDetail:
       type: object

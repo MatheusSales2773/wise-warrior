@@ -8,7 +8,7 @@ import {
   forwardRef,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { EntityManager, Repository } from 'typeorm';
 import { RaidsService } from '../raids/raids.service';
 import { Character } from '../progression/entities/character.entity';
 import { CosmeticItem } from '../users/entities/cosmetic-item.entity';
@@ -347,9 +347,27 @@ export class GuildsService {
     }
   }
 
-  /** Os membros atuais da Guild (o Ranking interno mostra só eles). */
-  async memberIds(guildId: string): Promise<string[]> {
-    return (await this.memberships.find({ where: { guildId }, select: { userId: true } })).map((row) => row.userId);
+  /** Os membros atuais; com `manager`, lê dentro da transação de quem chama (ex.: o fechamento da Raid). */
+  async memberIds(guildId: string, manager?: EntityManager): Promise<string[]> {
+    const repository = manager ? manager.getRepository(GuildMembership) : this.memberships;
+    return (await repository.find({ where: { guildId }, select: { userId: true } })).map((row) => row.userId);
+  }
+
+  /** Nível da Guild: +1 por Raid fechada com Meta batida, na transação do fechamento. Incremento atômico. */
+  async levelUpInTransaction(manager: EntityManager, guildId: string): Promise<void> {
+    await manager.increment(Guild, { id: guildId }, 'level', 1);
+  }
+
+  /** Toda Guild com o tamanho atual, para o job semanal abrir a Raid da semana de quem ainda não tem. */
+  async listForWeeklyRaid(): Promise<Array<{ id: string; memberCount: number }>> {
+    const rows = await this.guilds
+      .createQueryBuilder('guild')
+      .leftJoin(GuildMembership, 'membership', 'membership.guildId = guild.id')
+      .select('guild.id', 'id')
+      .addSelect('COUNT(membership.id)', 'memberCount')
+      .groupBy('guild.id')
+      .getRawMany<{ id: string; memberCount: string | number }>();
+    return rows.map((row) => ({ id: row.id, memberCount: Math.max(1, Number(row.memberCount)) }));
   }
 
   async isMember(guildId: string, userId: string): Promise<boolean> {
