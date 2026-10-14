@@ -74,11 +74,15 @@ export interface PastRaidPage {
   nextCursor: string | null;
 }
 
-/** What one weekly closing did, for the log and for the hooks that come after it (#117, #119). */
+/** What one weekly closing did, for the log and for the realtime notice that comes after it (#119). */
 export interface RaidClosing {
   raidId: string;
   guildId: string;
   status: 'completed' | 'expired';
+  /** Participants who received the Recompensa de Raid; empty for an `expired` Raid. */
+  rewardedUserIds: string[];
+  /** The Cosmetic Items granted to each of them. */
+  rewardItemIds: string[];
 }
 
 export interface RaidRankingPage {
@@ -435,11 +439,35 @@ export class RaidsService {
 
     const status = raid.goalReachedAt !== null || raid.progressXp >= raid.goalXp ? 'completed' : 'expired';
     await manager.update(Raid, { id: raid.id }, { status });
+    let rewardedUserIds: string[] = [];
+    let rewardItemIds: string[] = [];
     if (status === 'completed') {
       await manager.increment(Guild, { id: raid.guildId }, 'level', 1);
+      ({ rewardedUserIds, rewardItemIds } = await this.grantRaidReward(manager, raid));
     }
     await this.openWeekRaid(manager, raid.guildId, now);
-    return { raidId: raid.id, guildId: raid.guildId, status };
+    return { raidId: raid.id, guildId: raid.guildId, status, rewardedUserIds, rewardItemIds };
+  }
+
+  /**
+   * Recompensa de Raid (#117), in the closing transaction: every Participant who is still a member of the Guild
+   * and made at least one Contribution gets the Missão's Cosmetic Item. Confirming without contributing, or
+   * having left the Guild, earns nothing.
+   */
+  private async grantRaidReward(manager: EntityManager, raid: Raid): Promise<{ rewardedUserIds: string[]; rewardItemIds: string[] }> {
+    const mission = await manager.findOneOrFail(Mission, { where: { id: raid.missionId } });
+    const rows = await manager.query<Array<{ user_id: string }>>(
+      `SELECT DISTINCT contribution.user_id
+       FROM raid_contributions contribution
+       JOIN guild_memberships membership
+         ON membership.guild_id = ? AND membership.user_id = contribution.user_id
+       WHERE contribution.raid_id = ? AND contribution.xp_contributed > 0
+       ORDER BY contribution.user_id`,
+      [raid.guildId, raid.id],
+    );
+    const rewardedUserIds = rows.map((row) => row.user_id);
+    const rewardItemIds = await this.users.unlockRaidRewards(manager, rewardedUserIds, mission.slug);
+    return { rewardedUserIds: rewardItemIds.length ? rewardedUserIds : [], rewardItemIds };
   }
 
   /**
