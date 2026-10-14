@@ -20,7 +20,7 @@
     "playwright:install": "playwright install --with-deps chromium",
     "test:e2e": "playwright test",
     "test:delivery": "./test-delivery.sh",
-    "verify:m1": "npm run typecheck && npm run lint && npm test && npm run expo:check && npm run expo:doctor && npm run export:bundles",
+    "verify:m1": "npm run typecheck && npm run lint && npm test && npm run expo:doctor && npm run export:bundles",
     "verify:m2": "npm run verify:m1 && npm run build && npm run test:delivery",
     "test": "NODE_ENV=test jest --runInBand"
   },

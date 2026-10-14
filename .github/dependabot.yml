@@ -8,3 +8,26 @@ updates:
       github-actions:
         patterns:
           - "*"
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      # Expo ships SDK patches together, and `expo install --fix` expects them aligned.
+      expo:
+        patterns:
+          - "expo"
+          - "expo-*"
+          - "@expo/*"
+          - "react-native"
+          - "react-native-*"
+          - "jest-expo"
+        update-types:
+          - minor
+          - patch
+    ignore:
+      # A major bump of the Expo packages is a SDK upgrade and is done by hand.
+      - dependency-name: "expo*"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "react-native*"
+        update-types: ["version-update:semver-major"]
