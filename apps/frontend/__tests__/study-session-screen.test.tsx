@@ -406,7 +406,7 @@ describe('Sessão de guilda on the Forja', () => {
     startsAt: new Date(Date.now() - 86_400_000).toISOString(),
     endsAt: new Date(Date.now() + 86_400_000).toISOString(),
     status: 'active',
-    me: { participating: true, contributionXp: 0 },
+    me: { participating: true, contributionXp: 0, position: null },
     ...overrides,
   });
   const guildSnapshot: StudySessionSnapshot = { ...snapshot, mode: 'guild', raidId: 'raid-1' };
@@ -467,7 +467,7 @@ describe('Sessão de guilda on the Forja', () => {
   it('turns the start into "Participar e iniciar" for a member who has not joined, and joins before starting', async () => {
     getActive.mockResolvedValue(null);
     getMine.mockResolvedValue(mine);
-    getRaid.mockResolvedValue(raid({ me: { participating: false, contributionXp: 0 } }));
+    getRaid.mockResolvedValue(raid({ me: { participating: false, contributionXp: 0, position: null } }));
     joinGuildRaid.mockResolvedValue(undefined);
     start.mockResolvedValue(guildSnapshot);
     const { view } = await renderStudySession();

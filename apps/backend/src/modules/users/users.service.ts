@@ -41,6 +41,14 @@ export interface EquippedCosmeticItem {
   name: string;
 }
 
+/** O que o Ranking interno mostra de cada Participante. */
+export interface PublicIdentity {
+  displayName: string;
+  level: number;
+  /** ADR-010: nome do Título equipado, ou `null`. */
+  title: string | null;
+}
+
 export interface CatalogCosmeticItem {
   id: string;
   category: CosmeticCategory;
@@ -92,6 +100,25 @@ export class UsersService {
       // Só a linha repetida (usuário + item) é tolerada; qualquer outro erro continua sendo erro.
       .orUpdate(['cosmetic_item_id'], ['user_id', 'cosmetic_item_id'])
       .execute();
+  }
+
+  /** Nome, nível e Título equipado de vários usuários, para listas como o Ranking interno. */
+  async findPublicIdentities(userIds: string[]): Promise<Map<string, PublicIdentity>> {
+    if (userIds.length === 0) return new Map();
+    const [users, levels, titles] = await Promise.all([
+      this.users.find({ where: { id: In(userIds) } }),
+      this.progression.findLevels(userIds),
+      this.userCosmetics.find({
+        where: { userId: In(userIds), equipped: true, cosmeticItem: { category: 'title' } },
+        relations: ['cosmeticItem'],
+      }),
+    ]);
+    const titleOf = new Map(titles.map((row) => [row.userId, row.cosmeticItem.name]));
+    return new Map(users.map((user) => [user.id, {
+      displayName: user.displayName,
+      level: levels.get(user.id) ?? 1,
+      title: titleOf.get(user.id) ?? null,
+    }]));
   }
 
   /** Inventário de um Character recém-criado: os Itens iniciais, já equipados. */

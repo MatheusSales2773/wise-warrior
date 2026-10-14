@@ -1,6 +1,6 @@
 import { forwardRef, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { type EntityManager, Repository } from 'typeorm';
+import { type EntityManager, In, Repository } from 'typeorm';
 import { Character } from './entities/character.entity';
 import {
   applyXp,
@@ -65,6 +65,13 @@ export class ProgressionService {
       xpTotal: character.xpTotal,
       level: character.level,
     };
+  }
+
+  /** O nível de vários Characters de uma vez; quem não tem Character fica fora do mapa. */
+  async findLevels(userIds: string[]): Promise<Map<string, number>> {
+    if (userIds.length === 0) return new Map();
+    const characters = await this.characters.find({ where: { userId: In(userIds) } });
+    return new Map(characters.map((character) => [character.userId, character.level]));
   }
 
   async awardXp(userId: string, xpGained: number): Promise<XpApplicationResult> {

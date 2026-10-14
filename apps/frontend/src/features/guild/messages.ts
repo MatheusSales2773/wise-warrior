@@ -73,3 +73,18 @@ export function joinRaidErrorMessage(error: unknown): string {
   }
   return 'Não foi possível confirmar sua participação agora. Tente novamente.';
 }
+
+export function formatRankingPosition(position: number): string {
+  return `${position}º`;
+}
+
+export function formatMyPosition(position: number | null): string | null {
+  return position === null ? null : `Sua posição no ranking: ${formatRankingPosition(position)}`;
+}
+
+/** Spoken label of a ranking row: position first, so a screen reader does not depend on the highlight color. */
+export function rankingRowLabel(row: { position: number; displayName: string; level: number; title: string | null; contributionXp: number }, mine: boolean): string {
+  const who = mine ? `Você, ${row.displayName}` : row.displayName;
+  const detail = [`nível ${row.level}`, row.title].filter(Boolean).join(', ');
+  return `${formatRankingPosition(row.position)} lugar: ${who}, ${detail}. ${row.contributionXp} XP de contribuição.`;
+}

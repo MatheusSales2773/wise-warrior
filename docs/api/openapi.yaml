@@ -764,8 +764,8 @@ paths:
         A Raid ativa da guilda (segunda 00:00 a domingo 23:59:59 em
         `America/Sao_Paulo`, datas em UTC), com a Missão do rodízio semanal e a
         Recompensa de Raid prevista, `goalReachedAt` com a Meta batida, e em `me`
-        a participação e a Contribuição de quem consulta. Só membros da guilda a veem. `404` quando a guilda não
-        tem Raid ativa.
+        a participação, a Contribuição e a posição no Ranking interno de quem consulta. Só membros da guilda a
+        veem. `404` quando a guilda não tem Raid ativa.
       operationId: getActiveGuildRaid
       tags: [Raids]
       parameters:
@@ -800,24 +800,26 @@ paths:
 
   /raids/{id}/ranking:
     get:
-      summary: Ranking de contribuição da raid
+      summary: Ranking interno da raid
       description: >
-        Sem paginação por decisão explícita: bounded pelo tamanho da guilda
-        (tipicamente dezenas de membros, não milhares) — ver nota de
-        /users/me/sessions acima para o mesmo raciocínio. Restrito aos
-        membros da guilda da raid; quem é de fora recebe 403.
+        Os Participantes que ainda são membros da guilda, por Contribuição decrescente, depois pelo momento
+        da última Contribuição (quem chegou ao total primeiro fica na frente), depois por `userId`.
+        Participantes sem Contribuição aparecem no fim, com 0 XP. Ex-membros saem da lista, mas suas
+        Contribuições continuam no progresso. Paginado por cursor (keyset sobre a mesma ordem, sem repetir nem
+        pular linhas). Restrito aos membros da guilda da raid; quem é de fora recebe 403.
       operationId: getRaidRanking
       tags: [Raids]
       parameters:
         - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: cursor, in: query, required: false, schema: { type: string, maxLength: 300 } }
+        - { name: limit, in: query, required: false, schema: { type: integer, minimum: 1, maximum: 50, default: 20 } }
       responses:
         "200":
-          description: Ranking ordenado por XP contribuído (desc)
+          description: Página do Ranking interno
           content:
             application/json:
-              schema:
-                type: array
-                items: { $ref: "#/components/schemas/RaidRankingEntry" }
+              schema: { $ref: "#/components/schemas/RaidRankingPage" }
+        "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
@@ -1283,10 +1285,14 @@ components:
         status: { type: string, enum: [active, completed, expired] }
         me:
           type: object
-          required: [participating, contributionXp]
+          required: [participating, contributionXp, position]
           properties:
             participating: { type: boolean, description: "Se quem consulta já confirmou participação nesta Raid" }
             contributionXp: { type: integer, minimum: 0, description: "A Contribuição de quem consulta nesta Raid" }
+            position:
+              type: [integer, "null"]
+              minimum: 1
+              description: Posição de quem consulta no Ranking interno; null enquanto não é Participante.
 
     RaidDetail:
       type: object
@@ -1301,10 +1307,25 @@ components:
 
     RaidRankingEntry:
       type: object
-      required: [userId, xpContributed]
+      required: [position, userId, displayName, level, title, contributionXp]
       properties:
+        position: { type: integer, minimum: 1 }
         userId: { type: string, format: uuid }
-        xpContributed: { type: integer }
+        displayName: { type: string }
+        level: { type: integer }
+        title:
+          type: [string, "null"]
+          description: Nome do Título equipado (ADR-010), ou null.
+        contributionXp: { type: integer, minimum: 0 }
+
+    RaidRankingPage:
+      type: object
+      required: [items, nextCursor]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/RaidRankingEntry" }
+        nextCursor: { type: [string, "null"] }
 
     Problem:
       type: object

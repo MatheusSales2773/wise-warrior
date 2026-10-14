@@ -51,7 +51,22 @@ export type ActiveRaid = {
   startsAt: string;
   endsAt: string;
   status: 'active' | 'completed' | 'expired';
-  me: { participating: boolean; contributionXp: number };
+  /** `position` in the Ranking interno; `null` until the member participates. */
+  me: { participating: boolean; contributionXp: number; position: number | null };
+};
+
+export type RaidRankingEntry = {
+  position: number;
+  userId: string;
+  displayName: string;
+  level: number;
+  title: string | null;
+  contributionXp: number;
+};
+
+export type RaidRankingPage = {
+  items: RaidRankingEntry[];
+  nextCursor: string | null;
 };
 
 /** `null` means the user is not in any guild (the API answers 404), which is a normal state, not a failure. */
@@ -111,4 +126,13 @@ export async function getActiveRaid(guildId: string, { signal }: { signal?: Abor
 /** Idempotent on the server: confirming twice is not an error. A 409 means the Raid already ended. */
 export async function joinRaid(raidId: string): Promise<void> {
   await getAuthenticatedHttpClient().post(`/raids/${encodeURIComponent(raidId)}/join`);
+}
+
+export async function getRaidRanking(
+  raidId: string,
+  { cursor, signal }: { cursor?: string | null; signal?: AbortSignal } = {},
+): Promise<RaidRankingPage> {
+  const query = cursor ? `?cursor=${encodeURIComponent(cursor)}` : '';
+  const response = await getAuthenticatedHttpClient().get<RaidRankingPage>(`/raids/${encodeURIComponent(raidId)}/ranking${query}`, { signal });
+  return response.data;
 }

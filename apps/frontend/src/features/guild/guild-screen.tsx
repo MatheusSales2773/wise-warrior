@@ -3,12 +3,13 @@ import { useEffect, useState } from 'react';
 import { Platform, StyleSheet, View, useWindowDimensions } from 'react-native';
 import { FeedbackMessage, ProgressBar, Screen, WiseButton, WiseCard, WiseField, WiseText, isDesktopLayout, theme } from '@/design-system';
 import { isApiError } from '@/core/api/api-error';
-import { createGuild, joinGuild, joinRaid, leaveGuild, type ActiveRaid, type GuildMember, type GuildSummary, type MyGuild } from './api';
+import { profileQueryOptions } from '@/features/dashboard/queries';
+import { createGuild, joinGuild, joinRaid, leaveGuild, type ActiveRaid, type GuildMember, type GuildSummary, type MyGuild, type RaidRankingEntry } from './api';
 import {
-  RAID_GOAL_REACHED, RAID_REWARD_RULE, createGuildErrorMessage, formatGuildRole, formatMyContribution, formatMemberCount, formatRaidTimeLeft, formatRewardCategory,
-  joinGuildErrorMessage, joinRaidErrorMessage, leaveGuildErrorMessage, raidProgressPercent,
+  RAID_GOAL_REACHED, RAID_REWARD_RULE, createGuildErrorMessage, formatGuildRole, formatMyContribution, formatMyPosition, formatMemberCount, formatRaidTimeLeft,
+  formatRankingPosition, formatRewardCategory, joinGuildErrorMessage, joinRaidErrorMessage, leaveGuildErrorMessage, raidProgressPercent, rankingRowLabel,
 } from './messages';
-import { activeRaidQueryOptions, guildDirectoryQueryOptions, guildKeys, guildMembersQueryOptions, myGuildQueryOptions } from './queries';
+import { activeRaidQueryOptions, guildDirectoryQueryOptions, guildKeys, guildMembersQueryOptions, myGuildQueryOptions, raidRankingQueryOptions } from './queries';
 import { GUILD_NAME_MAX_LENGTH, normalizeGuildName, validateGuildName } from './validation';
 
 function MemberItem({ member }: { member: GuildMember }) {
@@ -102,10 +103,14 @@ function RaidParticipation({ guildId, raid }: { guildId: string; raid: ActiveRai
   const queryClient = useQueryClient();
   const join = useMutation({
     mutationFn: () => joinRaid(raid.id),
-    onSuccess: () => queryClient.setQueryData<ActiveRaid | null>(
-      guildKeys.raid(guildId),
-      (current) => (current ? { ...current, me: { ...current.me, participating: true } } : current),
-    ),
+    onSuccess: () => {
+      queryClient.setQueryData<ActiveRaid | null>(
+        guildKeys.raid(guildId),
+        (current) => (current ? { ...current, me: { ...current.me, participating: true } } : current),
+      );
+      // The new Participante enters the Ranking interno with 0 XP.
+      void queryClient.invalidateQueries({ queryKey: guildKeys.ranking(raid.id) });
+    },
     // The Raid ended (409) or is gone: show the Raid that is current now.
     onError: (error) => {
       if (isApiError(error) && (error.category === 'conflict' || error.status === 404)) {
@@ -115,10 +120,12 @@ function RaidParticipation({ guildId, raid }: { guildId: string; raid: ActiveRai
   });
 
   if (raid.me.participating) {
+    const position = formatMyPosition(raid.me.position);
     return (
       <View style={styles.stack}>
         <WiseText accessibilityLiveRegion="polite" color="accentPrimary" testID="guild-raid-participating" variant="label">Você está nesta Raid</WiseText>
         <WiseText testID="guild-raid-my-contribution" variant="body">{formatMyContribution(raid.me.contributionXp)}</WiseText>
+        {position ? <WiseText color="textSecondary" testID="guild-raid-my-position" variant="body">{position}</WiseText> : null}
       </View>
     );
   }
@@ -190,6 +197,69 @@ function RaidCard({ guildId }: { guildId: string }) {
     <WiseCard accessibilityLabel="Raid da semana" role="region" testID="guild-raid">
       <View style={styles.cardContent}>
         <WiseText accessibilityRole="header" aria-level={2} variant="subtitle">Raid da semana</WiseText>
+        {body}
+      </View>
+    </WiseCard>
+  );
+}
+
+function RankingRow({ mine, row }: { mine: boolean; row: RaidRankingEntry }) {
+  const detail = [`Nível ${row.level}`, row.title].filter(Boolean).join(' · ');
+  return (
+    <View
+      accessible
+      accessibilityLabel={rankingRowLabel(row, mine)}
+      style={[styles.rankingRow, mine && styles.rankingRowMine]}
+      testID={`guild-ranking-row-${row.userId}`}
+    >
+      <WiseText color={mine ? 'accentPrimary' : 'textSecondary'} style={styles.rankingPosition} variant="label">{formatRankingPosition(row.position)}</WiseText>
+      <View style={styles.directoryMain}>
+        <WiseText variant="label">{mine ? `${row.displayName} (você)` : row.displayName}</WiseText>
+        <WiseText color="textSecondary" variant="body">{detail}</WiseText>
+      </View>
+      <WiseText variant="label">{row.contributionXp} XP</WiseText>
+    </View>
+  );
+}
+
+function RankingList({ raidId }: { raidId: string }) {
+  const ranking = useInfiniteQuery(raidRankingQueryOptions(raidId));
+  const profile = useQuery(profileQueryOptions());
+  const rows = ranking.data?.pages.flatMap((page) => page.items) ?? [];
+
+  if (ranking.isPending) return <WiseText color="textSecondary" testID="guild-ranking-loading" variant="body">Carregando o ranking…</WiseText>;
+  if (ranking.isError && !ranking.data) {
+    return <View style={styles.stack} testID="guild-ranking-error">
+      <FeedbackMessage message="Não foi possível carregar o ranking." title="Ranking indisponível" variant="error" />
+      <WiseButton label="Tentar novamente" loading={ranking.isRefetching} onPress={() => void ranking.refetch()} variant="secondary" />
+    </View>;
+  }
+  if (!rows.length) {
+    return <WiseText color="textSecondary" testID="guild-ranking-empty" variant="body">Ninguém confirmou participação ainda. Toque em Participar para abrir o ranking.</WiseText>;
+  }
+  return <>
+    {ranking.isError && !ranking.isFetchNextPageError ? <FeedbackMessage message="Não foi possível atualizar o ranking." testID="guild-ranking-stale" title="Dados desatualizados" variant="error" /> : null}
+    <View accessibilityRole="list" style={styles.stack}>
+      {rows.map((row) => <RankingRow key={row.userId} mine={row.userId === profile.data?.id} row={row} />)}
+    </View>
+    {ranking.isFetchNextPageError ? <FeedbackMessage message="Não foi possível carregar mais posições." title="Ranking incompleto" variant="error" /> : null}
+    {ranking.hasNextPage
+      ? <WiseButton label="Carregar mais posições" loading={ranking.isFetchingNextPage} onPress={() => void ranking.fetchNextPage()} testID="guild-ranking-more" variant="ghost" />
+      : null}
+  </>;
+}
+
+function RankingCard({ guildId }: { guildId: string }) {
+  const raid = useQuery(activeRaidQueryOptions(guildId));
+  const body = (() => {
+    if (raid.isPending) return <WiseText color="textSecondary" testID="guild-ranking-loading" variant="body">Carregando o ranking…</WiseText>;
+    if (!raid.data) return <WiseText color="textSecondary" testID="guild-ranking-empty" variant="body">O ranking aparece quando a guilda tiver uma Raid nesta semana.</WiseText>;
+    return <RankingList raidId={raid.data.id} />;
+  })();
+  return (
+    <WiseCard accessibilityLabel="Ranking interno da Raid" role="region" testID="guild-ranking">
+      <View style={styles.cardContent}>
+        <WiseText accessibilityRole="header" aria-level={2} variant="subtitle">Ranking interno</WiseText>
         {body}
       </View>
     </WiseCard>
@@ -348,6 +418,7 @@ export function GuildScreen() {
           const { guild, role } = mine.data;
           const header = <GuildCard mine={mine.data} />;
           const raid = <RaidCard guildId={guild.id} />;
+          const ranking = <RankingCard guildId={guild.id} />;
           const members = <MembersCard guildId={guild.id} />;
           const leave = (
             <View testID="guild-leave-section">
@@ -356,10 +427,10 @@ export function GuildScreen() {
           );
           return desktop
             ? <View style={styles.desktopGrid} testID="guild-layout-desktop">
-              <View style={[styles.column, styles.stack]} testID="guild-column-main">{header}{raid}</View>
+              <View style={[styles.column, styles.stack]} testID="guild-column-main">{header}{raid}{ranking}</View>
               <View style={[styles.column, styles.stack]} testID="guild-column-side">{members}{leave}</View>
             </View>
-            : <View style={styles.stack} testID="guild-layout-stacked">{header}{raid}{members}{leave}</View>;
+            : <View style={styles.stack} testID="guild-layout-stacked">{header}{raid}{ranking}{members}{leave}</View>;
         })()
         : <View style={[styles.grid, desktop && styles.desktopGrid]}>
           <View style={styles.column}><CreateGuildCard onConflict={refreshOnConflict} onCreated={() => void refreshGuild()} /></View>
@@ -379,4 +450,12 @@ const styles = StyleSheet.create({
   cardContent: { padding: theme.space.cardInset, gap: theme.space.stackTight },
   directoryItem: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: theme.space.stackTight },
   directoryMain: { flex: 1, gap: theme.space.inlineHairline },
+  rankingRow: {
+    flexDirection: 'row', alignItems: 'center', gap: theme.space.stackTight, minHeight: 44,
+    paddingVertical: theme.space.inlineHairline, paddingHorizontal: theme.space.stackTight,
+    borderRadius: theme.radius.card, borderWidth: 1, borderColor: 'transparent',
+  },
+  // Highlighted by border, background and the "(você)" text, never by color alone.
+  rankingRowMine: { borderColor: theme.color.accentPrimary, backgroundColor: theme.color.surfaceInset },
+  rankingPosition: { minWidth: 32 },
 });

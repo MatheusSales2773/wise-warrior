@@ -347,6 +347,11 @@ export class GuildsService {
     }
   }
 
+  /** Os membros atuais da Guild (o Ranking interno mostra só eles). */
+  async memberIds(guildId: string): Promise<string[]> {
+    return (await this.memberships.find({ where: { guildId }, select: { userId: true } })).map((row) => row.userId);
+  }
+
   async isMember(guildId: string, userId: string): Promise<boolean> {
     const membership = await this.memberships.findOne({
       where: { guildId, userId },

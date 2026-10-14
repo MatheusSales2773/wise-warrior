@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ConflictException,
   ForbiddenException,
   Inject,
@@ -10,6 +11,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { EntityManager, Repository } from 'typeorm';
 import { Mission } from './entities/mission.entity';
 import { Raid } from './entities/raid.entity';
+import { RAID_PAGE_SIZE_DEFAULT, type RaidPageQueryDto } from './dto/raid-page-query.dto';
 import { RAID_CLOCK, type RaidClock } from './raid-clock';
 import { missionIndexForWeek, proportionalGoalXp, raidWeekAt } from './domain/raid-week';
 import { UsersService } from '../users/users.service';
@@ -37,7 +39,23 @@ export interface ActiveRaid {
   startsAt: Date;
   endsAt: Date;
   status: string;
-  me: { participating: boolean; contributionXp: number };
+  /** `position` no Ranking interno; `null` para quem ainda não é Participante. */
+  me: { participating: boolean; contributionXp: number; position: number | null };
+}
+
+/** Uma linha do Ranking interno (ADR-010 para o Título). */
+export interface RankingEntry {
+  position: number;
+  userId: string;
+  displayName: string;
+  level: number;
+  title: string | null;
+  contributionXp: number;
+}
+
+export interface RankingPage {
+  items: RankingEntry[];
+  nextCursor: string | null;
 }
 
 /** O progresso coletivo logo depois de uma Contribuição, para o evento `raid:progress`. */
@@ -59,6 +77,43 @@ export interface GuildSessionContribution {
 }
 
 const RAID_ENDED_PROBLEM = 'https://wise.app/errors/raid-ended';
+
+/** Ordena quem ainda não contribuiu depois de todos os que contribuíram. */
+const NO_CONTRIBUTION_SORT_AT = '9999-12-31 23:59:59.999999';
+const MYSQL_DATETIME_TEXT = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{6}$/;
+
+interface RankRow {
+  userId: string;
+  contributionXp: number;
+  /** O momento da última Contribuição, como o texto exato do MySQL (microssegundos inclusos). */
+  sortAt: string;
+  position: number;
+}
+
+type RankCursor = Pick<RankRow, 'contributionXp' | 'sortAt' | 'userId'>;
+
+function encodeRankCursor(row: RankCursor): string {
+  return Buffer.from(JSON.stringify([row.contributionXp, row.sortAt, row.userId]), 'utf8').toString('base64url');
+}
+
+function decodeRankCursor(cursor: string): RankCursor {
+  try {
+    const parsed: unknown = JSON.parse(Buffer.from(cursor, 'base64url').toString('utf8'));
+    if (Array.isArray(parsed)) {
+      const [contributionXp, sortAt, userId] = parsed as unknown[];
+      if (
+        typeof contributionXp === 'number' && Number.isInteger(contributionXp)
+        && typeof sortAt === 'string' && MYSQL_DATETIME_TEXT.test(sortAt)
+        && typeof userId === 'string'
+      ) {
+        return { contributionXp, sortAt, userId };
+      }
+    }
+  } catch {
+    // Falls through to the validation error below.
+  }
+  throw new BadRequestException('Cursor inválido');
+}
 
 @Injectable()
 export class RaidsService {
@@ -139,10 +194,7 @@ export class RaidsService {
       startsAt: raid.startsAt,
       endsAt: raid.endsAt,
       status: raid.status,
-      me: {
-        participating: await this.participations.existsBy({ raidId: raid.id, userId: requesterId }),
-        contributionXp: await this.contributionXpOf(raid.id, requesterId),
-      },
+      me: await this.participantSummary(raid, requesterId),
     };
   }
 
@@ -276,23 +328,108 @@ export class RaidsService {
     if (progress) this.publishProgress(progress);
   }
 
-  async ranking(
-    userId: string,
-    raidId: string,
-  ): Promise<Array<{ userId: string; xpContributed: number }>> {
-    await this.findRaidForMember(userId, raidId);
-    const rows = await this.contributions
-      .createQueryBuilder('contribution')
-      .select('contribution.userId', 'userId')
-      .addSelect('SUM(contribution.xpContributed)', 'xpContributed')
-      .where('contribution.raidId = :raidId', { raidId })
-      .groupBy('contribution.userId')
-      .orderBy('xpContributed', 'DESC')
-      .getRawMany<{ userId: string; xpContributed: string }>();
+  /**
+   * Ranking interno: só Participantes que ainda são membros, por Contribuição decrescente, depois quem
+   * chegou ao total primeiro (última Contribuição mais antiga), depois `userId`. Quem não contribuiu fica no fim.
+   */
+  async ranking(userId: string, raidId: string, query: RaidPageQueryDto = {}): Promise<RankingPage> {
+    const raid = await this.findRaidForMember(userId, raidId);
+    const limit = query.limit ?? RAID_PAGE_SIZE_DEFAULT;
+    const rows = await this.rankRows(raid.id, await this.guilds.memberIds(raid.guildId), {
+      after: query.cursor ? decodeRankCursor(query.cursor) : undefined,
+      limit: limit + 1,
+    });
+    const page = rows.slice(0, limit);
+    const identities = await this.users.findPublicIdentities(page.map((row) => row.userId));
+    const last = page[page.length - 1];
+    return {
+      items: page.map((row) => {
+        const identity = identities.get(row.userId);
+        return {
+          position: row.position,
+          userId: row.userId,
+          displayName: identity?.displayName ?? '',
+          level: identity?.level ?? 1,
+          title: identity?.title ?? null,
+          contributionXp: row.contributionXp,
+        };
+      }),
+      nextCursor: rows.length > limit && last ? encodeRankCursor(last) : null,
+    };
+  }
 
+  /** Participação, Contribuição e posição no Ranking interno de quem consulta a Raid ativa. */
+  private async participantSummary(
+    raid: Raid,
+    userId: string,
+  ): Promise<ActiveRaid['me']> {
+    const [participating, contributionXp, memberIds] = await Promise.all([
+      this.participations.existsBy({ raidId: raid.id, userId }),
+      this.contributionXpOf(raid.id, userId),
+      this.guilds.memberIds(raid.guildId),
+    ]);
+    const [row] = await this.rankRows(raid.id, memberIds, { userId });
+    return { participating, contributionXp, position: row?.position ?? null };
+  }
+
+  /**
+   * O Ranking interno inteiro é numerado no banco (ROW_NUMBER), e a página é recortada por keyset sobre a
+   * mesma ordem, para que a paginação não repita nem pule linhas.
+   */
+  private async rankRows(
+    raidId: string,
+    memberIds: string[],
+    filter: { after?: RankCursor; userId?: string; limit?: number },
+  ): Promise<RankRow[]> {
+    if (memberIds.length === 0) return [];
+    const conditions: string[] = [];
+    const params: unknown[] = [raidId, raidId, raidId, memberIds];
+    if (filter.after) {
+      const { contributionXp, sortAt, userId } = filter.after;
+      conditions.push(`(ranked.contributionXp < ?
+        OR (ranked.contributionXp = ? AND ranked.sortAt > ?)
+        OR (ranked.contributionXp = ? AND ranked.sortAt = ? AND ranked.userId > ?))`);
+      params.push(contributionXp, contributionXp, sortAt, contributionXp, sortAt, userId);
+    }
+    if (filter.userId) {
+      conditions.push('ranked.userId = ?');
+      params.push(filter.userId);
+    }
+    let sql = `
+      SELECT ranked.userId, ranked.contributionXp, ranked.sortAt, ranked.position FROM (
+        SELECT totals.userId, totals.contributionXp, totals.sortAt,
+               ROW_NUMBER() OVER (ORDER BY totals.contributionXp DESC, totals.sortAt ASC, totals.userId ASC) AS position
+        FROM (
+          SELECT participant.user_id AS userId,
+                 CAST(COALESCE(SUM(contribution.xp_contributed), 0) AS SIGNED) AS contributionXp,
+                 COALESCE(DATE_FORMAT(MAX(contribution.created_at), '%Y-%m-%d %H:%i:%s.%f'), '${NO_CONTRIBUTION_SORT_AT}') AS sortAt
+          FROM (
+            SELECT user_id FROM raid_participations WHERE raid_id = ?
+            UNION SELECT user_id FROM raid_contributions WHERE raid_id = ?
+          ) participant
+          LEFT JOIN raid_contributions contribution
+            ON contribution.raid_id = ? AND contribution.user_id = participant.user_id
+          WHERE participant.user_id IN (?)
+          GROUP BY participant.user_id
+        ) totals
+      ) ranked
+      ${conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : ''}
+      ORDER BY ranked.position`;
+    if (filter.limit) {
+      sql += ' LIMIT ?';
+      params.push(filter.limit);
+    }
+    const rows = (await this.raids.query(sql, params)) as Array<{
+      userId: string;
+      contributionXp: number | string;
+      sortAt: string;
+      position: number | string;
+    }>;
     return rows.map((row) => ({
       userId: row.userId,
-      xpContributed: Number(row.xpContributed),
+      contributionXp: Number(row.contributionXp),
+      sortAt: String(row.sortAt),
+      position: Number(row.position),
     }));
   }
 

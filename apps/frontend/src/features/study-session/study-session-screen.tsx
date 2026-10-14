@@ -375,7 +375,13 @@ export function StudySessionScreen() {
       queryClient.invalidateQueries({ queryKey: dashboardKeys.recentActivity() }),
       queryClient.invalidateQueries({ queryKey: dashboardKeys.metrics() }),
       // A guild-mode session may have become a Contribution: the Raid card shows the new progress.
-      ...(result.mode === 'guild' ? [queryClient.invalidateQueries({ queryKey: [...guildKeys.all, 'raid'] })] : []),
+      ...(result.mode === 'guild'
+        ? [
+          queryClient.invalidateQueries({ queryKey: [...guildKeys.all, 'raid'] }),
+          // The Contribution moves the Ranking interno too.
+          queryClient.invalidateQueries({ queryKey: [...guildKeys.all, 'ranking'] }),
+        ]
+        : []),
     ]);
   }, [queryClient]);
 
