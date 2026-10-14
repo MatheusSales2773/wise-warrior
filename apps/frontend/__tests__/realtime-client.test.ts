@@ -2,6 +2,7 @@ import { QueryClient } from '@tanstack/react-query';
 import { createRealtimeClient, type RealtimeSocket, type RealtimeSocketFactory } from '@/core/realtime/realtime-client';
 import type { ActiveRaid } from '@/features/guild/api';
 import { guildKeys } from '@/features/guild/queries';
+import { profileKeys } from '@/features/profile/queries';
 
 class FakeSocket implements RealtimeSocket {
   active = true;
@@ -172,5 +173,32 @@ describe('realtime client', () => {
     expect(socket.disconnectCalls).toBe(1);
     expect(socket.count('raid:progress')).toBe(0);
     expect(socket.connectCalls).toBe(1);
+  });
+});
+
+describe('notification:raidComplete', () => {
+  it('invalidates the active Raid, the past Raids, the Guild and the cosmetics catalog, and nothing else', async () => {
+    const { socket, queryClient, client } = setup();
+    const keys = [
+      guildKeys.raid('guild-1'),
+      guildKeys.pastRaids('guild-1'),
+      guildKeys.mine(),
+      profileKeys.cosmeticsCatalog(),
+      profileKeys.devices(),
+    ];
+    keys.forEach((key) => queryClient.setQueryData(key, {}));
+
+    socket.emit('notification:raidComplete', { raidId: 'raid-1', guildId: 'guild-1', status: 'completed', rewardItemId: 'item-1' });
+    await flush();
+
+    const invalidated = (key: readonly unknown[]) => queryClient.getQueryState(key)?.isInvalidated;
+    expect(invalidated(guildKeys.raid('guild-1'))).toBe(true);
+    expect(invalidated(guildKeys.pastRaids('guild-1'))).toBe(true);
+    expect(invalidated(guildKeys.mine())).toBe(true);
+    expect(invalidated(profileKeys.cosmeticsCatalog())).toBe(true);
+    expect(invalidated(profileKeys.devices())).toBe(false);
+
+    client.dispose();
+    expect(socket.count('notification:raidComplete')).toBe(0);
   });
 });

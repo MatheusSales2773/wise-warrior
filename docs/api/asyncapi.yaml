@@ -25,6 +25,15 @@ channels:
     messages:
       raidProgress:
         $ref: "#/components/messages/raidProgress"
+  userRoom:
+    address: "user:{userId}"
+    description: Room Socket.IO de um usuário. Todos os sockets dele, em qualquer dispositivo, entram nela.
+    parameters:
+      userId:
+        description: Identificador do usuário
+    messages:
+      raidComplete:
+        $ref: "#/components/messages/raidComplete"
 operations:
   receiveRaidProgress:
     action: receive
@@ -36,6 +45,17 @@ operations:
       ativa e invalida o Ranking interno.
     messages:
       - $ref: "#/channels/guildRoom/messages/raidProgress"
+  receiveRaidComplete:
+    action: receive
+    channel:
+      $ref: "#/channels/userRoom"
+    summary: Uma Raid da qual o usuário participou foi encerrada
+    description: >
+      Emitido para a room de cada Participante depois do commit do fechamento semanal, uma única vez por
+      Participante e Raid, mesmo se o fechamento rodar de novo. O app invalida a Raid ativa, as Raids
+      anteriores, a Guild (Nível) e o Catálogo de cosméticos.
+    messages:
+      - $ref: "#/channels/userRoom/messages/raidComplete"
 components:
   securitySchemes:
     accessToken:
@@ -50,6 +70,12 @@ components:
       contentType: application/json
       payload:
         $ref: "#/components/schemas/RaidProgress"
+    raidComplete:
+      name: notification:raidComplete
+      title: Raid encerrada
+      contentType: application/json
+      payload:
+        $ref: "#/components/schemas/RaidComplete"
   schemas:
     RaidProgress:
       type: object
@@ -68,3 +94,21 @@ components:
           type: [string, "null"]
           format: date-time
           description: A primeira vez que o progresso alcançou a meta (Meta batida), ou null
+    RaidComplete:
+      type: object
+      required: [raidId, guildId, status, rewardItemId]
+      properties:
+        raidId:
+          type: string
+          format: uuid
+        guildId:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [completed, expired]
+          description: "`completed` com Meta batida (a Guild subiu um Nível), `expired` sem"
+        rewardItemId:
+          type: [string, "null"]
+          format: uuid
+          description: O Cosmetic Item recebido como Recompensa de Raid, ou null quando o usuário não recebeu nada
