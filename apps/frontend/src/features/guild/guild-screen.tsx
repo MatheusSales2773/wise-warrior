@@ -471,7 +471,7 @@ export function GuildScreen() {
   }
 
   const desktop = isDesktopLayout(Platform.OS, width);
-  // Pull to refresh is the native gesture; the web relies on refetch on focus.
+  // Pull to refresh is the native gesture; the web relies on refetch on focus and on the realtime events.
   const refreshProps = Platform.OS !== 'web'
     ? { refreshing: mine.isRefetching, onRefresh: () => { void refreshGuild(); } }
     : {};

@@ -132,7 +132,7 @@ describe('Fechamento semanal, Recompensa de Raid e Raids anteriores against MySQ
         repo(User), repo(CosmeticItem), repo(UserCosmeticItem), repo(Character),
         { provide: RAID_CLOCK, useValue: () => now },
         { provide: AuthService, useValue: {} },
-        { provide: RealtimeGateway, useValue: { emitToGuild: jest.fn() } },
+        { provide: RealtimeGateway, useValue: { emitToGuild: jest.fn(), emitToUser: jest.fn(), setGuildRoomResolver: jest.fn(), joinGuildRoom: jest.fn(), leaveGuildRoom: jest.fn() } },
       ],
     })
       .overrideGuard(JwtAuthGuard)

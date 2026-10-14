@@ -50,7 +50,7 @@ describe('Study Session de modo Guilda against MySQL', () => {
   let dataSource: DataSource | undefined;
   let app: INestApplication | undefined;
   let baseUrl: string;
-  let realtime: { emitToGuild: jest.Mock; emitToUser: jest.Mock };
+  let realtime: Record<'emitToGuild' | 'emitToUser' | 'setGuildRoomResolver' | 'joinGuildRoom' | 'leaveGuildRoom', jest.Mock>;
   /** The completion clock; each test moves it to the end of the Study Session it completes. */
   let completionNow: Date;
   let guildId: string;
@@ -97,7 +97,7 @@ describe('Study Session de modo Guilda against MySQL', () => {
     })));
     await dataSource.getRepository(Character).insert(everyone.map((userId) => ({ userId, level: 1, xpTotal: 0 })));
 
-    realtime = { emitToGuild: jest.fn(), emitToUser: jest.fn() };
+    realtime = { emitToGuild: jest.fn(), emitToUser: jest.fn(), setGuildRoomResolver: jest.fn(), joinGuildRoom: jest.fn(), leaveGuildRoom: jest.fn() };
     const repo = (entity: Parameters<DataSource['getRepository']>[0]) => ({
       provide: getRepositoryToken(entity as never),
       useValue: dataSource!.getRepository(entity),

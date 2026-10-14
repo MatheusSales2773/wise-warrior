@@ -85,7 +85,7 @@ describe('Raids HTTP access control against MySQL', () => {
         { provide: getRepositoryToken(User), useValue: dataSource.getRepository(User) },
         { provide: getRepositoryToken(CosmeticItem), useValue: dataSource.getRepository(CosmeticItem) },
         { provide: getRepositoryToken(UserCosmeticItem), useValue: dataSource.getRepository(UserCosmeticItem) },
-        { provide: RealtimeGateway, useValue: { emitToGuild: jest.fn() } },
+        { provide: RealtimeGateway, useValue: { emitToGuild: jest.fn(), emitToUser: jest.fn(), setGuildRoomResolver: jest.fn(), joinGuildRoom: jest.fn(), leaveGuildRoom: jest.fn() } },
         { provide: getRepositoryToken(Raid), useValue: dataSource.getRepository(Raid) },
         { provide: getRepositoryToken(RaidContribution), useValue: dataSource.getRepository(RaidContribution) },
         { provide: getRepositoryToken(RaidParticipation), useValue: dataSource.getRepository(RaidParticipation) },

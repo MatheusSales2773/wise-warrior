@@ -5,11 +5,13 @@ import {
   Inject,
   Injectable,
   NotFoundException,
+  type OnModuleInit,
   forwardRef,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { EntityManager, Repository } from 'typeorm';
 import { RaidsService } from '../raids/raids.service';
+import { RealtimeGateway } from '../realtime/realtime.gateway';
 import { Character } from '../progression/entities/character.entity';
 import { CosmeticItem } from '../users/entities/cosmetic-item.entity';
 import { UserCosmeticItem } from '../users/entities/user-cosmetic-item.entity';
@@ -112,14 +114,21 @@ function escapeLike(value: string): string {
 }
 
 @Injectable()
-export class GuildsService {
+export class GuildsService implements OnModuleInit {
   constructor(
     @InjectRepository(Guild) private readonly guilds: Repository<Guild>,
     @InjectRepository(GuildMembership)
     private readonly memberships: Repository<GuildMembership>,
     @Inject(forwardRef(() => RaidsService))
     private readonly raids: RaidsService,
+    private readonly realtime: RealtimeGateway,
   ) {}
+
+  /** O socket que conecta entra na room da Guild do usuário (ADR-009); a associação é deste módulo. */
+  onModuleInit(): void {
+    this.realtime.setGuildRoomResolver(async (userId) =>
+      (await this.memberships.findOne({ where: { userId } }))?.guildId ?? null);
+  }
 
   async create(userId: string, dto: CreateGuildDto): Promise<Guild> {
     if (await this.memberships.findOne({ where: { userId } })) {
@@ -130,7 +139,7 @@ export class GuildsService {
       throw new ConflictException(NAME_TAKEN);
     }
     try {
-      return await this.guilds.manager.transaction(async (manager) => {
+      const created = await this.guilds.manager.transaction(async (manager) => {
         const guild = await manager.save(
           manager.create(Guild, { name: dto.name, level: 1, createdBy: userId }),
         );
@@ -141,6 +150,8 @@ export class GuildsService {
         await this.raids.createForGuild(manager, guild.id, 1);
         return guild;
       });
+      this.realtime.joinGuildRoom(userId, created.id);
+      return created;
     } catch (error) {
       if (isDuplicateEntry(error)) {
         // Two unique indexes can lose a race here: the guild name or the single-guild-per-user rule.
@@ -270,6 +281,7 @@ export class GuildsService {
         await manager.update(GuildMembership, { id: others[0]!.id }, { role: 'leader' });
       }
     });
+    this.realtime.leaveGuildRoom(userId, guildId);
   }
 
   async findMine(userId: string): Promise<MyGuild> {
@@ -345,6 +357,7 @@ export class GuildsService {
         throw new ConflictException(ALREADY_IN_GUILD);
       }
     }
+    this.realtime.joinGuildRoom(userId, guildId);
   }
 
   /** Os membros atuais; com `manager`, lê dentro da transação de quem chama (ex.: o fechamento da Raid). */
