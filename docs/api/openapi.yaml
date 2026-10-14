@@ -59,6 +59,7 @@ paths:
               schema: { $ref: "#/components/schemas/SessionTokenResponse" }
         "400": { $ref: "#/components/responses/BadRequest" }
         "409": { $ref: "#/components/responses/Conflict" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
 
   /auth/login:
     post:
@@ -85,6 +86,7 @@ paths:
               schema: { $ref: "#/components/schemas/SessionTokenResponse" }
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
 
   /auth/refresh:
     post:
@@ -107,6 +109,7 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/SessionTokenResponse" }
         "401": { $ref: "#/components/responses/Unauthorized" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
 
   /auth/logout:
     post:
@@ -158,6 +161,7 @@ paths:
         "400": { $ref: "#/components/responses/BadRequest" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "409": { $ref: "#/components/responses/Conflict" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
 
   /auth/native/login:
     post:
@@ -183,6 +187,7 @@ paths:
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
 
   /auth/native/refresh:
     post:
@@ -207,6 +212,7 @@ paths:
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
 
   /auth/native/logout:
     post:
@@ -373,6 +379,7 @@ paths:
         "404": { $ref: "#/components/responses/NotFound" }
         "409": { $ref: "#/components/responses/StudySessionStartConflict" }
         "401": { $ref: "#/components/responses/Unauthorized" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
 
   /sessions/active:
     get:
@@ -423,6 +430,7 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/StudySessionNotFound" }
         "409": { $ref: "#/components/responses/StudySessionPauseConflict" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
 
   /sessions/{id}/resume:
     post:
@@ -455,6 +463,7 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/StudySessionNotFound" }
         "409": { $ref: "#/components/responses/StudySessionResumeConflict" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
 
   /sessions/{id}/stop:
     post:
@@ -490,6 +499,7 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/StudySessionNotFound" }
         "409": { $ref: "#/components/responses/StudySessionStopConflict" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
 
   /sessions/recent:
     get:
@@ -547,6 +557,7 @@ paths:
       responses:
         "204": { description: Heartbeat registrado }
         "404": { $ref: "#/components/responses/StudySessionNotFound" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
 
   /sessions/{id}/complete:
     post:
@@ -638,6 +649,7 @@ paths:
                     status: 409
                     detail: Idempotency-Key já foi usada por outro comando
                     instance: /api/v1/sessions/{id}/complete
+        "429": { $ref: "#/components/responses/TooManyRequests" }
 
   /guilds:
     get:
@@ -1395,6 +1407,18 @@ components:
         instance: { type: string }
 
   responses:
+    TooManyRequests:
+      description: >
+        Limite de requisições excedido (#13). Login e cadastro: 10 por minuto por IP e por rota;
+        renovação de Session: 30 por minuto por IP; mutações de Study Session: 60 por minuto por
+        usuário. Os valores são configuráveis por `RATE_LIMIT_*`.
+      headers:
+        Retry-After:
+          description: Segundos até o limite liberar a próxima requisição.
+          schema: { type: integer, minimum: 0 }
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/Problem" }
     BadRequest:
       description: Requisição inválida
       content:

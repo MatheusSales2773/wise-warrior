@@ -5,6 +5,7 @@ import { getRepositoryToken } from '@nestjs/typeorm';
 import type { AddressInfo } from 'node:net';
 import { DataSource } from 'typeorm';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { RateLimitGuard } from '../../shared/security/rate-limit';
 import type { JwtPayload } from '../auth/strategies/jwt.strategy';
 import { HttpExceptionFilter } from '../../shared/filters/http-exception.filter';
 import { APPLICATION_MIGRATIONS, createIntegrationDatabase, type IntegrationDatabase } from '../../test/integration-database';
@@ -120,6 +121,8 @@ describe('Study Session de modo Guilda against MySQL', () => {
         { provide: RealtimeGateway, useValue: realtime },
       ],
     })
+      .overrideGuard(RateLimitGuard)
+      .useValue({ canActivate: () => true })
       .overrideGuard(JwtAuthGuard)
       .useValue({
         canActivate(context: ExecutionContext) {

@@ -66,6 +66,8 @@ describe('Universal authentication security contract', () => {
     JWT_ACCESS_TTL: process.env.JWT_ACCESS_TTL,
     JWT_REFRESH_TTL_DAYS: process.env.JWT_REFRESH_TTL_DAYS,
     MAX_SESSIONS_PER_USER: process.env.MAX_SESSIONS_PER_USER,
+    RATE_LIMIT_CREDENTIALS_LIMIT: process.env.RATE_LIMIT_CREDENTIALS_LIMIT,
+    RATE_LIMIT_REFRESH_LIMIT: process.env.RATE_LIMIT_REFRESH_LIMIT,
   };
 
   let database: IntegrationDatabase | undefined;
@@ -105,6 +107,9 @@ describe('Universal authentication security contract', () => {
     process.env.JWT_ACCESS_TTL = '15m';
     process.env.JWT_REFRESH_TTL_DAYS = '30';
     process.env.MAX_SESSIONS_PER_USER = '5';
+    // Este contrato faz dezenas de logins do mesmo IP; o rate limiting tem testes próprios.
+    process.env.RATE_LIMIT_CREDENTIALS_LIMIT = '1000';
+    process.env.RATE_LIMIT_REFRESH_LIMIT = '1000';
 
     const moduleRef = await Test.createTestingModule({
       imports: [AppModule],

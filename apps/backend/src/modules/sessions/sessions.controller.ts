@@ -12,6 +12,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import type { Response } from 'express';
+import { RateLimit } from '../../shared/security/rate-limit';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import type { JwtPayload } from '../auth/strategies/jwt.strategy';
@@ -62,6 +63,7 @@ export class SessionsController {
   }
 
   @Post()
+  @RateLimit('study-session')
   @HttpCode(HttpStatus.CREATED)
   start(
     @CurrentUser() user: JwtPayload,
@@ -72,6 +74,7 @@ export class SessionsController {
   }
 
   @Post(':id/pause')
+  @RateLimit('study-session')
   @HttpCode(HttpStatus.OK)
   pause(
     @CurrentUser() user: JwtPayload,
@@ -89,6 +92,7 @@ export class SessionsController {
   }
 
   @Post(':id/resume')
+  @RateLimit('study-session')
   @HttpCode(HttpStatus.OK)
   resume(
     @CurrentUser() user: JwtPayload,
@@ -106,6 +110,7 @@ export class SessionsController {
   }
 
   @Post(':id/stop')
+  @RateLimit('study-session')
   @HttpCode(HttpStatus.OK)
   stop(
     @CurrentUser() user: JwtPayload,
@@ -123,6 +128,7 @@ export class SessionsController {
   }
 
   @Patch(':id/heartbeat')
+  @RateLimit('study-session')
   @HttpCode(HttpStatus.NO_CONTENT)
   async heartbeat(
     @CurrentUser() user: JwtPayload,
@@ -132,6 +138,7 @@ export class SessionsController {
   }
 
   @Post(':id/complete')
+  @RateLimit('study-session')
   @HttpCode(HttpStatus.OK)
   async complete(
     @CurrentUser() user: JwtPayload,

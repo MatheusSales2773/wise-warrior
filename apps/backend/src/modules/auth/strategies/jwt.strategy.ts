@@ -12,6 +12,15 @@ export interface JwtPayload {
   sessionId: string;
 }
 
+/** Sem fallback: um segredo de exemplo embutido validaria tokens forjados com ele (#13). */
+function requireAccessSecret(config: ConfigService): string {
+  const secret = config.get<string>('JWT_ACCESS_SECRET');
+  if (!secret) {
+    throw new Error('JWT_ACCESS_SECRET não configurado');
+  }
+  return secret;
+}
+
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy) {
   constructor(
@@ -21,7 +30,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     super({
       jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
       ignoreExpiration: false,
-      secretOrKey: config.get<string>('JWT_ACCESS_SECRET') ?? 'change-me-access',
+      secretOrKey: requireAccessSecret(config),
     });
   }
 

@@ -11,10 +11,12 @@ import { GuildsModule } from './modules/guilds/guilds.module';
 import { RaidsModule } from './modules/raids/raids.module';
 import { RealtimeModule } from './modules/realtime/realtime.module';
 import { createDatabaseOptions } from './config/database.config';
+import { RateLimitModule } from './shared/security/rate-limit';
 
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
+    RateLimitModule,
     // Registered once, here: importing it in more modules would run each job more than once.
     ScheduleModule.forRoot(),
     TypeOrmModule.forRootAsync({

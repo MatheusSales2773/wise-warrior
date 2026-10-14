@@ -85,6 +85,15 @@ describe('api error taxonomy', () => {
     expect(isApiError(new Error('x'))).toBe(false);
   });
 
+  it('maps 429 to a retryable rate-limited error without exposing the detail', () => {
+    const error = toApiError({
+      isAxiosError: true,
+      response: { status: 429, data: { detail: 'Muitas requisições. Aguarde um instante e tente novamente.' } },
+    });
+    expect(error).toMatchObject({ category: 'rate-limited', status: 429, retryable: true });
+    expect(error.message).toBe('ApiError:rate-limited');
+  });
+
   it('keeps the problem type of a conflict but never its detail', () => {
     const error = toApiError({
       isAxiosError: true,
