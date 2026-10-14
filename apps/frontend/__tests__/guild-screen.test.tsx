@@ -397,6 +397,12 @@ describe('GuildScreen', () => {
       });
     });
 
+    it('links the Raid card to the battle screen', async () => {
+      await renderGuild();
+      const battle = await screen.findByTestId('guild-raid-battle');
+      expect(battle.props.accessibilityLabel).toBe('Ver a batalha da Raid Cerco ao Grimório');
+    });
+
     it('reserves a decorative image slot that screen readers skip', async () => {
       await renderGuild();
       const image = await screen.findByTestId('guild-raid-image', { includeHiddenElements: true });

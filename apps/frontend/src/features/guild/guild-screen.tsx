@@ -1,4 +1,5 @@
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Link } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { Platform, StyleSheet, View, useWindowDimensions } from 'react-native';
 import { FeedbackMessage, ProgressBar, Screen, WiseButton, WiseCard, WiseField, WiseText, isDesktopLayout, theme } from '@/design-system';
@@ -9,7 +10,14 @@ import {
   joinGuildErrorMessage, joinRaidErrorMessage, leaveGuildErrorMessage, raidProgressPercent, rankingEntryLabel,
 } from './messages';
 import { activeRaidQueryOptions, guildDirectoryQueryOptions, guildKeys, guildMembersQueryOptions, myGuildQueryOptions, pastRaidsQueryOptions, raidRankingQueryOptions } from './queries';
+import { RaidScene } from './raid-scene';
+import { RAID_SCENE_HEIGHT, RAID_SCENE_WIDTH } from './raid-scene-sprites';
 import { GUILD_NAME_MAX_LENGTH, normalizeGuildName, validateGuildName } from './validation';
+
+/** The smallest whole scale that fills the card width; the scene is cropped at the sides instead of letterboxed. */
+function thumbnailScale(width: number): number {
+  return Math.min(6, Math.max(2, Math.ceil(width / RAID_SCENE_WIDTH)));
+}
 
 function MemberItem({ member }: { member: GuildMember }) {
   const detail = [`Nível ${member.level}`, member.title].filter(Boolean).join(' · ');
@@ -136,12 +144,29 @@ function RaidParticipation({ guildId, raid }: { guildId: string; raid: ActiveRai
   );
 }
 
+/** The Raid scene without the party, cropped to the card. Decorative: the card text says everything it shows. */
+function RaidThumbnail() {
+  const [width, setWidth] = useState(0);
+  return (
+    <View
+      accessibilityElementsHidden
+      aria-hidden
+      importantForAccessibility="no-hide-descendants"
+      onLayout={(event) => setWidth(event.nativeEvent.layout.width)}
+      style={[styles.raidImage, width > 0 && { height: RAID_SCENE_HEIGHT * thumbnailScale(width) }]}
+      testID="guild-raid-image"
+    >
+      {width > 0 ? <RaidScene party={[]} scale={thumbnailScale(width)} showTags={false} viewportWidth={width} /> : null}
+    </View>
+  );
+}
+
 function RaidDetails({ guildId, raid }: { guildId: string; raid: ActiveRaid }) {
   const now = useNow(30_000);
   const percent = raidProgressPercent(raid.progressXp, raid.goalXp);
   return (
     <>
-      <View accessibilityElementsHidden aria-hidden importantForAccessibility="no-hide-descendants" style={styles.raidImage} testID="guild-raid-image" />
+      <RaidThumbnail />
       <WiseText accessibilityRole="header" aria-level={3} variant="label">{raid.mission.name}</WiseText>
       <WiseText color="textSecondary" variant="body">{raid.mission.description}</WiseText>
       <View style={styles.stack}>
@@ -167,6 +192,9 @@ function RaidDetails({ guildId, raid }: { guildId: string; raid: ActiveRaid }) {
         <WiseText color="textSecondary" variant="caption">{RAID_REWARD_RULE}</WiseText>
       </View>
       <RaidParticipation guildId={guildId} raid={raid} />
+      <Link asChild href="/guilda/raid">
+        <WiseButton accessibilityLabel={`Ver a batalha da Raid ${raid.mission.name}`} label="Ver batalha" testID="guild-raid-battle" variant="secondary" />
+      </Link>
     </>
   );
 }
@@ -501,7 +529,7 @@ const styles = StyleSheet.create({
   grid: { gap: theme.space.stackDefault },
   desktopGrid: { flexDirection: 'row', alignItems: 'flex-start' },
   column: { flex: 1 },
-  raidImage: { height: 120, borderRadius: theme.radius.card, backgroundColor: theme.color.surfaceInset },
+  raidImage: { height: 160, overflow: 'hidden', borderRadius: theme.radius.card, backgroundColor: theme.color.surfaceInset },
   rankingItem: { flexDirection: 'row', alignItems: 'center', gap: theme.space.stackTight, paddingVertical: theme.space.inlineTight, paddingHorizontal: theme.space.inlineTight, borderRadius: theme.radius.control, borderWidth: theme.border.standard, borderColor: 'transparent' },
   // The own row is marked by a border and a "(você)" label as well as by the fill, never by color alone.
   rankingItemMe: { backgroundColor: theme.color.surfaceCardActive, borderColor: theme.color.accentPrimary },

@@ -255,7 +255,7 @@ function RecentSubjectSuggestions({ selectedSubject, disabled, onSelect }: {
   );
 }
 
-type SessionMode = 'solo' | 'guild';
+export type SessionMode = 'solo' | 'guild';
 type ForgeRaid = { guildId: string; raid: ActiveRaid };
 
 /**
@@ -313,14 +313,15 @@ function isVersionConflict(error: unknown): boolean {
     && (responseData as { type?: unknown }).type === STUDY_SESSION_VERSION_CONFLICT;
 }
 
-export function StudySessionScreen() {
+/** `initialMode` comes from the route: "Atacar com foco" on the Raid opens the Forja with `?modo=guilda`. */
+export function StudySessionScreen({ initialMode = 'solo' }: { initialMode?: SessionMode } = {}) {
   const { width } = useWindowDimensions();
   const wideLayout = width >= 1140;
   const ringSize = wideLayout ? 340 : Platform.OS === 'web' ? Math.min(310, width * 0.78) : Math.min(264, width * 0.68);
   const queryClient = useQueryClient();
   const [selected, setSelected] = useState<PlannedDurationSeconds>(1500);
   const [subjectInput, setSubjectInput] = useState('');
-  const [sessionMode, setSessionMode] = useState<SessionMode>('solo');
+  const [sessionMode, setSessionMode] = useState<SessionMode>(initialMode);
   const [raidEndedNotice, setRaidEndedNotice] = useState(false);
   const forgeRaid = useForgeRaid();
   const [settingsOpen, setSettingsOpen] = useState(false);
