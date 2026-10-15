@@ -3,6 +3,7 @@ import {
   forwardRef,
   Inject,
   Injectable,
+  Logger,
   Optional,
   NotFoundException,
   UnauthorizedException,
@@ -67,6 +68,8 @@ function isDuplicateKeyError(error: unknown): boolean {
 
 @Injectable()
 export class AuthService {
+  private readonly logger = new Logger(AuthService.name);
+
   constructor(
     @InjectRepository(User) private readonly users: Repository<User>,
     @InjectRepository(Character)
@@ -86,8 +89,9 @@ export class AuthService {
     if (sessionIds.length === 0) return;
     try {
       await this.realtime?.disconnectSessions(sessionIds);
-    } catch {
-      // A revogação já foi persistida; o socket cai no próximo handshake recusado.
+    } catch (error) {
+      // A revogação já foi persistida; o socket é revalidado quando entrar nas rooms ou reconectar.
+      this.logger.warn(`Falha ao encerrar sockets das Sessões revogadas: ${(error as Error).message}`);
     }
   }
 

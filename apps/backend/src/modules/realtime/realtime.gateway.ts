@@ -57,10 +57,24 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
 
     await client.join(userRoom(client.data.userId));
     await client.join(sessionRoom(client.data.sessionId));
+    // A revocation that landed between the handshake and this join found an empty session room.
+    if (!(await this.sessionStillValid(client))) {
+      client.disconnect(true);
+      return;
+    }
     try {
       await this.joinCurrentGuildRoom(client);
     } catch (error) {
       this.logger.warn(`Falha ao entrar na room da Guild: ${(error as Error).message}`);
+    }
+  }
+
+  private async sessionStillValid(client: Socket): Promise<boolean> {
+    try {
+      await this.jwtStrategy.validate(client.data.identity as JwtPayload);
+      return true;
+    } catch {
+      return false;
     }
   }
 
@@ -100,6 +114,7 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
       const identity = await this.jwtStrategy.validate(payload);
       client.data.userId = identity.sub;
       client.data.sessionId = identity.sessionId;
+      client.data.identity = payload;
       next();
     } catch {
       next(new Error('Unauthorized'));
