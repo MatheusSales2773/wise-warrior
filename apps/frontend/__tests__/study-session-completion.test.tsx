@@ -298,6 +298,32 @@ it('shows a safe reason and zero XP when the server confirms a discarded session
   client.clear();
 });
 
+it('explains that the XP of a completed session was capped by the daily limit', async () => {
+  const zeroSnapshot = atZero();
+  const cappedSnapshot: StudySessionTransitionResult = {
+    ...zeroSnapshot,
+    state: 'completed',
+    endedAt: zeroSnapshot.runDeadlineAt,
+    durationValidSeconds: 600,
+    remainingSeconds: 0,
+    xpAwarded: 100,
+    terminalReason: 'auto-complete',
+    cappedReason: 'daily-limit',
+  };
+  getActive.mockResolvedValue(zeroSnapshot);
+  complete.mockResolvedValue(cappedSnapshot);
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false, gcTime: 30_000 }, mutations: { retry: false, gcTime: 0 } },
+  });
+  const { view } = await renderStudySession(client);
+
+  await view.findByText('Sessão concluída');
+  expect(view.getByText('XP limitado pelo teto diário.')).toBeTruthy();
+  expect(view.getByText('XP confirmado: 100')).toBeTruthy();
+  view.unmount();
+  client.clear();
+});
+
 it.each([
   [{ status: 'counted', xpContributed: 250 }, '+250 XP para a Raid da Guilda.'],
   [{ status: 'outside-raid-window', xpContributed: 0 }, 'Esta sessão não contou para a Raid: terminou fora da janela da Raid.'],

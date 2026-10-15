@@ -709,6 +709,13 @@ export function StudySessionScreen({ initialMode = 'solo' }: { initialMode?: Ses
                   : 'O limite diário de foco foi atingido.'}
               </WiseText>
             ) : null}
+            {displayedTerminalResult.cappedReason ? (
+              <WiseText color="textSecondary" testID="study-session-result-capped" variant="body">
+                {displayedTerminalResult.cappedReason === 'daily-limit'
+                  ? 'XP limitado pelo teto diário.'
+                  : 'XP limitado ao máximo de sessão contínua.'}
+              </WiseText>
+            ) : null}
             <WiseButton
               label="Nova sessão"
               onPress={() => {

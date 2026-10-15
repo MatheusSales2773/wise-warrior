@@ -1118,7 +1118,7 @@ components:
 
     StudySessionSnapshot:
       type: object
-      required: [id, mode, raidId, subject, state, plannedDurationSeconds, startedAt, runDeadlineAt, pausedAt, pausedTotalSeconds, durationValidSeconds, remainingSeconds, serverNow, version, endedAt, xpAwarded, terminalReason, discardedReason, canControl]
+      required: [id, mode, raidId, subject, state, plannedDurationSeconds, startedAt, runDeadlineAt, pausedAt, pausedTotalSeconds, durationValidSeconds, remainingSeconds, serverNow, version, endedAt, xpAwarded, terminalReason, discardedReason, cappedReason, canControl]
       properties:
         id: { type: string, format: uuid }
         mode: { type: string, enum: [solo, guild] }
@@ -1140,6 +1140,9 @@ components:
         xpAwarded: { type: integer, minimum: 0 }
         terminalReason: { type: [string, "null"], enum: [manual-stop, auto-complete, legacy-session-without-owner, null] }
         discardedReason: { type: [string, "null"] }
+        cappedReason:
+          type: [string, "null"]
+          enum: [continuous-limit, daily-limit, null]
         canControl: { type: boolean }
       example:
         id: 00000000-0000-4000-8000-000000000074
@@ -1174,13 +1177,15 @@ components:
         endedAt: { type: [string, "null"], format: date-time }
         durationValidSeconds: { type: integer, minimum: 0 }
         xpAwarded: { type: integer, minimum: 0 }
-        discardedReason:
+        discardedReason: { type: [string, "null"] }
+        cappedReason:
           type: [string, "null"]
-          enum: [continuous-session-exceeds-limit, daily-limit-exceeded, null]
+          enum: [continuous-limit, daily-limit, null]
+          description: Antifraude limit that truncated the valid focus; XP is computed on the truncated time (ADR-011).
 
     RecentStudySession:
       type: object
-      required: [id, subject, mode, state, startedAt, endedAt, durationValidSeconds, xpAwarded, discardedReason]
+      required: [id, subject, mode, state, startedAt, endedAt, durationValidSeconds, xpAwarded, discardedReason, cappedReason]
       properties:
         id: { type: string, format: uuid }
         subject: { type: [string, "null"] }
@@ -1190,9 +1195,11 @@ components:
         endedAt: { type: string, format: date-time }
         durationValidSeconds: { type: integer, minimum: 0 }
         xpAwarded: { type: integer, minimum: 0 }
-        discardedReason:
+        discardedReason: { type: [string, "null"] }
+        cappedReason:
           type: [string, "null"]
-          enum: [continuous-session-exceeds-limit, daily-limit-exceeded, null]
+          enum: [continuous-limit, daily-limit, null]
+          description: Antifraude limit that truncated the valid focus; XP is computed on the truncated time (ADR-011).
 
     RecentStudySessionSubjects:
       type: object

@@ -8,6 +8,7 @@ import {
   PrimaryGeneratedColumn,
 } from 'typeorm';
 import { User } from '../../users/entities/user.entity';
+import type { CappedReason } from '../domain/session-validator';
 import { Raid } from '../../raids/entities/raid.entity';
 
 export type StudySessionMode = 'solo' | 'guild';
@@ -89,4 +90,8 @@ export class StudySession {
   /** Preenchido quando a sessão é descartada por antifraude — nunca some silenciosamente. */
   @Column({ name: 'discarded_reason', type: 'varchar', nullable: true })
   discardedReason?: string | null;
+
+  /** Preenchido quando o antifraude truncou o foco válido (ADR-011); o XP vale sobre o tempo truncado. */
+  @Column({ name: 'capped_reason', type: 'varchar', length: 24, nullable: true })
+  cappedReason?: CappedReason | null;
 }

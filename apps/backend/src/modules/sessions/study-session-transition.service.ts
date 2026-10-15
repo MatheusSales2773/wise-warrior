@@ -169,7 +169,8 @@ export class StudySessionTransitionService {
       let completionResult: ReturnType<typeof applyStudySessionComplete> | null = null;
       try {
         if (action === 'stop') {
-          stopResult = applyStudySessionStop(session, now);
+          const priorDailySeconds = await this.sumEligibleFocusSecondsToday(manager, userId, studySessionId, now);
+          stopResult = applyStudySessionStop(session, now, priorDailySeconds);
         } else if (action === 'complete') {
           const priorDailySeconds = session.state === 'running'
             && session.runDeadlineAt
@@ -264,7 +265,7 @@ export class StudySessionTransitionService {
       .select('COALESCE(SUM(session.durationValidSeconds), 0)', 'total')
       .where('session.userId = :userId', { userId })
       .andWhere('session.id != :excludeStudySessionId', { excludeStudySessionId })
-      .andWhere('session.endedAt >= :startOfDay', { startOfDay })
+      .andWhere('session.startedAt >= :startOfDay', { startOfDay })
       .andWhere('session.discardedReason IS NULL')
       .andWhere("(session.state IS NULL OR session.state IN ('completed', 'stopped_early'))")
       .getRawOne<{ total: string }>();

@@ -84,6 +84,7 @@ const expectedColumns: Record<string, string[]> = {
     'terminal_reason',
     'initiating_session_id',
     'active_user_id',
+    'capped_reason',
   ],
   active_study_sessions: ['user_id', 'study_session_id'],
   study_session_start_receipts: ['user_id', 'idempotency_key', 'planned_duration_seconds', 'subject', 'initiating_session_id', 'response_json'],
@@ -381,9 +382,11 @@ describe('TypeORM migrations against an empty MySQL schema', () => {
       'AddRaidParticipations1788459420000',
       'AddRaidGoalReachedAt1788459480000',
       'AddGuildChatMessageSequence1788459540000',
+      'AddStudySessionCappedReason1788459600000',
     ]);
 
-    await dataSource.undoLastMigration(); // guild chat sequence, the newest migration
+    await dataSource.undoLastMigration(); // study session capped reason, the newest migration
+    await dataSource.undoLastMigration(); // guild chat sequence
     const chatSeqRevertRows = await rows(
       database!.admin,
       `SELECT COLUMN_NAME FROM information_schema.COLUMNS
@@ -629,7 +632,7 @@ await dataSource.undoLastMigration();
       { idempotency_key: 'rolling-transition-key', command_kind: 'resume' },
     ]);
 
-    for (let step = 0; step < 10; step += 1) await dataSource.undoLastMigration();
+    for (let step = 0; step < 11; step += 1) await dataSource.undoLastMigration();
     const leftoverTriggers = await rows(
       database.admin,
       `SELECT TRIGGER_NAME FROM information_schema.TRIGGERS
@@ -754,6 +757,7 @@ await dataSource.undoLastMigration();
     expect(receiptsWithSubject).toEqual([{ idempotency_key: 'solo-start-key', subject: 'Cálculo II' }]);
 
     // M6 revert: only the receipt column goes away; every persisted Matéria (including legacy Guild rows) stays.
+    await dataSource.undoLastMigration(); // study session capped reason
     await dataSource.undoLastMigration(); // guild chat sequence
     await dataSource.undoLastMigration(); // raid goal reached at
     await dataSource.undoLastMigration(); // raid participations, which sit above the raid missions
@@ -790,7 +794,7 @@ await dataSource.undoLastMigration();
     );
     expect(receiptsAfterReapply).toEqual([{ idempotency_key: 'solo-start-key', subject: null }]);
 
-    for (let step = 0; step < 12; step += 1) await dataSource.undoLastMigration();
+    for (let step = 0; step < 13; step += 1) await dataSource.undoLastMigration();
     const downgradedHistory = await rows(
       database.admin,
       `SELECT id, subject, mode, raid_id FROM ${database.identifier}.study_sessions ORDER BY id`,
@@ -881,7 +885,7 @@ await dataSource.undoLastMigration();
     );
     expect(leftoverArchives).toHaveLength(0);
 
-    for (let step = 0; step < 15; step += 1) await dataSource.undoLastMigration();
+    for (let step = 0; step < 16; step += 1) await dataSource.undoLastMigration();
     const remainingSchemaTables = await rows(
       database.admin,
       `SELECT TABLE_NAME FROM information_schema.TABLES
@@ -972,6 +976,7 @@ await dataSource.undoLastMigration();
     expect(owned('newcomer')).toEqual([['Capuz do Erudito', 1], ['Aprendiz', 1]]);
     expect(owned('collector')).toEqual([['Capuz do Erudito', 1], ['Aprendiz', 1], ['Madrugador', 0]]);
 
+    await dataSource.undoLastMigration(); // study session capped reason
     await dataSource.undoLastMigration(); // raid goal reached at
     await dataSource.undoLastMigration(); // raid participations, which sit above the raid missions
     await dataSource.undoLastMigration(); // raid missions, which sit above the character title drop
@@ -1027,6 +1032,7 @@ await dataSource.undoLastMigration();
     );
     expect(columns.map((row) => row.COLUMN_NAME)).not.toContain('title');
 
+    await dataSource.undoLastMigration(); // study session capped reason
     await dataSource.undoLastMigration(); // raid goal reached at
     await dataSource.undoLastMigration(); // raid participations, which sit above the raid missions
     await dataSource.undoLastMigration(); // raid missions, which sit above the character title drop
@@ -1107,6 +1113,7 @@ await dataSource.undoLastMigration();
     expect(Number(current.goal_xp)).toBeGreaterThan(0);
     expect(Number(current.goal_xp)).toBeLessThanOrEqual(3000);
 
+    await dataSource.undoLastMigration(); // study session capped reason
     await dataSource.undoLastMigration(); // raid goal reached at
     await dataSource.undoLastMigration(); // raid participations
     await dataSource.undoLastMigration();
@@ -1184,6 +1191,7 @@ await dataSource.undoLastMigration();
       [raidId],
     )).rejects.toThrow(/Duplicate entry/);
 
+    await dataSource.undoLastMigration(); // study session capped reason
     await dataSource.undoLastMigration(); // raid goal reached at
     await dataSource.undoLastMigration();
     expect(await rows(
