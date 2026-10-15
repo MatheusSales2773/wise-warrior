@@ -228,7 +228,7 @@ fazem parte desse primeiro corte.
 - [x] Frontend Web atual: shell responsivo e páginas de login/cadastro/dashboard/sessão/guilda/perfil
 - [x] Frontend universal ADR-008: migrado para Expo e validado em Web/iOS/Android (M1–M5, `docs/validation/`)
 - [x] Contrato de API publicado e validado (`docs/api/openapi.yaml`, lint limpo — seção 10)
-- [ ] `docs/api/asyncapi.yaml` (contrato dos eventos WebSocket) — publicado com `raid:progress` e o aviso de Raid encerrada; faltam `progress:xpUpdated` e as notificações de level-up
+- [x] `docs/api/asyncapi.yaml` (contrato dos eventos WebSocket) — publicado com `raid:progress`, `progress:xpUpdated`, `notification:levelup` e o aviso de Raid encerrada
 - [x] Migrations TypeORM versionadas (`apps/backend/src/migrations`, com teste de upgrade e downgrade)
 - [ ] Provisionamento real da VM Oracle Always Free e primeiro deploy (ADR-006)
 - [x] Boot do NestJS + testes de integração contra MySQL real (job `backend` da CI, com serviço MySQL 8.0, e E2E Playwright via Docker Compose)

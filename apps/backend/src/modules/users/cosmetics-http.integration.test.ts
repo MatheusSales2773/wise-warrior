@@ -70,6 +70,7 @@ describe('Cosmetics Catalog HTTP contract against MySQL', () => {
       config,
       dataSource,
       users,
+      { disconnectSessions: () => undefined } as never,
     );
 
     const moduleRef = await Test.createTestingModule({
