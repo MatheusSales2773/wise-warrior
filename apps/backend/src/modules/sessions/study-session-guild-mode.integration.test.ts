@@ -3,7 +3,7 @@ import type { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import type { AddressInfo } from 'node:net';
-import { DataSource } from 'typeorm';
+import { DataSource, type EntityManager } from 'typeorm';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RateLimitGuard } from '../../shared/security/rate-limit';
 import type { JwtPayload } from '../auth/strategies/jwt.strategy';
@@ -236,14 +236,37 @@ describe('Study Session de modo Guilda against MySQL', () => {
       expect(realtime.emitToGuild).toHaveBeenCalledTimes(1);
     });
 
-    it('rolls back the whole completion when it fails after the Contribution, then a retry counts it once', async () => {
+    // Each case lets the work up to that point run, then throws, so the transaction must undo all of it.
+    const failureAfter: Record<string, () => void> = {
+      'the XP award, before the Contribution': () => {
+        const progression = app!.get(ProgressionService);
+        const original = progression.awardXpInTransaction.bind(progression);
+        jest.spyOn(progression, 'awardXpInTransaction').mockImplementationOnce(async (manager, userId, xp) => {
+          await original(manager, userId, xp);
+          throw new Error('falha depois de conceder o XP');
+        });
+      },
+      'the Contribution': () => {
+        const raids = app!.get(RaidsService);
+        const original = raids.recordContributionInTransaction.bind(raids);
+        jest.spyOn(raids, 'recordContributionInTransaction').mockImplementationOnce(async (manager, contribution) => {
+          await original(manager, contribution);
+          throw new Error('falha depois de gravar a Contribuição');
+        });
+      },
+      'the receipt, as the last write of the transaction': () => {
+        const original = dataSource!.transaction.bind(dataSource) as (work: (manager: EntityManager) => Promise<unknown>) => Promise<unknown>;
+        jest.spyOn(dataSource!, 'transaction').mockImplementationOnce(((work: (manager: EntityManager) => Promise<unknown>) =>
+          original(async (manager) => {
+            await work(manager);
+            throw new Error('falha depois do recibo');
+          })) as never);
+      },
+    };
+
+    it.each(Object.keys(failureAfter))('rolls back the whole completion when it fails after %s, then a retry counts it once', async (point) => {
       const session = await joinAndStart(bruno, 'retry');
-      const raids = app!.get(RaidsService);
-      const original = raids.recordContributionInTransaction.bind(raids);
-      jest.spyOn(raids, 'recordContributionInTransaction').mockImplementationOnce(async (manager, contribution) => {
-        await original(manager, contribution);
-        throw new Error('falha depois de gravar a Contribuição');
-      });
+      failureAfter[point]!();
 
       const failed = await completeAtDeadline(bruno, session, 'retry-done');
 
