@@ -100,6 +100,14 @@ describe('Study Session pause and resume timing', () => {
     expect(studySession).toEqual(before);
   });
 
+  it('cancels with zero valid focus seconds without throwing', () => {
+    const cancelled = session();
+
+    expect(applyStudySessionStop(cancelled, new Date(start.getTime() + 500))).toEqual({
+      state: 'cancelled', durationValidSeconds: 0, xpAwarded: 0, cappedReason: null,
+    });
+  });
+
   it('cancels 299 valid seconds without XP and stops at 300 with complete-minute XP', () => {
     const cancelled = session();
     const stoppedEarly = session();

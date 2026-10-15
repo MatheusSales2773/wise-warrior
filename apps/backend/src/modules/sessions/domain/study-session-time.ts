@@ -156,7 +156,10 @@ export function applyStudySessionStop(
     ? Math.max(0, now.getTime() - session.pausedAt.getTime())
     : 0;
   const pausedTotalMilliseconds = getRecordedPausedMilliseconds(session) + currentPauseMilliseconds;
-  const validation = validateStudySessionFocusSeconds(time.durationValidSeconds, priorDailySeconds);
+  // Cancelar logo após iniciar deixa 0 s de foco; o validador rejeita duração zero, então não passa por ele.
+  const validation = time.durationValidSeconds > 0
+    ? validateStudySessionFocusSeconds(time.durationValidSeconds, priorDailySeconds)
+    : { validSeconds: 0, cappedReason: null };
   const validSeconds = validation.validSeconds;
   const nextState = validSeconds < MIN_FOCUS_SECONDS_FOR_XP ? 'cancelled' : 'stopped_early';
   const xpAwarded = nextState === 'cancelled' ? 0 : xpForDuration(validSeconds);
