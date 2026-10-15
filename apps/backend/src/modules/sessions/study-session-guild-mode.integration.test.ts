@@ -253,6 +253,10 @@ describe('Study Session de modo Guilda against MySQL', () => {
       expect((await dataSource!.getRepository(StudySession).findOneByOrFail({ id: session.id })).state).toBe('running');
       expect((await dataSource!.getRepository(Character).findOneByOrFail({ userId: bruno })).xpTotal).toBe(0);
       expect(realtime.emitToGuild).not.toHaveBeenCalled();
+      const rowsOf = async (table: string) => await dataSource!.query(`SELECT 1 FROM ${table} WHERE user_id = ?`, [bruno]) as unknown[];
+      expect(await rowsOf('study_session_command_keys')).toHaveLength(1); // só a chave do início
+      expect(await rowsOf('study_session_transition_receipts')).toEqual([]);
+      expect(await rowsOf('active_study_sessions')).toHaveLength(1);
 
       const retried = await completeAtDeadline(bruno, session, 'retry-done');
 
@@ -271,9 +275,44 @@ describe('Study Session de modo Guilda against MySQL', () => {
         (await call('POST', `/sessions/${session.id}/complete`, bruno, { expectedVersion: 1 }, `race-done-${suffix}`)).status,
       ));
 
-      expect(statuses.filter((status) => status === 200)).toHaveLength(1);
-      expect(statuses.filter((status) => status !== 200).every((status) => status === 409)).toBe(true);
+      // A transição serializa as chamadas: este teste cobre o lock e a versão, não o índice único.
+      expect([...statuses].sort()).toEqual([200, 409, 409]);
       expect((await activeRaid(bruno)).progressXp).toBe(150);
+      expect(await contributions()).toHaveLength(1);
+      expect(realtime.emitToGuild).toHaveBeenCalledTimes(1);
+    });
+
+    it('counts one Contribution when the same Study Session reaches the Raid concurrently, by the unique index', async () => {
+      const session = await joinAndStart(bruno, 'index');
+      const raids = app!.get(RaidsService);
+      const contribute = () => dataSource!.transaction((manager) => raids.recordContributionInTransaction(manager, {
+        raidId, userId: bruno, studySessionId: session.id, xpContributed: 150, endedAt: new Date(),
+      }));
+
+      const results = await Promise.all([contribute(), contribute(), contribute()]);
+
+      expect(results.filter((progress) => progress !== null)).toHaveLength(1);
+      expect(results.find((progress) => progress !== null)).toMatchObject({ raidId, progressXp: 150 });
+      expect((await dataSource!.getRepository(Raid).findOneByOrFail({ id: raidId })).progressXp).toBe(150);
+      expect(await contributions()).toHaveLength(1);
+    });
+
+    it('rejects a second Contribution row for the same Study Session at the database', async () => {
+      const session = await joinAndStart(bruno, 'unique');
+      const repository = dataSource!.getRepository(RaidContribution);
+      await repository.insert({ raidId, userId: bruno, studySessionId: session.id, xpContributed: 150 });
+
+      await expect(repository.insert({ raidId, userId: bruno, studySessionId: session.id, xpContributed: 150 }))
+        .rejects.toMatchObject({ code: 'ER_DUP_ENTRY' });
+    });
+
+    it('counts one Contribution when the legacy path is replayed concurrently', async () => {
+      const session = await joinAndStart(bruno, 'legacy');
+      const raids = app!.get(RaidsService);
+
+      await Promise.all([1, 2].map(() => raids.recordContribution(raidId, bruno, session.id, 150)));
+
+      expect((await dataSource!.getRepository(Raid).findOneByOrFail({ id: raidId })).progressXp).toBe(150);
       expect(await contributions()).toHaveLength(1);
       expect(realtime.emitToGuild).toHaveBeenCalledTimes(1);
     });
