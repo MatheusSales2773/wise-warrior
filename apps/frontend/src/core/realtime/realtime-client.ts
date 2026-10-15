@@ -17,9 +17,6 @@ export type RaidCompleteEvent = {
   rewardItemId: string | null;
 };
 
-/** Payload of the `progress:xpUpdated` event (docs/api/asyncapi.yaml). */
-export type XpUpdatedEvent = { xpGained: number; xpTotal: number; level: number };
-
 /** Where the connection stands, for the visible indicator. */
 export type RealtimeStatus = 'connecting' | 'connected' | 'reconnecting' | 'offline';
 
@@ -124,7 +121,7 @@ export function createRealtimeClient({
   const onRaidComplete = () => applyRaidComplete(queryClient);
   const onXpUpdated = () => applyXpUpdated(queryClient);
   const onLevelUp = () => applyLevelUp(queryClient);
-  const reconnectAfterRefresh = () => {
+  const handleConnectionLoss = () => {
     if (disposed) return;
     if (socket.active) {
       // Socket.IO keeps retrying on its own.
@@ -152,8 +149,8 @@ export function createRealtimeClient({
   socket.on('progress:xpUpdated', onXpUpdated);
   socket.on('notification:levelup', onLevelUp);
   socket.on('connect', onConnect);
-  socket.on('connect_error', reconnectAfterRefresh);
-  socket.on('disconnect', reconnectAfterRefresh);
+  socket.on('connect_error', handleConnectionLoss);
+  socket.on('disconnect', handleConnectionLoss);
   socket.connect();
 
   return {
@@ -169,8 +166,8 @@ export function createRealtimeClient({
       socket.off('progress:xpUpdated', onXpUpdated);
       socket.off('notification:levelup', onLevelUp);
       socket.off('connect', onConnect);
-      socket.off('connect_error', reconnectAfterRefresh);
-      socket.off('disconnect', reconnectAfterRefresh);
+      socket.off('connect_error', handleConnectionLoss);
+      socket.off('disconnect', handleConnectionLoss);
       socket.disconnect();
     },
   };

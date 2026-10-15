@@ -60,6 +60,7 @@ function serviceWithTransaction(
       config as never,
       dataSource as never,
       {} as never,
+      {} as never,
     ),
     dataSource,
     manager,
@@ -297,6 +298,7 @@ describe('AuthService.issueSession', () => {
       config as never,
       dataSource as never,
       {} as never,
+      {} as never,
     );
     return { dataSource, manager, service, users, jwt };
   }
@@ -408,7 +410,7 @@ describe('AuthService.register', () => {
         return undefined;
       }),
     };
-    const usersService = { grantStarterInventory: jest.fn().mockResolvedValue(undefined) };
+    const usersService = { grantStarterInventory: jest.fn() };
     const service = new AuthService(
       users as never,
       characters as never,
@@ -417,6 +419,7 @@ describe('AuthService.register', () => {
       config as never,
       dataSource as never,
       usersService as never,
+      {} as never,
     );
 
     return { service, users, characters, sessions, dataSource, jwt, manager, usersService };
@@ -488,7 +491,7 @@ describe('AuthService realtime disconnection', () => {
       find: jest.fn().mockResolvedValue(sessionRows),
       save: jest.fn().mockResolvedValue(undefined),
     };
-    const realtime = { disconnectSessions: jest.fn().mockResolvedValue(undefined) };
+    const realtime = { disconnectSessions: jest.fn() };
     const service = new AuthService(
       {} as never,
       {} as never,
@@ -536,7 +539,7 @@ describe('AuthService realtime disconnection', () => {
 
   it('still revokes when closing the socket fails', async () => {
     const { service, sessions, realtime } = build([session()]);
-    realtime.disconnectSessions.mockRejectedValue(new Error('adapter down'));
+    realtime.disconnectSessions.mockImplementation(() => { throw new Error('adapter down'); });
 
     await expect(service.revokeSession('user-1', 'session-1')).resolves.toBeUndefined();
     expect(sessions.save).toHaveBeenCalled();

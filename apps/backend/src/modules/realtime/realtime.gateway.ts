@@ -153,16 +153,11 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
   /**
    * Encerra os sockets das Sessões revogadas (logout, revogação de dispositivo, replay de refresh, limite de
    * dispositivos). O access token já emitido continua válido até expirar, mas a conexão em tempo real não.
+   * Alcança apenas os sockets deste processo: com mais de uma instância seria preciso o adapter Redis do Socket.IO.
    */
-  async disconnectSessions(sessionIds: readonly string[]): Promise<void> {
-    if (!this.server) return;
-    for (const sessionId of sessionIds) {
-      try {
-        this.server.in(sessionRoom(sessionId)).disconnectSockets(true);
-      } catch (error) {
-        this.logger.warn(`Falha ao encerrar sockets da Sessão: ${(error as Error).message}`);
-      }
-    }
+  disconnectSessions(sessionIds: readonly string[]): void {
+    if (!this.server || sessionIds.length === 0) return;
+    this.server.in(sessionIds.map(sessionRoom)).disconnectSockets(true);
   }
 
   emitToUser(userId: string, event: string, payload: unknown): void {

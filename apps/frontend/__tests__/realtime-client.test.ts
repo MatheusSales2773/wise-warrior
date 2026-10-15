@@ -273,6 +273,19 @@ describe('connection status', () => {
     expect(client.getStatus()).toBe('offline');
   });
 
+  it('keeps one listener per event across reconnections', () => {
+    const { socket } = setup();
+
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      socket.active = true;
+      socket.emit('disconnect', 'transport close');
+      socket.emit('connect');
+    }
+
+    ['raid:progress', 'notification:raidComplete', 'progress:xpUpdated', 'notification:levelup', 'connect', 'connect_error', 'disconnect']
+      .forEach((event) => expect(socket.count(event)).toBe(1));
+  });
+
   it('stops notifying after unsubscribe', () => {
     const { socket, client } = setup();
     const listener = jest.fn();

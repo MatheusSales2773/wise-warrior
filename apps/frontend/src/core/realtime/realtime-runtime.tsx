@@ -8,15 +8,16 @@ import { useAuth } from '@/core/auth/auth-context';
 import { FeedbackMessage } from '@/design-system';
 import { createRealtimeClient, type RealtimeStatus } from './realtime-client';
 
+const notices: Partial<Record<RealtimeStatus, { variant: 'warning' | 'error'; title: string; message: string }>> = {
+  reconnecting: { variant: 'warning', title: 'Reconectando', message: 'Reconectando para manter seu progresso atualizado em tempo real.' },
+  offline: { variant: 'error', title: 'Tempo real indisponível', message: 'Sem conexão em tempo real. Os dados são atualizados ao reabrir ou recarregar a tela.' },
+};
+
 /** Only a connection that is not up (after the first attempt) is worth a visible notice. */
 export function RealtimeStatusNotice({ status }: { status: RealtimeStatus }) {
-  if (status === 'reconnecting') {
-    return <View testID="realtime-status-reconnecting"><FeedbackMessage message="Reconectando para manter seu progresso atualizado em tempo real." title="Reconectando" variant="warning" /></View>;
-  }
-  if (status === 'offline') {
-    return <View testID="realtime-status-offline"><FeedbackMessage message="Sem conexão em tempo real. Os dados são atualizados ao reabrir ou recarregar a tela." title="Tempo real indisponível" variant="error" /></View>;
-  }
-  return null;
+  const notice = notices[status];
+  if (!notice) return null;
+  return <View testID={`realtime-status-${status}`}><FeedbackMessage {...notice} /></View>;
 }
 
 /** Keeps one realtime connection for the authenticated Session and shows when it is down. */
