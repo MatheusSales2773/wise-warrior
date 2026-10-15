@@ -8,7 +8,7 @@ import {
   pauseStudySession,
   resumeStudySession,
   stopStudySession,
-  type StudySessionSnapshot,
+  type StudySessionTransitionResult,
 } from '@/features/study-session/api';
 import { dashboardKeys } from '@/features/dashboard/queries';
 
@@ -33,12 +33,12 @@ const getActive = getActiveStudySession as jest.MockedFunction<typeof getActiveS
 const pause = pauseStudySession as jest.MockedFunction<typeof pauseStudySession>;
 const resume = resumeStudySession as jest.MockedFunction<typeof resumeStudySession>;
 const stop = stopStudySession as jest.MockedFunction<typeof stopStudySession>;
-const snapshot: StudySessionSnapshot = {
+const snapshot: StudySessionTransitionResult = {
   id: 'study-1', mode: 'solo', raidId: null, subject: null, state: 'running', plannedDurationSeconds: 1500,
   startedAt: '2026-09-22T12:00:00.000Z', runDeadlineAt: '2026-09-22T12:25:00.000Z',
   pausedAt: null, pausedTotalSeconds: 0, durationValidSeconds: 0, remainingSeconds: 1500,
   serverNow: '2026-09-22T12:00:00.000Z', version: 1, endedAt: null, xpAwarded: 0,
-  terminalReason: null, discardedReason: null, canControl: true,
+  terminalReason: null, discardedReason: null, canControl: true, raidContribution: null,
   receivedAtMs: new Date('2026-09-22T12:00:00.000Z').getTime(),
 };
 
@@ -60,7 +60,7 @@ afterEach(() => {
 });
 
 it('pauses and resumes from confirmed snapshots using accessible controls', async () => {
-  const paused: StudySessionSnapshot = {
+  const paused: StudySessionTransitionResult = {
     ...snapshot,
     state: 'paused',
     pausedAt: '2026-09-22T12:05:00.000Z',
@@ -70,7 +70,7 @@ it('pauses and resumes from confirmed snapshots using accessible controls', asyn
     serverNow: '2026-09-22T12:05:00.000Z',
     receivedAtMs: new Date('2026-09-22T12:05:00.000Z').getTime(),
   };
-  const resumed: StudySessionSnapshot = {
+  const resumed: StudySessionTransitionResult = {
     ...paused,
     state: 'running',
     pausedAt: null,
@@ -101,7 +101,7 @@ it('pauses and resumes from confirmed snapshots using accessible controls', asyn
 });
 
 it('stops with the projected label, shows the confirmed result, then offers a new session', async () => {
-  const cancelled: StudySessionSnapshot = {
+  const cancelled: StudySessionTransitionResult = {
     ...snapshot, state: 'cancelled', endedAt: '2026-09-22T12:04:59.999Z',
     durationValidSeconds: 299, remainingSeconds: 0, terminalReason: 'manual-stop', version: 2,
     serverNow: '2026-09-22T12:04:59.999Z', receivedAtMs: new Date('2026-09-22T12:04:59.999Z').getTime(),
@@ -134,7 +134,7 @@ it('stops with the projected label, shows the confirmed result, then offers a ne
 });
 
 it('shows the confirmed duration and proportional XP for an early stop', async () => {
-  const stoppedEarly: StudySessionSnapshot = {
+  const stoppedEarly: StudySessionTransitionResult = {
     ...snapshot, state: 'stopped_early', endedAt: '2026-09-22T12:05:00.000Z',
     durationValidSeconds: 300, remainingSeconds: 0, terminalReason: 'manual-stop',
     xpAwarded: 50, version: 2,
@@ -156,6 +156,27 @@ it('shows the confirmed duration and proportional XP for an early stop', async (
   view.unmount();
 });
 
+it('tells that a guild-mode early stop counted for the Raid', async () => {
+  const guildSnapshot: StudySessionTransitionResult = { ...snapshot, mode: 'guild', raidId: 'raid-1' };
+  getActive.mockResolvedValue({
+    ...guildSnapshot, remainingSeconds: 1200,
+    runDeadlineAt: '2026-09-22T12:20:00.000Z',
+    serverNow: '2026-09-22T12:05:00.000Z',
+    receivedAtMs: new Date('2026-09-22T12:05:00.000Z').getTime(),
+  });
+  stop.mockResolvedValue({
+    ...guildSnapshot, state: 'stopped_early', endedAt: '2026-09-22T12:05:00.000Z',
+    durationValidSeconds: 300, remainingSeconds: 0, terminalReason: 'manual-stop',
+    xpAwarded: 50, version: 2, raidContribution: { status: 'counted', xpContributed: 50 },
+  });
+  const { view } = await renderStudySession();
+
+  await fireEvent.press(await view.findByRole('button', { name: 'Encerrar antecipadamente' }));
+  await view.findByText('Sessão encerrada antecipadamente');
+  expect(view.getByTestId('study-session-result-raid-contribution')).toHaveTextContent('+50 XP para a Raid da Guilda.');
+  view.unmount();
+});
+
 it('projects the early-stop label from the server snapshot at the five-minute boundary', async () => {
   getActive.mockResolvedValue({
     ...snapshot, remainingSeconds: 1200,
@@ -170,7 +191,7 @@ it('projects the early-stop label from the server snapshot at the five-minute bo
 });
 
 it('retries a stop after a lost response with the same idempotency key', async () => {
-  const cancelled: StudySessionSnapshot = {
+  const cancelled: StudySessionTransitionResult = {
     ...snapshot, state: 'cancelled', endedAt: '2026-09-22T12:04:00.000Z',
     durationValidSeconds: 240, remainingSeconds: 0, version: 2,
   };
@@ -191,7 +212,7 @@ it('retries a stop after a lost response with the same idempotency key', async (
 });
 
 it('keeps the last confirmed state and retries a failed transition with the same key', async () => {
-  const paused: StudySessionSnapshot = {
+  const paused: StudySessionTransitionResult = {
     ...snapshot,
     state: 'paused',
     pausedAt: '2026-09-22T12:05:00.000Z',
@@ -228,7 +249,7 @@ it('keeps the last confirmed state and retries a failed transition with the same
 });
 
 it('refreshes after a stale-version conflict and discards the obsolete retry', async () => {
-  const updatedSnapshot: StudySessionSnapshot = {
+  const updatedSnapshot: StudySessionTransitionResult = {
     ...snapshot,
     state: 'paused',
     pausedAt: '2026-09-22T12:05:00.000Z',
@@ -238,7 +259,7 @@ it('refreshes after a stale-version conflict and discards the obsolete retry', a
     serverNow: '2026-09-22T12:05:00.000Z',
     receivedAtMs: new Date('2026-09-22T12:05:00.000Z').getTime(),
   };
-  let resolveLatest!: (value: StudySessionSnapshot) => void;
+  let resolveLatest!: (value: StudySessionTransitionResult) => void;
   getActive
     .mockResolvedValueOnce(snapshot)
     .mockImplementationOnce(() => new Promise((resolve) => { resolveLatest = resolve; }));
@@ -370,7 +391,7 @@ it.each([
   ['shows the confirmed Matéria in the result', 'Cálculo II', 'Cálculo II'],
   ['shows a discreet Sem matéria in the result', null, 'Sem matéria'],
 ])('%s', async (_name, subject, shown) => {
-  const cancelled: StudySessionSnapshot = {
+  const cancelled: StudySessionTransitionResult = {
     ...snapshot, subject, state: 'cancelled', endedAt: '2026-09-22T12:04:59.999Z',
     durationValidSeconds: 299, remainingSeconds: 0, terminalReason: 'manual-stop', version: 2,
   };

@@ -425,7 +425,7 @@ paths:
           description: Snapshot confirmado no estado paused
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/StudySessionSnapshot" }
+              schema: { $ref: "#/components/schemas/StudySessionTransitionResponse" }
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/StudySessionNotFound" }
@@ -458,7 +458,7 @@ paths:
           description: Snapshot confirmado no estado running
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/StudySessionSnapshot" }
+              schema: { $ref: "#/components/schemas/StudySessionTransitionResponse" }
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/StudySessionNotFound" }
@@ -494,7 +494,7 @@ paths:
           description: Snapshot terminal confirmado, com a duração válida e o XP concedido
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/StudySessionSnapshot" }
+              schema: { $ref: "#/components/schemas/StudySessionTransitionResponse" }
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/StudySessionNotFound" }
@@ -596,7 +596,7 @@ paths:
             application/json:
               schema:
                 oneOf:
-                  - { $ref: "#/components/schemas/StudySessionSnapshot" }
+                  - { $ref: "#/components/schemas/StudySessionTransitionResponse" }
                   - { $ref: "#/components/schemas/StudySession" }
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
@@ -1095,6 +1095,26 @@ components:
       additionalProperties: false
       properties:
         expectedVersion: { type: integer, minimum: 1 }
+
+    RaidContributionFeedback:
+      type: object
+      required: [status, xpContributed]
+      properties:
+        status: { type: string, enum: [counted, outside-raid-window, no-validated-xp], description: Razão pela qual a sessão contou ou não para a Raid }
+        xpContributed: { type: integer, minimum: 0, description: XP efetivamente contribuído; 0 quando não contou }
+
+    StudySessionTransitionResponse:
+      description: Snapshot devolvido por pause, resume, stop e complete, com o feedback da Contribuição para a Raid.
+      allOf:
+        - { $ref: "#/components/schemas/StudySessionSnapshot" }
+        - type: object
+          required: [raidContribution]
+          properties:
+            raidContribution:
+              anyOf:
+                - { $ref: "#/components/schemas/RaidContributionFeedback" }
+                - { type: "null" }
+              description: null para sessões solo e para pause/resume; preenchido em stop e complete de modo Guilda.
 
     StudySessionSnapshot:
       type: object

@@ -14,6 +14,7 @@ import {
   STUDY_SESSION_PRESETS,
   type PlannedDurationSeconds,
   type StudySessionSnapshot,
+  type StudySessionTransitionResult,
   type StudySessionTransitionAction,
   type StudySessionTransitionRequest,
 } from './api';
@@ -43,7 +44,7 @@ import { useStudySessionAppActive } from './use-study-session-app-active';
 type TransitionAction = Exclude<StudySessionTransitionAction, 'complete'>;
 type TransitionCommand = StudySessionTransitionRequest & { action: TransitionAction };
 
-const TRANSITION_HANDLERS: Record<TransitionAction, (command: StudySessionTransitionRequest) => Promise<StudySessionSnapshot>> = {
+const TRANSITION_HANDLERS: Record<TransitionAction, (command: StudySessionTransitionRequest) => Promise<StudySessionTransitionResult>> = {
   pause: pauseStudySession,
   resume: resumeStudySession,
   stop: stopStudySession,
@@ -328,7 +329,7 @@ export function StudySessionScreen({ initialMode = 'solo' }: { initialMode?: Ses
   const [focusedDuration, setFocusedDuration] = useState<PlannedDurationSeconds | null>(null);
   const [now, setNow] = useState(0);
   const [retryTransition, setRetryTransition] = useState<TransitionCommand | null>(null);
-  const [terminalResult, setTerminalResult] = useState<StudySessionSnapshot | null>(null);
+  const [terminalResult, setTerminalResult] = useState<StudySessionTransitionResult | null>(null);
   const [completionIntentState, setCompletionIntentState] = useState<StudySessionCompletionIntent | null>(
     () => getRetainedCompletionIntent(),
   );
@@ -336,7 +337,7 @@ export function StudySessionScreen({ initialMode = 'solo' }: { initialMode?: Ses
   const [foregroundSyncPending, setForegroundSyncPending] = useState(false);
   const pendingKey = useRef<string | null>(null);
   const announcedStatus = useRef<string | null>(null);
-  const observedCompletionPromise = useRef<Promise<StudySessionSnapshot> | null>(null);
+  const observedCompletionPromise = useRef<Promise<StudySessionTransitionResult> | null>(null);
   const requiresForegroundRefresh = useRef(false);
   const applicationActive = useStudySessionAppActive();
   const wasApplicationActive = useRef(applicationActive);
@@ -367,7 +368,7 @@ export function StudySessionScreen({ initialMode = 'solo' }: { initialMode?: Ses
   const completionResult = completionIntent?.result ?? null;
   const displayedTerminalResult = completionResult ?? terminalResult;
 
-  const settleTerminalResult = useCallback(async (result: StudySessionSnapshot) => {
+  const settleTerminalResult = useCallback(async (result: StudySessionTransitionResult) => {
     setTerminalResult(result);
     await queryClient.cancelQueries({ queryKey: activeStudySessionQueryKey });
     queryClient.setQueryData(activeStudySessionQueryKey, null);
@@ -692,6 +693,15 @@ export function StudySessionScreen({ initialMode = 'solo' }: { initialMode?: Ses
             </WiseText>
             <WiseText variant="body">Foco válido: {formatRemainingTime(displayedTerminalResult.durationValidSeconds)}</WiseText>
             <WiseText variant="body">XP confirmado: {displayedTerminalResult.xpAwarded}</WiseText>
+            {displayedTerminalResult.raidContribution ? (
+              <WiseText accessibilityLiveRegion="polite" aria-live="polite" color={displayedTerminalResult.raidContribution.status === 'counted' ? 'textPrimary' : 'textSecondary'} variant="body" testID="study-session-result-raid-contribution">
+                {displayedTerminalResult.raidContribution.status === 'counted'
+                  ? `+${displayedTerminalResult.raidContribution.xpContributed} XP para a Raid da Guilda.`
+                  : displayedTerminalResult.raidContribution.status === 'outside-raid-window'
+                    ? 'Esta sessão não contou para a Raid: terminou fora da janela da Raid.'
+                    : 'Esta sessão não contou para a Raid: não houve XP validado.'}
+              </WiseText>
+            ) : null}
             {displayedTerminalResult.state === 'discarded' ? (
               <WiseText color="textSecondary" variant="body">
                 {displayedTerminalResult.discardedReason === 'continuous-session-exceeds-limit'
