@@ -297,3 +297,18 @@ it('shows a safe reason and zero XP when the server confirms a discarded session
   view.unmount();
   client.clear();
 });
+
+it.each([
+  [{ status: 'counted', xpContributed: 250 }, '+250 XP para a Raid da Guilda.'],
+  [{ status: 'outside-raid-window', xpContributed: 0 }, 'Esta sessão não contou para a Raid: terminou fora da janela da Raid.'],
+  [{ status: 'no-validated-xp', xpContributed: 0 }, 'Esta sessão não contou para a Raid: não houve XP validado.'],
+] as const)('tells whether the Study Session counted for the Raid (%o)', async (raidContribution, message) => {
+  const zeroSnapshot = atZero();
+  getActive.mockResolvedValue(zeroSnapshot);
+  complete.mockResolvedValue({ ...completed(zeroSnapshot), raidContribution });
+  const { view } = await renderStudySession();
+
+  await view.findByText('Sessão concluída');
+  expect(view.getByTestId('study-session-result-raid-contribution')).toHaveTextContent(message);
+  view.unmount();
+});

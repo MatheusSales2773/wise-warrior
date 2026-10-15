@@ -342,13 +342,12 @@ describe('Study Session de modo Guilda against MySQL', () => {
     });
 
     it('includes outside-raid-window feedback when completed before the raid startsAt', async () => {
-      const raid = await dataSource!.getRepository(Raid).findOneByOrFail({ id: raidId });
       const session = await joinAndStart(bruno, 'feedback-before-start');
+      // The Raid window now opens only after the canonical deadline, so the completion lands before `startsAt`.
+      const deadline = new Date(new Date(session.startedAt).getTime() + 900_000);
+      await dataSource!.getRepository(Raid).update({ id: raidId }, { startsAt: new Date(deadline.getTime() + 1000) });
 
-      // Complete before the raid window
-      completionNow = new Date(raid.startsAt.getTime() - 1000);
-
-      const response = await call('POST', `/sessions/${session.id}/complete`, bruno, { expectedVersion: 1 }, 'feedback-before-start-done');
+      const response = await completeAtDeadline(bruno, session, 'feedback-before-start-done');
 
       expect(response.status).toBe(200);
       const result = await response.json() as Snapshot & { raidContribution: unknown };
