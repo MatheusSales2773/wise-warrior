@@ -16,6 +16,7 @@ import { SeedInitialCosmeticItems1788459240000 } from '../migrations/17884592400
 import { AddRaidMissions1788459360000 } from '../migrations/1788459360000-add-raid-missions';
 import { AddRaidParticipations1788459420000 } from '../migrations/1788459420000-add-raid-participations';
 import { AddRaidGoalReachedAt1788459480000 } from '../migrations/1788459480000-add-raid-goal-reached-at';
+import { AddGuildChatMessageSequence1788459540000 } from '../migrations/1788459540000-add-guild-chat-message-sequence';
 
 export const APPLICATION_MIGRATIONS: NonNullable<DataSourceOptions['migrations']> = [
   CreateWiseSchema1788458400000,
@@ -32,6 +33,7 @@ export const APPLICATION_MIGRATIONS: NonNullable<DataSourceOptions['migrations']
   AddRaidMissions1788459360000,
   AddRaidParticipations1788459420000,
   AddRaidGoalReachedAt1788459480000,
+  AddGuildChatMessageSequence1788459540000,
 ];
 
 export interface IntegrationDatabase {

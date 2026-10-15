@@ -97,7 +97,7 @@ const expectedColumns: Record<string, string[]> = {
     'xp_contributed',
     'created_at',
   ],
-  guild_chat_messages: ['id', 'guild_id', 'user_id', 'body', 'sent_at'],
+  guild_chat_messages: ['id', 'guild_id', 'user_id', 'body', 'sent_at', 'seq'],
   raid_participations: ['id', 'raid_id', 'user_id', 'created_at'],
 };
 
@@ -380,7 +380,17 @@ describe('TypeORM migrations against an empty MySQL schema', () => {
       'AddRaidMissions1788459360000',
       'AddRaidParticipations1788459420000',
       'AddRaidGoalReachedAt1788459480000',
+      'AddGuildChatMessageSequence1788459540000',
     ]);
+
+    await dataSource.undoLastMigration(); // guild chat sequence, the newest migration
+    const chatSeqRevertRows = await rows(
+      database!.admin,
+      `SELECT COLUMN_NAME FROM information_schema.COLUMNS
+       WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'guild_chat_messages' ORDER BY ORDINAL_POSITION`,
+      [database!.name],
+    );
+    expect(chatSeqRevertRows.map((row) => row.COLUMN_NAME)).toEqual(['id', 'guild_id', 'user_id', 'body', 'sent_at']);
 
     await dataSource.undoLastMigration(); // raid goal reached at, which sits above the raid participations
     const goalRevertRows = await rows(
@@ -619,7 +629,7 @@ await dataSource.undoLastMigration();
       { idempotency_key: 'rolling-transition-key', command_kind: 'resume' },
     ]);
 
-    for (let step = 0; step < 9; step += 1) await dataSource.undoLastMigration();
+    for (let step = 0; step < 10; step += 1) await dataSource.undoLastMigration();
     const leftoverTriggers = await rows(
       database.admin,
       `SELECT TRIGGER_NAME FROM information_schema.TRIGGERS
@@ -744,6 +754,7 @@ await dataSource.undoLastMigration();
     expect(receiptsWithSubject).toEqual([{ idempotency_key: 'solo-start-key', subject: 'Cálculo II' }]);
 
     // M6 revert: only the receipt column goes away; every persisted Matéria (including legacy Guild rows) stays.
+    await dataSource.undoLastMigration(); // guild chat sequence
     await dataSource.undoLastMigration(); // raid goal reached at
     await dataSource.undoLastMigration(); // raid participations, which sit above the raid missions
     await dataSource.undoLastMigration(); // raid missions, which sit above the character title drop
@@ -779,7 +790,7 @@ await dataSource.undoLastMigration();
     );
     expect(receiptsAfterReapply).toEqual([{ idempotency_key: 'solo-start-key', subject: null }]);
 
-    for (let step = 0; step < 11; step += 1) await dataSource.undoLastMigration();
+    for (let step = 0; step < 12; step += 1) await dataSource.undoLastMigration();
     const downgradedHistory = await rows(
       database.admin,
       `SELECT id, subject, mode, raid_id FROM ${database.identifier}.study_sessions ORDER BY id`,
@@ -870,7 +881,7 @@ await dataSource.undoLastMigration();
     );
     expect(leftoverArchives).toHaveLength(0);
 
-    for (let step = 0; step < 14; step += 1) await dataSource.undoLastMigration();
+    for (let step = 0; step < 15; step += 1) await dataSource.undoLastMigration();
     const remainingSchemaTables = await rows(
       database.admin,
       `SELECT TABLE_NAME FROM information_schema.TABLES
