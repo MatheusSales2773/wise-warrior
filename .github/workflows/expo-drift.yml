@@ -1,7 +1,7 @@
 name: Expo drift
 
-# `expo install --check` compares the installed packages with a list the Expo team updates on its own schedule.
-# Run inside the PR gate it fails unrelated PRs whenever a patch ships, so it runs here instead.
+# `expo install --check` and `expo-doctor` compare the installed packages with a list the Expo team updates on its
+# own schedule. Run inside the PR gate they fail unrelated PRs whenever a patch ships, so they run here instead.
 on:
   schedule:
     - cron: "0 12 * * 1"
@@ -40,7 +40,13 @@ jobs:
 
       - name: Check Expo package versions
         id: check
-        run: npm run expo:check --workspace apps/frontend 2>&1 | tee expo-check.log
+        shell: bash
+        run: |
+          set -o pipefail
+          {
+            npm run expo:check --workspace apps/frontend
+            npm run expo:doctor --workspace apps/frontend
+          } 2>&1 | tee expo-check.log
 
       - name: Open an issue about the drift
         if: failure() && steps.check.outcome == 'failure'
@@ -54,7 +60,7 @@ jobs:
             exit 0
           fi
           {
-            echo "The weekly \`expo install --check\` found packages that differ from the versions the Expo SDK expects."
+            echo "The weekly \`expo install --check\` / \`expo-doctor\` found packages that differ from the versions the Expo SDK expects."
             echo
             echo "Run \`npx expo install --fix\` in \`apps/frontend\`, then \`npm run verify:m1\`, and open a PR."
             echo
