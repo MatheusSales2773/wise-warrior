@@ -66,6 +66,8 @@ describe('Universal authentication security contract', () => {
     JWT_ACCESS_TTL: process.env.JWT_ACCESS_TTL,
     JWT_REFRESH_TTL_DAYS: process.env.JWT_REFRESH_TTL_DAYS,
     MAX_SESSIONS_PER_USER: process.env.MAX_SESSIONS_PER_USER,
+    RATE_LIMIT_CREDENTIALS_LIMIT: process.env.RATE_LIMIT_CREDENTIALS_LIMIT,
+    RATE_LIMIT_REFRESH_LIMIT: process.env.RATE_LIMIT_REFRESH_LIMIT,
   };
 
   let database: IntegrationDatabase | undefined;
@@ -105,6 +107,9 @@ describe('Universal authentication security contract', () => {
     process.env.JWT_ACCESS_TTL = '15m';
     process.env.JWT_REFRESH_TTL_DAYS = '30';
     process.env.MAX_SESSIONS_PER_USER = '5';
+    // Este contrato faz dezenas de logins do mesmo IP; o rate limiting tem testes próprios.
+    process.env.RATE_LIMIT_CREDENTIALS_LIMIT = '1000';
+    process.env.RATE_LIMIT_REFRESH_LIMIT = '1000';
 
     const moduleRef = await Test.createTestingModule({
       imports: [AppModule],
@@ -584,7 +589,8 @@ describe('Universal authentication security contract', () => {
         xpTotal: 0,
         levelStartXp: 0,
         nextLevelXp: 1_414,
-        title: null,
+        // ADR-010: the Título comes from the equipped Cosmetic Item, not from the Character.
+        title: 'Aprendiz',
       }),
     );
     expect(typeof profile.level).toBe('number');
@@ -770,6 +776,24 @@ describe('Universal authentication security contract', () => {
       origin,
     });
     expect(registrationStillActive.status).toBe(200);
+
+    for (const unknownSessionId of [
+      loginBody.sessionId,
+      registrationBBody.sessionId,
+      '00000000-0000-4000-8000-000000000000',
+    ]) {
+      const revokeUnknown = await remove(`/users/me/sessions/${unknownSessionId}`, {
+        authorization: `Bearer ${registrationBody.accessToken}`,
+        origin,
+      });
+      expect(revokeUnknown.status).toBe(404);
+    }
+    await expect(
+      get('/users/me', {
+        authorization: `Bearer ${registrationBBody.accessToken}`,
+        origin,
+      }),
+    ).resolves.toHaveProperty('status', 200);
 
     const revokeAll = await remove('/users/me/sessions', {
       authorization: `Bearer ${registrationBody.accessToken}`,

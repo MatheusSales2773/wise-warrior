@@ -1,0 +1,114 @@
+asyncapi: "3.0.0"
+info:
+  title: Wise Realtime
+  version: "1.0.0"
+  description: >
+    Eventos Socket.IO 4.x do servidor para o app (ADR-009). O cliente conecta ao mesmo host da API REST
+    com o access token em `auth.token` do handshake. Ao conectar, o servidor coloca o socket na room
+    `user:{userId}` e, se o usuário tem Guild, na room `guild:{guildId}`. Criar, entrar ou sair de uma
+    Guild atualiza as rooms de todos os sockets do usuário sem reconectar, então ninguém recebe eventos
+    de uma Guild que não é sua. Os eventos abaixo só descem; o app não emite eventos.
+servers:
+  development:
+    host: localhost:3000
+    protocol: ws
+    description: Desenvolvimento local
+    security:
+      - $ref: "#/components/securitySchemes/accessToken"
+channels:
+  guildRoom:
+    address: "guild:{guildId}"
+    description: Room Socket.IO de uma Guild. Só os sockets dos membros atuais entram nela.
+    parameters:
+      guildId:
+        description: Identificador da Guild
+    messages:
+      raidProgress:
+        $ref: "#/components/messages/raidProgress"
+  userRoom:
+    address: "user:{userId}"
+    description: Room Socket.IO de um usuário. Todos os sockets dele, em qualquer dispositivo, entram nela.
+    parameters:
+      userId:
+        description: Identificador do usuário
+    messages:
+      raidComplete:
+        $ref: "#/components/messages/raidComplete"
+operations:
+  receiveRaidProgress:
+    action: receive
+    channel:
+      $ref: "#/channels/guildRoom"
+    summary: Progresso da Raid ativa mudou
+    description: >
+      Emitido para a room da Guild depois do commit de uma Contribuição. O app atualiza o cache da Raid
+      ativa e invalida o Ranking interno.
+    messages:
+      - $ref: "#/channels/guildRoom/messages/raidProgress"
+  receiveRaidComplete:
+    action: receive
+    channel:
+      $ref: "#/channels/userRoom"
+    summary: Uma Raid da qual o usuário participou foi encerrada
+    description: >
+      Emitido para a room de cada Participante depois do commit do fechamento semanal, uma única vez por
+      Participante e Raid, mesmo se o fechamento rodar de novo. O app invalida a Raid ativa, as Raids
+      anteriores, a Guild (Nível) e o Catálogo de cosméticos.
+    messages:
+      - $ref: "#/channels/userRoom/messages/raidComplete"
+components:
+  securitySchemes:
+    accessToken:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Access token JWT enviado em `auth.token` no handshake do Socket.IO, não no header Authorization.
+  messages:
+    raidProgress:
+      name: raid:progress
+      title: Progresso da Raid
+      contentType: application/json
+      payload:
+        $ref: "#/components/schemas/RaidProgress"
+    raidComplete:
+      name: notification:raidComplete
+      title: Raid encerrada
+      contentType: application/json
+      payload:
+        $ref: "#/components/schemas/RaidComplete"
+  schemas:
+    RaidProgress:
+      type: object
+      required: [raidId, progressXp, goalXp, goalReachedAt]
+      properties:
+        raidId:
+          type: string
+          format: uuid
+        progressXp:
+          type: integer
+          description: Soma das Contribuições da Raid
+        goalXp:
+          type: integer
+          description: Meta coletiva, congelada na criação da Raid
+        goalReachedAt:
+          type: [string, "null"]
+          format: date-time
+          description: A primeira vez que o progresso alcançou a meta (Meta batida), ou null
+    RaidComplete:
+      type: object
+      required: [raidId, guildId, status, rewardItemId]
+      properties:
+        raidId:
+          type: string
+          format: uuid
+        guildId:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [completed, expired]
+          description: "`completed` com Meta batida (a Guild subiu um Nível), `expired` sem"
+        rewardItemId:
+          type: [string, "null"]
+          format: uuid
+          description: O Cosmetic Item recebido como Recompensa de Raid, ou null quando o usuário não recebeu nada

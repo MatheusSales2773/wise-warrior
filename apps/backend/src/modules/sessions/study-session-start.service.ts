@@ -1,6 +1,7 @@
 import { BadRequestException, ConflictException, Injectable } from '@nestjs/common';
 import { DataSource, In } from 'typeorm';
 import { UsersService } from '../users/users.service';
+import { RaidsService } from '../raids/raids.service';
 import { StudySession } from './entities/study-session.entity';
 import type { StudySessionState, StudySessionTerminalReason } from './entities/study-session.entity';
 import type { StartSessionDto } from './dto/start-session.dto';
@@ -13,6 +14,8 @@ import { rejectIfStudySessionCommandKeyUsed } from './study-session-command-keys
 export type StudySessionSnapshot = {
   id: string;
   mode: 'solo' | 'guild';
+  /** A Raid que recebe a Contribuição quando `mode` é `guild`. */
+  raidId: string | null;
   subject: string | null;
   state: StudySessionState;
   plannedDurationSeconds: number;
@@ -45,6 +48,7 @@ export function studySessionSnapshot(session: StudySession, authSessionId: strin
   return {
     id: session.id,
     mode: session.mode,
+    raidId: session.raidId ?? null,
     subject: session.subject,
     state,
     plannedDurationSeconds: session.plannedDurationSeconds ?? 1500,
@@ -71,6 +75,7 @@ export function deserializeStudySessionSnapshot(
   const original = typeof value === 'string' ? JSON.parse(value) as StudySessionSnapshot : value;
   return {
     ...original,
+    raidId: original.raidId ?? null, // receipts written before the guild mode have no raidId
     startedAt: new Date(original.startedAt),
     runDeadlineAt: original.runDeadlineAt ? new Date(original.runDeadlineAt) : null,
     pausedAt: original.pausedAt ? new Date(original.pausedAt) : null,
@@ -82,7 +87,11 @@ export function deserializeStudySessionSnapshot(
 
 @Injectable()
 export class StudySessionStartService {
-  constructor(private readonly dataSource: DataSource, private readonly users: UsersService) {}
+  constructor(
+    private readonly dataSource: DataSource,
+    private readonly users: UsersService,
+    private readonly raids: RaidsService,
+  ) {}
 
   async active(userId: string, authSessionId: string): Promise<StudySessionSnapshot | null> {
     const session = await this.dataSource.getRepository(StudySession).findOne({
@@ -100,6 +109,10 @@ export class StudySessionStartService {
       throw new BadRequestException('Duração de foco inválida');
     }
     const subject = this.normalizeSubject(dto.subject);
+    const mode = dto.mode ?? 'solo';
+    const raidId = dto.raidId ?? null;
+    if (mode === 'guild' && raidId === null) throw new BadRequestException('raidId é obrigatório no modo guild');
+    if (mode === 'solo' && raidId !== null) throw new BadRequestException('raidId só é aceito no modo guild');
     if (!isValidIdempotencyKey(idempotencyKey)) {
       throw new BadRequestException('Idempotency-Key é obrigatório e deve conter de 1 a 128 caracteres ASCII visíveis');
     }
@@ -114,16 +127,22 @@ export class StudySessionStartService {
       ) as ReceiptRow[];
       const receipt = receipts[0];
       if (receipt) {
-        if (Number(receipt.planned_duration_seconds) !== plannedDurationSeconds || receipt.subject !== subject) {
-          throw new ConflictException({
-            type: 'https://wise.app/errors/idempotency-key-reused',
-            message: 'Idempotency-Key já foi usada com outra duração ou Matéria',
-          });
-        }
-        return deserializeStudySessionSnapshot(
+        const replayed = deserializeStudySessionSnapshot(
           receipt.response_json,
           receipt.initiating_session_id === authSessionId,
         );
+        if (
+          Number(receipt.planned_duration_seconds) !== plannedDurationSeconds
+          || receipt.subject !== subject
+          || replayed.mode !== mode
+          || replayed.raidId !== raidId
+        ) {
+          throw new ConflictException({
+            type: 'https://wise.app/errors/idempotency-key-reused',
+            message: 'Idempotency-Key já foi usada com outra duração, Matéria ou modo',
+          });
+        }
+        return replayed;
       }
 
       await rejectIfStudySessionCommandKeyUsed(manager, userId, idempotencyKey);
@@ -137,11 +156,12 @@ export class StudySessionStartService {
       });
 
       const now = new Date();
+      if (raidId !== null) await this.raids.assertCanStartGuildSession(manager, userId, raidId, now);
       const studySession = manager.getRepository(StudySession).create({
         userId,
         subject,
-        mode: 'solo',
-        raidId: null,
+        mode,
+        raidId,
         startedAt: now,
         lastHeartbeatAt: now,
         plannedDurationSeconds,

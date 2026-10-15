@@ -3,6 +3,12 @@ import { AccessibilityInfo, Animated, StyleSheet } from 'react-native';
 import { ProgressBar } from '@/design-system/components/ProgressBar';
 
 describe('ProgressBar', () => {
+  it('draws the slim variant as a 10px framed track', async () => {
+    await render(<ProgressBar size="slim" value={65} accessibilityLabel="Progresso" testID="progress" />);
+    expect(StyleSheet.flatten(screen.getByRole('progressbar').props.style)).toMatchObject({ height: 10, borderRadius: 2, borderWidth: 1 });
+    expect(StyleSheet.flatten(screen.getByTestId('progress-fill', { includeHiddenElements: true }).props.style).width).toBe('65%');
+  });
+
   it.each([[25, '25%'], [-10, '0%'], [140, '100%']] as const)('clamps value %s only visually to %s', async (value, width) => {
     await render(<ProgressBar value={value} accessibilityLabel="Progresso" testID="progress" />);
     expect(screen.getByRole('progressbar').props.accessibilityValue).toEqual({ min: 0, max: 100, now: value });

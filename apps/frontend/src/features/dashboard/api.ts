@@ -9,7 +9,15 @@ export type UserProfile = {
   levelStartXp: number;
   nextLevelXp: number;
   xpTotal: number;
+  /** ADR-010: nome do Título equipado, ou `null`. */
   title: string | null;
+  equipped: EquippedCosmeticItem[];
+};
+
+export type EquippedCosmeticItem = {
+  category: 'avatar' | 'badge' | 'title' | 'accessory';
+  itemId: string;
+  name: string;
 };
 
 export type RecentStudySession = {

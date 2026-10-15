@@ -5,6 +5,7 @@ export type PlannedDurationSeconds = (typeof STUDY_SESSION_PRESETS)[number];
 export type StudySessionSnapshot = {
   id: string;
   mode: 'solo' | 'guild';
+  raidId: string | null;
   subject: string | null;
   state: 'running' | 'paused' | 'completed' | 'stopped_early' | 'cancelled' | 'discarded';
   plannedDurationSeconds: number;
@@ -40,15 +41,23 @@ export async function getRecentStudySessionSubjects(signal?: AbortSignal): Promi
   return response.data.subjects;
 }
 
-/** `subject` is the normalized Matéria; `null` (Sem matéria) is sent as absence. */
+/**
+ * `subject` is the normalized Matéria; `null` (Sem matéria) is sent as absence. A `raidId` starts the
+ * session in guild mode; a 409 then can mean the Raid already ended.
+ */
 export async function startStudySession(
   plannedDurationSeconds: PlannedDurationSeconds,
   idempotencyKey: string,
   subject: string | null = null,
+  raidId?: string,
 ): Promise<StudySessionSnapshot> {
   const response = await getAuthenticatedHttpClient().post<StudySessionSnapshot>(
     '/sessions',
-    subject === null ? { plannedDurationSeconds } : { plannedDurationSeconds, subject },
+    {
+      plannedDurationSeconds,
+      ...(subject === null ? {} : { subject }),
+      ...(raidId === undefined ? {} : { mode: 'guild', raidId }),
+    },
     { headers: { 'Idempotency-Key': idempotencyKey } },
   );
   return { ...response.data, receivedAtMs: Date.now() };

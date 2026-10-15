@@ -3,8 +3,12 @@ import { NestFactory } from '@nestjs/core';
 import { DataSource } from 'typeorm';
 import { AppModule } from './app.module';
 import { configureApp } from './app.setup';
+import { validateEnvironment } from './config/environment.validation';
 
 async function bootstrap(): Promise<void> {
+  // Antes de criar a aplicação: em produção nada conecta ao MySQL nem roda migration com segredo inválido.
+  // Produção recebe o ambiente do Docker Compose, não de um arquivo .env.
+  validateEnvironment(process.env);
   const app = await NestFactory.create(AppModule);
 
   configureApp(app);

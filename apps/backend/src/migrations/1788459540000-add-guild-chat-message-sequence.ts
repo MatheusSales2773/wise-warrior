@@ -4,8 +4,8 @@ import { MigrationInterface, QueryRunner } from 'typeorm';
  * `sent_at` and the UUID id cannot order messages that land in the same
  * microsecond, so pagination and reconnection use a monotonic `seq` instead.
  */
-export class AddGuildChatMessageSequence1788459180000 implements MigrationInterface {
-  name = 'AddGuildChatMessageSequence1788459180000';
+export class AddGuildChatMessageSequence1788459540000 implements MigrationInterface {
+  name = 'AddGuildChatMessageSequence1788459540000';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(

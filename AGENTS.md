@@ -58,6 +58,27 @@ Before implementing or changing code, tests, infrastructure, or configuration:
 - [GitHub Actions workflow syntax](https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax)
 - [nginx documentation](https://nginx.org/en/docs/)
 
+## Backend module boundaries
+
+ADR-001 in `docs/PRD.md` makes every cross-module call go through the target
+module's exported Service. Apply it to any backend code that touches another
+module's data:
+
+- Call the owning Service, including inside a transaction: pass the
+  `EntityManager` to a public Service method, as
+  `UsersService.grantStarterInventory(manager, userId)` does from
+  `AuthService.register`. A module reads and writes only its own entities'
+  repositories.
+- When a new Service dependency closes a cycle between modules, wrap the module
+  import in `forwardRef(() => OtherModule)` on each edge that Nest reports as
+  undefined, and keep the call on the Service. `AuthModule`, `UsersModule` and
+  `RealtimeModule` already form such a cycle.
+- After changing a module's `imports`, run
+  `npm run test:auth:integration --workspace apps/backend`. It boots the real
+  `AppModule`, and is the only test that catches an unresolved module cycle.
+- `AuthService.register` still writes `Character` directly. That is legacy
+  code; new code calls `ProgressionService` instead.
+
 ## Agent skills
 
 ### Issue tracker
@@ -70,7 +91,7 @@ Use the canonical labels `needs-triage`, `needs-info`, `ready-for-agent`, `ready
 
 ### Domain docs
 
-This is a single-context repository. The PRD and current ADR register live in `docs/PRD.md`; a root `CONTEXT.md` may be added later. See `docs/agents/domain.md`.
+This is a single-context repository. The PRD and current ADR register live in `docs/PRD.md`; the domain glossary lives in the root `CONTEXT.md`. See `docs/agents/domain.md`.
 
 ## Git & Commit Guidelines
 

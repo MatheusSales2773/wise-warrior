@@ -84,7 +84,22 @@ describe('guild chat and presence against MySQL and Socket.IO', () => {
         TypeOrmModule.forRoot({ ...database.options(APPLICATION_MIGRATIONS), autoLoadEntities: true }),
         TypeOrmModule.forFeature([Guild, GuildMembership, GuildChatMessage]),
       ],
-      providers: [ChatGateway, ChatService, GuildsService, PresenceRegistry],
+      providers: [
+        ChatGateway,
+        ChatService,
+        PresenceRegistry,
+        // GuildsService also pulls in Raid collaborators; chat only needs the membership lookups.
+        {
+          provide: GuildsService,
+          useFactory: () => {
+            const memberships = dataSource!.getRepository(GuildMembership);
+            return {
+              isMember: async (guildId: string, userId: string) => (await memberships.countBy({ guildId, userId })) > 0,
+              guildIdsOf: async (userId: string) => (await memberships.findBy({ userId })).map((row) => row.guildId),
+            };
+          },
+        },
+      ],
     }).compile();
     app = moduleRef.createNestApplication();
     await app.listen(0);

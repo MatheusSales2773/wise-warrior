@@ -7,6 +7,7 @@ import {
 } from '@nestjs/common';
 import { DataSource, type EntityManager } from 'typeorm';
 import { ProgressionService } from '../progression/progression.service';
+import { RaidsService, type RaidProgress } from '../raids/raids.service';
 import { StudySession } from './entities/study-session.entity';
 import type { StudySessionSnapshot } from './study-session-start.service';
 import { deserializeStudySessionSnapshot, studySessionSnapshot } from './study-session-start.service';
@@ -66,6 +67,7 @@ export class StudySessionTransitionService {
     private readonly dataSource: DataSource,
     @Inject(STUDY_SESSION_CLOCK) private readonly clock: StudySessionClock,
     private readonly progression: ProgressionService,
+    private readonly raids: RaidsService,
   ) {}
 
   pause(command: StudySessionTransitionContext): Promise<StudySessionSnapshot> {
@@ -141,6 +143,7 @@ export class StudySessionTransitionService {
           snapshot: deserializeStudySessionSnapshot(receipt.response_json),
           xpGained: 0,
           progressionResult: null,
+          raidProgress: null,
         };
       }
 
@@ -190,6 +193,7 @@ export class StudySessionTransitionService {
       const saved = await sessions.save(session);
       const snapshot = studySessionSnapshot(saved, authSessionId, now);
       let progressionResult: XpApplicationResult | null = null;
+      let raidProgress: RaidProgress | null = null;
       const terminalXpAwarded = stopResult?.xpAwarded ?? completionResult?.xpAwarded ?? 0;
       if (stopResult || completionResult) {
         await manager.query(
@@ -198,6 +202,15 @@ export class StudySessionTransitionService {
         );
         if (terminalXpAwarded > 0) {
           progressionResult = await this.progression.awardXpInTransaction(manager, userId, terminalXpAwarded);
+        }
+        if (saved.mode === 'guild' && saved.raidId) {
+          raidProgress = await this.raids.recordContributionInTransaction(manager, {
+            raidId: saved.raidId,
+            userId,
+            studySessionId,
+            xpContributed: terminalXpAwarded,
+            endedAt: now,
+          });
         }
       }
       await manager.query(
@@ -210,11 +223,14 @@ export class StudySessionTransitionService {
          VALUES (?, ?, ?, ?, ?, ?)`,
         [userId, studySessionId, idempotencyKey, action, dto.expectedVersion, JSON.stringify(snapshot)],
       );
-      return { snapshot, xpGained: terminalXpAwarded, progressionResult };
+      return { snapshot, xpGained: terminalXpAwarded, progressionResult, raidProgress };
     });
 
     if (result.progressionResult) {
       this.progression.publishAwardedXp(userId, result.xpGained, result.progressionResult);
+    }
+    if (result.raidProgress) {
+      this.raids.publishProgress(result.raidProgress);
     }
     return result.snapshot;
   }

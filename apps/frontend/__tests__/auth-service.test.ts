@@ -210,6 +210,17 @@ describe('auth service — web transport', () => {
       expect(result.error.retryable).toBe(true);
     }
   });
+
+  it('keeps the session when the refresh is rate limited (429) instead of signing out', async () => {
+    const { http } = httpDouble({ '/auth/refresh': async () => Promise.reject(axiosError(429)) });
+    const service = createAuthService({ http, store: storeDouble().store, platform: 'web' });
+    const result = await service.restore();
+    expect(result.status).toBe('unavailable');
+    if (result.status === 'unavailable') {
+      expect(result.error.category).toBe('rate-limited');
+      expect(result.error.retryable).toBe(true);
+    }
+  });
 });
 
 describe('auth service — native transport', () => {

@@ -21,6 +21,12 @@
 |---|---|---|
 | Web, iOS e Android | Uma aplicação Expo + Expo Router + React Native Web, sem publicação obrigatória nas lojas | ADR-008 (Revisado e aceito) |
 
+### Registro de decisão fechada em 08/10/2026
+
+| Ponto aberto | Decisão | ADR |
+|---|---|---|
+| Fonte do título do Character | O Título é o Cosmetic Item da categoria `title` equipado; `Character.title` deixa de ser fonte | ADR-010 (Aceito) |
+
 > Este documento consolida e substitui as lacunas dos documentos orientadores (Documento de Visão, Documento de Arquitetura, Documentação de Interface, Pitch e Casos de Uso UC01–UC04), resolvendo inconsistências entre eles e propondo um caminho técnico único para a Fase 1 de desenvolvimento.
 
 ---
@@ -220,12 +226,12 @@ fazem parte desse primeiro corte.
 - [x] `raids`: entrar, registrar contribuição, ranking
 - [x] `realtime`: gateway Socket.IO com rooms `user:{id}` e `guild:{id}`
 - [x] Frontend Web atual: shell responsivo e páginas de login/cadastro/dashboard/sessão/guilda/perfil
-- [ ] Frontend universal ADR-008: migrar para Expo e validar Web/iOS/Android conforme o design de 03/09/2026
+- [x] Frontend universal ADR-008: migrado para Expo e validado em Web/iOS/Android (M1–M5, `docs/validation/`)
 - [x] Contrato de API publicado e validado (`docs/api/openapi.yaml`, lint limpo — seção 10)
-- [ ] `docs/api/asyncapi.yaml` (contrato dos eventos WebSocket) — ainda não escrito
-- [ ] Migrations TypeORM versionadas (schema hoje só via `synchronize` em dev — ver seção 12)
+- [ ] `docs/api/asyncapi.yaml` (contrato dos eventos WebSocket) — publicado com `raid:progress` e o aviso de Raid encerrada; faltam `progress:xpUpdated` e as notificações de level-up
+- [x] Migrations TypeORM versionadas (`apps/backend/src/migrations`, com teste de upgrade e downgrade)
 - [ ] Provisionamento real da VM Oracle Always Free e primeiro deploy (ADR-006)
-- [ ] Boot do NestJS + testes de integração contra MySQL real (não verificável neste ambiente de execução — ver seção 16)
+- [x] Boot do NestJS + testes de integração contra MySQL real (job `backend` da CI, com serviço MySQL 8.0, e E2E Playwright via Docker Compose)
 
 ---
 
@@ -273,6 +279,9 @@ fazem parte desse primeiro corte.
 - Todo evento relevante (XP ganho, level-up, progresso de raid, convite de guilda) é emitido pelo backend na room Socket.IO `user:{id}` (já prevista na seção 10) — cada dispositivo logado abre sua própria conexão de socket e entra automaticamente nessa room ao autenticar, recebendo o mesmo evento em paralelo.
 - Endpoint de "sair de todos os dispositivos" revoga todas as linhas de `Session` do usuário de uma vez; endpoint de listagem de sessões ativas permite revogar um dispositivo específico (ex.: notebook antigo esquecido logado).
 **Consequência:** nenhuma duplicação de estado entre dispositivos é necessária — o MySQL já é a fonte única de verdade (arquitetura já documentada); este ADR só formaliza como a autenticação e o tempo real acompanham múltiplos dispositivos do mesmo usuário.
+
+### ADR-010: Título é o Cosmetic Item equipado da categoria `title`
+**Status:** Aceito em 08/10/2026. **Contexto:** o modelo de dados tinha duas fontes de título: a coluna de texto `Character.title`, exibida pela tela Personagem, e a categoria `title` de Cosmetic Item, que o usuário equipa. Nada sincronizava as duas, e o UC03/UC04 tratam o título como algo conquistado e equipado. **Alternativas:** (a) usar só o Cosmetic Item equipado; (b) gravar o nome do item em `Character.title` ao equipar, duplicando o dado; (c) manter os dois conceitos separados. **Decisão:** (a). O Título exibido em qualquer lugar (Personagem, membros da Guilda, ranking) é o nome do Cosmetic Item `title` equipado. Sem item equipado, não há título. `Character.title` deixa de ser lido e pode ser removido por migration. Títulos entram no Inventário pelo mesmo Desbloqueio dos demais itens, incluindo um Item inicial no nível 1. **Consequência:** uma única regra de equipagem (no máximo um item por categoria, com possibilidade de desequipar) vale também para títulos; `GET /users/me` e as listagens que mostram título passam a ler o item equipado; o PRD de Guilda/Perfil e a seção 9 refletem a mudança. Glossário em `CONTEXT.md`.
 
 ### 8.1 Diagrama de arquitetura (implementado em `dev/phase-1`)
 
@@ -327,7 +336,7 @@ Setas de `Sess`/`Raids`/`Prog` para módulos vizinhos representam chamadas ao Se
 Entidades principais (nomes lógicos, DDL real fica para a implementação):
 
 - **User** `(id, email, password_hash[argon2id], display_name, plan_tier, created_at)`
-- **Character** `(id, user_id FK, level, xp_total, title, avatar_config JSON, companion_id FK nullable)`
+- **Character** `(id, user_id FK, level, xp_total, avatar_config JSON, companion_id FK nullable)` — o Título vem do Cosmetic Item `title` equipado (ADR-010)
 - **Companion** `(id, species, level, xp_total)` — sub-feature ADR-004
 - **CosmeticItem** `(id, category, name, unlock_condition)`
 - **UserCosmeticItem** `(user_id FK, cosmetic_item_id FK, equipped BOOL, unlocked_at)`
@@ -468,7 +477,7 @@ Nota de processo: numa rodada anterior deste documento, esta seção listava vá
 
 1. Provisionar a VM Oracle Cloud Always Free o quanto antes (ADR-006) — erros de "out of capacity" são comuns nessa modalidade; não deixar para o fim do prazo.
 2. Atualizar Documento de Visão (seção 4.4) e Documento de Arquitetura (tabela de tecnologias) para refletir Oracle Cloud em vez de AWS e a remoção do Koa.js (ADR-002/ADR-006) — `README.md` já foi atualizado nesta rodada.
-3. ~~Publicar `docs/api/openapi.yaml`~~ — feito nesta rodada, validado com `redocly lint` e testado contra mock Prism. Falta ainda `docs/api/asyncapi.yaml` para os eventos WebSocket.
-4. Escrever as migrations TypeORM versionadas (hoje o schema só existe via `synchronize` em dev — ver seção 7.5) antes de qualquer deploy real.
+3. ~~Publicar `docs/api/openapi.yaml`~~ — feito nesta rodada, validado com `redocly lint` e testado contra mock Prism. `docs/api/asyncapi.yaml` já cobre os eventos de Raid; faltam os eventos de XP e level-up.
+4. ~~Escrever as migrations TypeORM versionadas~~ — feito (ver seção 7.5).
 5. Decidir, na primeira ticket de infraestrutura, entre MySQL gerenciado (Oracle HeatWave Always Free) ou MySQL em container na mesma VM (seção 11).
-6. Validar o boot completo do backend contra MySQL real (`docker compose up`) — não verificável no sandbox usado para gerar este PRD e o código da Fase 1.
+6. ~~Validar o boot completo do backend contra MySQL real~~ — coberto pela CI (integração contra MySQL e E2E via Docker Compose).

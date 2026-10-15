@@ -1,0 +1,105 @@
+import { isApiError } from '@/core/api/api-error';
+
+/** The UI owns the public text; the backend `detail` never reaches the screen. */
+export function createGuildErrorMessage(error: unknown): string {
+  if (isApiError(error)) {
+    if (error.category === 'conflict') return 'Já existe uma guilda com esse nome, ou você já participa de uma. Tente outro nome.';
+    if (error.category === 'validation') return 'O nome da guilda precisa ter entre 3 e 60 caracteres.';
+    if (error.category === 'network') return 'Não foi possível criar a guilda. Verifique sua conexão e tente novamente.';
+  }
+  return 'Não foi possível criar a guilda agora. Tente novamente.';
+}
+
+export function joinGuildErrorMessage(error: unknown): string {
+  if (isApiError(error)) {
+    if (error.category === 'conflict') return 'Você já participa de uma guilda.';
+    if (error.status === 404) return 'Essa guilda não existe mais. Atualize a busca.';
+    if (error.category === 'network') return 'Não foi possível entrar na guilda. Verifique sua conexão e tente novamente.';
+  }
+  return 'Não foi possível entrar na guilda agora. Tente novamente.';
+}
+
+export function formatMemberCount(count: number): string {
+  return `${count} ${count === 1 ? 'membro' : 'membros'}`;
+}
+
+export function formatGuildRole(role: 'leader' | 'member'): string {
+  return role === 'leader' ? 'Líder' : 'Membro';
+}
+
+export function leaveGuildErrorMessage(error: unknown): string {
+  if (isApiError(error)) {
+    if (error.status === 404) return 'Você já não participa dessa guilda. Atualize a tela.';
+    if (error.category === 'network') return 'Não foi possível sair da guilda. Verifique sua conexão e tente novamente.';
+  }
+  return 'Não foi possível sair da guilda agora. Tente novamente.';
+}
+
+const RAID_REWARD_CATEGORY_LABELS = { avatar: 'Avatar', badge: 'Badge', title: 'Título', accessory: 'Acessório' } as const;
+
+export function formatRewardCategory(category: keyof typeof RAID_REWARD_CATEGORY_LABELS): string {
+  return RAID_REWARD_CATEGORY_LABELS[category];
+}
+
+export const RAID_REWARD_RULE = 'Para receber o item, contribua com ao menos uma sessão de guilda e ajude a bater a meta até o fim da semana.';
+
+/** Remaining time shown on the Raid card; at zero the week is over and the next refetch brings the new Raid. */
+export function formatRaidTimeLeft(milliseconds: number): string {
+  const minutes = Math.floor(milliseconds / 60_000);
+  if (minutes <= 0) return 'Encerrando…';
+  const days = Math.floor(minutes / 1440);
+  const hours = Math.floor((minutes % 1440) / 60);
+  if (days > 0) return `${days} d ${hours} h restantes`;
+  if (hours > 0) return `${hours} h ${minutes % 60} min restantes`;
+  return `${minutes} min restantes`;
+}
+
+/** Shown once the progress reached the goal; Contributions keep adding until the end of the week. */
+export const RAID_GOAL_REACHED = 'Meta batida! As sessões de guilda continuam contando até o fim da semana.';
+
+export function formatMyContribution(xp: number): string {
+  return xp > 0 ? `Sua contribuição: ${xp} XP` : 'Sua contribuição: 0 XP. Conclua uma sessão de guilda na Forja para somar.';
+}
+
+export function raidProgressPercent(progressXp: number, goalXp: number): number {
+  return goalXp > 0 ? Math.min(100, Math.floor((progressXp / goalXp) * 100)) : 0;
+}
+
+export function joinRaidErrorMessage(error: unknown): string {
+  if (isApiError(error)) {
+    if (error.category === 'conflict') return 'Essa Raid já foi encerrada. Atualizamos a tela com a Raid da semana.';
+    if (error.status === 403) return 'Apenas membros da guilda podem participar da Raid.';
+    if (error.category === 'network') return 'Não foi possível confirmar sua participação. Verifique sua conexão e tente novamente.';
+  }
+  return 'Não foi possível confirmar sua participação agora. Tente novamente.';
+}
+
+export function formatPosition(position: number): string {
+  return `${position}º`;
+}
+
+export function formatMyPosition(position: number | null): string | null {
+  return position === null ? null : `Sua posição: ${formatPosition(position)} no Ranking interno`;
+}
+
+/** One sentence per row for screen readers: the position, the member and the Contribution, plus who "you" are. */
+export function rankingEntryLabel(entry: { position: number; displayName: string; level: number; title: string | null; contributionXp: number; isMe: boolean }): string {
+  const who = [`${entry.displayName}${entry.isMe ? ' (você)' : ''}`, `nível ${entry.level}`, entry.title].filter(Boolean).join(', ');
+  return `Posição ${entry.position}: ${who}, ${entry.contributionXp} XP`;
+}
+
+const RAID_WEEK_DAY = new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: '2-digit', timeZone: 'America/Sao_Paulo' });
+
+/** The Raid week as São Paulo reads it: Monday to Sunday. */
+export function formatRaidWeek(startsAt: string, endsAt: string): string {
+  return `Semana de ${RAID_WEEK_DAY.format(new Date(startsAt))} a ${RAID_WEEK_DAY.format(new Date(endsAt))}`;
+}
+
+export function formatPastRaidOutcome(status: 'completed' | 'expired'): string {
+  return status === 'completed' ? 'Meta batida · a guilda subiu de nível' : 'Meta não batida';
+}
+
+export function formatPastRaidMine(me: { participated: boolean; contributionXp: number; position: number | null }): string {
+  if (!me.participated) return 'Você não participou';
+  return me.position === null ? `Você: ${me.contributionXp} XP` : `Você: ${formatPosition(me.position)} · ${me.contributionXp} XP`;
+}

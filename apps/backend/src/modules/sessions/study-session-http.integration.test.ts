@@ -4,6 +4,7 @@ import type { INestApplication } from '@nestjs/common';
 import type { AddressInfo } from 'node:net';
 import { DataSource } from 'typeorm';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { RateLimitGuard } from '../../shared/security/rate-limit';
 import type { JwtPayload } from '../auth/strategies/jwt.strategy';
 import { Character } from '../progression/entities/character.entity';
 import { ProgressionService } from '../progression/progression.service';
@@ -51,18 +52,19 @@ describe('Study Session HTTP contract against MySQL', () => {
     ]);
 
     now = new Date();
-    const progression = new ProgressionService(
-      dataSource.getRepository(Character),
-      { emitToUser: jest.fn() } as unknown as RealtimeGateway,
-    );
     const users = new UsersService(
       dataSource.getRepository(User),
       dataSource.getRepository(UserCosmeticItem),
       dataSource.getRepository(CosmeticItem),
-      progression,
+      {} as ProgressionService, // the profile read is not exercised here
     );
-    const start = new StudySessionStartService(dataSource, users);
-    const transitions = new StudySessionTransitionService(dataSource, { now: () => new Date(now) }, progression);
+    const progression = new ProgressionService(
+      dataSource.getRepository(Character),
+      { emitToUser: jest.fn() } as unknown as RealtimeGateway,
+      users,
+    );
+    const start = new StudySessionStartService(dataSource, users, {} as never);
+    const transitions = new StudySessionTransitionService(dataSource, { now: () => new Date(now) }, progression, {} as never);
     const controllerModule = await Test.createTestingModule({
       controllers: [SessionsController],
       providers: [
@@ -71,6 +73,8 @@ describe('Study Session HTTP contract against MySQL', () => {
         { provide: StudySessionTransitionService, useValue: transitions },
       ],
     })
+      .overrideGuard(RateLimitGuard)
+      .useValue({ canActivate: () => true })
       .overrideGuard(JwtAuthGuard)
       .useValue({
         canActivate(context: ExecutionContext) {
