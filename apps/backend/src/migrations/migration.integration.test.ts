@@ -90,7 +90,7 @@ const expectedColumns: Record<string, string[]> = {
     'xp_contributed',
     'created_at',
   ],
-  guild_chat_messages: ['id', 'guild_id', 'user_id', 'body', 'sent_at'],
+  guild_chat_messages: ['id', 'guild_id', 'user_id', 'body', 'sent_at', 'seq'],
 };
 
 type SchemaRow = RowDataPacket & Record<string, string | number>;
@@ -358,7 +358,17 @@ describe('TypeORM migrations against an empty MySQL schema', () => {
       'UnifyStudySessionIdempotencyKeys1788459000000',
       'AddStudySessionEndedAtPrecision1788459060000',
       'AddStudySessionStartReceiptSubject1788459120000',
+      'AddGuildChatMessageSequence1788459180000',
     ]);
+
+    await dataSource.undoLastMigration();
+    const chatSeqRevertRows = await rows(
+      database!.admin,
+      `SELECT COLUMN_NAME FROM information_schema.COLUMNS
+       WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'guild_chat_messages' ORDER BY ORDINAL_POSITION`,
+      [database!.name],
+    );
+    expect(chatSeqRevertRows.map((row) => row.COLUMN_NAME)).toEqual(['id', 'guild_id', 'user_id', 'body', 'sent_at']);
 
     await dataSource.undoLastMigration();
     const receiptSubjectRevertRows = await rows(
@@ -531,7 +541,7 @@ describe('TypeORM migrations against an empty MySQL schema', () => {
       { idempotency_key: 'rolling-transition-key', command_kind: 'resume' },
     ]);
 
-    for (let step = 0; step < 3; step += 1) await dataSource.undoLastMigration();
+    for (let step = 0; step < 4; step += 1) await dataSource.undoLastMigration();
     const leftoverTriggers = await rows(
       database.admin,
       `SELECT TRIGGER_NAME FROM information_schema.TRIGGERS
@@ -657,6 +667,7 @@ describe('TypeORM migrations against an empty MySQL schema', () => {
 
     // M6 revert: only the receipt column goes away; every persisted Matéria (including legacy Guild rows) stays.
     await dataSource.undoLastMigration();
+    await dataSource.undoLastMigration();
     const receiptColumnsAfterRevert = await rows(
       database.admin,
       `SELECT COLUMN_NAME FROM information_schema.COLUMNS
@@ -685,7 +696,7 @@ describe('TypeORM migrations against an empty MySQL schema', () => {
     );
     expect(receiptsAfterReapply).toEqual([{ idempotency_key: 'solo-start-key', subject: null }]);
 
-    for (let step = 0; step < 5; step += 1) await dataSource.undoLastMigration();
+    for (let step = 0; step < 6; step += 1) await dataSource.undoLastMigration();
     const downgradedHistory = await rows(
       database.admin,
       `SELECT id, subject, mode, raid_id FROM ${database.identifier}.study_sessions ORDER BY id`,
@@ -776,7 +787,7 @@ describe('TypeORM migrations against an empty MySQL schema', () => {
     );
     expect(leftoverArchives).toHaveLength(0);
 
-    for (let step = 0; step < 8; step += 1) await dataSource.undoLastMigration();
+    for (let step = 0; step < 9; step += 1) await dataSource.undoLastMigration();
     const remainingSchemaTables = await rows(
       database.admin,
       `SELECT TABLE_NAME FROM information_schema.TABLES
