@@ -236,6 +236,48 @@ describe('Study Session de modo Guilda against MySQL', () => {
       expect(realtime.emitToGuild).toHaveBeenCalledTimes(1);
     });
 
+    it('rolls back the whole completion when it fails after the Contribution, then a retry counts it once', async () => {
+      const session = await joinAndStart(bruno, 'retry');
+      const raids = app!.get(RaidsService);
+      const original = raids.recordContributionInTransaction.bind(raids);
+      jest.spyOn(raids, 'recordContributionInTransaction').mockImplementationOnce(async (manager, contribution) => {
+        await original(manager, contribution);
+        throw new Error('falha depois de gravar a Contribuição');
+      });
+
+      const failed = await completeAtDeadline(bruno, session, 'retry-done');
+
+      expect(failed.status).toBe(500);
+      expect(await contributions()).toEqual([]);
+      expect((await dataSource!.getRepository(Raid).findOneByOrFail({ id: raidId })).progressXp).toBe(0);
+      expect((await dataSource!.getRepository(StudySession).findOneByOrFail({ id: session.id })).state).toBe('running');
+      expect((await dataSource!.getRepository(Character).findOneByOrFail({ userId: bruno })).xpTotal).toBe(0);
+      expect(realtime.emitToGuild).not.toHaveBeenCalled();
+
+      const retried = await completeAtDeadline(bruno, session, 'retry-done');
+
+      expect(retried.status).toBe(200);
+      expect(await retried.json()).toMatchObject({ state: 'completed', xpAwarded: 150 });
+      expect(await activeRaid(bruno)).toMatchObject({ progressXp: 150, me: { contributionXp: 150 } });
+      expect(await contributions()).toHaveLength(1);
+      expect(realtime.emitToGuild).toHaveBeenCalledTimes(1);
+    });
+
+    it('counts one Contribution when the same Study Session is completed concurrently', async () => {
+      const session = await joinAndStart(bruno, 'race');
+      completionNow = new Date(new Date(session.startedAt).getTime() + 900_000);
+
+      const statuses = await Promise.all(['a', 'b', 'c'].map(async (suffix) =>
+        (await call('POST', `/sessions/${session.id}/complete`, bruno, { expectedVersion: 1 }, `race-done-${suffix}`)).status,
+      ));
+
+      expect(statuses.filter((status) => status === 200)).toHaveLength(1);
+      expect(statuses.filter((status) => status !== 200).every((status) => status === 409)).toBe(true);
+      expect((await activeRaid(bruno)).progressXp).toBe(150);
+      expect(await contributions()).toHaveLength(1);
+      expect(realtime.emitToGuild).toHaveBeenCalledTimes(1);
+    });
+
     it('sums exactly when several members complete at the same time', async () => {
       const members = [ana, bruno, carla, diego];
       const sessions = await Promise.all(members.map((member) => joinAndStart(member, `together-${member}`)));
