@@ -216,7 +216,10 @@ describe('Study Session de modo Guilda against MySQL', () => {
       const completed = await completeAtDeadline(bruno, session, 'complete-done');
 
       expect(completed.status).toBe(200);
-      expect(await completed.json()).toMatchObject({ state: 'completed', xpAwarded: 150 });
+      const body = await completed.json() as Snapshot & { xpAwarded: number };
+      expect(body).toMatchObject({ state: 'completed', xpAwarded: 150 });
+      const [contribution] = await contributions();
+      expect(contribution?.xpContributed).toBe(body.xpAwarded);
       expect(await activeRaid(bruno)).toMatchObject({ progressXp: 150, goalReachedAt: null, me: { participating: true, contributionXp: 150 } });
       expect((await activeRaid(ana)).me.contributionXp).toBe(0);
       expect(await contributions()).toEqual([expect.objectContaining({ userId: bruno, studySessionId: session.id, xpContributed: 150 })]);

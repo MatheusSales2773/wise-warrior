@@ -271,6 +271,18 @@ describe('Study Session automatic completion timing', () => {
     });
   });
 
+  it('awards 125 XP for a 25-minute session when XP_PER_MINUTE is 5', () => {
+    process.env.XP_PER_MINUTE = '5';
+    try {
+      const studySession = plannedSession(1500);
+      expect(applyStudySessionComplete(studySession, studySession.runDeadlineAt!, 0)).toMatchObject({
+        durationValidSeconds: 1500, xpAwarded: 125, cappedReason: null,
+      });
+    } finally {
+      delete process.env.XP_PER_MINUTE;
+    }
+  });
+
   it('truncates a manual stop to the remaining daily balance', () => {
     const studySession = plannedSession(1800);
     const stopped = applyStudySessionStop(studySession, new Date(completionStart.getTime() + 600_000), 16 * 3600 - 420);

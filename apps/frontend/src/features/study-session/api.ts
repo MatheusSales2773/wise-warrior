@@ -25,6 +25,8 @@ export type StudySessionSnapshot = {
   xpAwarded: number;
   terminalReason: 'manual-stop' | 'auto-complete' | 'legacy-session-without-owner' | null;
   discardedReason: string | null;
+  /** Antifraude limit that truncated the valid focus (ADR-011); absent on responses from older servers. */
+  cappedReason?: 'continuous-limit' | 'daily-limit' | null;
   canControl: boolean;
   raidContribution: RaidContributionFeedback | null;
   receivedAtMs: number;

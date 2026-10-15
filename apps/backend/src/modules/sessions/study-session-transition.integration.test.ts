@@ -361,6 +361,51 @@ describe('Study Session transitions against MySQL', () => {
     expect(realtime.emitToUser).toHaveBeenCalledTimes(1);
   });
 
+  const insertEarlierFocus = (id: string, endedAt: Date, durationValidSeconds: number) => dataSource!.getRepository(StudySession).insert({
+    id,
+    userId,
+    subject: null,
+    mode: 'solo',
+    raidId: null,
+    startedAt: new Date(endedAt.getTime() - 900_000),
+    endedAt,
+    plannedDurationSeconds: 900,
+    state: 'completed',
+    runDeadlineAt: endedAt,
+    pausedAt: null,
+    pausedTotalSeconds: 0,
+    pausedTotalMilliseconds: 0,
+    version: 2,
+    terminalReason: 'auto-complete',
+    initiatingSessionId: authSessionId,
+    durationValidSeconds,
+    xpAwarded: 0,
+    discardedReason: null,
+  });
+
+  it('truncates a manual stop at the daily focus limit and awards XP on the remaining balance', async () => {
+    await insertEarlierFocus('00000000-0000-4000-8000-000000000076', now, 16 * 3600 - 420);
+    now = new Date(now.getTime() + 600_000);
+
+    const result = await transition('stop', 1, 'stop-daily-limit');
+
+    expect(result).toMatchObject({
+      state: 'stopped_early', durationValidSeconds: 420, xpAwarded: 70, cappedReason: 'daily-limit',
+    });
+    expect(await dataSource!.getRepository(Character).findOneByOrFail({ id: characterId })).toMatchObject({ xpTotal: 70 });
+    expect(await dataSource!.getRepository(StudySession).findOneByOrFail({ id: studySessionId }))
+      .toMatchObject({ durationValidSeconds: 420, cappedReason: 'daily-limit' });
+  });
+
+  it('does not carry the focus of the previous day into the daily limit', async () => {
+    await insertEarlierFocus('00000000-0000-4000-8000-000000000077', new Date(now.getTime() - 2 * 86_400_000), 16 * 3600);
+    now = new Date(now.getTime() + 600_000);
+
+    const result = await transition('stop', 1, 'stop-next-day');
+
+    expect(result).toMatchObject({ state: 'stopped_early', durationValidSeconds: 600, xpAwarded: 100, cappedReason: null });
+  });
+
   it('cancels at 299 valid seconds with zero XP and keeps the audit record', async () => {
     now = new Date(now.getTime() + 299_999);
 

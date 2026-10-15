@@ -5,7 +5,7 @@ import { useEffect, useRef, useState, type PropsWithChildren } from 'react';
 import { AccessibilityInfo, Platform, Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import Svg, { Defs, Path, RadialGradient, Rect, Stop } from 'react-native-svg';
 import { FeedbackMessage, ProgressBar, Screen, WiseButton, WiseCard, WiseText, isDesktopLayout, theme, type WiseCardProps } from '@/design-system';
-import { formatCadenceDate, formatDayCount, formatDiscardReason, formatDuration, formatSessionDate, formatSessionsToday, formatXp, levelProgressPercent } from './formatters';
+import { formatCadenceDate, formatCappedReason, formatDayCount, formatDiscardReason, formatDuration, formatSessionDate, formatSessionsToday, formatXp, levelProgressPercent } from './formatters';
 import type { CadenceDay, RecentStudySession, SessionMetrics } from './api';
 import { profileQueryOptions, recentActivityQueryOptions, sessionMetricsQueryOptions } from './queries';
 
@@ -98,7 +98,9 @@ function describeActivity(session: RecentStudySession) {
   const subjectLabel = subject ?? NO_SUBJECT_LABEL;
   const isGuild = session.mode === 'guild';
   const modeLabel = formatSessionMode(session.mode);
-  const discarded = session.discardedReason ? formatDiscardReason(session.discardedReason) : null;
+  const discarded = session.discardedReason
+    ? formatDiscardReason(session.discardedReason)
+    : session.cappedReason ? formatCappedReason(session.cappedReason) : null;
   const xp = `${formatXp(session.xpAwarded)} XP`;
   const metaLine = joinDetails([formatSessionState(session.state), modeLabel, formatSessionDate(session.endedAt), formatDuration(session.durationValidSeconds)]);
 
