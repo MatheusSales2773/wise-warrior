@@ -1,6 +1,7 @@
 import { QueryClient } from '@tanstack/react-query';
 import { createRealtimeClient, type RealtimeSocket, type RealtimeSocketFactory } from '@/core/realtime/realtime-client';
 import type { ActiveRaid } from '@/features/guild/api';
+import { dashboardKeys } from '@/features/dashboard/queries';
 import { guildKeys } from '@/features/guild/queries';
 import { profileKeys } from '@/features/profile/queries';
 
@@ -200,5 +201,85 @@ describe('notification:raidComplete', () => {
 
     client.dispose();
     expect(socket.count('notification:raidComplete')).toBe(0);
+  });
+});
+
+describe('progress:xpUpdated and notification:levelup', () => {
+  const seed = (queryClient: QueryClient) => {
+    [dashboardKeys.profile(), dashboardKeys.recentActivity(), dashboardKeys.metrics(), profileKeys.cosmeticsCatalog(), profileKeys.devices()]
+      .forEach((key) => queryClient.setQueryData(key, {}));
+  };
+  const invalidated = (queryClient: QueryClient, key: readonly unknown[]) => queryClient.getQueryState(key)?.isInvalidated;
+
+  it('refreshes the Dashboard and Personagem data when XP is earned on another device', () => {
+    const { socket, queryClient } = setup();
+    seed(queryClient);
+
+    socket.emit('progress:xpUpdated', { xpGained: 50, xpTotal: 150, level: 1 });
+
+    expect(invalidated(queryClient, dashboardKeys.profile())).toBe(true);
+    expect(invalidated(queryClient, dashboardKeys.recentActivity())).toBe(true);
+    expect(invalidated(queryClient, dashboardKeys.metrics())).toBe(true);
+    expect(invalidated(queryClient, profileKeys.cosmeticsCatalog())).toBe(false);
+  });
+
+  it('also refreshes the cosmetics catalog on a level-up', () => {
+    const { socket, queryClient } = setup();
+    seed(queryClient);
+
+    socket.emit('notification:levelup', { previousLevel: 1, newLevel: 2 });
+
+    expect(invalidated(queryClient, dashboardKeys.profile())).toBe(true);
+    expect(invalidated(queryClient, profileKeys.cosmeticsCatalog())).toBe(true);
+    expect(invalidated(queryClient, profileKeys.devices())).toBe(false);
+  });
+
+  it('registers each listener once and removes it on dispose', () => {
+    const { socket, client } = setup();
+    expect(socket.count('progress:xpUpdated')).toBe(1);
+    expect(socket.count('notification:levelup')).toBe(1);
+
+    client.dispose();
+
+    expect(socket.count('progress:xpUpdated')).toBe(0);
+    expect(socket.count('notification:levelup')).toBe(0);
+  });
+});
+
+describe('connection status', () => {
+  it('walks connecting, connected, reconnecting and connected again, notifying subscribers', () => {
+    const { socket, client } = setup();
+    const seen: string[] = [];
+    client.subscribe(() => seen.push(client.getStatus()));
+    expect(client.getStatus()).toBe('connecting');
+
+    socket.emit('connect');
+    socket.active = true;
+    socket.emit('disconnect', 'transport close');
+    socket.emit('connect');
+
+    expect(seen).toEqual(['connected', 'reconnecting', 'connected']);
+  });
+
+  it('is offline when the Session cannot be recovered, and reconnecting while a recovery runs', async () => {
+    const { socket, client, recover } = setup();
+    recover.mockResolvedValue({ status: 'anonymous' } as never);
+    socket.active = false;
+
+    socket.emit('disconnect', 'io server disconnect');
+    expect(client.getStatus()).toBe('reconnecting');
+    await flush();
+
+    expect(client.getStatus()).toBe('offline');
+  });
+
+  it('stops notifying after unsubscribe', () => {
+    const { socket, client } = setup();
+    const listener = jest.fn();
+    client.subscribe(listener)();
+
+    socket.emit('connect');
+
+    expect(listener).not.toHaveBeenCalled();
   });
 });

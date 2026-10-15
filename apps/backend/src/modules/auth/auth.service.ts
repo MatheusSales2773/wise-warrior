@@ -1,6 +1,9 @@
 import {
   ConflictException,
+  forwardRef,
+  Inject,
   Injectable,
+  Optional,
   NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
@@ -16,6 +19,7 @@ import { Session } from './entities/session.entity';
 import { RefreshTokenHistory } from './entities/refresh-token-history.entity';
 import { RegisterDto } from './dto/register.dto';
 import { randomToken, sha256Hex } from '../../shared/security/hash.util';
+import { RealtimeGateway } from '../realtime/realtime.gateway';
 import { DeviceLabel } from './device-labels';
 
 export interface DeviceMetadata {
@@ -72,7 +76,20 @@ export class AuthService {
     private readonly config: ConfigService,
     private readonly dataSource: DataSource,
     private readonly usersService: UsersService,
+    @Optional()
+    @Inject(forwardRef(() => RealtimeGateway))
+    private readonly realtime?: RealtimeGateway,
   ) {}
+
+  /** Chamado depois do commit da revogação, para o dispositivo perder a conexão em tempo real. */
+  private async closeRealtime(sessionIds: readonly string[]): Promise<void> {
+    if (sessionIds.length === 0) return;
+    try {
+      await this.realtime?.disconnectSessions(sessionIds);
+    } catch {
+      // A revogação já foi persistida; o socket cai no próximo handshake recusado.
+    }
+  }
 
   private get maxSessionsPerUser(): number {
     return Number(this.config.get('MAX_SESSIONS_PER_USER') ?? 5);
@@ -85,7 +102,7 @@ export class AuthService {
 
   async register(dto: RegistrationInput, device: DeviceMetadata): Promise<AuthTokens> {
     const passwordHash = await argon2.hash(dto.password, { type: argon2.argon2id });
-    return this.dataSource.transaction(async (transactionalEntityManager) => {
+    const { tokens, evicted } = await this.dataSource.transaction(async (transactionalEntityManager) => {
       const users = transactionalEntityManager.getRepository(User);
       const characters = transactionalEntityManager.getRepository(Character);
       const sessions = transactionalEntityManager.getRepository(Session);
@@ -118,6 +135,8 @@ export class AuthService {
 
       return this.issueSessionWithRepository(user, device, sessions);
     });
+    await this.closeRealtime(evicted);
+    return tokens;
   }
 
   async validateCredentials(email: string, password: string): Promise<User> {
@@ -134,7 +153,7 @@ export class AuthService {
 
   /** Cria uma nova sessão persistente por dispositivo (ADR-009), sem invalidar as demais. */
   async issueSession(user: User, device: DeviceMetadata): Promise<AuthTokens> {
-    return this.dataSource.transaction(async (transactionalEntityManager) => {
+    const { tokens, evicted } = await this.dataSource.transaction(async (transactionalEntityManager) => {
       const lockedUser = await transactionalEntityManager.getRepository(User).findOne({
         where: { id: user.id },
         select: ['id', 'email'],
@@ -149,14 +168,16 @@ export class AuthService {
         transactionalEntityManager.getRepository(Session),
       );
     });
+    await this.closeRealtime(evicted);
+    return tokens;
   }
 
   private async issueSessionWithRepository(
     user: User,
     device: DeviceMetadata,
     sessions: Repository<Session>,
-  ): Promise<AuthTokens> {
-    await this.enforceSessionLimit(user.id, sessions);
+  ): Promise<{ tokens: AuthTokens; evicted: string[] }> {
+    const evicted = await this.enforceSessionLimit(user.id, sessions);
 
     const secret = randomToken();
     const now = new Date();
@@ -172,16 +193,19 @@ export class AuthService {
 
     const accessToken = this.signAccessToken(user, session.id);
     return {
-      accessToken,
-      refreshToken: `${session.id}.${secret}`,
-      sessionId: session.id,
+      tokens: {
+        accessToken,
+        refreshToken: `${session.id}.${secret}`,
+        sessionId: session.id,
+      },
+      evicted,
     };
   }
 
   private async enforceSessionLimit(
     userId: string,
     sessions: Repository<Session> = this.sessions,
-  ): Promise<void> {
+  ): Promise<string[]> {
     const active = await sessions.find({
       where: { userId, revokedAt: IsNull() },
       order: {
@@ -196,7 +220,9 @@ export class AuthService {
       await sessions.save(
         toRevoke.map((session) => ({ ...session, revokedAt: new Date() })),
       );
+      return toRevoke.map((session) => session.id);
     }
+    return [];
   }
 
   private signAccessToken(
@@ -324,6 +350,7 @@ export class AuthService {
     );
 
     if (result.kind === 'replay') {
+      await this.closeRealtime([sessionId]);
       throw new UnauthorizedException('Refresh token reutilizado');
     }
     if (result.kind === 'invalid') {
@@ -358,6 +385,7 @@ export class AuthService {
     }
     session.revokedAt = new Date();
     await this.sessions.save(session);
+    await this.closeRealtime([session.id]);
   }
 
   async revokeSession(userId: string, sessionId: string): Promise<void> {
@@ -369,6 +397,7 @@ export class AuthService {
     }
     session.revokedAt = new Date();
     await this.sessions.save(session);
+    await this.closeRealtime([session.id]);
   }
 
   async revokeAllSessions(userId: string): Promise<void> {
@@ -378,6 +407,7 @@ export class AuthService {
     await this.sessions.save(
       active.map((session) => ({ ...session, revokedAt: new Date() })),
     );
+    await this.closeRealtime(active.map((session) => session.id));
   }
 
   async listActiveSessions(userId: string): Promise<SessionSummary[]> {

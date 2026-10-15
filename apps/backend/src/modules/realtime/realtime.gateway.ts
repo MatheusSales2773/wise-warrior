@@ -15,6 +15,7 @@ import { GuildsService } from '../guilds/guilds.service';
 
 const GUILD_ROOM_PREFIX = 'guild:';
 const userRoom = (userId: string) => `user:${userId}`;
+const sessionRoom = (sessionId: string) => `session:${sessionId}`;
 const guildRoom = (guildId: string) => `${GUILD_ROOM_PREFIX}${guildId}`;
 
 /**
@@ -55,6 +56,7 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
     }
 
     await client.join(userRoom(client.data.userId));
+    await client.join(sessionRoom(client.data.sessionId));
     try {
       await this.joinCurrentGuildRoom(client);
     } catch (error) {
@@ -130,6 +132,21 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
     } catch (error) {
       // O membership já foi commitado; a próxima conexão volta a sincronizar a room.
       this.logger.warn(`Falha ao sincronizar a room da Guild: ${(error as Error).message}`);
+    }
+  }
+
+  /**
+   * Encerra os sockets das Sessões revogadas (logout, revogação de dispositivo, replay de refresh, limite de
+   * dispositivos). O access token já emitido continua válido até expirar, mas a conexão em tempo real não.
+   */
+  async disconnectSessions(sessionIds: readonly string[]): Promise<void> {
+    if (!this.server) return;
+    for (const sessionId of sessionIds) {
+      try {
+        this.server.in(sessionRoom(sessionId)).disconnectSockets(true);
+      } catch (error) {
+        this.logger.warn(`Falha ao encerrar sockets da Sessão: ${(error as Error).message}`);
+      }
     }
   }
 

@@ -480,3 +480,65 @@ describe('AuthService.register', () => {
     expect(sessions.create).not.toHaveBeenCalled();
   });
 });
+
+describe('AuthService realtime disconnection', () => {
+  function build(sessionRows: Session[] = []) {
+    const sessions = {
+      findOne: jest.fn().mockResolvedValue(sessionRows[0] ?? null),
+      find: jest.fn().mockResolvedValue(sessionRows),
+      save: jest.fn().mockResolvedValue(undefined),
+    };
+    const realtime = { disconnectSessions: jest.fn().mockResolvedValue(undefined) };
+    const service = new AuthService(
+      {} as never,
+      {} as never,
+      sessions as never,
+      {} as never,
+      { get: jest.fn() } as never,
+      {} as never,
+      {} as never,
+      realtime as never,
+    );
+    return { service, sessions, realtime };
+  }
+
+  it('closes the device socket on logout', async () => {
+    const { service, realtime } = build([session()]);
+
+    await service.logoutByRefreshToken('session-1.old-secret');
+
+    expect(realtime.disconnectSessions).toHaveBeenCalledWith(['session-1']);
+  });
+
+  it('keeps the socket when the logout token does not match the session', async () => {
+    const { service, realtime } = build([session()]);
+
+    await service.logoutByRefreshToken('session-1.wrong-secret');
+
+    expect(realtime.disconnectSessions).not.toHaveBeenCalled();
+  });
+
+  it('closes the socket of a device revoked by the user', async () => {
+    const { service, realtime } = build([session({ id: 'session-2' })]);
+
+    await service.revokeSession('user-1', 'session-2');
+
+    expect(realtime.disconnectSessions).toHaveBeenCalledWith(['session-2']);
+  });
+
+  it('closes every socket when all sessions are revoked', async () => {
+    const { service, realtime } = build([session({ id: 'a' }), session({ id: 'b' })]);
+
+    await service.revokeAllSessions('user-1');
+
+    expect(realtime.disconnectSessions).toHaveBeenCalledWith(['a', 'b']);
+  });
+
+  it('still revokes when closing the socket fails', async () => {
+    const { service, sessions, realtime } = build([session()]);
+    realtime.disconnectSessions.mockRejectedValue(new Error('adapter down'));
+
+    await expect(service.revokeSession('user-1', 'session-1')).resolves.toBeUndefined();
+    expect(sessions.save).toHaveBeenCalled();
+  });
+});
