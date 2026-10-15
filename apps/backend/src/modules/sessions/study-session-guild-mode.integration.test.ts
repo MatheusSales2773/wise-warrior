@@ -342,6 +342,7 @@ describe('Study Session de modo Guilda against MySQL', () => {
     });
 
     it('includes outside-raid-window feedback when completed before the raid startsAt', async () => {
+      // A Study Session só começa com a Raid aberta, então este é o único jeito de a conclusão cair antes de `startsAt`.
       const session = await joinAndStart(bruno, 'feedback-before-start');
       // The Raid window now opens only after the canonical deadline, so the completion lands before `startsAt`.
       const deadline = new Date(new Date(session.startedAt).getTime() + 900_000);
@@ -359,7 +360,7 @@ describe('Study Session de modo Guilda against MySQL', () => {
       const raid = await dataSource!.getRepository(Raid).findOneByOrFail({ id: raidId });
       const session = await joinAndStart(bruno, 'feedback-after-end');
 
-      // Complete after the raid ends
+      // Complete after the Raid ends
       completionNow = new Date(raid.endsAt.getTime() + 1000);
 
       const response = await call('POST', `/sessions/${session.id}/complete`, bruno, { expectedVersion: 1 }, 'feedback-after-end-done');
@@ -380,6 +381,22 @@ describe('Study Session de modo Guilda against MySQL', () => {
       const result = await response.json() as Snapshot & { raidContribution: unknown };
       expect(result.raidContribution).toEqual({ status: 'no-validated-xp', xpContributed: 0 });
       expect(await contributions()).toEqual([]);
+    });
+
+    it('reports the Contribution already recorded, without adding or publishing again, when the same Study Session is recorded twice', async () => {
+      const session = await joinAndStart(bruno, 'feedback-ignored-insert');
+      await completeAtDeadline(bruno, session, 'feedback-ignored-insert-done');
+      realtime.emitToGuild.mockClear();
+      const raids = app!.get(RaidsService);
+
+      const outcome = await dataSource!.transaction((manager) => raids.recordContributionInTransaction(manager, {
+        raidId, userId: bruno, studySessionId: session.id, xpContributed: 999, endedAt: completionNow,
+      }));
+
+      expect(outcome).toEqual({ status: 'counted', xpContributed: 150, progress: null });
+      expect((await activeRaid()).progressXp).toBe(150);
+      expect(await contributions()).toHaveLength(1);
+      expect(realtime.emitToGuild).not.toHaveBeenCalled();
     });
 
     it('returns identical raidContribution on replay with same Idempotency-Key', async () => {

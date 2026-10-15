@@ -4,7 +4,7 @@ import { StudySessionScreen } from '@/features/study-session/study-session-scree
 import {
   completeStudySession,
   getActiveStudySession,
-  type StudySessionSnapshot,
+  type StudySessionTransitionResult,
 } from '@/features/study-session/api';
 import { clearCompletionIntent } from '@/features/study-session/completion-intent';
 import { useStudySessionAppActive } from '@/features/study-session/use-study-session-app-active';
@@ -39,7 +39,7 @@ const appActive = useStudySessionAppActive as jest.MockedFunction<typeof useStud
 let mockedNow: number;
 let studySessionTimerTick: (() => void) | undefined;
 const queryClients: QueryClient[] = [];
-const snapshot: StudySessionSnapshot = {
+const snapshot: StudySessionTransitionResult = {
   id: 'study-1', mode: 'solo', raidId: null, subject: null, state: 'running', plannedDurationSeconds: 1500,
   startedAt: '2026-09-22T12:00:00.000Z', runDeadlineAt: '2026-09-22T12:25:00.000Z',
   pausedAt: null, pausedTotalSeconds: 0, durationValidSeconds: 0, remainingSeconds: 1500,
@@ -48,7 +48,7 @@ const snapshot: StudySessionSnapshot = {
   receivedAtMs: new Date('2026-09-22T12:00:00.000Z').getTime(),
 };
 
-function atZero(): StudySessionSnapshot {
+function atZero(): StudySessionTransitionResult {
   return {
     ...snapshot,
     remainingSeconds: 0,
@@ -58,7 +58,7 @@ function atZero(): StudySessionSnapshot {
   };
 }
 
-function completed(base: StudySessionSnapshot): StudySessionSnapshot {
+function completed(base: StudySessionTransitionResult): StudySessionTransitionResult {
   return {
     ...base,
     state: 'completed',
@@ -122,7 +122,7 @@ afterEach(() => {
 
 it('sends one completion at zero, blocks controls, and displays only the confirmed result', async () => {
   const zeroSnapshot = atZero();
-  let resolveCompletion!: (result: StudySessionSnapshot) => void;
+  let resolveCompletion!: (result: StudySessionTransitionResult) => void;
   getActive.mockResolvedValue(zeroSnapshot);
   complete.mockImplementationOnce(() => new Promise((resolve) => { resolveCompletion = resolve; }));
   const { view, client } = await renderStudySession();
@@ -163,7 +163,7 @@ it('retries a lost response with the same key', async () => {
 
 it('waits for a fresh zero projection after an early conflict and preserves the original key', async () => {
   const zeroSnapshot = atZero();
-  const refreshedSnapshot: StudySessionSnapshot = {
+  const refreshedSnapshot: StudySessionTransitionResult = {
     ...zeroSnapshot,
     remainingSeconds: 12,
     runDeadlineAt: new Date(mockedNow + 12_000).toISOString(),
@@ -192,7 +192,7 @@ it('waits for a fresh zero projection after an early conflict and preserves the 
 
 it('reuses the waiting intent after a failed reconciliation and a successful manual refresh', async () => {
   const zeroSnapshot = atZero();
-  const refreshedSnapshot: StudySessionSnapshot = {
+  const refreshedSnapshot: StudySessionTransitionResult = {
     ...zeroSnapshot,
     remainingSeconds: 12,
     runDeadlineAt: new Date(mockedNow + 12_000).toISOString(),
@@ -246,7 +246,7 @@ it('does not auto-complete in the background and reconciles on return', async ()
 
 it('keeps the in-flight idempotent intent across a screen remount', async () => {
   const zeroSnapshot = atZero();
-  let resolveCompletion!: (result: StudySessionSnapshot) => void;
+  let resolveCompletion!: (result: StudySessionTransitionResult) => void;
   getActive.mockResolvedValue(zeroSnapshot);
   complete.mockImplementationOnce(() => new Promise((resolve) => { resolveCompletion = resolve; }));
   const { view, client, setShowScreen } = await renderStudySession();
@@ -266,7 +266,7 @@ it('keeps the in-flight idempotent intent across a screen remount', async () => 
 
 it('shows a safe reason and zero XP when the server confirms a discarded session', async () => {
   const zeroSnapshot = atZero();
-  const discardedSnapshot: StudySessionSnapshot = {
+  const discardedSnapshot: StudySessionTransitionResult = {
     ...zeroSnapshot,
     state: 'discarded',
     endedAt: zeroSnapshot.runDeadlineAt,

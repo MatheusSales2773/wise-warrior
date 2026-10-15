@@ -39,7 +39,7 @@ const snapshot: StudySessionSnapshot = {
   startedAt: '2026-09-22T12:00:00.000Z', runDeadlineAt: '2026-09-22T12:25:00.000Z',
   pausedAt: null, pausedTotalSeconds: 0, durationValidSeconds: 0, remainingSeconds: 1500,
   serverNow: '2026-09-22T12:00:00.000Z', version: 1, endedAt: null, xpAwarded: 0,
-  terminalReason: null, discardedReason: null, canControl: true, raidContribution: null,
+  terminalReason: null, discardedReason: null, canControl: true,
   receivedAtMs: new Date('2026-09-22T12:00:00.000Z').getTime(),
 };
 
