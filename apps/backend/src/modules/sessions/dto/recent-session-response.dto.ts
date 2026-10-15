@@ -1,3 +1,4 @@
+import type { CappedReason } from '../domain/session-validator';
 import type { StudySessionMode, StudySessionState } from '../entities/study-session.entity';
 
 export class RecentSessionResponseDto {
@@ -10,4 +11,5 @@ export class RecentSessionResponseDto {
   durationValidSeconds: number;
   xpAwarded: number;
   discardedReason: string | null;
+  cappedReason: CappedReason | null;
 }

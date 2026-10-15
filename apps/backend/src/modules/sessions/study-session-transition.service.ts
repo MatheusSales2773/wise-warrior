@@ -161,7 +161,8 @@ export class StudySessionTransitionService {
       let completionResult: ReturnType<typeof applyStudySessionComplete> | null = null;
       try {
         if (action === 'stop') {
-          stopResult = applyStudySessionStop(session, now);
+          const priorDailySeconds = await this.sumEligibleFocusSecondsToday(manager, userId, studySessionId, now);
+          stopResult = applyStudySessionStop(session, now, priorDailySeconds);
         } else if (action === 'complete') {
           const priorDailySeconds = session.state === 'running'
             && session.runDeadlineAt

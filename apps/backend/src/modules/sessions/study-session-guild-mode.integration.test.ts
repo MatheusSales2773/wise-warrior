@@ -286,21 +286,21 @@ describe('Study Session de modo Guilda against MySQL', () => {
       expect((await activeRaid()).progressXp).toBe(100);
     });
 
-    it('does not count a Study Session discarded by the antifraude', async () => {
+    it('counts only the truncated XP of a Study Session capped by the daily limit', async () => {
       const session = await joinAndStart(bruno, 'discarded');
       completionNow = new Date(new Date(session.startedAt).getTime() + 900_000);
       // Earlier focus today already used the whole daily limit.
       await dataSource!.getRepository(StudySession).save(dataSource!.getRepository(StudySession).create({
         userId: bruno, subject: null, mode: 'solo', raidId: null,
         startedAt: new Date(completionNow.getTime() - 2_000), endedAt: new Date(completionNow.getTime() - 1_000),
-        durationValidSeconds: 16 * 60 * 60, xpAwarded: 0,
+        durationValidSeconds: 16 * 60 * 60 - 300, xpAwarded: 0,
       }));
 
       const completed = await completeAtDeadline(bruno, session, 'discarded-done');
 
-      expect(await completed.json()).toMatchObject({ state: 'discarded', xpAwarded: 0 });
-      expect((await activeRaid()).progressXp).toBe(0);
-      expect(await contributions()).toEqual([]);
+      expect(await completed.json()).toMatchObject({ state: 'completed', xpAwarded: 50, cappedReason: 'daily-limit' });
+      expect((await activeRaid()).progressXp).toBe(50);
+      expect(await contributions()).toEqual([expect.objectContaining({ userId: bruno, xpContributed: 50 })]);
     });
 
     it('records the Meta batida once and keeps adding Contributions until the end of the week', async () => {

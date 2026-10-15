@@ -58,7 +58,7 @@ describe('canonical Study Session start against MySQL', () => {
       plannedDurationSeconds: 1500, startedAt: expect.any(Date), runDeadlineAt: expect.any(Date),
       pausedAt: null, pausedTotalSeconds: 0, durationValidSeconds: 0, remainingSeconds: expect.any(Number),
       serverNow: expect.any(Date), version: 1, endedAt: null, xpAwarded: 0,
-      terminalReason: null, discardedReason: null, canControl: true,
+      terminalReason: null, discardedReason: null, cappedReason: null, canControl: true,
     }));
     expect(await service.active(userId, 'device-a')).toMatchObject({ id: started.id, canControl: true });
     expect(await service.active(userId, 'device-b')).toMatchObject({ id: started.id, canControl: false });

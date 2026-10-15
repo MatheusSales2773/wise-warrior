@@ -50,6 +50,36 @@ _Avoid_: item pago, item VIP
 A visualização de um Cosmetic Item aplicado ao Character antes de confirmar a ação de Equipar. Nada é persistido.
 _Avoid_: preview, rascunho
 
+### Sessão de estudo
+
+**Study Session** (Sessão de estudo):
+O intervalo de foco registrado no servidor, com duração planejada, modo (solo ou guilda) e timestamps canônicos gerados pelo servidor. Um usuário tem no máximo uma Study Session ativa por vez.
+_Avoid_: sessão Pomodoro (quando se refere à entidade de dados), timer
+
+**Ciclo**:
+Um intervalo de foco de duração planejada — tipicamente 15, 25 ou 50 minutos. Corresponde a uma Study Session iniciada com aquela duração. Pausas entre ciclos são locais ao cliente e não geram Study Sessions.
+_Avoid_: pomodoro (como substantivo para o ciclo inteiro), rodada
+
+**Encerramento antecipado**:
+O ato de encerrar manualmente uma Study Session com pelo menos 5 minutos completos de foco acumulado. Concede XP proporcional ao tempo válido.
+_Avoid_: cancelamento (reservado para menos de 5 minutos), interrupção
+
+**Cancelamento**:
+O encerramento manual de uma Study Session com menos de 5 minutos completos de foco. Não concede XP nem Contribuição para Raid.
+_Avoid_: encerramento antecipado (reservado para ≥ 5 minutos)
+
+**XP de sessão**:
+O XP concedido ao Character ao término de uma Study Session, calculado como `floor(segundosDeFocoVálidos / 60) × XP_PER_MINUTE`. A taxa `XP_PER_MINUTE` é configurável por env var (padrão 10).
+_Avoid_: pontos de sessão, XP ganho (como termo técnico distinto)
+
+**Sessão truncada**:
+Uma Study Session cujo foco válido foi limitado pelo antifraude (limite contínuo de 4h ou limite diário de 16h, ambos configuráveis), recebendo XP calculado sobre o tempo truncado em vez do tempo real. O motivo consta em `capped_reason`. Distinto de Sessão descartada.
+_Avoid_: sessão inválida, sessão bloqueada
+
+**Sessão descartada**:
+Uma Study Session cujo XP é zero por violação técnica grave (ex.: duração inválida). Permanece visível ao usuário com indicador "não contabilizada".
+_Avoid_: sessão deletada, sessão removida
+
 ### Guilda e Raid
 
 **Guild** (Guilda):

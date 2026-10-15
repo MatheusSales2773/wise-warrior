@@ -6,6 +6,7 @@ import { StudySession } from './entities/study-session.entity';
 import type { StudySessionState, StudySessionTerminalReason } from './entities/study-session.entity';
 import type { StartSessionDto } from './dto/start-session.dto';
 import { isStudySessionPreset } from './domain/study-session-presets';
+import type { CappedReason } from './domain/session-validator';
 import { getStudySessionTime } from './domain/study-session-time';
 import { isValidIdempotencyKey } from './domain/idempotency-key';
 import { InvalidStudySessionSubjectError, normalizeStudySessionSubject } from './domain/study-session-subject';
@@ -36,6 +37,7 @@ export type StudySessionSnapshot = {
   xpAwarded: number;
   terminalReason: StudySessionTerminalReason | null;
   discardedReason: string | null;
+  cappedReason: CappedReason | null;
   canControl: boolean;
   /** Feedback on whether a guild-mode session counted for the Raid, null for solo sessions or non-terminal transitions. */
   raidContribution: RaidContributionFeedback | null;
@@ -76,6 +78,7 @@ export function studySessionSnapshot(
     xpAwarded: session.xpAwarded ?? 0,
     terminalReason: session.terminalReason ?? null,
     discardedReason: session.discardedReason ?? null,
+    cappedReason: session.cappedReason ?? null,
     canControl: session.initiatingSessionId === authSessionId,
     raidContribution,
   };

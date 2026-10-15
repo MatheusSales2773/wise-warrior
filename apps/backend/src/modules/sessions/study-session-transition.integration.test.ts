@@ -321,7 +321,7 @@ describe('Study Session transitions against MySQL', () => {
     expect(realtime.emitToUser).toHaveBeenCalledTimes(1);
   });
 
-  it('discards completion over the daily focus limit without XP or progress events', async () => {
+  it('truncates completion at the daily focus limit and awards XP on the remaining balance', async () => {
     const deadline = new Date(now.getTime() + 900_000);
     await dataSource!.getRepository(StudySession).update(studySessionId, {
       plannedDurationSeconds: 900,
@@ -353,12 +353,12 @@ describe('Study Session transitions against MySQL', () => {
     const result = await transition('complete', 1, 'complete-daily-limit');
 
     expect(result).toMatchObject({
-      state: 'discarded', durationValidSeconds: 0, xpAwarded: 0,
-      discardedReason: 'daily-limit-exceeded', terminalReason: 'auto-complete', version: 2,
+      state: 'completed', durationValidSeconds: 600, xpAwarded: 100,
+      discardedReason: null, cappedReason: 'daily-limit', terminalReason: 'auto-complete', version: 2,
     });
-    expect(await dataSource!.getRepository(Character).findOneByOrFail({ id: characterId })).toMatchObject({ xpTotal: 0 });
+    expect(await dataSource!.getRepository(Character).findOneByOrFail({ id: characterId })).toMatchObject({ xpTotal: 100 });
     expect(await dataSource!.query('SELECT * FROM active_study_sessions WHERE user_id = ?', [userId])).toHaveLength(0);
-    expect(realtime.emitToUser).not.toHaveBeenCalled();
+    expect(realtime.emitToUser).toHaveBeenCalledTimes(1);
   });
 
   it('cancels at 299 valid seconds with zero XP and keeps the audit record', async () => {
