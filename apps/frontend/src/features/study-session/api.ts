@@ -2,6 +2,10 @@ import { getAuthenticatedHttpClient } from '@/core/api/api-client';
 
 export const STUDY_SESSION_PRESETS = [900, 1500, 3000] as const;
 export type PlannedDurationSeconds = (typeof STUDY_SESSION_PRESETS)[number];
+export type RaidContributionFeedback = {
+  status: 'counted' | 'outside-raid-window' | 'no-validated-xp';
+  xpContributed: number;
+};
 export type StudySessionSnapshot = {
   id: string;
   mode: 'solo' | 'guild';
@@ -22,6 +26,7 @@ export type StudySessionSnapshot = {
   terminalReason: 'manual-stop' | 'auto-complete' | 'legacy-session-without-owner' | null;
   discardedReason: string | null;
   canControl: boolean;
+  raidContribution: RaidContributionFeedback | null;
   receivedAtMs: number;
 };
 export type StudySessionTransitionAction = 'pause' | 'resume' | 'stop' | 'complete';

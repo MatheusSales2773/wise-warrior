@@ -7,9 +7,9 @@ import {
 } from '@nestjs/common';
 import { DataSource, type EntityManager } from 'typeorm';
 import { ProgressionService } from '../progression/progression.service';
-import { RaidsService, type RaidProgress } from '../raids/raids.service';
+import { RaidsService, type RaidContributionOutcome } from '../raids/raids.service';
 import { StudySession } from './entities/study-session.entity';
-import type { StudySessionSnapshot } from './study-session-start.service';
+import type { StudySessionSnapshot, RaidContributionFeedback } from './study-session-start.service';
 import { deserializeStudySessionSnapshot, studySessionSnapshot } from './study-session-start.service';
 import { StudySessionTransitionDto } from './dto/study-session-transition.dto';
 import { isValidIdempotencyKey } from './domain/idempotency-key';
@@ -143,7 +143,7 @@ export class StudySessionTransitionService {
           snapshot: deserializeStudySessionSnapshot(receipt.response_json),
           xpGained: 0,
           progressionResult: null,
-          raidProgress: null,
+          raidContributionOutcome: null,
         };
       }
 
@@ -191,9 +191,9 @@ export class StudySessionTransitionService {
       }
 
       const saved = await sessions.save(session);
-      const snapshot = studySessionSnapshot(saved, authSessionId, now);
       let progressionResult: XpApplicationResult | null = null;
-      let raidProgress: RaidProgress | null = null;
+      let raidContributionOutcome: RaidContributionOutcome | null = null;
+      let raidContributionFeedback: RaidContributionFeedback | null = null;
       const terminalXpAwarded = stopResult?.xpAwarded ?? completionResult?.xpAwarded ?? 0;
       if (stopResult || completionResult) {
         await manager.query(
@@ -204,15 +204,20 @@ export class StudySessionTransitionService {
           progressionResult = await this.progression.awardXpInTransaction(manager, userId, terminalXpAwarded);
         }
         if (saved.mode === 'guild' && saved.raidId) {
-          raidProgress = await this.raids.recordContributionInTransaction(manager, {
+          raidContributionOutcome = await this.raids.recordContributionInTransaction(manager, {
             raidId: saved.raidId,
             userId,
             studySessionId,
             xpContributed: terminalXpAwarded,
             endedAt: now,
           });
+          raidContributionFeedback = {
+            status: raidContributionOutcome.status,
+            xpContributed: raidContributionOutcome.xpContributed,
+          };
         }
       }
+      const snapshot = studySessionSnapshot(saved, authSessionId, now, raidContributionFeedback);
       await manager.query(
         'INSERT INTO study_session_command_keys (user_id, idempotency_key, command_kind) VALUES (?, ?, ?)',
         [userId, idempotencyKey, action],
@@ -223,14 +228,14 @@ export class StudySessionTransitionService {
          VALUES (?, ?, ?, ?, ?, ?)`,
         [userId, studySessionId, idempotencyKey, action, dto.expectedVersion, JSON.stringify(snapshot)],
       );
-      return { snapshot, xpGained: terminalXpAwarded, progressionResult, raidProgress };
+      return { snapshot, xpGained: terminalXpAwarded, progressionResult, raidContributionOutcome };
     });
 
     if (result.progressionResult) {
       this.progression.publishAwardedXp(userId, result.xpGained, result.progressionResult);
     }
-    if (result.raidProgress) {
-      this.raids.publishProgress(result.raidProgress);
+    if (result.raidContributionOutcome?.status === 'counted' && result.raidContributionOutcome.progress) {
+      this.raids.publishProgress(result.raidContributionOutcome.progress);
     }
     return result.snapshot;
   }

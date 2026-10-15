@@ -692,6 +692,15 @@ export function StudySessionScreen({ initialMode = 'solo' }: { initialMode?: Ses
             </WiseText>
             <WiseText variant="body">Foco válido: {formatRemainingTime(displayedTerminalResult.durationValidSeconds)}</WiseText>
             <WiseText variant="body">XP confirmado: {displayedTerminalResult.xpAwarded}</WiseText>
+            {displayedTerminalResult.raidContribution ? (
+              <WiseText accessibilityLiveRegion="polite" aria-live="polite" color={displayedTerminalResult.raidContribution.status === 'counted' ? 'textPrimary' : 'textSecondary'} variant="body" testID="study-session-result-raid-contribution">
+                {displayedTerminalResult.raidContribution.status === 'counted'
+                  ? `+${displayedTerminalResult.raidContribution.xpContributed} XP para a Raid da Guilda.`
+                  : displayedTerminalResult.raidContribution.status === 'outside-raid-window'
+                    ? 'Esta sessão não contou para a Raid: terminou fora da janela da Raid.'
+                    : 'Esta sessão não contou para a Raid: não houve XP validado.'}
+              </WiseText>
+            ) : null}
             {displayedTerminalResult.state === 'discarded' ? (
               <WiseText color="textSecondary" variant="body">
                 {displayedTerminalResult.discardedReason === 'continuous-session-exceeds-limit'

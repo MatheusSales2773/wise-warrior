@@ -322,4 +322,114 @@ describe('Study Session de modo Guilda against MySQL', () => {
       });
     });
   });
+
+  describe('raid contribution feedback', () => {
+    const joinAndStart = async (as: string, key: string, plannedDurationSeconds = 900) => {
+      await call('POST', `/raids/${raidId}/join`, as);
+      const started = await startGuildSession(as, `${key}-start`, plannedDurationSeconds);
+      expect(started.status).toBe(201);
+      return await started.json() as Snapshot;
+    };
+
+    it('includes counted feedback when the session contributes at the deadline', async () => {
+      const session = await joinAndStart(bruno, 'feedback-counted');
+
+      const response = await completeAtDeadline(bruno, session, 'feedback-counted-done');
+
+      expect(response.status).toBe(200);
+      const result = await response.json() as Snapshot & { raidContribution: unknown };
+      expect(result.raidContribution).toEqual({ status: 'counted', xpContributed: 150 });
+    });
+
+    it('includes outside-raid-window feedback when completed before the raid startsAt', async () => {
+      const raid = await dataSource!.getRepository(Raid).findOneByOrFail({ id: raidId });
+      const session = await joinAndStart(bruno, 'feedback-before-start');
+
+      // Complete before the raid window
+      completionNow = new Date(raid.startsAt.getTime() - 1000);
+
+      const response = await call('POST', `/sessions/${session.id}/complete`, bruno, { expectedVersion: 1 }, 'feedback-before-start-done');
+
+      expect(response.status).toBe(200);
+      const result = await response.json() as Snapshot & { raidContribution: unknown };
+      expect(result.raidContribution).toEqual({ status: 'outside-raid-window', xpContributed: 0 });
+      expect(await contributions()).toEqual([]);
+    });
+
+    it('includes outside-raid-window feedback when completed after the raid endsAt', async () => {
+      const raid = await dataSource!.getRepository(Raid).findOneByOrFail({ id: raidId });
+      const session = await joinAndStart(bruno, 'feedback-after-end');
+
+      // Complete after the raid ends
+      completionNow = new Date(raid.endsAt.getTime() + 1000);
+
+      const response = await call('POST', `/sessions/${session.id}/complete`, bruno, { expectedVersion: 1 }, 'feedback-after-end-done');
+
+      expect(response.status).toBe(200);
+      const result = await response.json() as Snapshot & { raidContribution: unknown };
+      expect(result.raidContribution).toEqual({ status: 'outside-raid-window', xpContributed: 0 });
+      expect(await contributions()).toEqual([]);
+    });
+
+    it('includes no-validated-xp feedback when early stop with 0 XP', async () => {
+      const session = await joinAndStart(bruno, 'feedback-no-xp');
+      completionNow = new Date(new Date(session.startedAt).getTime() + 120_000);
+
+      const response = await call('POST', `/sessions/${session.id}/stop`, bruno, { expectedVersion: 1 }, 'feedback-no-xp-stop');
+
+      expect(response.status).toBe(200);
+      const result = await response.json() as Snapshot & { raidContribution: unknown };
+      expect(result.raidContribution).toEqual({ status: 'no-validated-xp', xpContributed: 0 });
+      expect(await contributions()).toEqual([]);
+    });
+
+    it('returns identical raidContribution on replay with same Idempotency-Key', async () => {
+      const session = await joinAndStart(bruno, 'feedback-replay');
+
+      const first = await completeAtDeadline(bruno, session, 'feedback-replay-done');
+      const firstResult = await first.json() as Snapshot & { raidContribution: unknown };
+
+      const second = await completeAtDeadline(bruno, session, 'feedback-replay-done');
+      const secondResult = await second.json() as Snapshot & { raidContribution: unknown };
+
+      expect(firstResult.raidContribution).toEqual(secondResult.raidContribution);
+      expect(firstResult.raidContribution).toEqual({ status: 'counted', xpContributed: 150 });
+      expect(await contributions()).toHaveLength(1);
+    });
+
+    it('includes null raidContribution for solo session', async () => {
+      await call('POST', `/raids/${raidId}/join`, bruno);
+      const started = await call('POST', '/sessions', bruno, { plannedDurationSeconds: 900 }, 'solo-start');
+      expect(started.status).toBe(201);
+      const session = await started.json() as Snapshot;
+
+      completionNow = new Date(new Date(session.startedAt).getTime() + 900_000);
+      const response = await call('POST', `/sessions/${session.id}/complete`, bruno, { expectedVersion: 1 }, 'solo-done');
+
+      expect(response.status).toBe(200);
+      const result = await response.json() as Snapshot & { raidContribution: unknown };
+      expect(result.raidContribution).toBeNull();
+    });
+
+    it('includes null raidContribution for pause transitions', async () => {
+      const session = await joinAndStart(bruno, 'feedback-pause');
+
+      const response = await call('POST', `/sessions/${session.id}/pause`, bruno, { expectedVersion: 1 }, 'feedback-pause-action');
+
+      expect(response.status).toBe(200);
+      const result = await response.json() as Snapshot & { raidContribution: unknown };
+      expect(result.raidContribution).toBeNull();
+    });
+
+    it('includes null raidContribution for resume transitions', async () => {
+      const session = await joinAndStart(bruno, 'feedback-resume');
+      await call('POST', `/sessions/${session.id}/pause`, bruno, { expectedVersion: 1 }, 'pause-first');
+
+      const response = await call('POST', `/sessions/${session.id}/resume`, bruno, { expectedVersion: 2 }, 'feedback-resume-action');
+
+      expect(response.status).toBe(200);
+      const result = await response.json() as Snapshot & { raidContribution: unknown };
+      expect(result.raidContribution).toBeNull();
+    });
+  });
 });
