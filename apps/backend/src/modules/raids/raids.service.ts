@@ -101,6 +101,11 @@ export interface RaidProgress {
   goalReachedAt: Date | null;
 }
 
+export type RaidContributionOutcome =
+  | { status: 'counted'; xpContributed: number; progress: RaidProgress | null }
+  | { status: 'outside-raid-window'; xpContributed: 0 }
+  | { status: 'no-validated-xp'; xpContributed: 0 };
+
 export interface GuildSessionContribution {
   raidId: string;
   userId: string;
@@ -323,21 +328,21 @@ export class RaidsService {
   /**
    * Grava a Contribuição na transação da conclusão da Study Session. Sessão concluída fora da semana
    * da Raid (RN01) ou sem XP validado pelo antifraude não contribui, e a mesma Study Session conta
-   * no máximo uma vez. Devolve o progresso para publicar depois do commit, ou `null` se nada mudou.
+   * no máximo uma vez. Devolve o resultado discriminado para reportar o motivo da não-contagem.
    */
   async recordContributionInTransaction(
     manager: EntityManager,
     contribution: GuildSessionContribution,
-  ): Promise<RaidProgress | null> {
+  ): Promise<RaidContributionOutcome> {
     const { raidId, userId, studySessionId, xpContributed, endedAt } = contribution;
-    if (xpContributed <= 0) return null;
+    if (xpContributed <= 0) return { status: 'no-validated-xp', xpContributed: 0 };
     // Locking the Raid first keeps concurrent Contributions from deadlocking on the foreign key check.
     const raid = await manager
       .createQueryBuilder(Raid, 'raid')
       .setLock('pessimistic_write')
       .where('raid.id = :raidId', { raidId })
       .getOne();
-    if (!raid || !this.isOpenAt(raid, endedAt)) return null;
+    if (!raid || !this.isOpenAt(raid, endedAt)) return { status: 'outside-raid-window', xpContributed: 0 };
 
     const inserted = await manager
       .createQueryBuilder()
@@ -346,7 +351,11 @@ export class RaidsService {
       .values({ raidId, userId, studySessionId, xpContributed })
       .orIgnore() // `study_session_id` único: uma conclusão reprocessada não soma de novo
       .execute();
-    if ((inserted.raw as { affectedRows: number }).affectedRows === 0) return null;
+    if ((inserted.raw as { affectedRows: number }).affectedRows === 0) {
+      // Já contou antes: informa o XP gravado na primeira vez, sem somar nem publicar de novo.
+      const existing = await manager.findOneByOrFail(RaidContribution, { studySessionId });
+      return { status: 'counted', xpContributed: existing.xpContributed, progress: null };
+    }
 
     // Atomic in the database. MySQL evaluates the assignments left to right, so the goal check runs before the increment.
     await manager.query(
@@ -358,11 +367,15 @@ export class RaidsService {
     );
     const updated = await manager.findOneOrFail(Raid, { where: { id: raidId } });
     return {
-      raidId,
-      guildId: updated.guildId,
-      progressXp: updated.progressXp,
-      goalXp: updated.goalXp,
-      goalReachedAt: updated.goalReachedAt,
+      status: 'counted',
+      xpContributed,
+      progress: {
+        raidId,
+        guildId: updated.guildId,
+        progressXp: updated.progressXp,
+        goalXp: updated.goalXp,
+        goalReachedAt: updated.goalReachedAt,
+      },
     };
   }
 
@@ -383,7 +396,7 @@ export class RaidsService {
     studySessionId: string,
     xpContributed: number,
   ): Promise<void> {
-    const progress = await this.raids.manager.transaction((manager) =>
+    const outcome = await this.raids.manager.transaction((manager) =>
       this.recordContributionInTransaction(manager, {
         raidId,
         userId,
@@ -392,7 +405,7 @@ export class RaidsService {
         endedAt: this.clock(),
       }),
     );
-    if (progress) this.publishProgress(progress);
+    if (outcome.status === 'counted' && outcome.progress) this.publishProgress(outcome.progress);
   }
 
   /**

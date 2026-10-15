@@ -19,6 +19,10 @@ export function formatDiscardReason(reason: string | null): string {
   return 'Sessão não contabilizada';
 }
 
+export function formatCappedReason(reason: 'continuous-limit' | 'daily-limit'): string {
+  return reason === 'daily-limit' ? 'XP limitado pelo teto diário' : 'XP limitado ao máximo de sessão contínua';
+}
+
 export function formatCadenceDate(value: string): string {
   return new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: '2-digit', timeZone: 'UTC' }).format(new Date(`${value}T00:00:00Z`));
 }

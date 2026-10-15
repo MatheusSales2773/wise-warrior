@@ -219,4 +219,29 @@ describe('recent study sessions against MySQL', () => {
     expect(metrics).toMatchObject({ sessionsToday: 2, validSecondsToday: 2100 });
     expect(metrics.cadence.days.at(-1)).toMatchObject({ sessionCount: 2, validSeconds: 2100 });
   });
+
+  it('persists the continuous-limit truncation of a legacy 5-hour session with XP on 4 hours', async () => {
+    database = await createIntegrationDatabase('wise_sessions_capped_integration');
+    dataSource = new DataSource(database.options(APPLICATION_MIGRATIONS));
+    await dataSource.initialize();
+    await dataSource.runMigrations();
+
+    const userId = '00000000-0000-4000-8000-000000000091';
+    await dataSource.getRepository(User).insert({ id: userId, email: 'capped@example.com', passwordHash: 'hash', displayName: 'Capped', planTier: 'free' });
+    const sessionRepository = dataSource.getRepository(StudySession);
+    const inserted = await sessionRepository.save(sessionRepository.create({
+      userId, subject: null, mode: 'solo', raidId: null,
+      startedAt: new Date(Date.now() - 5 * 3600 * 1000), endedAt: null,
+    }));
+    const progression = { awardXp: jest.fn() } as unknown as ProgressionService;
+    const service = new SessionsService(sessionRepository, progression, {} as RaidsService);
+
+    const result = await service.complete(userId, inserted.id);
+
+    expect(result).toMatchObject({ durationValidSeconds: 14_400, xpAwarded: 2400, cappedReason: 'continuous-limit' });
+    expect(progression.awardXp).toHaveBeenCalledWith(userId, 2400);
+    expect(await sessionRepository.findOneByOrFail({ id: inserted.id })).toMatchObject({
+      durationValidSeconds: 14_400, xpAwarded: 2400, cappedReason: 'continuous-limit', discardedReason: null,
+    });
+  });
 });

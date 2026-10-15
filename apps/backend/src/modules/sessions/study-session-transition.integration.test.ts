@@ -321,7 +321,7 @@ describe('Study Session transitions against MySQL', () => {
     expect(realtime.emitToUser).toHaveBeenCalledTimes(1);
   });
 
-  it('discards completion over the daily focus limit without XP or progress events', async () => {
+  it('truncates completion at the daily focus limit and awards XP on the remaining balance', async () => {
     const deadline = new Date(now.getTime() + 900_000);
     await dataSource!.getRepository(StudySession).update(studySessionId, {
       plannedDurationSeconds: 900,
@@ -353,12 +353,89 @@ describe('Study Session transitions against MySQL', () => {
     const result = await transition('complete', 1, 'complete-daily-limit');
 
     expect(result).toMatchObject({
-      state: 'discarded', durationValidSeconds: 0, xpAwarded: 0,
-      discardedReason: 'daily-limit-exceeded', terminalReason: 'auto-complete', version: 2,
+      state: 'completed', durationValidSeconds: 600, xpAwarded: 100,
+      discardedReason: null, cappedReason: 'daily-limit', terminalReason: 'auto-complete', version: 2,
     });
-    expect(await dataSource!.getRepository(Character).findOneByOrFail({ id: characterId })).toMatchObject({ xpTotal: 0 });
+    expect(await dataSource!.getRepository(Character).findOneByOrFail({ id: characterId })).toMatchObject({ xpTotal: 100 });
     expect(await dataSource!.query('SELECT * FROM active_study_sessions WHERE user_id = ?', [userId])).toHaveLength(0);
-    expect(realtime.emitToUser).not.toHaveBeenCalled();
+    expect(realtime.emitToUser).toHaveBeenCalledTimes(1);
+  });
+
+  const insertEarlierFocus = (id: string, endedAt: Date, durationValidSeconds: number) => dataSource!.getRepository(StudySession).insert({
+    id,
+    userId,
+    subject: null,
+    mode: 'solo',
+    raidId: null,
+    startedAt: new Date(endedAt.getTime() - 900_000),
+    endedAt,
+    plannedDurationSeconds: 900,
+    state: 'completed',
+    runDeadlineAt: endedAt,
+    pausedAt: null,
+    pausedTotalSeconds: 0,
+    pausedTotalMilliseconds: 0,
+    version: 2,
+    terminalReason: 'auto-complete',
+    initiatingSessionId: authSessionId,
+    durationValidSeconds,
+    xpAwarded: 0,
+    discardedReason: null,
+  });
+
+  it('truncates a manual stop at the daily focus limit and awards XP on the remaining balance', async () => {
+    await insertEarlierFocus('00000000-0000-4000-8000-000000000076', now, 16 * 3600 - 420);
+    now = new Date(now.getTime() + 600_000);
+
+    const result = await transition('stop', 1, 'stop-daily-limit');
+
+    expect(result).toMatchObject({
+      state: 'stopped_early', durationValidSeconds: 420, xpAwarded: 70, cappedReason: 'daily-limit',
+    });
+    expect(await dataSource!.getRepository(Character).findOneByOrFail({ id: characterId })).toMatchObject({ xpTotal: 70 });
+    expect(await dataSource!.getRepository(StudySession).findOneByOrFail({ id: studySessionId }))
+      .toMatchObject({ durationValidSeconds: 420, cappedReason: 'daily-limit' });
+  });
+
+  it('does not carry the focus of the previous day into the daily limit', async () => {
+    await insertEarlierFocus('00000000-0000-4000-8000-000000000077', new Date(now.getTime() - 2 * 86_400_000), 16 * 3600);
+    now = new Date(now.getTime() + 600_000);
+
+    const result = await transition('stop', 1, 'stop-next-day');
+
+    expect(result).toMatchObject({ state: 'stopped_early', durationValidSeconds: 600, xpAwarded: 100, cappedReason: null });
+  });
+
+  it('counts focus by the day the session started, not the day it ended', async () => {
+    const startOfDay = new Date(now);
+    startOfDay.setHours(0, 0, 0, 0);
+    // Started 10 minutes before today's midnight and ended 5 minutes after it: belongs to yesterday.
+    await dataSource!.getRepository(StudySession).insert({
+      id: '00000000-0000-4000-8000-000000000078',
+      userId,
+      subject: null,
+      mode: 'solo',
+      raidId: null,
+      startedAt: new Date(startOfDay.getTime() - 600_000),
+      endedAt: new Date(startOfDay.getTime() + 300_000),
+      plannedDurationSeconds: 900,
+      state: 'completed',
+      runDeadlineAt: new Date(startOfDay.getTime() + 300_000),
+      pausedAt: null,
+      pausedTotalSeconds: 0,
+      pausedTotalMilliseconds: 0,
+      version: 2,
+      terminalReason: 'auto-complete',
+      initiatingSessionId: authSessionId,
+      durationValidSeconds: 16 * 3600,
+      xpAwarded: 0,
+      discardedReason: null,
+    });
+    now = new Date(now.getTime() + 600_000);
+
+    const result = await transition('stop', 1, 'stop-after-midnight-session');
+
+    expect(result).toMatchObject({ state: 'stopped_early', durationValidSeconds: 600, xpAwarded: 100, cappedReason: null });
   });
 
   it('cancels at 299 valid seconds with zero XP and keeps the audit record', async () => {

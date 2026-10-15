@@ -30,6 +30,7 @@ export type RecentStudySession = {
   durationValidSeconds: number;
   xpAwarded: number;
   discardedReason: string | null;
+  cappedReason?: 'continuous-limit' | 'daily-limit' | null;
 };
 
 export type CadenceDay = {

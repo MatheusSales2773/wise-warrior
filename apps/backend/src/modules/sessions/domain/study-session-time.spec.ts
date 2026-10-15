@@ -6,6 +6,7 @@ import {
   StudySessionTransitionPolicyError,
 } from './study-session-time';
 import type { StudySessionTerminalReason } from '../entities/study-session.entity';
+import type { CappedReason } from './session-validator';
 
 const completionStart = new Date('2026-09-22T12:00:00.000Z');
 
@@ -99,15 +100,23 @@ describe('Study Session pause and resume timing', () => {
     expect(studySession).toEqual(before);
   });
 
+  it('cancels with zero valid focus seconds without throwing', () => {
+    const cancelled = session();
+
+    expect(applyStudySessionStop(cancelled, new Date(start.getTime() + 500))).toEqual({
+      state: 'cancelled', durationValidSeconds: 0, xpAwarded: 0, cappedReason: null,
+    });
+  });
+
   it('cancels 299 valid seconds without XP and stops at 300 with complete-minute XP', () => {
     const cancelled = session();
     const stoppedEarly = session();
 
     expect(applyStudySessionStop(cancelled, new Date(start.getTime() + 299_999))).toEqual({
-      state: 'cancelled', durationValidSeconds: 299, xpAwarded: 0,
+      state: 'cancelled', durationValidSeconds: 299, xpAwarded: 0, cappedReason: null,
     });
     expect(applyStudySessionStop(stoppedEarly, new Date(start.getTime() + 300_000))).toEqual({
-      state: 'stopped_early', durationValidSeconds: 300, xpAwarded: 50,
+      state: 'stopped_early', durationValidSeconds: 300, xpAwarded: 50, cappedReason: null,
     });
     expect(cancelled).toMatchObject({ endedAt: new Date(start.getTime() + 299_999), terminalReason: 'manual-stop', version: 2 });
   });
@@ -116,7 +125,7 @@ describe('Study Session pause and resume timing', () => {
     const studySession = session();
 
     expect(applyStudySessionStop(studySession, new Date(start.getTime() + 359_999))).toEqual({
-      state: 'stopped_early', durationValidSeconds: 359, xpAwarded: 50,
+      state: 'stopped_early', durationValidSeconds: 359, xpAwarded: 50, cappedReason: null,
     });
   });
 
@@ -128,7 +137,7 @@ describe('Study Session pause and resume timing', () => {
 
     const stopped = applyStudySessionStop(studySession, new Date(start.getTime() + 1_500_000));
 
-    expect(stopped).toEqual({ state: 'stopped_early', durationValidSeconds: 600, xpAwarded: 100 });
+    expect(stopped).toEqual({ state: 'stopped_early', durationValidSeconds: 600, xpAwarded: 100, cappedReason: null });
     expect(studySession).toMatchObject({
       state: 'stopped_early', pausedAt: null, pausedTotalMilliseconds: 899_500,
       pausedTotalSeconds: 899, durationValidSeconds: 600, version: 5,
@@ -177,7 +186,7 @@ describe('Study Session automatic completion timing', () => {
       state: 'completed',
       durationValidSeconds: plannedDurationSeconds,
       xpAwarded,
-      discardedReason: null,
+      cappedReason: null,
     });
     expect(studySession).toMatchObject({
       state: 'completed',
@@ -196,7 +205,7 @@ describe('Study Session automatic completion timing', () => {
     const endedAt = new Date(studySession.runDeadlineAt!.getTime() + 1);
 
     expect(applyStudySessionComplete(studySession, endedAt, 0)).toEqual({
-      state: 'completed', durationValidSeconds: 900, xpAwarded: 150, discardedReason: null,
+      state: 'completed', durationValidSeconds: 900, xpAwarded: 150, cappedReason: null,
     });
     expect(studySession.endedAt).toEqual(endedAt);
   });
@@ -250,23 +259,63 @@ describe('Study Session automatic completion timing', () => {
     });
   });
 
-  it('discards an automatic completion that would exceed the daily eligible focus limit', () => {
+  it('truncates an automatic completion to the remaining daily balance instead of discarding it', () => {
+    const studySession = plannedSession(900);
+    const endedAt = studySession.runDeadlineAt!;
+    const priorDailySeconds = 16 * 3600 - 300;
+
+    expect(applyStudySessionComplete(studySession, endedAt, priorDailySeconds)).toEqual({
+      state: 'completed',
+      durationValidSeconds: 300,
+      xpAwarded: 50,
+      cappedReason: 'daily-limit',
+    });
+    expect(studySession).toMatchObject({
+      state: 'completed',
+      durationValidSeconds: 300,
+      cappedReason: 'daily-limit',
+      discardedReason: null,
+      terminalReason: 'auto-complete',
+    });
+  });
+
+  it('awards 125 XP for a 25-minute session when XP_PER_MINUTE is 5', () => {
+    process.env.XP_PER_MINUTE = '5';
+    try {
+      const studySession = plannedSession(1500);
+      expect(applyStudySessionComplete(studySession, studySession.runDeadlineAt!, 0)).toMatchObject({
+        durationValidSeconds: 1500, xpAwarded: 125, cappedReason: null,
+      });
+    } finally {
+      delete process.env.XP_PER_MINUTE;
+    }
+  });
+
+  it('cancels an automatic completion truncated below five minutes, with no XP', () => {
     const studySession = plannedSession(900);
     const endedAt = studySession.runDeadlineAt!;
 
-    expect(applyStudySessionComplete(studySession, endedAt, 57_000)).toEqual({
-      state: 'discarded',
-      durationValidSeconds: 0,
-      xpAwarded: 0,
-      discardedReason: 'daily-limit-exceeded',
+    expect(applyStudySessionComplete(studySession, endedAt, 16 * 3600 - 200)).toEqual({
+      state: 'cancelled', durationValidSeconds: 200, xpAwarded: 0, cappedReason: 'daily-limit',
     });
-    expect(studySession).toMatchObject({
-      state: 'discarded',
-      durationValidSeconds: 0,
-      xpAwarded: 0,
-      discardedReason: 'daily-limit-exceeded',
-      terminalReason: 'auto-complete',
+    expect(studySession).toMatchObject({ state: 'cancelled', xpAwarded: 0, terminalReason: 'auto-complete' });
+  });
+
+  it('truncates a manual stop to the remaining daily balance', () => {
+    const studySession = plannedSession(1800);
+    const stopped = applyStudySessionStop(studySession, new Date(completionStart.getTime() + 600_000), 16 * 3600 - 420);
+
+    expect(stopped).toEqual({
+      state: 'stopped_early', durationValidSeconds: 420, xpAwarded: 70, cappedReason: 'daily-limit',
     });
+    expect(studySession.cappedReason).toBe('daily-limit');
+  });
+
+  it('cancels a manual stop whose daily balance leaves under five minutes', () => {
+    const studySession = plannedSession(1800);
+    const stopped = applyStudySessionStop(studySession, new Date(completionStart.getTime() + 600_000), 16 * 3600 - 120);
+
+    expect(stopped).toMatchObject({ state: 'cancelled', durationValidSeconds: 120, xpAwarded: 0, cappedReason: 'daily-limit' });
   });
 });
 
@@ -285,5 +334,6 @@ function sessionForCompletion() {
     terminalReason: null as StudySessionTerminalReason | null,
     xpAwarded: 0,
     discardedReason: null as string | null,
+    cappedReason: null as CappedReason | null,
   };
 }

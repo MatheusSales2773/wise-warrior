@@ -1,6 +1,6 @@
 import type { StudySessionState, StudySessionTerminalReason } from '../entities/study-session.entity';
-import { xpForDuration } from './xp-rate';
-import { validateStudySessionFocusSeconds, type DiscardReason } from './session-validator';
+import { MIN_FOCUS_SECONDS_FOR_XP, xpForDuration } from './xp-rate';
+import { validateStudySessionFocusSeconds, type CappedReason } from './session-validator';
 
 const MILLISECONDS_PER_SECOND = 1000;
 
@@ -17,6 +17,7 @@ export type StudySessionTimeFields = {
   endedAt?: Date | null;
   terminalReason?: StudySessionTerminalReason | null;
   discardedReason?: string | null;
+  cappedReason?: CappedReason | null;
   xpAwarded?: number | null;
 };
 
@@ -41,13 +42,15 @@ export type StudySessionStopResult = {
   state: 'cancelled' | 'stopped_early';
   durationValidSeconds: number;
   xpAwarded: number;
+  cappedReason: CappedReason | null;
 };
 
 export type StudySessionCompletionResult = {
-  state: 'completed' | 'discarded';
+  /** `cancelled` when the antifraude truncation leaves under five minutes of focus. */
+  state: 'completed' | 'cancelled';
   durationValidSeconds: number;
   xpAwarded: number;
-  discardedReason: DiscardReason | null;
+  cappedReason: CappedReason | null;
 };
 
 export function getStudySessionTime(session: StudySessionTimeFields, now: Date): StudySessionTime {
@@ -129,6 +132,7 @@ export function applyStudySessionTransition(
 export function applyStudySessionStop(
   session: StudySessionTimeFields,
   now: Date,
+  priorDailySeconds = 0,
 ): StudySessionStopResult {
   if (session.state !== 'running' && session.state !== 'paused') {
     throw new StudySessionTransitionPolicyError('invalid-state');
@@ -152,20 +156,31 @@ export function applyStudySessionStop(
     ? Math.max(0, now.getTime() - session.pausedAt.getTime())
     : 0;
   const pausedTotalMilliseconds = getRecordedPausedMilliseconds(session) + currentPauseMilliseconds;
-  const nextState = time.durationValidSeconds < 300 ? 'cancelled' : 'stopped_early';
-  const xpAwarded = nextState === 'cancelled' ? 0 : xpForDuration(time.durationValidSeconds);
+  // Cancelar logo após iniciar deixa 0 s de foco; o validador rejeita duração zero, então não passa por ele.
+  const validation = time.durationValidSeconds > 0
+    ? validateStudySessionFocusSeconds(time.durationValidSeconds, priorDailySeconds)
+    : { validSeconds: 0, cappedReason: null };
+  const validSeconds = validation.validSeconds;
+  const nextState = validSeconds < MIN_FOCUS_SECONDS_FOR_XP ? 'cancelled' : 'stopped_early';
+  const xpAwarded = nextState === 'cancelled' ? 0 : xpForDuration(validSeconds);
 
   session.state = nextState;
   session.endedAt = now;
   session.pausedAt = null;
   session.pausedTotalMilliseconds = pausedTotalMilliseconds;
   session.pausedTotalSeconds = Math.floor(pausedTotalMilliseconds / MILLISECONDS_PER_SECOND);
-  session.durationValidSeconds = time.durationValidSeconds;
+  session.durationValidSeconds = validSeconds;
   session.terminalReason = 'manual-stop';
   session.xpAwarded = xpAwarded;
+  session.cappedReason = validation.cappedReason;
   session.version = (session.version ?? 1) + 1;
 
-  return { state: nextState, durationValidSeconds: time.durationValidSeconds, xpAwarded };
+  return {
+    state: nextState,
+    durationValidSeconds: validSeconds,
+    xpAwarded,
+    cappedReason: validation.cappedReason,
+  };
 }
 
 export function applyStudySessionComplete(
@@ -191,13 +206,12 @@ export function applyStudySessionComplete(
   }
 
   const validation = validateStudySessionFocusSeconds(focusCandidateSeconds, priorDailySeconds);
-  const discarded = validation.discardedReason !== null;
   const totalPausedMilliseconds = getRecordedPausedMilliseconds(session);
   const result: StudySessionCompletionResult = {
-    state: discarded ? 'discarded' : 'completed',
-    durationValidSeconds: discarded ? 0 : session.plannedDurationSeconds,
-    xpAwarded: discarded ? 0 : xpForDuration(session.plannedDurationSeconds),
-    discardedReason: validation.discardedReason,
+    state: validation.validSeconds < MIN_FOCUS_SECONDS_FOR_XP ? 'cancelled' : 'completed',
+    durationValidSeconds: validation.validSeconds,
+    xpAwarded: xpForDuration(validation.validSeconds),
+    cappedReason: validation.cappedReason,
   };
 
   session.state = result.state;
@@ -208,7 +222,7 @@ export function applyStudySessionComplete(
   session.durationValidSeconds = result.durationValidSeconds;
   session.xpAwarded = result.xpAwarded;
   session.terminalReason = 'auto-complete';
-  session.discardedReason = result.discardedReason;
+  session.cappedReason = result.cappedReason;
   session.version = (session.version ?? 1) + 1;
 
   return result;

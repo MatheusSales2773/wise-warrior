@@ -11,6 +11,7 @@ import { Session } from './entities/session.entity';
 import { RefreshTokenHistory } from './entities/refresh-token-history.entity';
 import { User } from '../users/entities/user.entity';
 import { Character } from '../progression/entities/character.entity';
+import { RealtimeModule } from '../realtime/realtime.module';
 import { UsersModule } from '../users/users.module';
 
 @Module({
@@ -20,6 +21,7 @@ import { UsersModule } from '../users/users.module';
     JwtModule.register({}),
     // Ciclo só entre módulos (Auth → Users → Progression → Realtime → Auth); os providers não se repetem nele.
     forwardRef(() => UsersModule),
+    forwardRef(() => RealtimeModule),
   ],
   controllers: [AuthController, NativeAuthController],
   providers: [AuthService, JwtStrategy, RejectBrowserOriginGuard],
