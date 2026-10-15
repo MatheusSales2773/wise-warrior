@@ -13,6 +13,7 @@ export const CHAT_RATE_LIMIT_WINDOW_MS = 10_000;
 const MAX_REPEATED_CHARACTERS = 15;
 const MAX_LINKS = 2;
 const MAX_LINES = 8;
+const SWEEP_THRESHOLD = 1_000;
 
 export type ChatRejection = 'EMPTY' | 'TOO_LONG' | 'ABUSIVE';
 
@@ -30,7 +31,7 @@ export function sanitizeChatBody(raw: unknown, blockedTerms: readonly string[] =
     return { ok: false, reason: 'EMPTY' };
   }
   // eslint-disable-next-line no-control-regex
-  const body = raw.replace(/[\u0000-\u0009\u000B-\u001F\u007F]/g, '').replace(/\r\n?/g, '\n').trim();
+  const body = raw.replace(/[\u0000-\u0008\u000B-\u001F\u007F]/g, '').replace(/\r\n?/g, '\n').trim();
   if (body.length === 0) {
     return { ok: false, reason: 'EMPTY' };
   }
@@ -44,10 +45,19 @@ export function sanitizeChatBody(raw: unknown, blockedTerms: readonly string[] =
     return { ok: false, reason: 'ABUSIVE' };
   }
   const folded = fold(body);
-  if (blockedTerms.some((term) => term.length > 0 && folded.includes(fold(term)))) {
+  if (blockedTerms.some((term) => containsWord(folded, fold(term)))) {
     return { ok: false, reason: 'ABUSIVE' };
   }
   return { ok: true, body };
+}
+
+/** Casa o termo só como palavra inteira, para não bloquear palavras inocentes que o contenham. */
+function containsWord(text: string, term: string): boolean {
+  if (term.length === 0) {
+    return false;
+  }
+  const escaped = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(`(?<![\\p{L}\\p{N}])${escaped}(?![\\p{L}\\p{N}])`, 'u').test(text);
 }
 
 function fold(value: string): string {
@@ -74,6 +84,7 @@ export class SlidingWindowRateLimiter {
   /** Registra uma tentativa; devolve `null` se permitida ou os ms até liberar. */
   consume(key: string): number | null {
     const now = this.now();
+    this.sweep(now);
     const recent = (this.hits.get(key) ?? []).filter((at) => now - at < this.windowMs);
     if (recent.length >= this.limit) {
       this.hits.set(key, recent);
@@ -82,5 +93,17 @@ export class SlidingWindowRateLimiter {
     recent.push(now);
     this.hits.set(key, recent);
     return null;
+  }
+
+  /** Descarta chaves sem tentativas na janela para o mapa não crescer com cada usuário. */
+  private sweep(now: number): void {
+    if (this.hits.size < SWEEP_THRESHOLD) {
+      return;
+    }
+    for (const [key, times] of this.hits) {
+      if (times.every((at) => now - at >= this.windowMs)) {
+        this.hits.delete(key);
+      }
+    }
   }
 }

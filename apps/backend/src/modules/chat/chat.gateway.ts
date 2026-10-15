@@ -21,8 +21,9 @@ interface GuildPayload {
 }
 
 /**
- * Chat e presença da Guilda sobre o gateway autenticado do `RealtimeGateway`
- * (mesmo servidor Socket.IO). Uma conexão só entra na room `guild:{id}` depois
+ * Chat e presença da Guilda. Compartilha o servidor Socket.IO do
+ * `RealtimeGateway`, cujo middleware autentica a conexão e preenche
+ * `client.data.userId` antes de qualquer handler daqui rodar. Uma conexão só entra na room `guild:{id}` depois
  * de verificada a associação no banco; nenhum comando aceita room arbitrária.
  *
  * Cliente → servidor (todos respondem por ack):
@@ -36,6 +37,7 @@ interface GuildPayload {
 @WebSocketGateway()
 export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   private readonly logger = new Logger(ChatGateway.name);
+  private readonly queues = new Map<string, Promise<void>>();
 
   @WebSocketServer()
   server: Server;
@@ -68,7 +70,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     }
     for (const guildId of guildIds) {
       if (this.presence.disconnect(guildId, userId, client.id)) {
-        this.server?.to(`guild:${guildId}`).emit('member:online', { guildId, userId, online: false });
+        this.server?.to(guildRoom(guildId)).emit('member:online', { guildId, userId, online: false });
       }
     }
     guildIds.clear();
@@ -79,7 +81,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     @ConnectedSocket() client: Socket,
     @MessageBody() payload: GuildPayload,
   ): Promise<Ack<{ guildId: string; onlineUserIds: string[] }>> {
-    return this.handle(async () => {
+    return this.ack(async () => {
       const guildId = requireString(payload?.guildId, 'guildId');
       const userId = client.data.userId as string;
       await this.chat.assertMember(guildId, userId);
@@ -93,10 +95,14 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     @ConnectedSocket() client: Socket,
     @MessageBody() payload: GuildPayload & { body?: unknown },
   ): Promise<Ack<{ message: ChatMessageView }>> {
-    return this.handle(async () => {
+    return this.ack(async () => {
       const guildId = requireString(payload?.guildId, 'guildId');
-      const message = await this.chat.send(guildId, client.data.userId as string, payload?.body);
-      this.server?.to(`guild:${guildId}`).emit('chat:message', message);
+      // Salvar e emitir em fila por Guilda: a ordem de entrega acompanha `seq`.
+      const message = await this.serialized(guildId, async () => {
+        const saved = await this.chat.send(guildId, client.data.userId as string, payload?.body);
+        this.server?.to(guildRoom(guildId)).emit('chat:message', saved);
+        return saved;
+      });
       return { message };
     });
   }
@@ -106,7 +112,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     @ConnectedSocket() client: Socket,
     @MessageBody() payload: GuildPayload & { before?: unknown; limit?: unknown },
   ): Promise<Ack<ChatPage>> {
-    return this.handle(async () => {
+    return this.ack(async () => {
       const guildId = requireString(payload?.guildId, 'guildId');
       return this.chat.history(
         guildId,
@@ -121,26 +127,39 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   sync(
     @ConnectedSocket() client: Socket,
     @MessageBody() payload: GuildPayload & { afterSeq?: unknown },
-  ): Promise<Ack<{ messages: ChatMessageView[]; onlineUserIds: string[] }>> {
-    return this.handle(async () => {
+  ): Promise<Ack<{ messages: ChatMessageView[]; truncated: boolean; onlineUserIds: string[] }>> {
+    return this.ack(async () => {
       const guildId = requireString(payload?.guildId, 'guildId');
       const userId = client.data.userId as string;
-      const messages = await this.chat.since(guildId, userId, optionalInteger(payload?.afterSeq, 'afterSeq') ?? 0);
+      const { messages, truncated } = await this.chat.messagesAfter(guildId, userId, optionalInteger(payload?.afterSeq, 'afterSeq') ?? 0);
       this.enter(client, guildId, userId);
-      return { messages, onlineUserIds: this.presence.onlineUserIds(guildId) };
+      return { messages, truncated, onlineUserIds: this.presence.onlineUserIds(guildId) };
     });
+  }
+
+  private serialized<T>(guildId: string, task: () => Promise<T>): Promise<T> {
+    const previous = this.queues.get(guildId) ?? Promise.resolve();
+    const run = previous.then(task, task);
+    const tail = run.then(() => undefined, () => undefined);
+    this.queues.set(guildId, tail);
+    void tail.then(() => {
+      if (this.queues.get(guildId) === tail) {
+        this.queues.delete(guildId);
+      }
+    });
+    return run;
   }
 
   private enter(client: Socket, guildId: string, userId: string): void {
     const guildIds: Set<string> = (client.data.chatGuildIds ??= new Set<string>());
     guildIds.add(guildId);
-    void client.join(`guild:${guildId}`);
+    void client.join(guildRoom(guildId));
     if (this.presence.connect(guildId, userId, client.id)) {
-      this.server?.to(`guild:${guildId}`).emit('member:online', { guildId, userId, online: true });
+      this.server?.to(guildRoom(guildId)).emit('member:online', { guildId, userId, online: true });
     }
   }
 
-  private async handle<T extends object>(action: () => Promise<T>): Promise<Ack<T>> {
+  private async ack<T extends object>(action: () => Promise<T>): Promise<Ack<T>> {
     try {
       return { ok: true, ...(await action()) };
     } catch (error) {
@@ -154,6 +173,10 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       return { ok: false, error: { code: 'INTERNAL', message: 'Erro interno' } };
     }
   }
+}
+
+function guildRoom(guildId: string): string {
+  return `guild:${guildId}`;
 }
 
 function httpCode(status: number): string {

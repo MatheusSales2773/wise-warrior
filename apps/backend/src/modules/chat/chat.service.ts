@@ -1,4 +1,4 @@
-import { ForbiddenException, Injectable } from '@nestjs/common';
+import { ForbiddenException, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { LessThan, LessThanOrEqual, MoreThan, Repository } from 'typeorm';
@@ -31,6 +31,11 @@ export interface ChatPage {
   nextBefore: number | null;
 }
 
+export interface ChatSync {
+  messages: ChatMessageView[];
+  truncated: boolean;
+}
+
 export class ChatRejectedError extends Error {
   constructor(
     readonly code: ChatRejection | 'RATE_LIMITED',
@@ -42,6 +47,7 @@ export class ChatRejectedError extends Error {
 
 @Injectable()
 export class ChatService {
+  private readonly logger = new Logger(ChatService.name);
   private readonly limiter = new SlidingWindowRateLimiter();
   private readonly blockedTerms: string[];
 
@@ -62,13 +68,14 @@ export class ChatService {
 
   async send(guildId: string, userId: string, raw: unknown): Promise<ChatMessageView> {
     await this.assertMember(guildId, userId);
-    const checked = sanitizeChatBody(raw, this.blockedTerms);
-    if (!checked.ok) {
-      throw new ChatRejectedError(checked.reason);
-    }
+    // Toda tentativa de membro consome cota, inclusive as rejeitadas pelo conteúdo.
     const retryAfterMs = this.limiter.consume(userId);
     if (retryAfterMs !== null) {
       throw new ChatRejectedError('RATE_LIMITED', retryAfterMs);
+    }
+    const checked = sanitizeChatBody(raw, this.blockedTerms);
+    if (!checked.ok) {
+      throw new ChatRejectedError(checked.reason);
     }
 
     const saved = await this.messages.save(
@@ -78,14 +85,15 @@ export class ChatService {
       where: { id: saved.id },
       relations: { user: true },
     });
-    await this.prune(guildId);
+    // A mensagem já está salva: a poda é best-effort para não falhar o envio depois da persistência.
+    await this.prune(guildId).catch((error) => this.logger.warn(`Falha ao podar o chat: ${String(error)}`));
     return toView(stored);
   }
 
   /** Página das mensagens mais recentes (ou anteriores a `before`), paginada por `seq`. */
   async history(guildId: string, userId: string, before?: number, limit?: number): Promise<ChatPage> {
     await this.assertMember(guildId, userId);
-    const size = Math.min(Math.max(Math.trunc(limit ?? CHAT_PAGE_SIZE_DEFAULT) || CHAT_PAGE_SIZE_DEFAULT, 1), CHAT_PAGE_SIZE_MAX);
+    const size = clamp(limit ?? CHAT_PAGE_SIZE_DEFAULT, 1, CHAT_PAGE_SIZE_MAX);
     const rows = await this.messages.find({
       where: { guildId, ...(before !== undefined ? { seq: LessThan(before) } : {}) },
       relations: { user: true },
@@ -101,7 +109,7 @@ export class ChatService {
   }
 
   /** Mensagens perdidas durante uma desconexão: estritamente posteriores a `afterSeq`. */
-  async since(guildId: string, userId: string, afterSeq: number): Promise<ChatMessageView[]> {
+  async messagesAfter(guildId: string, userId: string, afterSeq: number): Promise<ChatSync> {
     await this.assertMember(guildId, userId);
     const rows = await this.messages.find({
       where: { guildId, seq: MoreThan(afterSeq) },
@@ -109,7 +117,8 @@ export class ChatService {
       order: { seq: 'ASC' },
       take: CHAT_RETAINED_MESSAGES,
     });
-    return rows.map(toView);
+    // `truncated`: o cliente ficou fora por mais que a retenção; deve recarregar via `chat:history`.
+    return { messages: rows.map(toView), truncated: rows.length === CHAT_RETAINED_MESSAGES };
   }
 
   /** Mantém só as últimas N mensagens da Guilda (Documento de Arquitetura). */
@@ -126,6 +135,10 @@ export class ChatService {
       await this.messages.delete({ guildId, seq: LessThanOrEqual(oldestKept.seq) });
     }
   }
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(Math.max(Math.trunc(value) || min, min), max);
 }
 
 function toView(row: GuildChatMessage): ChatMessageView {

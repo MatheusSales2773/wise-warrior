@@ -228,6 +228,20 @@ describe('guild chat and presence against MySQL and Socket.IO', () => {
     expect(events.at(-1)).toEqual({ guildId: GUILD_A, userId: BRUNO.id, online: false });
   });
 
+  it('delivers concurrent messages in seq order', async () => {
+    await setup();
+    const ana = await connectJoined(ANA.id, GUILD_A);
+    const bruno = await connectJoined(BRUNO.id, GUILD_A);
+    const seqs: number[] = [];
+    bruno.on('chat:message', (message) => seqs.push(message.seq));
+
+    await Promise.all([1, 2, 3, 4].map((n) => call(ana, 'chat:send', { guildId: GUILD_A, body: `c${n}` })));
+    await new Promise((resolve) => setTimeout(resolve, 200));
+
+    expect(seqs).toHaveLength(4);
+    expect(seqs).toEqual([...seqs].sort((a, b) => a - b));
+  });
+
   it('rejects invalid content and rate-limits floods without persisting them', async () => {
     await setup();
     const ana = await connectJoined(ANA.id, GUILD_A);
@@ -236,13 +250,14 @@ describe('guild chat and presence against MySQL and Socket.IO', () => {
     expect(await call(ana, 'chat:send', { guildId: GUILD_A, body: 'x'.repeat(501) })).toMatchObject({ ok: false, error: { code: 'TOO_LONG' } });
     expect(await call(ana, 'chat:send', { guildId: GUILD_A, body: 'k'.repeat(40) })).toMatchObject({ ok: false, error: { code: 'ABUSIVE' } });
     expect(await call(ana, 'chat:send', { body: 'sem guilda' })).toMatchObject({ ok: false, error: { code: 'BAD_REQUEST' } });
-    for (let index = 0; index < 5; index += 1) {
+    // The three content rejections above already used 3 of the 5 slots in the window.
+    for (let index = 0; index < 2; index += 1) {
       expect((await call(ana, 'chat:send', { guildId: GUILD_A, body: `ok ${index}` })).ok).toBe(true);
     }
     const limited = await call(ana, 'chat:send', { guildId: GUILD_A, body: 'demais' });
     expect(limited).toMatchObject({ ok: false, error: { code: 'RATE_LIMITED' } });
     expect(limited.error.retryAfterMs).toBeGreaterThan(0);
-    expect(await dataSource!.getRepository(GuildChatMessage).count()).toBe(5);
+    expect(await dataSource!.getRepository(GuildChatMessage).count()).toBe(2);
   });
 
   it('keeps only the latest messages per guild', async () => {

@@ -10,6 +10,15 @@ describe('sanitizeChatBody', () => {
     expect(sanitizeChatBody('  oi\u0000 time\nvamos  ')).toEqual({ ok: true, body: 'oi time\nvamos' });
   });
 
+  it('keeps tabs', () => {
+    expect(sanitizeChatBody('a\tb')).toEqual({ ok: true, body: 'a\tb' });
+  });
+
+  it('blocks whole words only', () => {
+    expect(sanitizeChatBody('classe', ['ass']).ok).toBe(true);
+    expect(sanitizeChatBody('seu ASS aí', ['ass'])).toEqual({ ok: false, reason: 'ABUSIVE' });
+  });
+
   it.each([[''], ['   \n '], [42], [undefined]])('rejects empty content %p', (raw) => {
     expect(sanitizeChatBody(raw)).toEqual({ ok: false, reason: 'EMPTY' });
   });
