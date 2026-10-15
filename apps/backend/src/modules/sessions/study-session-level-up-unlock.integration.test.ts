@@ -99,6 +99,7 @@ describe('Cosmetic Item unlock on level-up through the Study Session API', () =>
       config,
       dataSource,
       users,
+      { disconnectSessions: () => undefined } as never,
     );
     await auth.register({ email: 'veterana@example.com', password: 'senha-forte-123', displayName: 'Veterana' }, {});
     userId = (await dataSource.getRepository(User).findOneByOrFail({ email: 'veterana@example.com' })).id;

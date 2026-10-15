@@ -352,7 +352,9 @@ export class RaidsService {
       .orIgnore() // `study_session_id` único: uma conclusão reprocessada não soma de novo
       .execute();
     if ((inserted.raw as { affectedRows: number }).affectedRows === 0) {
-      return { status: 'counted', xpContributed, progress: null };
+      // Já contou antes: informa o XP gravado na primeira vez, sem somar nem publicar de novo.
+      const existing = await manager.findOneByOrFail(RaidContribution, { studySessionId });
+      return { status: 'counted', xpContributed: existing.xpContributed, progress: null };
     }
 
     // Atomic in the database. MySQL evaluates the assignments left to right, so the goal check runs before the increment.

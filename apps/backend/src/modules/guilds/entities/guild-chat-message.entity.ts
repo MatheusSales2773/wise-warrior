@@ -31,6 +31,15 @@ export class GuildChatMessage {
   @Index('IDX_guild_chat_messages_user_id')
   userId: string;
 
+  /** Assigned by the database (AUTO_INCREMENT); never written by the application. */
+  @Column({
+    type: 'bigint',
+    insert: false,
+    update: false,
+    transformer: { to: (value?: number) => value, from: (value: string | number) => Number(value) },
+  })
+  seq: number;
+
   @Column({ type: 'text' })
   body: string;
 

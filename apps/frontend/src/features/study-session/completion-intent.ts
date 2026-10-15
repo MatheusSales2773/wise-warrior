@@ -2,6 +2,7 @@ import {
   completeStudySession,
   type StudySessionSnapshot,
   type StudySessionTransitionRequest,
+  type StudySessionTransitionResult,
 } from './api';
 
 export type StudySessionCompletionIntent = {
@@ -9,9 +10,9 @@ export type StudySessionCompletionIntent = {
   snapshot: StudySessionSnapshot;
   status: 'ready' | 'pending' | 'retry' | 'waiting' | 'succeeded' | 'conflict';
   retryReady: boolean;
-  result: StudySessionSnapshot | null;
+  result: StudySessionTransitionResult | null;
   error: unknown;
-  promise: Promise<StudySessionSnapshot> | null;
+  promise: Promise<StudySessionTransitionResult> | null;
 };
 
 let retainedIntent: StudySessionCompletionIntent | null = null;
@@ -79,7 +80,7 @@ export function markCompletionIntentReadyAtSnapshot(
 
 export function submitCompletionIntent(
   intent: StudySessionCompletionIntent,
-): Promise<StudySessionSnapshot> {
+): Promise<StudySessionTransitionResult> {
   if (intent.promise) return intent.promise;
 
   intent.status = 'pending';

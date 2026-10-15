@@ -5,6 +5,7 @@ import type { RowDataPacket } from 'mysql2/promise';
 import { DataSource } from 'typeorm';
 import { Character } from '../progression/entities/character.entity';
 import { User } from '../users/entities/user.entity';
+import type { RealtimeGateway } from '../realtime/realtime.gateway';
 import type { UsersService } from '../users/users.service';
 import { AuthService } from './auth.service';
 import { Session } from './entities/session.entity';
@@ -70,6 +71,7 @@ describe('AuthService refresh rotation against independent MySQL connections', (
       config,
       dataSource,
       {} as UsersService,
+      { disconnectSessions: jest.fn() } as unknown as RealtimeGateway,
     );
   }
 

@@ -366,4 +366,9 @@ export class GuildsService {
     });
     return membership !== null;
   }
+
+  async guildIdsOf(userId: string): Promise<string[]> {
+    const rows = await this.memberships.find({ where: { userId } });
+    return rows.map((membership) => membership.guildId);
+  }
 }

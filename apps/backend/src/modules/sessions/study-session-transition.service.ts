@@ -9,7 +9,7 @@ import { DataSource, type EntityManager } from 'typeorm';
 import { ProgressionService } from '../progression/progression.service';
 import { RaidsService, type RaidContributionOutcome } from '../raids/raids.service';
 import { StudySession } from './entities/study-session.entity';
-import type { StudySessionSnapshot, RaidContributionFeedback } from './study-session-start.service';
+import type { StudySessionSnapshot } from './study-session-start.service';
 import { deserializeStudySessionSnapshot, studySessionSnapshot } from './study-session-start.service';
 import { StudySessionTransitionDto } from './dto/study-session-transition.dto';
 import { isValidIdempotencyKey } from './domain/idempotency-key';
@@ -33,6 +33,14 @@ export type StudySessionTransitionContext = {
   idempotencyKey: string | undefined;
 };
 
+/** Se a Study Session de modo Guilda contou para a Raid; `xpContributed` é 0 quando não contou. */
+export type RaidContributionFeedback = { status: RaidContributionOutcome['status']; xpContributed: number };
+
+/** Só as transições devolvem o feedback da Contribuição; null para sessões solo e pausa/retomada. */
+export type StudySessionTransitionResult = StudySessionSnapshot & {
+  raidContribution: RaidContributionFeedback | null;
+};
+
 type StudySessionTransitionCommand = StudySessionTransitionContext & {
   action: StudySessionCommandAction;
 };
@@ -48,7 +56,7 @@ type TransitionReceiptRow = {
   study_session_id: string;
   action: StudySessionCommandAction;
   expected_version: number | string;
-  response_json: StudySessionSnapshot | string;
+  response_json: StudySessionTransitionResult | string;
 };
 
 const problemTypes = {
@@ -70,25 +78,25 @@ export class StudySessionTransitionService {
     private readonly raids: RaidsService,
   ) {}
 
-  pause(command: StudySessionTransitionContext): Promise<StudySessionSnapshot> {
+  pause(command: StudySessionTransitionContext): Promise<StudySessionTransitionResult> {
     return this.transition({ ...command, action: 'pause' });
   }
 
-  resume(command: StudySessionTransitionContext): Promise<StudySessionSnapshot> {
+  resume(command: StudySessionTransitionContext): Promise<StudySessionTransitionResult> {
     return this.transition({ ...command, action: 'resume' });
   }
 
-  stop(command: StudySessionTransitionContext): Promise<StudySessionSnapshot> {
+  stop(command: StudySessionTransitionContext): Promise<StudySessionTransitionResult> {
     return this.transition({ ...command, action: 'stop' });
   }
 
-  complete(command: StudySessionTransitionContext): Promise<StudySessionSnapshot> {
+  complete(command: StudySessionTransitionContext): Promise<StudySessionTransitionResult> {
     return this.transition({ ...command, action: 'complete' });
   }
 
   private async transition(
     { userId, authSessionId, studySessionId, action, dto, idempotencyKey }: StudySessionTransitionCommand,
-  ): Promise<StudySessionSnapshot> {
+  ): Promise<StudySessionTransitionResult> {
     if (!isValidIdempotencyKey(idempotencyKey)) {
       throw new BadRequestException({
         type: problemTypes.idempotencyKeyRequired,
@@ -140,7 +148,7 @@ export class StudySessionTransitionService {
           });
         }
         return {
-          snapshot: deserializeStudySessionSnapshot(receipt.response_json),
+          snapshot: deserializeTransitionResult(receipt.response_json),
           xpGained: 0,
           progressionResult: null,
           raidContributionOutcome: null,
@@ -212,13 +220,14 @@ export class StudySessionTransitionService {
             xpContributed: terminalXpAwarded,
             endedAt: now,
           });
-          raidContributionFeedback = {
-            status: raidContributionOutcome.status,
-            xpContributed: raidContributionOutcome.xpContributed,
-          };
+          const { status, xpContributed } = raidContributionOutcome;
+          raidContributionFeedback = { status, xpContributed };
         }
       }
-      const snapshot = studySessionSnapshot(saved, authSessionId, now, raidContributionFeedback);
+      const snapshot: StudySessionTransitionResult = {
+        ...studySessionSnapshot(saved, authSessionId, now),
+        raidContribution: raidContributionFeedback,
+      };
       await manager.query(
         'INSERT INTO study_session_command_keys (user_id, idempotency_key, command_kind) VALUES (?, ?, ?)',
         [userId, idempotencyKey, action],
@@ -263,4 +272,10 @@ export class StudySessionTransitionService {
 
     return Number(row?.total ?? 0);
   }
+}
+
+function deserializeTransitionResult(value: StudySessionTransitionResult | string): StudySessionTransitionResult {
+  const original = typeof value === 'string' ? JSON.parse(value) as StudySessionTransitionResult : value;
+  // Recibos gravados antes do feedback da Contribuição não têm `raidContribution`.
+  return { ...deserializeStudySessionSnapshot(original), raidContribution: original.raidContribution ?? null };
 }

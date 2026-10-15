@@ -12,11 +12,6 @@ import { isValidIdempotencyKey } from './domain/idempotency-key';
 import { InvalidStudySessionSubjectError, normalizeStudySessionSubject } from './domain/study-session-subject';
 import { rejectIfStudySessionCommandKeyUsed } from './study-session-command-keys';
 
-export type RaidContributionFeedback = {
-  status: 'counted' | 'outside-raid-window' | 'no-validated-xp';
-  xpContributed: number;
-};
-
 export type StudySessionSnapshot = {
   id: string;
   mode: 'solo' | 'guild';
@@ -39,8 +34,6 @@ export type StudySessionSnapshot = {
   discardedReason: string | null;
   cappedReason: CappedReason | null;
   canControl: boolean;
-  /** Feedback on whether a guild-mode session counted for the Raid, null for solo sessions or non-terminal transitions. */
-  raidContribution: RaidContributionFeedback | null;
 };
 
 type ReceiptRow = {
@@ -50,12 +43,7 @@ type ReceiptRow = {
   response_json: StudySessionSnapshot | string;
 };
 
-export function studySessionSnapshot(
-  session: StudySession,
-  authSessionId: string,
-  now: Date,
-  raidContribution: RaidContributionFeedback | null = null,
-): StudySessionSnapshot {
+export function studySessionSnapshot(session: StudySession, authSessionId: string, now: Date): StudySessionSnapshot {
   const deadline = session.runDeadlineAt ?? null;
   const state = session.state ?? 'running';
   const time = getStudySessionTime({ ...session, state }, now);
@@ -80,7 +68,6 @@ export function studySessionSnapshot(
     discardedReason: session.discardedReason ?? null,
     cappedReason: session.cappedReason ?? null,
     canControl: session.initiatingSessionId === authSessionId,
-    raidContribution,
   };
 }
 
@@ -98,7 +85,6 @@ export function deserializeStudySessionSnapshot(
     serverNow: new Date(original.serverNow),
     endedAt: original.endedAt ? new Date(original.endedAt) : null,
     canControl: canControl ?? original.canControl,
-    raidContribution: original.raidContribution ?? null,
   };
 }
 

@@ -28,8 +28,11 @@ export type StudySessionSnapshot = {
   /** Antifraude limit that truncated the valid focus (ADR-011); absent on responses from older servers. */
   cappedReason?: 'continuous-limit' | 'daily-limit' | null;
   canControl: boolean;
-  raidContribution: RaidContributionFeedback | null;
   receivedAtMs: number;
+};
+/** Only transitions say whether a guild-mode Study Session counted for the Raid. */
+export type StudySessionTransitionResult = StudySessionSnapshot & {
+  raidContribution: RaidContributionFeedback | null;
 };
 export type StudySessionTransitionAction = 'pause' | 'resume' | 'stop' | 'complete';
 export type StudySessionTransitionRequest = {
@@ -70,26 +73,26 @@ export async function startStudySession(
   return { ...response.data, receivedAtMs: Date.now() };
 }
 
-export function pauseStudySession(command: StudySessionTransitionRequest): Promise<StudySessionSnapshot> {
+export function pauseStudySession(command: StudySessionTransitionRequest): Promise<StudySessionTransitionResult> {
   return transitionStudySession({ ...command, action: 'pause' });
 }
 
-export function resumeStudySession(command: StudySessionTransitionRequest): Promise<StudySessionSnapshot> {
+export function resumeStudySession(command: StudySessionTransitionRequest): Promise<StudySessionTransitionResult> {
   return transitionStudySession({ ...command, action: 'resume' });
 }
 
-export function stopStudySession(command: StudySessionTransitionRequest): Promise<StudySessionSnapshot> {
+export function stopStudySession(command: StudySessionTransitionRequest): Promise<StudySessionTransitionResult> {
   return transitionStudySession({ ...command, action: 'stop' });
 }
 
-export function completeStudySession(command: StudySessionTransitionRequest): Promise<StudySessionSnapshot> {
+export function completeStudySession(command: StudySessionTransitionRequest): Promise<StudySessionTransitionResult> {
   return transitionStudySession({ ...command, action: 'complete' });
 }
 
 async function transitionStudySession(
   { id, action, expectedVersion, idempotencyKey }: StudySessionTransitionRequest & { action: StudySessionTransitionAction },
-): Promise<StudySessionSnapshot> {
-  const response = await getAuthenticatedHttpClient().post<StudySessionSnapshot>(
+): Promise<StudySessionTransitionResult> {
+  const response = await getAuthenticatedHttpClient().post<StudySessionTransitionResult>(
     `/sessions/${id}/${action}`,
     { expectedVersion },
     { headers: { 'Idempotency-Key': idempotencyKey } },
