@@ -228,7 +228,7 @@ export class SessionsService {
       .select('COALESCE(SUM(session.durationValidSeconds), 0)', 'total')
       .where('session.userId = :userId', { userId })
       .andWhere('session.id != :excludeSessionId', { excludeSessionId })
-      .andWhere('session.endedAt >= :startOfDay', { startOfDay })
+      .andWhere('session.startedAt >= :startOfDay', { startOfDay })
       .andWhere('session.discardedReason IS NULL')
       .andWhere("(session.state IS NULL OR session.state IN ('completed', 'stopped_early'))")
       .getRawOne<{ total: string }>();

@@ -406,6 +406,38 @@ describe('Study Session transitions against MySQL', () => {
     expect(result).toMatchObject({ state: 'stopped_early', durationValidSeconds: 600, xpAwarded: 100, cappedReason: null });
   });
 
+  it('counts focus by the day the session started, not the day it ended', async () => {
+    const startOfDay = new Date(now);
+    startOfDay.setHours(0, 0, 0, 0);
+    // Started 10 minutes before today's midnight and ended 5 minutes after it: belongs to yesterday.
+    await dataSource!.getRepository(StudySession).insert({
+      id: '00000000-0000-4000-8000-000000000078',
+      userId,
+      subject: null,
+      mode: 'solo',
+      raidId: null,
+      startedAt: new Date(startOfDay.getTime() - 600_000),
+      endedAt: new Date(startOfDay.getTime() + 300_000),
+      plannedDurationSeconds: 900,
+      state: 'completed',
+      runDeadlineAt: new Date(startOfDay.getTime() + 300_000),
+      pausedAt: null,
+      pausedTotalSeconds: 0,
+      pausedTotalMilliseconds: 0,
+      version: 2,
+      terminalReason: 'auto-complete',
+      initiatingSessionId: authSessionId,
+      durationValidSeconds: 16 * 3600,
+      xpAwarded: 0,
+      discardedReason: null,
+    });
+    now = new Date(now.getTime() + 600_000);
+
+    const result = await transition('stop', 1, 'stop-after-midnight-session');
+
+    expect(result).toMatchObject({ state: 'stopped_early', durationValidSeconds: 600, xpAwarded: 100, cappedReason: null });
+  });
+
   it('cancels at 299 valid seconds with zero XP and keeps the audit record', async () => {
     now = new Date(now.getTime() + 299_999);
 

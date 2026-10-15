@@ -1,5 +1,5 @@
 import type { StudySessionState, StudySessionTerminalReason } from '../entities/study-session.entity';
-import { xpForDuration } from './xp-rate';
+import { MIN_FOCUS_SECONDS_FOR_XP, xpForDuration } from './xp-rate';
 import { validateStudySessionFocusSeconds, type CappedReason } from './session-validator';
 
 const MILLISECONDS_PER_SECOND = 1000;
@@ -46,7 +46,8 @@ export type StudySessionStopResult = {
 };
 
 export type StudySessionCompletionResult = {
-  state: 'completed';
+  /** `cancelled` when the antifraude truncation leaves under five minutes of focus. */
+  state: 'completed' | 'cancelled';
   durationValidSeconds: number;
   xpAwarded: number;
   cappedReason: CappedReason | null;
@@ -157,7 +158,7 @@ export function applyStudySessionStop(
   const pausedTotalMilliseconds = getRecordedPausedMilliseconds(session) + currentPauseMilliseconds;
   const validation = validateStudySessionFocusSeconds(time.durationValidSeconds, priorDailySeconds);
   const validSeconds = validation.validSeconds;
-  const nextState = validSeconds < 300 ? 'cancelled' : 'stopped_early';
+  const nextState = validSeconds < MIN_FOCUS_SECONDS_FOR_XP ? 'cancelled' : 'stopped_early';
   const xpAwarded = nextState === 'cancelled' ? 0 : xpForDuration(validSeconds);
 
   session.state = nextState;
@@ -204,7 +205,7 @@ export function applyStudySessionComplete(
   const validation = validateStudySessionFocusSeconds(focusCandidateSeconds, priorDailySeconds);
   const totalPausedMilliseconds = getRecordedPausedMilliseconds(session);
   const result: StudySessionCompletionResult = {
-    state: 'completed',
+    state: validation.validSeconds < MIN_FOCUS_SECONDS_FOR_XP ? 'cancelled' : 'completed',
     durationValidSeconds: validation.validSeconds,
     xpAwarded: xpForDuration(validation.validSeconds),
     cappedReason: validation.cappedReason,

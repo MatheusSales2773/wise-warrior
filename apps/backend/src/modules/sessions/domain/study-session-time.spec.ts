@@ -283,6 +283,16 @@ describe('Study Session automatic completion timing', () => {
     }
   });
 
+  it('cancels an automatic completion truncated below five minutes, with no XP', () => {
+    const studySession = plannedSession(900);
+    const endedAt = studySession.runDeadlineAt!;
+
+    expect(applyStudySessionComplete(studySession, endedAt, 16 * 3600 - 200)).toEqual({
+      state: 'cancelled', durationValidSeconds: 200, xpAwarded: 0, cappedReason: 'daily-limit',
+    });
+    expect(studySession).toMatchObject({ state: 'cancelled', xpAwarded: 0, terminalReason: 'auto-complete' });
+  });
+
   it('truncates a manual stop to the remaining daily balance', () => {
     const studySession = plannedSession(1800);
     const stopped = applyStudySessionStop(studySession, new Date(completionStart.getTime() + 600_000), 16 * 3600 - 420);

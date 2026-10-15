@@ -11,6 +11,11 @@ describe('xpForDuration', () => {
     expect(xpForDuration(359)).toBe(50);
   });
 
+  it('awards nothing below five complete minutes of focus', () => {
+    expect(xpForDuration(299)).toBe(0);
+    expect(xpForDuration(0)).toBe(0);
+  });
+
   it('reads XP_PER_MINUTE from the environment', () => {
     process.env.XP_PER_MINUTE = '5';
     expect(xpForDuration(1500)).toBe(125);
@@ -18,6 +23,6 @@ describe('xpForDuration', () => {
 
   it('falls back to the default for an invalid XP_PER_MINUTE', () => {
     process.env.XP_PER_MINUTE = 'abc';
-    expect(xpForDuration(60)).toBe(10);
+    expect(xpForDuration(300)).toBe(50);
   });
 });
