@@ -137,6 +137,7 @@ describe('Loja: Compra de Cosmetic Items À venda over HTTP against MySQL, with 
       ['Capa de Estrelas', 120, false, 20],
       ['Coroa de Louros', 300, false, 200],
       ['Lanterna do Estudo', 30, false, 0],
+      ['[TESTE] Item de teste da Loja - remover', 30, false, 0], // temporary seed, see #174
     ]);
     expect(items.find((item) => item.id === CAPA)).toMatchObject({ category: 'avatar' });
   });

@@ -20,6 +20,8 @@ import { UserCosmeticItem } from './entities/user-cosmetic-item.entity';
 import { UsersController } from './users.controller';
 import { UsersService, type CatalogCosmeticItem } from './users.service';
 
+const TEST_ITEM = ['[TESTE] Item de teste da Loja - remover', false, false];
+
 describe('Cosmetics Catalog HTTP contract against MySQL', () => {
   jest.setTimeout(30_000);
 
@@ -122,6 +124,7 @@ describe('Cosmetics Catalog HTTP contract against MySQL', () => {
     expect(response.status).toBe(200);
     const catalog = await response.json() as CatalogCosmeticItem[];
     expect(summarize(catalog)).toEqual([
+      TEST_ITEM, // temporary seed, see #174
       ['Aprendiz', true, true],
       ['Brasão da Forja', false, false],
       ['Capuz do Erudito', true, true],
@@ -192,7 +195,7 @@ describe('Cosmetics Catalog HTTP contract against MySQL', () => {
 
     expect(response.status).toBe(200);
     const catalog = await response.json() as CatalogCosmeticItem[];
-    expect(catalog).toHaveLength(11);
+    expect(catalog).toHaveLength(12); // the 11 real items plus the temporary test item (#174)
     expect(catalog.map((item) => item.name)).not.toContain('Quebrado');
   });
 
@@ -208,6 +211,7 @@ describe('Cosmetics Catalog HTTP contract against MySQL', () => {
 
     const catalog = await (await getCatalog(veteran)).json() as CatalogCosmeticItem[];
     expect(summarize(catalog)).toEqual([
+      TEST_ITEM, // temporary seed, see #174
       ['Aprendiz', true, false],
       ['Brasão da Forja', false, false],
       ['Capuz do Erudito', true, false],

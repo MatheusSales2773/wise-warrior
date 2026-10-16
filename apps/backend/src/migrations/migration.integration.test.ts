@@ -385,6 +385,11 @@ describe('TypeORM migrations against an empty MySQL schema', () => {
       database!.admin,
       `SELECT name FROM ${database!.identifier}.migrations`,
     );
+    const forSaleBeforeRevert = await rows(
+      database!.admin,
+      `SELECT name, price FROM ${database!.identifier}.cosmetic_items WHERE for_sale = 1`,
+    );
+    expect(forSaleBeforeRevert).toEqual([{ name: '[TESTE] Item de teste da Loja - remover', price: 30 }]);
     expect(migrationRows.map((row) => row.name)).toEqual([
       'CreateWiseSchema1788458400000',
       'AddSessionRefreshTokenHistory1788458460000',
@@ -404,9 +409,16 @@ describe('TypeORM migrations against an empty MySQL schema', () => {
       'AddStudySessionCappedReason1788459600000',
       'AddCoinEconomy1788459660000',
       'AddCosmeticItemSale1788459720000',
+      'SeedTestCosmeticItemForSale1788459780000',
     ]);
 
-    await dataSource.undoLastMigration(); // cosmetic item sale, the newest migration
+    await dataSource.undoLastMigration(); // temporary test item À venda, the newest migration
+    const testItemRevertRows = await rows(
+      database!.admin,
+      `SELECT id FROM ${database!.identifier}.cosmetic_items WHERE for_sale = 1`,
+    );
+    expect(testItemRevertRows).toHaveLength(0);
+    await dataSource.undoLastMigration(); // cosmetic item sale
     const saleRevertRows = await rows(
       database!.admin,
       `SELECT COLUMN_NAME FROM information_schema.COLUMNS
@@ -671,8 +683,8 @@ await dataSource.undoLastMigration();
       { idempotency_key: 'rolling-transition-key', command_kind: 'resume' },
     ]);
 
-    // Thirteen steps: the cosmetic item sale and coin economy migrations now sit above the 16 earlier ones.
-    for (let step = 0; step < 13; step += 1) await dataSource.undoLastMigration();
+    // Fourteen steps: the test item, cosmetic item sale and coin economy migrations now sit above the 16 earlier ones.
+    for (let step = 0; step < 14; step += 1) await dataSource.undoLastMigration();
     const leftoverTriggers = await rows(
       database.admin,
       `SELECT TRIGGER_NAME FROM information_schema.TRIGGERS
@@ -797,7 +809,8 @@ await dataSource.undoLastMigration();
     expect(receiptsWithSubject).toEqual([{ idempotency_key: 'solo-start-key', subject: 'Cálculo II' }]);
 
     // M6 revert: only the receipt column goes away; every persisted Matéria (including legacy Guild rows) stays.
-    await dataSource.undoLastMigration(); // cosmetic item sale, the newest migration
+    await dataSource.undoLastMigration(); // temporary test item À venda, the newest migration
+    await dataSource.undoLastMigration(); // cosmetic item sale
     await dataSource.undoLastMigration(); // coin economy
     await dataSource.undoLastMigration(); // study session capped reason
     await dataSource.undoLastMigration(); // guild chat sequence
@@ -836,8 +849,8 @@ await dataSource.undoLastMigration();
     );
     expect(receiptsAfterReapply).toEqual([{ idempotency_key: 'solo-start-key', subject: null }]);
 
-    // Fifteen steps: the cosmetic item sale and coin economy migrations now sit above the 13 earlier ones that this downgrade undid.
-    for (let step = 0; step < 15; step += 1) await dataSource.undoLastMigration();
+    // Sixteen steps: the test item, cosmetic item sale and coin economy migrations now sit above the 13 earlier ones that this downgrade undid.
+    for (let step = 0; step < 16; step += 1) await dataSource.undoLastMigration();
     const downgradedHistory = await rows(
       database.admin,
       `SELECT id, subject, mode, raid_id FROM ${database.identifier}.study_sessions ORDER BY id`,
@@ -928,8 +941,8 @@ await dataSource.undoLastMigration();
     );
     expect(leftoverArchives).toHaveLength(0);
 
-    // Eighteen steps: every migration, the coin economy and cosmetic item sale ones included, down to the archives.
-    for (let step = 0; step < 18; step += 1) await dataSource.undoLastMigration();
+    // Nineteen steps: every migration, the test item, coin economy and cosmetic item sale ones included, down to the archives.
+    for (let step = 0; step < 19; step += 1) await dataSource.undoLastMigration();
     const remainingSchemaTables = await rows(
       database.admin,
       `SELECT TABLE_NAME FROM information_schema.TABLES
@@ -997,6 +1010,7 @@ await dataSource.undoLastMigration();
       ['badge', 'Marcador do Grimório', 'raid:cerco-ao-grimorio', 0],
       ['accessory', 'Lanterna do Silêncio', 'raid:marcha-do-silencio', 0],
       ['badge', 'Brasão da Forja', 'raid:forja-dos-sabios', 0],
+      ['badge', '[TESTE] Item de teste da Loja - remover', 'purchase', 0], // temporary seed, see #174
     ]);
 
     const inventory = await rows(
