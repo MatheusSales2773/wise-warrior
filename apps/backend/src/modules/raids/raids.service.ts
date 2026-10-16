@@ -5,11 +5,13 @@ import {
   Inject,
   Injectable,
   NotFoundException,
+  Optional,
   forwardRef,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { EntityManager, IsNull, Repository } from 'typeorm';
 import { Mission } from './entities/mission.entity';
+import { MissionChoiceService } from './mission-choice.service';
 import { MissionRewardItem } from './entities/mission-reward-item.entity';
 import { Raid } from './entities/raid.entity';
 import { RAID_CLOCK, type RaidClock } from './raid-clock';
@@ -222,6 +224,9 @@ export class RaidsService {
     @Inject(RAID_CLOCK) private readonly clock: RaidClock,
     @InjectRepository(MissionRewardItem) private readonly missionRewardItems: Repository<MissionRewardItem>,
     private readonly economy: EconomyService,
+    // Optional and last so the services built by hand in integration tests keep their positional arguments;
+    // without it, the Raid always uses the rotation.
+    @Optional() private readonly missionChoice?: MissionChoiceService,
   ) {}
 
   /**
@@ -230,8 +235,10 @@ export class RaidsService {
    */
   async createForGuild(manager: EntityManager, guildId: string, memberCount: number, now: Date = this.clock()): Promise<Raid> {
     const week = raidWeekAt(now);
-    const catalog = await manager.find(Mission, { where: { price: IsNull() }, order: { rotationOrder: 'ASC' } });
-    const mission = catalog[missionIndexForWeek(week.number, catalog.length)];
+    // A escolha do Líder vale uma vez; sem ela, ou com o dono fora da Guild, vale o rodízio.
+    const chosen = (await this.missionChoice?.consume(manager, guildId)) ?? null;
+    const catalog = chosen ? [] : await manager.find(Mission, { where: { price: IsNull() }, order: { rotationOrder: 'ASC' } });
+    const mission = chosen ?? catalog[missionIndexForWeek(week.number, catalog.length)];
     if (!mission) {
       throw new Error('Catálogo de Missões vazio');
     }

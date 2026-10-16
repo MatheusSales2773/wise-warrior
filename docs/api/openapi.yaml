@@ -916,6 +916,83 @@ paths:
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
 
+  /guilds/{id}/raids/next-mission/available:
+    get:
+      summary: Missões que o Líder pode escolher para a próxima Raid
+      description: >
+        As Missões possuídas pelos membros atuais, com o dono de cada uma (ADR-012). As Missões do rodízio vêm
+        com `rotation: true` e `owners` vazio, porque são de todos. Só membros da guilda (`403` para os demais).
+      operationId: listAvailableGuildMissions
+      tags: [Raids]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: Missões disponíveis
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/AvailableMission" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /guilds/{id}/raids/next-mission:
+    get:
+      summary: Missão escolhida para a próxima Raid
+      description: >
+        A escolha pendente do Líder, com a Missão e o dono, ou `choice: null` quando não há escolha ou o dono já
+        saiu da guilda (a Raid usará o rodízio). Só membros da guilda.
+      operationId: getNextGuildMission
+      tags: [Raids]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: Escolha pendente
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/NextMissionChoiceResponse" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    put:
+      summary: Escolhe a Missão da próxima Raid
+      description: >
+        Só o Líder (`403` para membro comum e não-membro). Aceita a Missão do rodízio ou uma Missão à venda possuída
+        por um membro atual, que o corpo identifica em `ownerId` (`422` caso contrário). A mesma Missão pode se
+        repetir, e a escolha pode ser trocada até a Raid começar: o job de segunda a usa e a consome, e se o dono
+        saiu antes a Raid usa o rodízio. O dono não recebe nada. Limite de 30 requisições por minuto por usuário.
+      operationId: chooseNextGuildMission
+      tags: [Raids]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [missionId]
+              properties:
+                missionId: { type: string, format: uuid }
+                ownerId: { type: string, format: uuid, description: "Dono da Missão à venda; omitido na Missão do rodízio" }
+      responses:
+        "200":
+          description: Escolha gravada
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/NextMissionChoiceResponse" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422":
+          description: A Missão não é de um membro atual
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+
   /guilds/{id}/raids:
     get:
       summary: Raids anteriores da guilda
@@ -1254,6 +1331,52 @@ components:
         price: { type: integer, minimum: 30, maximum: 300 }
         balance: { type: integer, minimum: 0, description: Saldo depois da Compra }
 
+    MissionOwner:
+      type: object
+      required: [userId, displayName]
+      properties:
+        userId: { type: string, format: uuid }
+        displayName: { type: string }
+    AvailableMission:
+      type: object
+      required: [id, slug, name, description, imageUrl, rotation, owners]
+      properties:
+        id: { type: string, format: uuid }
+        slug: { type: string }
+        name: { type: string }
+        description: { type: string }
+        imageUrl: { type: [string, "null"] }
+        rotation: { type: boolean, description: "Missão do rodízio: grátis e de todos os membros" }
+        owners:
+          type: array
+          items: { $ref: "#/components/schemas/MissionOwner" }
+    NextMissionChoice:
+      type: object
+      required: [mission, owner, chosenAt]
+      properties:
+        mission:
+          type: object
+          required: [id, slug, name, description, imageUrl, rotation]
+          properties:
+            id: { type: string, format: uuid }
+            slug: { type: string }
+            name: { type: string }
+            description: { type: string }
+            imageUrl: { type: [string, "null"] }
+            rotation: { type: boolean }
+        owner:
+          oneOf:
+            - { $ref: "#/components/schemas/MissionOwner" }
+            - { type: "null" }
+        chosenAt: { type: string, format: date-time }
+    NextMissionChoiceResponse:
+      type: object
+      required: [choice]
+      properties:
+        choice:
+          oneOf:
+            - { $ref: "#/components/schemas/NextMissionChoice" }
+            - { type: "null" }
     StoreMission:
       type: object
       required: [id, slug, name, description, imageUrl, price, reward, state, missing]
