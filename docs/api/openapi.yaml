@@ -534,6 +534,23 @@ paths:
               schema: { $ref: "#/components/schemas/RecentStudySessionSubjects" }
         "401": { $ref: "#/components/responses/Unauthorized" }
 
+  /sessions/cycle:
+    get:
+      summary: Retorna a posição do usuário na cadência Pomodoro e a próxima pausa
+      description: >
+        Só focos concluídos integralmente avançam a sequência de quatro; encerramento antecipado,
+        cancelamento e descarte não a avançam nem a reiniciam. Com quatro focos a pausa oferecida é a
+        longa; o quinto foco concluído inicia um novo ciclo. As pausas em si são locais ao dispositivo.
+      operationId: getStudySessionCycle
+      tags: [Sessions]
+      responses:
+        "200":
+          description: Posição atual no ciclo de quatro focos
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/StudySessionCycle" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
   /sessions/metrics:
     get:
       summary: Retorna métricas de consistência de estudo do usuário autenticado
@@ -1209,6 +1226,17 @@ components:
           type: array
           maxItems: 6
           items: { type: string, minLength: 1, maxLength: 80 }
+
+    StudySessionCycle:
+      type: object
+      required: [completedInCycle, cycleLength, nextBreak]
+      properties:
+        completedInCycle: { type: integer, minimum: 0, maximum: 4 }
+        cycleLength: { type: integer, const: 4 }
+        nextBreak:
+          type: string
+          enum: [short, long]
+          description: Pausa curta (5 minutos) ou longa (15 minutos) oferecida após o próximo foco concluído.
 
     SessionMetrics:
       type: object

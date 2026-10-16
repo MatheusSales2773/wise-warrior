@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { getActiveStudySession, getRecentStudySessionSubjects } from './api';
+import { getActiveStudySession, getFocusCycle, getRecentStudySessionSubjects } from './api';
 
 export const activeStudySessionQueryKey = ['study-session', 'active'] as const;
 
@@ -19,6 +19,17 @@ export function useRecentStudySessionSubjects() {
   return useQuery({
     queryKey: recentStudySessionSubjectsQueryKey,
     queryFn: ({ signal }) => getRecentStudySessionSubjects(signal),
+    retry: false,
+  });
+}
+
+export const focusCycleQueryKey = ['study-session', 'cycle'] as const;
+
+/** The break offer degrades to the short break when this is loading or failed, so it never gates anything. */
+export function useFocusCycle() {
+  return useQuery({
+    queryKey: focusCycleQueryKey,
+    queryFn: ({ signal }) => getFocusCycle(signal),
     retry: false,
   });
 }

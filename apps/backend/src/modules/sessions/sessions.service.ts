@@ -15,6 +15,7 @@ import { RecentSessionResponseDto } from './dto/recent-session-response.dto';
 import { RecentSubjectsResponseDto } from './dto/recent-subjects-response.dto';
 import { SessionMetricsResponseDto } from './dto/session-metrics-response.dto';
 import { buildCadence, calculateStreaks, type SessionActivityDay } from './domain/session-metrics';
+import { focusCycle, type FocusCycle } from './domain/focus-cycle';
 
 const RECENT_SUBJECTS_LIMIT = 6;
 
@@ -42,6 +43,12 @@ export class SessionsService {
         lastHeartbeatAt: now,
       }),
     );
+  }
+
+  /** Where the user stands in the Pomodoro cadence: only focuses completed in full advance it. */
+  async focusCycle(userId: string): Promise<FocusCycle> {
+    const completedFocuses = await this.studySessions.count({ where: { userId, state: 'completed' } });
+    return focusCycle(completedFocuses);
   }
 
   async recent(userId: string): Promise<RecentSessionResponseDto[]> {

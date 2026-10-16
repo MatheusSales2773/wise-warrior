@@ -30,6 +30,11 @@ export type StudySessionSnapshot = {
   canControl: boolean;
   receivedAtMs: number;
 };
+export type FocusCycle = {
+  completedInCycle: number;
+  cycleLength: 4;
+  nextBreak: 'short' | 'long';
+};
 /** Only transitions say whether a guild-mode Study Session counted for the Raid. */
 export type StudySessionTransitionResult = StudySessionSnapshot & {
   raidContribution: RaidContributionFeedback | null;
@@ -44,6 +49,11 @@ export type StudySessionTransitionRequest = {
 export async function getActiveStudySession(signal?: AbortSignal): Promise<StudySessionSnapshot | null> {
   const response = await getAuthenticatedHttpClient().get<StudySessionSnapshot>('/sessions/active', { signal });
   return response.status === 204 ? null : { ...response.data, receivedAtMs: Date.now() };
+}
+
+export async function getFocusCycle(signal?: AbortSignal): Promise<FocusCycle> {
+  const response = await getAuthenticatedHttpClient().get<FocusCycle>('/sessions/cycle', { signal });
+  return response.data;
 }
 
 export async function getRecentStudySessionSubjects(signal?: AbortSignal): Promise<string[]> {
