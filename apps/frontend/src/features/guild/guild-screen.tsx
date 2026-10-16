@@ -6,7 +6,7 @@ import { FeedbackMessage, ProgressBar, Screen, WiseButton, WiseCard, WiseField, 
 import { isApiError } from '@/core/api/api-error';
 import { createGuild, joinGuild, joinRaid, leaveGuild, type ActiveRaid, type GuildMember, type GuildSummary, type MyGuild, type PastRaid, type RaidRankingEntry } from './api';
 import {
-  RAID_GOAL_REACHED, RAID_REWARD_RULE, createGuildErrorMessage, formatPastRaidMine, formatPastRaidOutcome, formatRaidWeek, formatGuildRole, formatMyContribution, formatMyPosition, formatMemberCount, formatPosition, formatRaidTimeLeft, formatRewardCategory,
+  RAID_GOAL_REACHED, RAID_REWARD_RULE, createGuildErrorMessage, formatPastRaidMine, formatPastRaidOutcome, formatRaidWeek, formatGuildRole, formatMyContribution, formatMyPosition, formatMemberCount, formatPosition, formatRaidTimeLeft, formatRewardCategory, formatRewardCoins,
   joinGuildErrorMessage, joinRaidErrorMessage, leaveGuildErrorMessage, raidProgressPercent, rankingEntryLabel,
 } from './messages';
 import { activeRaidQueryOptions, guildDirectoryQueryOptions, guildKeys, guildMembersQueryOptions, myGuildQueryOptions, pastRaidsQueryOptions, raidRankingQueryOptions } from './queries';
@@ -199,7 +199,7 @@ function RaidDetails({ guildId, raid }: { guildId: string; raid: ActiveRaid }) {
           <WiseText variant="label">{reward.name}</WiseText>
           <WiseText color="textSecondary" variant="body">{formatRewardCategory(reward.category)}</WiseText>
         </View>)}
-        <WiseText color="textSecondary" variant="body">+{raid.coins} Moedas</WiseText>
+        <WiseText color="textSecondary" variant="body">{formatRewardCoins(raid.coins)}</WiseText>
         <WiseText color="textSecondary" variant="caption">{RAID_REWARD_RULE}</WiseText>
       </View>
       <RaidParticipation guildId={guildId} raid={raid} />

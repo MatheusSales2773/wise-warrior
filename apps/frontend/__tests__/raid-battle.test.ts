@@ -77,8 +77,8 @@ describe('heroOf', () => {
 });
 
 describe('raidParty', () => {
-  it('puts the first five of the party in the scene and calls you "Você"', () => {
-    const party = raidParty([entry(1), entry(2, { isMe: true }), entry(3), entry(4), entry(5), entry(6)]);
+  it('puts the party in the scene and calls you "Você"', () => {
+    const party = raidParty([entry(1), entry(2, { isMe: true }), entry(3), entry(4), entry(5)]);
     expect(party.map((member) => member.displayName)).toEqual(['Membro 1', 'Você', 'Membro 3', 'Membro 4', 'Membro 5']);
     expect(party[1]).toMatchObject({ isMe: true, hero: 'erudito', level: 3, accessory: null });
   });

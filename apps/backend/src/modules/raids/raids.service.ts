@@ -285,7 +285,8 @@ export class RaidsService {
     const rewardItemIds = await this.rewardItemIdsOf(this.missionRewardItems.manager, raid.missionId);
     const found = await this.users.findCosmeticItems(rewardItemIds);
     const rewards = rewardItemIds.flatMap((id) => found.find((item) => item.id === id) ?? []);
-    if (rewards.length === 0 || rewards.length !== rewardItemIds.length) {
+    // A Missão without items, or with an item missing from the Catalog, is corrupt data: fail loudly.
+    if (rewardItemIds.length === 0 || rewards.length !== rewardItemIds.length) {
       throw new Error(`Recompensa da Missão ${raid.mission.slug} não encontrada`);
     }
     const { items: party } = await this.rankingPage(raid.id, requesterId, RAID_PARTY_SIZE, 0);

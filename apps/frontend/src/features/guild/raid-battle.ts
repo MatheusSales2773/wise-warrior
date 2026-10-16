@@ -3,7 +3,7 @@ import type { ItemSpriteName, PixelSpriteData } from '@/features/character/sprit
 import { heroSprites } from '@/features/character/sprites';
 import type { RaidRankingEntry } from './api';
 import { raidProgressPercent } from './messages';
-import { RAID_PARTY_SIZE, raidWeapons, sentinelaSprite } from './raid-scene-sprites';
+import { raidWeapons, sentinelaSprite } from './raid-scene-sprites';
 
 /*
  * Regras de apresentação da tela da Raid (Figma 06b). O domínio continua em XP; a tela mostra horas de foco.
@@ -80,9 +80,9 @@ export type PartyMember = {
   accessory: ItemSpriteName | null;
 };
 
-/** Quem aparece na cena: os primeiros Participantes do Ranking interno (`party` da Raid), até as cinco vagas. */
+/** Quem aparece na cena: os primeiros Participantes do Ranking interno (`party` da Raid, no máximo cinco). */
 export function raidParty(party: readonly RaidRankingEntry[]): PartyMember[] {
-  return party.slice(0, RAID_PARTY_SIZE).map((entry) => ({
+  return party.map((entry) => ({
     userId: entry.userId,
     displayName: entry.isMe ? 'Você' : entry.displayName,
     level: entry.level,

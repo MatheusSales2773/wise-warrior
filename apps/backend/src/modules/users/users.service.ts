@@ -44,6 +44,8 @@ export interface EquippedCosmeticItem {
 }
 
 /** The Avatar and Acessório a user has equipped, as shown on other people's screens (e.g. the Raid scene). */
+const APPEARANCE_CATEGORIES = ['avatar', 'accessory'] as const;
+
 export interface EquippedAppearance {
   avatar: { itemId: string; name: string } | null;
   accessory: { itemId: string; name: string } | null;
@@ -203,13 +205,14 @@ export class UsersService {
     const appearance = new Map<string, EquippedAppearance>(ids.map((id) => [id, { avatar: null, accessory: null }]));
     if (ids.length === 0) return appearance;
     const rows = await this.userCosmetics.find({
-      where: { userId: In(ids), equipped: true, cosmeticItem: { category: In<CosmeticCategory>(['avatar', 'accessory']) } },
+      where: { userId: In(ids), equipped: true, cosmeticItem: { category: In<CosmeticCategory>([...APPEARANCE_CATEGORIES]) } },
       relations: ['cosmeticItem'],
     });
     for (const { userId, cosmeticItem } of rows) {
       const slot = appearance.get(userId);
-      if (!slot || (cosmeticItem.category !== 'avatar' && cosmeticItem.category !== 'accessory')) continue;
-      slot[cosmeticItem.category] = { itemId: cosmeticItem.id, name: cosmeticItem.name };
+      const category = APPEARANCE_CATEGORIES.find((candidate) => candidate === cosmeticItem.category);
+      if (!slot || !category) continue;
+      slot[category] = { itemId: cosmeticItem.id, name: cosmeticItem.name };
     }
     return appearance;
   }

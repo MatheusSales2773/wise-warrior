@@ -9,7 +9,7 @@ import { PixelSprite } from '@/features/character/PixelSprite';
 import { itemSprites } from '@/features/character/sprites';
 import { useFocusRing } from '@/features/character/character-parts';
 import type { ActiveRaid, MyGuild, RaidRankingEntry } from './api';
-import { RAID_GOAL_REACHED, formatPosition } from './messages';
+import { RAID_GOAL_REACHED, formatPosition, formatRewardCoins, formatRewardName } from './messages';
 import { activeRaidQueryOptions, myGuildQueryOptions, raidRankingQueryOptions } from './queries';
 import { bossLifePercent, formatBattleTimeLeft, formatFocusHours, heroOf, partyHeroSprites, raidParty, weeklyStrikes, type Strike } from './raid-battle';
 import { raidSceneArt } from './raid-scene-art';
@@ -150,17 +150,9 @@ function StrikesCard({ compact, entries, failed, loading }: { compact: boolean; 
   </Card>;
 }
 
-type Reward = ActiveRaid['rewards'][number];
-
-function rewardName(reward: Reward): string {
-  return reward.category === 'title' ? `Título “${reward.name}”` : reward.name;
-}
-
-const coinsLabel = (coins: number) => `+${coins} Moedas`;
-
 /** What the Raid gives, for the screen readers: every item, then the Moedas. */
 function rewardsLabel(raid: ActiveRaid): string {
-  return [...raid.rewards.map(rewardName), coinsLabel(raid.coins)].join(', ');
+  return [...raid.rewards.map(formatRewardName), formatRewardCoins(raid.coins)].join(', ');
 }
 
 function AttackButton({ raid }: { raid: ActiveRaid }) {
@@ -183,9 +175,9 @@ function RewardsCard({ raid }: { raid: ActiveRaid }) {
     <View accessible accessibilityLabel={`${rewardsLabel(raid)}. ${REWARD_RULE_CAPTION}.`} style={styles.rewardList} testID="raid-reward">
       {raid.rewards.map((reward) => <View key={reward.itemId} style={styles.reward} testID={`raid-reward-${reward.itemId}`}>
         <View style={styles.rewardIcon}><PixelSprite scale={4} sprite={itemSprites[cosmeticSprite(reward)]} /></View>
-        <Text style={styles.rewardName}>{rewardName(reward)}</Text>
+        <Text style={styles.rewardName}>{formatRewardName(reward)}</Text>
       </View>)}
-      <Text style={styles.rewardCoins} testID="raid-reward-coins">{coinsLabel(raid.coins)}</Text>
+      <Text style={styles.rewardCoins} testID="raid-reward-coins">{formatRewardCoins(raid.coins)}</Text>
       <Text style={styles.rewardCaption}>{REWARD_RULE_CAPTION}</Text>
     </View>
     <View style={styles.fill} />
@@ -200,7 +192,7 @@ function RewardChips({ raid }: { raid: ActiveRaid }) {
       <PixelSprite scale={3} sprite={itemSprites[cosmeticSprite(reward)]} />
       <Text numberOfLines={1} style={styles.chipText}>{reward.name}</Text>
     </View>)}
-    <View style={styles.chip}><Text numberOfLines={1} style={styles.chipText} testID="raid-reward-coins">{coinsLabel(raid.coins)}</Text></View>
+    <View style={styles.chip}><Text numberOfLines={1} style={styles.chipText} testID="raid-reward-coins">{formatRewardCoins(raid.coins)}</Text></View>
   </View>;
 }
 
