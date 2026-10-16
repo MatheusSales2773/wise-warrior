@@ -134,7 +134,46 @@ describe('Raid da semana against MySQL', () => {
       startsAt: '2026-10-05T03:00:00.000Z',
       endsAt: '2026-10-12T02:59:59.000Z',
       status: 'active',
+      studyDays: [],
+      streak: 0,
       me: { participating: false, contributionXp: 0, position: null },
+    });
+  });
+
+  describe('Dias de estudo e Sequência', () => {
+    const contribute = async (raidId: string, userId: string, at: string) => {
+      await dataSource!.getRepository(RaidContribution).insert({ raidId, userId, xpContributed: 50, createdAt: new Date(at) });
+    };
+    const activeOf = async (guildId: string) => (await (await call('GET', `/guilds/${guildId}/raids/active`)).json()) as { id: string; studyDays: string[]; streak: number };
+
+    it('counts consecutive days ending today, in São Paulo time', async () => {
+      const guildId = await createGuild('Ordem do Foco');
+      const { id } = await activeOf(guildId);
+      await contribute(id, ana, '2026-10-05T15:00:00Z'); // Mon
+      await contribute(id, bruno, '2026-10-06T02:30:00Z'); // still Mon 23:30 in São Paulo
+      await contribute(id, ana, '2026-10-06T13:00:00Z'); // Tue
+      await contribute(id, ana, '2026-10-07T13:00:00Z'); // Wed (today)
+
+      expect(await activeOf(guildId)).toMatchObject({ studyDays: ['2026-10-05', '2026-10-06', '2026-10-07'], streak: 3 });
+    });
+
+    it('keeps the Sequência when today has no study yet', async () => {
+      const guildId = await createGuild('Ordem do Foco');
+      const { id } = await activeOf(guildId);
+      await contribute(id, ana, '2026-10-05T15:00:00Z');
+      await contribute(id, ana, '2026-10-06T15:00:00Z');
+
+      expect(await activeOf(guildId)).toMatchObject({ studyDays: ['2026-10-05', '2026-10-06'], streak: 2 });
+    });
+
+    it('turns the day at midnight in São Paulo', async () => {
+      const guildId = await createGuild('Ordem do Foco');
+      const { id } = await activeOf(guildId);
+      await contribute(id, ana, '2026-10-06T15:00:00Z'); // Tue
+      now = new Date('2026-10-08T02:59:59Z'); // Wed 23:59:59 in São Paulo: today is still Wed, yesterday studied
+      expect((await activeOf(guildId)).streak).toBe(1);
+      now = new Date('2026-10-08T03:00:00Z'); // Thu 00:00: Wed became yesterday without study
+      expect((await activeOf(guildId)).streak).toBe(0);
     });
   });
 

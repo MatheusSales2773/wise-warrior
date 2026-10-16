@@ -405,6 +405,8 @@ describe('Sessão de guilda on the Forja', () => {
     goalXp: 1000,
     progressXp: 0,
     goalReachedAt: null,
+    studyDays: [],
+    streak: 0,
     startsAt: new Date(Date.now() - 86_400_000).toISOString(),
     endsAt: new Date(Date.now() + 86_400_000).toISOString(),
     status: 'active',

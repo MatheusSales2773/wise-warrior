@@ -11,7 +11,7 @@ import { useFocusRing } from '@/features/character/character-parts';
 import type { ActiveRaid, MyGuild, RaidRankingEntry } from './api';
 import { RAID_GOAL_REACHED, formatPosition } from './messages';
 import { activeRaidQueryOptions, myGuildQueryOptions, raidRankingQueryOptions } from './queries';
-import { assignHeroes, bossLifePercent, formatBattleTimeLeft, formatFocusHours, partyHeroSprites, raidParty, weeklyStrikes, type PartyHero, type Strike } from './raid-battle';
+import { assignHeroes, bossLifePercent, formatBattleTimeLeft, formatFocusHours, formatStreak, partyHeroSprites, raidParty, raidWeekGrid, weeklyStrikes, type PartyHero, type Strike } from './raid-battle';
 import { RaidScene, raidSceneScale } from './raid-scene';
 
 /* Tela da Raid, Figma "06b · Guilda — Raid · O Devorador de Horas" (desktop e mobile). */
@@ -149,6 +149,48 @@ function StrikesCard({ compact, entries, failed, heroes, loading }: { compact: b
   </Card>;
 }
 
+const FURIA_COPY = 'Cada dia em que a guilda não estuda, o dragão recupera vida. Mantenha a chama acesa.';
+const DAY_STATE_LABEL = { studied: 'com estudo', missed: 'sem estudo', today: 'hoje, ainda sem estudo', upcoming: 'ainda não chegou' } as const;
+const WEEKDAY_NAMES = ['segunda', 'terça', 'quarta', 'quinta', 'sexta', 'sábado', 'domingo'] as const;
+
+function WeekGrid({ raid }: { raid: ActiveRaid }) {
+  const now = useNow(60_000);
+  const days = raidWeekGrid(raid.startsAt, raid.studyDays, now);
+  return <View style={styles.weekGrid} testID="raid-week-grid">
+    {days.map((day, index) => <View
+      accessible
+      accessibilityLabel={`${WEEKDAY_NAMES[index]}: ${DAY_STATE_LABEL[day.state]}`}
+      key={day.key}
+      style={[styles.weekDay, day.state === 'studied' && styles.weekDayStudied, day.state === 'today' && styles.weekDayToday]}
+      testID={`raid-week-day-${day.state}`}
+    >
+      <Text style={[styles.weekDayInitial, day.state === 'studied' && styles.weekDayMarkStudied]}>{day.initial}</Text>
+      <Text aria-hidden accessibilityElementsHidden importantForAccessibility="no" style={[styles.weekDayMark, day.state === 'studied' && styles.weekDayMarkStudied]}>
+        {day.state === 'studied' ? '✓' : day.state === 'today' ? '•' : '·'}
+      </Text>
+    </View>)}
+  </View>;
+}
+
+function FuriaCard({ raid }: { raid: ActiveRaid }) {
+  return <Card label="Fúria do dragão" testID="raid-furia">
+    <CardHeader aside="Regra da raid">Fúria do dragão</CardHeader>
+    <Text style={styles.cardNote}>{FURIA_COPY}</Text>
+    <WeekGrid raid={raid} />
+    <Text style={styles.streak} testID="raid-streak">{formatStreak(raid.streak)}</Text>
+  </Card>;
+}
+
+function FuriaStrip({ raid }: { raid: ActiveRaid }) {
+  return <View accessibilityLabel="Fúria do dragão" role="region" style={styles.furiaStrip} testID="raid-furia">
+    <WiseIcon color="feedbackDanger" name="flame" size="xsmall" />
+    <View style={styles.furiaStripCopy}>
+      <Text style={styles.furiaStripText}>Dias sem estudo devolvem vida ao dragão.</Text>
+      <Text style={styles.furiaStripText} testID="raid-streak">{formatStreak(raid.streak).replace('Sequência da guilda: ', 'Guilda: ')}</Text>
+    </View>
+  </View>;
+}
+
 function rewardName(raid: ActiveRaid): string {
   return raid.reward.category === 'title' ? `Título “${raid.reward.name}”` : raid.reward.name;
 }
@@ -216,6 +258,7 @@ function Battle({ desktop, mine, raid, viewport }: { desktop: boolean; mine: MyG
       <View style={styles.sceneBlock}>{scene}<GoalReached raid={raid} /></View>
       <View style={styles.detailsRow} testID="raid-details">
         <View style={styles.detailsColumn}>{strikes}</View>
+        <View style={styles.detailsColumn}><FuriaCard raid={raid} /></View>
         <View style={styles.detailsColumn}><RewardsCard raid={raid} /></View>
       </View>
     </View>;
@@ -224,6 +267,7 @@ function Battle({ desktop, mine, raid, viewport }: { desktop: boolean; mine: MyG
     {scene}
     <BossLifeRow raid={raid} />
     <GoalReached raid={raid} />
+    <FuriaStrip raid={raid} />
     {strikes}
     <RewardChips raid={raid} />
   </View>;
@@ -353,6 +397,18 @@ const styles = StyleSheet.create({
   cardTitleLabel: { letterSpacing: 2.6, textTransform: 'uppercase' },
   cardAside: { fontFamily: mono, fontSize: 10, lineHeight: 13, letterSpacing: 1, color: theme.color.textTertiary },
   cardNote: { fontFamily: 'Inter-Regular', fontSize: 13, lineHeight: 18, color: theme.color.textSecondary },
+
+  weekGrid: { flexDirection: 'row', gap: 6 },
+  weekDay: { flex: 1, alignItems: 'center', gap: 4, paddingVertical: 8, borderRadius: theme.radius.detail, borderWidth: theme.border.standard, borderColor: theme.color.borderGhost, backgroundColor: theme.color.surfaceInset },
+  weekDayStudied: { borderColor: theme.color.feedbackSuccess },
+  weekDayToday: { borderColor: theme.color.accentHighlight },
+  weekDayInitial: { fontFamily: mono, fontSize: 10, lineHeight: 13, color: theme.color.textTertiary },
+  weekDayMark: { fontFamily: mono, fontSize: 12, lineHeight: 16, color: theme.color.textTertiary },
+  weekDayMarkStudied: { color: theme.color.feedbackSuccess },
+  streak: { fontFamily: mono, fontSize: 10, lineHeight: 13, color: theme.color.feedbackSuccess },
+  furiaStrip: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 14, paddingVertical: 12, borderRadius: theme.radius.card, borderWidth: theme.border.standard, borderColor: theme.color.borderSubtle, backgroundColor: theme.color.surfaceCard },
+  furiaStripCopy: { flex: 1 },
+  furiaStripText: { fontFamily: 'Inter-Regular', fontSize: 12, lineHeight: 17, color: theme.color.textSecondary },
 
   strike: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   avatar: { width: 32, height: 32, overflow: 'hidden', borderRadius: 4, borderWidth: theme.border.standard, borderColor: theme.color.borderSubtle, backgroundColor: theme.color.surfaceInset },

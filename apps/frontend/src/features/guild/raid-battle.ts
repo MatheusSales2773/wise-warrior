@@ -114,3 +114,31 @@ export function weeklyStrikes(entries: readonly RaidRankingEntry[], limit: numbe
   const best = Math.max(0, ...entries.map((entry) => entry.contributionXp));
   return rows.map((entry) => ({ entry, fraction: best > 0 ? entry.contributionXp / best : 0 }));
 }
+
+const HOUR_MS = 60 * 60 * 1000;
+const WEEKDAY_INITIALS = ['S', 'T', 'Q', 'Q', 'S', 'S', 'D'] as const;
+const DAY_MS = 24 * HOUR_MS;
+const saoPauloDay = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo', year: 'numeric', month: '2-digit', day: '2-digit' });
+
+/** The São Paulo calendar day (`YYYY-MM-DD`) of an instant, the same day the backend counts as Dia de estudo. */
+export function saoPauloDayKey(instant: Date | number): string {
+  return saoPauloDay.format(instant);
+}
+
+export type WeekDay = { key: string; initial: (typeof WEEKDAY_INITIALS)[number]; state: 'studied' | 'missed' | 'today' | 'upcoming' };
+
+/** The seven days of the Raid week, Monday first; `today` is a day without study yet, past days without study are `missed`. */
+export function raidWeekGrid(weekStartsAt: string, studyDays: readonly string[], now: number): WeekDay[] {
+  const mondayKey = saoPauloDayKey(new Date(weekStartsAt));
+  const today = saoPauloDayKey(now);
+  const studied = new Set(studyDays);
+  return WEEKDAY_INITIALS.map((initial, index) => {
+    const key = new Date(Date.parse(`${mondayKey}T00:00:00Z`) + index * DAY_MS).toISOString().slice(0, 10);
+    const state = studied.has(key) ? 'studied' : key === today ? 'today' : key < today ? 'missed' : 'upcoming';
+    return { key, initial, state };
+  });
+}
+
+export function formatStreak(streak: number): string {
+  return streak === 0 ? 'Sequência da guilda: nenhum dia ainda' : `Sequência da guilda: ${streak} ${streak === 1 ? 'dia' : 'dias'} sem falhar`;
+}

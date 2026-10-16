@@ -1,5 +1,5 @@
 import type { RaidRankingEntry } from '@/features/guild/api';
-import { XP_PER_FOCUS_HOUR, assignHeroes, bossLifePercent, formatBattleTimeLeft, formatFocusHours, raidParty, weeklyStrikes } from '@/features/guild/raid-battle';
+import { XP_PER_FOCUS_HOUR, assignHeroes, bossLifePercent, formatBattleTimeLeft, formatFocusHours, formatStreak, raidParty, raidWeekGrid, weeklyStrikes } from '@/features/guild/raid-battle';
 import { raidSceneScale } from '@/features/guild/raid-scene';
 import { RAID_SCENE_HEIGHT, RAID_SCENE_WIDTH, raidSceneBackground, raidSceneBoss, sentinelaSprite } from '@/features/guild/raid-scene-sprites';
 
@@ -128,5 +128,25 @@ describe('raid scene', () => {
     }
     expect(raidSceneBackground.rows).toHaveLength(RAID_SCENE_HEIGHT);
     expect(raidSceneBackground.rows[0]).toHaveLength(RAID_SCENE_WIDTH);
+  });
+});
+
+describe('raidWeekGrid', () => {
+  const startsAt = '2026-10-05T03:00:00.000Z';
+  it('lists Monday to Sunday with each state', () => {
+    const grid = raidWeekGrid(startsAt, ['2026-10-05', '2026-10-07'], Date.parse('2026-10-08T02:00:00Z')); // Wed 23:00 in São Paulo
+    expect(grid.map((day) => day.initial).join('')).toBe('STQQSSD');
+    expect(grid.map((day) => day.state)).toEqual(['studied', 'missed', 'studied', 'upcoming', 'upcoming', 'upcoming', 'upcoming']);
+  });
+  it('marks today without study', () => {
+    expect(raidWeekGrid(startsAt, [], Date.parse('2026-10-05T15:00:00Z'))[0]?.state).toBe('today');
+  });
+});
+
+describe('formatStreak', () => {
+  it('pluralizes', () => {
+    expect(formatStreak(0)).toBe('Sequência da guilda: nenhum dia ainda');
+    expect(formatStreak(1)).toBe('Sequência da guilda: 1 dia sem falhar');
+    expect(formatStreak(4)).toBe('Sequência da guilda: 4 dias sem falhar');
   });
 });

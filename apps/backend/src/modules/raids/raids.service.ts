@@ -15,7 +15,7 @@ import { MissionChoiceService } from './mission-choice.service';
 import { MissionRewardItem } from './entities/mission-reward-item.entity';
 import { Raid } from './entities/raid.entity';
 import { RAID_CLOCK, type RaidClock } from './raid-clock';
-import { missionIndexForWeek, proportionalGoalXp, raidWeekAt } from './domain/raid-week';
+import { missionIndexForWeek, proportionalGoalXp, raidWeekAt, studyDaysOf, studyStreak } from './domain/raid-week';
 import { UsersService } from '../users/users.service';
 import { EconomyService } from '../economy/economy.service';
 import { getRaidWinCoins } from '../economy/domain/coin-config';
@@ -48,6 +48,10 @@ export interface ActiveRaid {
   startsAt: Date;
   endsAt: Date;
   status: string;
+  /** Dias de estudo of the week so far, as São Paulo `YYYY-MM-DD` days in order. */
+  studyDays: string[];
+  /** Sequência: Dias de estudo in a row, ending today or yesterday; zero after a missed day. */
+  streak: number;
   /** `position` is the caller's place in the Ranking interno, or `null` while they are not a Participant. */
   me: { participating: boolean; contributionXp: number; position: number | null };
 }
@@ -279,6 +283,7 @@ export class RaidsService {
     if (!item) {
       throw new Error(`Recompensa da Missão ${raid.mission.slug} não encontrada`);
     }
+    const studyDays = await this.studyDaysOfRaid(raid.id);
     return {
       id: raid.id,
       mission: {
@@ -294,8 +299,16 @@ export class RaidsService {
       startsAt: raid.startsAt,
       endsAt: raid.endsAt,
       status: raid.status,
+      studyDays,
+      streak: studyStreak(studyDays, raidWeekAt(now), now),
       me: await this.myStanding(raid.id, requesterId),
     };
+  }
+
+  /** The Raid's Dias de estudo: the one place they are read from the Contribuições (shared with the Fúria). */
+  async studyDaysOfRaid(raidId: string): Promise<string[]> {
+    const rows = await this.contributions.find({ select: { createdAt: true }, where: { raidId } });
+    return studyDaysOf(rows.map((row) => row.createdAt));
   }
 
   async findById(userId: string, raidId: string): Promise<RaidDetail> {

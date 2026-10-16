@@ -49,6 +49,8 @@ const raid = (overrides: Partial<ActiveRaid> = {}): ActiveRaid => ({
   goalXp: 1000,
   progressXp: 100,
   goalReachedAt: null,
+  studyDays: [],
+  streak: 0,
   startsAt: '2026-10-05T03:00:00.000Z',
   endsAt: '2026-10-12T02:59:59.000Z',
   status: 'active',
