@@ -1,3 +1,4 @@
+import type { CosmeticCategory } from '../entities/cosmetic-item.entity';
 import { parseUnlockCondition } from './unlock-condition';
 
 /** Faixa de preço dos Cosmetic Items À venda (ADR-012). */
@@ -6,7 +7,7 @@ export const SALE_PRICE_MAX = 300;
 
 /** Os campos do Cosmetic Item que decidem se ele pode estar À venda. */
 export interface SaleListing {
-  category: 'avatar' | 'badge' | 'title' | 'accessory';
+  category: CosmeticCategory;
   forSale: boolean;
   price: number | null;
   unlockCondition: string;
