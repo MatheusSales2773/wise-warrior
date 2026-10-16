@@ -1,6 +1,6 @@
 import { ConflictException, Inject, Injectable, NotFoundException, forwardRef } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { type EntityManager, IsNull, Not, QueryFailedError, Repository } from 'typeorm';
+import { type EntityManager, In, IsNull, Not, QueryFailedError, Repository } from 'typeorm';
 import { UsersService } from '../users/users.service';
 import { Mission } from './entities/mission.entity';
 import { UserMission } from './entities/user-mission.entity';
@@ -58,6 +58,29 @@ export class MissionsService {
         owned: ownedIds.has(mission.id),
       };
     });
+  }
+
+  /** O catálogo inteiro, rodízio e à venda, para quem monta a escolha do Líder. */
+  listAll(): Promise<Mission[]> {
+    return this.missions.find({ order: { rotationOrder: 'ASC', price: 'ASC', slug: 'ASC' } });
+  }
+
+  findById(missionId: string): Promise<Mission | null> {
+    return this.missions.findOne({ where: { id: missionId } });
+  }
+
+  /** Quem entre `userIds` possui cada Missão à venda (a posse das Missões do rodízio é de todos e não tem linha). */
+  async ownersOf(userIds: string[]): Promise<Map<string, string[]>> {
+    const owners = new Map<string, string[]>();
+    if (userIds.length === 0) return owners;
+    for (const { missionId, userId } of await this.ownerships.find({ where: { userId: In(userIds) }, order: { acquiredAt: 'ASC' } })) {
+      owners.set(missionId, [...(owners.get(missionId) ?? []), userId]);
+    }
+    return owners;
+  }
+
+  async owns(userId: string, missionId: string): Promise<boolean> {
+    return this.ownerships.exists({ where: { userId, missionId } });
   }
 
   /**

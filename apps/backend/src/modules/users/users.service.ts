@@ -196,6 +196,13 @@ export class UsersService {
     return items.map(({ id, name, category }) => ({ id, name, category }));
   }
 
+  /** Nomes de exibição, para quem precisa mostrar o dono de algo (ex.: a Missão escolhida pelo Líder). */
+  async findDisplayNames(ids: string[]): Promise<Array<{ id: string; displayName: string }>> {
+    if (ids.length === 0) return [];
+    const rows = await this.users.find({ where: { id: In(ids) }, select: { id: true, displayName: true } });
+    return rows.map(({ id, displayName }) => ({ id, displayName }));
+  }
+
   /** O Catálogo inteiro, com o estado de cada item no Inventário do usuário. A interface define a ordem. */
   async listCatalog(userId: string): Promise<CatalogCosmeticItem[]> {
     const [catalog, inventory] = await Promise.all([
