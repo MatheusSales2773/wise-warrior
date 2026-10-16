@@ -1,4 +1,5 @@
 import { Body, Controller, Get, Param, Put, UseGuards } from '@nestjs/common';
+import { RateLimit } from '../../shared/security/rate-limit';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import type { JwtPayload } from '../auth/strategies/jwt.strategy';
@@ -24,6 +25,7 @@ export class GuildMissionChoiceController {
 
   /** Só o Líder; trocável até a Raid começar. */
   @Put(':id/raids/next-mission')
+  @RateLimit('mission-choice')
   async chooseNextMission(@CurrentUser() user: JwtPayload, @Param('id') id: string, @Body() dto: ChooseNextMissionDto) {
     return { choice: await this.missionChoice.choose(id, user.sub, dto) };
   }

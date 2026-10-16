@@ -1,6 +1,8 @@
 import { ExecutionContext, UnauthorizedException, ValidationPipe } from '@nestjs/common';
 import type { INestApplication } from '@nestjs/common';
+import { ConfigModule } from '@nestjs/config';
 import { Test } from '@nestjs/testing';
+import { RateLimitModule } from '../../shared/security/rate-limit';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import type { AddressInfo } from 'node:net';
 import { DataSource, IsNull } from 'typeorm';
@@ -90,6 +92,10 @@ describe('Escolha da Missão pelo Líder against MySQL', () => {
       useValue: dataSource!.getRepository(entity),
     });
     const moduleRef = await Test.createTestingModule({
+      imports: [
+        ConfigModule.forRoot({ isGlobal: true, ignoreEnvFile: true, load: [() => ({ RATE_LIMIT_MISSION_CHOICE_LIMIT: 5 })] }),
+        RateLimitModule,
+      ],
       controllers: [GuildsController, GuildRaidsController, GuildMissionChoiceController, RaidsController],
       providers: [
         GuildsService,
@@ -192,6 +198,18 @@ describe('Escolha da Missão pelo Líder against MySQL', () => {
     const response = await choose(guildId, ana, { missionId: PRICED_ID, ownerId: bruno });
     expect(response.status).toBe(200);
     expect(await response.json()).toMatchObject({ choice: { mission: { id: PRICED_ID }, owner: { userId: bruno, displayName: 'Bruno' } } });
+  });
+
+  it('rate limits the choice per user', async () => {
+    const guildId = await guildWith(bruno);
+    const [first] = await rotationIds();
+
+    for (let attempt = 0; attempt < 5; attempt += 1) expect((await choose(guildId, ana, { missionId: first })).status).toBe(200);
+    const limited = await choose(guildId, ana, { missionId: first });
+
+    expect(limited.status).toBe(429);
+    expect(limited.headers.get('retry-after')).not.toBeNull();
+    expect((await choose(guildId, bruno, { missionId: first })).status).toBe(403);
   });
 
   it('lets the Leader change the choice until the Raid starts', async () => {

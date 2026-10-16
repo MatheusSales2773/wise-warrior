@@ -14,6 +14,7 @@ describe('createRateLimitOptions', () => {
       refresh: { limit: 30, ttl: 60_000 },
       'study-session': { limit: 60, ttl: 60_000 },
       shop: { limit: 30, ttl: 60_000 },
+      'mission-choice': { limit: 30, ttl: 60_000 },
     });
   });
 

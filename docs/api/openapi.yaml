@@ -961,7 +961,7 @@ paths:
         Só o Líder (`403` para membro comum e não-membro). Aceita a Missão do rodízio ou uma Missão à venda possuída
         por um membro atual, que o corpo identifica em `ownerId` (`422` caso contrário). A mesma Missão pode se
         repetir, e a escolha pode ser trocada até a Raid começar: o job de segunda a usa e a consome, e se o dono
-        saiu antes a Raid usa o rodízio. O dono não recebe nada.
+        saiu antes a Raid usa o rodízio. O dono não recebe nada. Limite de 30 requisições por minuto por usuário.
       operationId: chooseNextGuildMission
       tags: [Raids]
       parameters:
@@ -991,6 +991,7 @@ paths:
           content:
             application/problem+json:
               schema: { $ref: "#/components/schemas/Problem" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
 
   /guilds/{id}/raids:
     get:
