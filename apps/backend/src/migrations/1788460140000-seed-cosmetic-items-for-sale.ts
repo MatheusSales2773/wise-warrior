@@ -17,8 +17,8 @@ const SEEDED_IDS = ITEMS_FOR_SALE.map(([id]) => id);
 /** Item temporário da #167, já aplicado nos bancos locais dos devs; o DELETE é idempotente. */
 const TEST_ITEM_ID = 'c05e71c0-0000-4000-8000-00000000f001';
 
-export class SeedCosmeticItemsForSale1788460080000 implements MigrationInterface {
-  name = 'SeedCosmeticItemsForSale1788460080000';
+export class SeedCosmeticItemsForSale1788460140000 implements MigrationInterface {
+  name = 'SeedCosmeticItemsForSale1788460140000';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query('DELETE FROM cosmetic_items WHERE id = ?', [TEST_ITEM_ID]);

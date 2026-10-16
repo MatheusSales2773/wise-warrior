@@ -19,7 +19,7 @@ import { DropCharacterTitle1788459300000 } from './1788459300000-drop-character-
 import { SeedInitialCosmeticItems1788459240000 } from './1788459240000-seed-initial-cosmetic-items';
 import { GrantWelcomeCoins1788459720000 } from './1788459720000-grant-welcome-coins';
 import { AddMissionRewardItems1788459960000 } from './1788459960000-add-mission-reward-items';
-import { SeedCosmeticItemsForSale1788460080000 } from './1788460080000-seed-cosmetic-items-for-sale';
+import { SeedCosmeticItemsForSale1788460140000 } from './1788460140000-seed-cosmetic-items-for-sale';
 import { raidWeekAt } from '../modules/raids/domain/raid-week';
 import { StudySession } from '../modules/sessions/entities/study-session.entity';
 
@@ -425,6 +425,22 @@ describe('TypeORM migrations against an empty MySQL schema', () => {
       `SELECT name, price FROM ${database!.identifier}.cosmetic_items WHERE for_sale = 1`,
     );
     expect(forSaleBeforeRevert.map((row) => [row.name, Number(row.price)]).sort()).toEqual(ITEMS_FOR_SALE.map(([, name, price]) => [name, price]).sort());
+    const badgeInsert = (id: string, forSale: number) =>
+      database!.admin.query(
+        `INSERT INTO ${database!.identifier}.cosmetic_items (id, category, name, unlock_condition, requires_premium, price, for_sale)
+         VALUES (?, 'badge', ?, 'purchase', 0, 100, ?)`,
+        [id, id, forSale],
+      );
+    await expect(badgeInsert('badge-for-sale', 1)).rejects.toThrow(/CHK_cosmetic_items_for_sale/);
+    await badgeInsert('badge-off-sale', 0);
+    await expect(
+      database!.admin.query(`UPDATE ${database!.identifier}.cosmetic_items SET for_sale = 1 WHERE id = 'badge-off-sale'`),
+    ).rejects.toThrow(/CHK_cosmetic_items_for_sale/);
+    await database!.admin.query(
+      `INSERT INTO ${database!.identifier}.cosmetic_items (id, category, name, unlock_condition, requires_premium, price, for_sale)
+       VALUES ('accessory-for-sale', 'accessory', 'accessory-for-sale', 'purchase', 0, 100, 1)`,
+    );
+    await database!.admin.query(`DELETE FROM ${database!.identifier}.cosmetic_items WHERE id IN ('badge-off-sale', 'accessory-for-sale')`);
     expect(migrationRows.map((row) => row.name)).toEqual([
       'CreateWiseSchema1788458400000',
       'AddSessionRefreshTokenHistory1788458460000',
@@ -448,16 +464,24 @@ describe('TypeORM migrations against an empty MySQL schema', () => {
       'AddCosmeticItemSale1788459840000',
       'AddMissionRewardItems1788459960000',
       'AddGuildMissionChoice1788460020000',
-      'SeedCosmeticItemsForSale1788460080000',
+      'KeepBadgesOffSale1788460080000',
+      'SeedCosmeticItemsForSale1788460140000',
     ]);
 
     await dataSource.undoLastMigration(); // Cosmetic Items À venda seed, the newest migration
-    await dataSource.undoLastMigration(); // guild mission choices
     const testItemRevertRows = await rows(
       database!.admin,
       `SELECT id FROM ${database!.identifier}.cosmetic_items WHERE for_sale = 1`,
     );
     expect(testItemRevertRows).toHaveLength(0);
+    await dataSource.undoLastMigration(); // badges off sale
+    await badgeInsert('badge-for-sale-after-revert', 1); // the previous CHECK did not know Badges
+    await database!.admin.query(`DELETE FROM ${database!.identifier}.cosmetic_items WHERE id = 'badge-for-sale-after-revert'`);
+    await dataSource.runMigrations(); // reapply
+    await expect(badgeInsert('badge-for-sale-again', 1)).rejects.toThrow(/CHK_cosmetic_items_for_sale/);
+    await dataSource.undoLastMigration(); // Cosmetic Items À venda seed
+    await dataSource.undoLastMigration(); // badges off sale
+    await dataSource.undoLastMigration(); // guild mission choices
     await dataSource.undoLastMigration(); // mission reward items
     expect(await rows(database!.admin, `SHOW COLUMNS FROM ${database!.identifier}.missions LIKE 'reward_cosmetic_item_id'`)).toHaveLength(1);
     await dataSource.undoLastMigration(); // cosmetic item sale
@@ -853,7 +877,8 @@ await dataSource.undoLastMigration();
     expect(receiptsWithSubject).toEqual([{ idempotency_key: 'solo-start-key', subject: 'Cálculo II' }]);
 
     // M6 revert: only the receipt column goes away; every persisted Matéria (including legacy Guild rows) stays.
-    await dataSource.undoLastMigration(); // guild mission choices, the newest migration
+    await dataSource.undoLastMigration(); // badges off sale, the newest migration
+    await dataSource.undoLastMigration(); // guild mission choices
     await dataSource.undoLastMigration(); // mission reward items
     await dataSource.undoLastMigration(); // temporary test item À venda
     await dataSource.undoLastMigration(); // cosmetic item sale
@@ -1082,7 +1107,8 @@ await dataSource.undoLastMigration();
     expect(owned('newcomer')).toEqual([['Capuz do Erudito', 1], ['Aprendiz', 1]]);
     expect(owned('collector')).toEqual([['Capuz do Erudito', 1], ['Aprendiz', 1], ['Madrugador', 0]]);
 
-    await dataSource.undoLastMigration(); // mission reward items, the newest migration
+    await dataSource.undoLastMigration(); // badges off sale, the newest migration
+    await dataSource.undoLastMigration(); // mission reward items
     await dataSource.undoLastMigration(); // study session capped reason
     await dataSource.undoLastMigration(); // raid goal reached at
     await dataSource.undoLastMigration(); // raid participations, which sit above the raid missions
@@ -1139,7 +1165,8 @@ await dataSource.undoLastMigration();
     );
     expect(columns.map((row) => row.COLUMN_NAME)).not.toContain('title');
 
-    await dataSource.undoLastMigration(); // mission reward items, the newest migration
+    await dataSource.undoLastMigration(); // badges off sale, the newest migration
+    await dataSource.undoLastMigration(); // mission reward items
     await dataSource.undoLastMigration(); // study session capped reason
     await dataSource.undoLastMigration(); // raid goal reached at
     await dataSource.undoLastMigration(); // raid participations, which sit above the raid missions
@@ -1222,7 +1249,8 @@ await dataSource.undoLastMigration();
     expect(Number(current.goal_xp)).toBeGreaterThan(0);
     expect(Number(current.goal_xp)).toBeLessThanOrEqual(3000);
 
-    await dataSource.undoLastMigration(); // mission reward items, the newest migration
+    await dataSource.undoLastMigration(); // badges off sale, the newest migration
+    await dataSource.undoLastMigration(); // mission reward items
     await dataSource.undoLastMigration(); // study session capped reason
     await dataSource.undoLastMigration(); // raid goal reached at
     await dataSource.undoLastMigration(); // raid participations
@@ -1301,7 +1329,8 @@ await dataSource.undoLastMigration();
       [raidId],
     )).rejects.toThrow(/Duplicate entry/);
 
-    await dataSource.undoLastMigration(); // mission reward items, the newest migration
+    await dataSource.undoLastMigration(); // badges off sale, the newest migration
+    await dataSource.undoLastMigration(); // mission reward items
     await dataSource.undoLastMigration(); // study session capped reason
     await dataSource.undoLastMigration(); // raid goal reached at
     await dataSource.undoLastMigration();
@@ -1387,7 +1416,8 @@ await dataSource.undoLastMigration();
       .toEqual([{ n: 4 }]);
 
     // Back to the single-reward-item schema, where the store migration is the newest.
-    await dataSource.undoLastMigration(); // Cosmetic Items À venda seed
+    await dataSource.undoLastMigration(); // Cosmetic Items À venda seed, the newest migration
+    await dataSource.undoLastMigration(); // badges off sale
     await dataSource.undoLastMigration(); // guild mission choices
     await dataSource.undoLastMigration(); // mission reward items
 
@@ -1475,15 +1505,16 @@ await dataSource.undoLastMigration();
   it('seeds the Cosmetic Items À venda, clears the old test item, and removes only the seeded ids on revert', async () => {
     database = await createIntegrationDatabase('wise_migrations_test');
     initialDataSource = new DataSource(database.options(
-      (APPLICATION_MIGRATIONS as unknown[]).filter((migration) => migration !== SeedCosmeticItemsForSale1788460080000) as typeof APPLICATION_MIGRATIONS,
+      (APPLICATION_MIGRATIONS as unknown[]).filter((migration) => migration !== SeedCosmeticItemsForSale1788460140000) as typeof APPLICATION_MIGRATIONS,
     ));
     await initialDataSource.initialize();
     await initialDataSource.runMigrations();
     const testItemId = 'c05e71c0-0000-4000-8000-00000000f001';
     // A local database that already ran the temporary test item migration, with the item bought by someone.
+    // KeepBadgesOffSale has since taken that Badge off sale, so it stays in the table with for_sale = 0.
     await database.admin.query(
       `INSERT INTO ${database.identifier}.cosmetic_items (id, category, name, unlock_condition, requires_premium, price, for_sale)
-       VALUES (?, 'badge', '[TESTE] Item de teste da Loja - remover', 'purchase', 0, 30, 1)`,
+       VALUES (?, 'badge', '[TESTE] Item de teste da Loja - remover', 'purchase', 0, 30, 0)`,
       [testItemId],
     );
     await database.admin.query(

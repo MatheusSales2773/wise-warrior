@@ -103,7 +103,7 @@ describe('Loja: Compra de Cosmetic Items À venda over HTTP against MySQL, with 
       `INSERT INTO cosmetic_items (id, category, name, unlock_condition, requires_premium, price, for_sale) VALUES
         (?, 'avatar', 'Capa de Estrelas', 'purchase', 0, 120, 1),
         (?, 'accessory', 'Lanterna do Estudo', 'purchase', 0, 30, 1),
-        (?, 'badge', 'Coroa de Louros', 'purchase', 0, 300, 1),
+        (?, 'title', 'Coroa de Louros', 'purchase', 0, 300, 1),
         (?, 'badge', 'Selo Guardado', 'purchase', 0, NULL, 0)`,
       [CAPA, LANTERNA, COROA, NOT_FOR_SALE],
     );
@@ -203,11 +203,14 @@ describe('Loja: Compra de Cosmetic Items À venda over HTTP against MySQL, with 
 
   it('enforces the À venda rule on every write path, not only on save()', async () => {
     const items = dataSource!.getRepository(CosmeticItem);
-    const draft = { category: 'badge' as const, name: 'Rascunho', requiresPremium: false, forSale: true };
+    const draft = { category: 'accessory' as const, name: 'Rascunho', requiresPremium: false, forSale: true };
 
     // save() trips the entity hook with a readable message.
     await expect(items.save(items.create({ ...draft, unlockCondition: 'raid:*', price: 100 }))).rejects.toThrow(/Condição de desbloqueio de compra/);
     // insert(), update() and the query builder skip the hook; the CHECK still refuses them.
+    // A Badge is never À venda, whichever write path tries it.
+    await expect(items.save(items.create({ ...draft, category: 'badge', unlockCondition: 'purchase', price: 100 }))).rejects.toThrow(/Badge nunca/);
+    await expect(items.insert({ ...draft, category: 'badge', unlockCondition: 'purchase', price: 100 })).rejects.toThrow();
     await expect(items.insert({ ...draft, unlockCondition: 'level:3', price: 100 })).rejects.toThrow();
     await expect(items.insert({ ...draft, unlockCondition: 'purchase', price: 301 })).rejects.toThrow();
     await expect(items.update({ id: RAID_ITEM }, { forSale: true, price: 100 })).rejects.toThrow();
