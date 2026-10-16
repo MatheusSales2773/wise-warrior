@@ -96,7 +96,26 @@ describe('Realtime HTTP transport contract', () => {
     ).resolves.not.toBe(101);
   });
 
-  function webSocketHandshakeStatus(origin: string): Promise<number> {
+  it('upgrades a WebSocket handshake from the server own origin (native app)', async () => {
+    await expect(webSocketHandshakeStatus(baseUrl)).resolves.toBe(101);
+  });
+
+  it('upgrades a WebSocket handshake without an Origin header', async () => {
+    await expect(webSocketHandshakeStatus()).resolves.toBe(101);
+  });
+
+  it('rejects a WebSocket handshake from the server hostname on another port', async () => {
+    const url = new URL(baseUrl);
+    const otherPort = `${url.protocol}//${url.hostname}:${Number(url.port) + 1}`;
+
+    await expect(webSocketHandshakeStatus(otherPort)).resolves.not.toBe(101);
+  });
+
+  it('rejects a WebSocket handshake with an invalid Origin', async () => {
+    await expect(webSocketHandshakeStatus('null')).resolves.not.toBe(101);
+  });
+
+  function webSocketHandshakeStatus(origin?: string): Promise<number> {
     return new Promise((resolve, reject) => {
       const url = new URL(baseUrl);
       const socket = createConnection({
@@ -115,7 +134,7 @@ describe('Realtime HTTP transport contract', () => {
             'Connection: Upgrade',
             'Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==',
             'Sec-WebSocket-Version: 13',
-            `Origin: ${origin}`,
+            ...(origin === undefined ? [] : [`Origin: ${origin}`]),
             '',
             '',
           ].join('\r\n'),

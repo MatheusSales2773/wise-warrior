@@ -18,7 +18,9 @@ export class CorsIoAdapter extends IoAdapter {
       const origin = request.headers.origin;
       callback(
         null,
-        origin === undefined || this.allowedOrigins.includes(origin),
+        origin === undefined ||
+          this.allowedOrigins.includes(origin) ||
+          isSameHostOrigin(origin, request.headers.host),
       );
     };
 
@@ -31,5 +33,18 @@ export class CorsIoAdapter extends IoAdapter {
       },
       allowRequest,
     });
+  }
+}
+
+// The native app sends an Origin derived from the socket URL itself. It matches
+// the Host header; TLS ends at nginx, so only host:port is compared.
+function isSameHostOrigin(origin: string, host: string | undefined): boolean {
+  if (host === undefined) {
+    return false;
+  }
+  try {
+    return new URL(origin).host === host;
+  } catch {
+    return false;
   }
 }
