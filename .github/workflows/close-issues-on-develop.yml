@@ -1,0 +1,50 @@
+name: Close issues on develop merge
+
+# GitHub only honours closing keywords (Closes #N) for PRs merged into the
+# default branch (main). This workflow applies the same keywords to PRs
+# merged into develop.
+
+on:
+  pull_request:
+    types: [closed]
+    branches:
+      - develop
+
+permissions:
+  issues: write
+  pull-requests: read
+
+jobs:
+  close-issues:
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    steps:
+      - name: Close issues referenced by closing keywords
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          set -euo pipefail
+
+          issues=$(printf '%s\n' "$PR_BODY" \
+            | grep -oiE '\b(close[sd]?|fix(e[sd])?|resolve[sd]?)[: ]+#[0-9]+' \
+            | grep -oE '[0-9]+$' \
+            | sort -un || true)
+
+          if [ -z "$issues" ]; then
+            echo "No closing keywords found in PR #$PR_NUMBER."
+            exit 0
+          fi
+
+          for issue in $issues; do
+            state=$(gh issue view "$issue" --json state -q .state 2>/dev/null || echo "MISSING")
+            if [ "$state" != "OPEN" ]; then
+              echo "Skipping #$issue ($state)."
+              continue
+            fi
+            gh issue close "$issue" --reason completed \
+              --comment "Closed by #$PR_NUMBER, merged into \`develop\`."
+            echo "Closed #$issue."
+          done
