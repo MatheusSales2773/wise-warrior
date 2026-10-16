@@ -102,6 +102,11 @@ describe('Cosmetic Item unlock on level-up through the Study Session API', () =>
       config,
       dataSource,
       users,
+      new EconomyService(
+        dataSource.getRepository(CoinBalance),
+        dataSource.getRepository(CoinLedgerEntry),
+        { emitToUser: () => undefined } as never,
+      ),
       { disconnectSessions: () => undefined } as never,
     );
     await auth.register({ email: 'veterana@example.com', password: 'senha-forte-123', displayName: 'Veterana' }, {});

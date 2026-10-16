@@ -5,8 +5,8 @@ import { MigrationInterface, QueryRunner, Table } from 'typeorm';
  * todos. Só Missões à venda ficam fora do rodízio, então `rotation_order` passa a aceitar nulo (o índice único
  * do MySQL admite vários nulos). A posse é por usuário e única por par.
  */
-export class AddMissionStore1788459720000 implements MigrationInterface {
-  name = 'AddMissionStore1788459720000';
+export class AddMissionStore1788459780000 implements MigrationInterface {
+  name = 'AddMissionStore1788459780000';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query('ALTER TABLE missions ADD COLUMN price int UNSIGNED NULL AFTER rotation_order');

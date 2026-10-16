@@ -15,6 +15,8 @@ import { DataSource, IsNull, LessThanOrEqual, Repository } from 'typeorm';
 import { User } from '../users/entities/user.entity';
 import { Character } from '../progression/entities/character.entity';
 import { UsersService } from '../users/users.service';
+import { EconomyService } from '../economy/economy.service';
+import { SIGNUP_COINS } from '../economy/domain/coin-config';
 import { Session } from './entities/session.entity';
 import { RefreshTokenHistory } from './entities/refresh-token-history.entity';
 import { RegisterDto } from './dto/register.dto';
@@ -84,6 +86,7 @@ export class AuthService {
     private readonly config: ConfigService,
     private readonly dataSource: DataSource,
     private readonly usersService: UsersService,
+    private readonly economy: EconomyService,
     @Inject(forwardRef(() => RealtimeGateway))
     private readonly realtime: RealtimeGateway,
   ) {}
@@ -148,6 +151,8 @@ export class AuthService {
         characters.create({ userId: user.id, level: 1, xpTotal: 0 }),
       );
       await this.usersService.grantStarterInventory(transactionalEntityManager, user.id);
+      // O usuário ainda não tem socket aberto, então não há saldo a publicar (`publishBalanceChanged`).
+      await this.economy.credit(transactionalEntityManager, user.id, SIGNUP_COINS, { type: 'signup', ref: user.id });
 
       return this.issueSessionWithRepository(user, device, sessions);
     }));

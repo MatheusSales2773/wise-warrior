@@ -5,6 +5,9 @@ import { JwtService } from '@nestjs/jwt';
 import { Test } from '@nestjs/testing';
 import type { AddressInfo } from 'node:net';
 import { DataSource } from 'typeorm';
+import { EconomyService } from '../economy/economy.service';
+import { CoinBalance } from '../economy/entities/coin-balance.entity';
+import { CoinLedgerEntry } from '../economy/entities/coin-ledger-entry.entity';
 import { AuthService } from '../auth/auth.service';
 import { Session } from '../auth/entities/session.entity';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -70,6 +73,11 @@ describe('Cosmetics Catalog HTTP contract against MySQL', () => {
       config,
       dataSource,
       users,
+      new EconomyService(
+        dataSource.getRepository(CoinBalance),
+        dataSource.getRepository(CoinLedgerEntry),
+        { emitToUser: () => undefined } as never,
+      ),
       { disconnectSessions: () => undefined } as never,
     );
 

@@ -11,13 +11,16 @@ import { AddStudySessionRecentIndex1788458520000 } from './1788458520000-add-stu
 import { AddCanonicalStudySessionStart1788458760000 } from './1788458760000-add-canonical-study-session-start';
 import { AddStudySessionPauseResume1788458880000 } from './1788458880000-add-study-session-pause-resume';
 import { AddRaidMissions1788459360000 } from './1788459360000-add-raid-missions';
-import { AddMissionStore1788459720000 } from './1788459720000-add-mission-store';
+import { AddMissionStore1788459780000 } from './1788459780000-add-mission-store';
 import { AddRaidParticipations1788459420000 } from './1788459420000-add-raid-participations';
 import { AddRaidGoalReachedAt1788459480000 } from './1788459480000-add-raid-goal-reached-at';
 import { DropCharacterTitle1788459300000 } from './1788459300000-drop-character-title';
 import { SeedInitialCosmeticItems1788459240000 } from './1788459240000-seed-initial-cosmetic-items';
+import { GrantWelcomeCoins1788459720000 } from './1788459720000-grant-welcome-coins';
 import { raidWeekAt } from '../modules/raids/domain/raid-week';
 import { StudySession } from '../modules/sessions/entities/study-session.entity';
+
+const MIGRATION_COUNT = (APPLICATION_MIGRATIONS as unknown[]).length;
 
 const expectedTables = [
   'users',
@@ -409,11 +412,13 @@ describe('TypeORM migrations against an empty MySQL schema', () => {
       'AddGuildChatMessageSequence1788459540000',
       'AddStudySessionCappedReason1788459600000',
       'AddCoinEconomy1788459660000',
-      'AddMissionStore1788459720000',
+      'GrantWelcomeCoins1788459720000',
+      'AddMissionStore1788459780000',
     ]);
 
     await dataSource.undoLastMigration(); // mission store, the newest migration
-    await dataSource.undoLastMigration(); // coin economy
+    await dataSource.undoLastMigration(); // welcome coins
+    await dataSource.undoLastMigration(); // coin economy, which sits below the welcome coins
     const coinRevertRows = await rows(
       database!.admin,
       `SELECT TABLE_NAME FROM information_schema.TABLES
@@ -669,8 +674,8 @@ await dataSource.undoLastMigration();
       { idempotency_key: 'rolling-transition-key', command_kind: 'resume' },
     ]);
 
-    // Thirteen steps: the coin economy and mission store migrations now sit above the 16 earlier ones.
-    for (let step = 0; step < 13; step += 1) await dataSource.undoLastMigration();
+    // Every migration above the first five; counted from the bottom, so a newer migration needs no edit here.
+    for (let step = 0; step < MIGRATION_COUNT - 5; step += 1) await dataSource.undoLastMigration();
     const leftoverTriggers = await rows(
       database.admin,
       `SELECT TRIGGER_NAME FROM information_schema.TRIGGERS
@@ -796,6 +801,7 @@ await dataSource.undoLastMigration();
 
     // M6 revert: only the receipt column goes away; every persisted Matéria (including legacy Guild rows) stays.
     await dataSource.undoLastMigration(); // mission store, the newest migration
+    await dataSource.undoLastMigration(); // welcome coins
     await dataSource.undoLastMigration(); // coin economy
     await dataSource.undoLastMigration(); // study session capped reason
     await dataSource.undoLastMigration(); // guild chat sequence
@@ -834,8 +840,8 @@ await dataSource.undoLastMigration();
     );
     expect(receiptsAfterReapply).toEqual([{ idempotency_key: 'solo-start-key', subject: null }]);
 
-    // Fifteen steps: the coin economy and mission store migrations now sit above the 13 earlier ones that this downgrade undid.
-    for (let step = 0; step < 15; step += 1) await dataSource.undoLastMigration();
+    // Every migration above the first three, counted from the bottom.
+    for (let step = 0; step < MIGRATION_COUNT - 3; step += 1) await dataSource.undoLastMigration();
     const downgradedHistory = await rows(
       database.admin,
       `SELECT id, subject, mode, raid_id FROM ${database.identifier}.study_sessions ORDER BY id`,
@@ -926,8 +932,8 @@ await dataSource.undoLastMigration();
     );
     expect(leftoverArchives).toHaveLength(0);
 
-    // Eighteen steps: every migration, the coin economy and mission store ones included, down to the archives.
-    for (let step = 0; step < 18; step += 1) await dataSource.undoLastMigration();
+    // Every migration, down to the archives.
+    for (let step = 0; step < MIGRATION_COUNT; step += 1) await dataSource.undoLastMigration();
     const remainingSchemaTables = await rows(
       database.admin,
       `SELECT TABLE_NAME FROM information_schema.TABLES
@@ -944,7 +950,7 @@ await dataSource.undoLastMigration();
   it('seeds the Catalog, backfills existing Characters without re-equipping, and reverts the seed', async () => {
     database = await createIntegrationDatabase('wise_migrations_test');
     initialDataSource = new DataSource(database.options(
-      (APPLICATION_MIGRATIONS as unknown[]).filter((migration) => migration !== SeedInitialCosmeticItems1788459240000 && migration !== AddRaidMissions1788459360000 && migration !== AddMissionStore1788459720000 && migration !== AddRaidParticipations1788459420000) as typeof APPLICATION_MIGRATIONS,
+      (APPLICATION_MIGRATIONS as unknown[]).filter((migration) => migration !== SeedInitialCosmeticItems1788459240000 && migration !== AddRaidMissions1788459360000 && migration !== AddMissionStore1788459780000 && migration !== AddRaidParticipations1788459420000) as typeof APPLICATION_MIGRATIONS,
     ));
     await initialDataSource.initialize();
     await initialDataSource.runMigrations();
@@ -1092,7 +1098,7 @@ await dataSource.undoLastMigration();
   it('seeds the Missões, links reward items, gives Raids a Missão and the current week to existing Guilds, and reverts', async () => {
     database = await createIntegrationDatabase('wise_migrations_test');
     initialDataSource = new DataSource(database.options(
-      (APPLICATION_MIGRATIONS as unknown[]).filter((migration) => migration !== AddRaidMissions1788459360000 && migration !== AddMissionStore1788459720000 && migration !== AddRaidParticipations1788459420000) as typeof APPLICATION_MIGRATIONS,
+      (APPLICATION_MIGRATIONS as unknown[]).filter((migration) => migration !== AddRaidMissions1788459360000 && migration !== AddMissionStore1788459780000 && migration !== AddRaidParticipations1788459420000) as typeof APPLICATION_MIGRATIONS,
     ));
     await initialDataSource.initialize();
     await initialDataSource.runMigrations();
@@ -1339,5 +1345,61 @@ await dataSource.undoLastMigration();
       `SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'user_missions'`,
       [database.name],
     )).toHaveLength(0);
+  });
+
+  it('credits 90 welcome coins once to each existing account, skips repeats and reverts cleanly', async () => {
+    database = await createIntegrationDatabase('wise_migrations_test');
+    initialDataSource = new DataSource(database.options(
+      (APPLICATION_MIGRATIONS as unknown[]).filter((migration) => migration !== GrantWelcomeCoins1788459720000) as typeof APPLICATION_MIGRATIONS,
+    ));
+    await initialDataSource.initialize();
+    await initialDataSource.runMigrations();
+    for (const id of ['veteran', 'newcomer', 'signed-up']) {
+      await database.admin.query(
+        `INSERT INTO ${database.identifier}.users (id, email, password_hash, display_name, plan_tier)
+         VALUES (?, ?, 'hash', ?, 'free')`,
+        [id, `${id}@example.com`, id],
+      );
+    }
+    // The veteran already earned coins before the migration; the new account already got its signup credit.
+    await database.admin.query(
+      `INSERT INTO ${database.identifier}.coin_balances (user_id, balance, updated_at) VALUES ('veteran', 12, NOW(3)), ('signed-up', 90, NOW(3))`,
+    );
+    await database.admin.query(
+      `INSERT INTO ${database.identifier}.coin_ledger_entries (id, user_id, amount, balance_after, origin_type, origin_ref, created_at)
+       VALUES ('l1', 'veteran', 12, 12, 'study-session', 'session-1', NOW(3)),
+              ('l2', 'signed-up', 90, 90, 'signup', 'signed-up', NOW(3))`,
+    );
+    await initialDataSource.destroy();
+    initialDataSource = undefined;
+
+    dataSource = new DataSource(database.options(APPLICATION_MIGRATIONS));
+    await dataSource.initialize();
+    await dataSource.runMigrations();
+
+    const balances = async () => (await rows(
+      database!.admin,
+      `SELECT user_id, balance FROM ${database!.identifier}.coin_balances ORDER BY user_id`,
+    )).map((row) => [row.user_id, Number(row.balance)]);
+    const welcomes = async () => (await rows(
+      database!.admin,
+      `SELECT user_id, amount, balance_after FROM ${database!.identifier}.coin_ledger_entries
+       WHERE origin_type = 'migration' AND origin_ref = 'welcome' ORDER BY user_id`,
+    )).map((row) => [row.user_id, Number(row.amount), Number(row.balance_after)]);
+    expect(await balances()).toEqual([['newcomer', 90], ['signed-up', 90], ['veteran', 102]]);
+    expect(await welcomes()).toEqual([['newcomer', 90, 90], ['veteran', 90, 102]]);
+
+    // Revert and reapply: the credit happens once per account, never twice.
+    await dataSource.undoLastMigration();
+    expect(await welcomes()).toEqual([]);
+    expect(await balances()).toEqual([['newcomer', 0], ['signed-up', 90], ['veteran', 12]]);
+    await dataSource.runMigrations();
+    expect(await balances()).toEqual([['newcomer', 90], ['signed-up', 90], ['veteran', 102]]);
+    expect(await welcomes()).toEqual([['newcomer', 90, 90], ['veteran', 90, 102]]);
+
+    // Running the same credit again changes nothing.
+    await new GrantWelcomeCoins1788459720000().up(dataSource.createQueryRunner());
+    expect(await balances()).toEqual([['newcomer', 90], ['signed-up', 90], ['veteran', 102]]);
+    expect(await welcomes()).toEqual([['newcomer', 90, 90], ['veteran', 90, 102]]);
   });
 });

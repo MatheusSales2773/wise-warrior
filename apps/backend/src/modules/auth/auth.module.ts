@@ -13,15 +13,17 @@ import { User } from '../users/entities/user.entity';
 import { Character } from '../progression/entities/character.entity';
 import { RealtimeModule } from '../realtime/realtime.module';
 import { UsersModule } from '../users/users.module';
+import { EconomyModule } from '../economy/economy.module';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([User, Character, Session, RefreshTokenHistory]),
     PassportModule,
     JwtModule.register({}),
-    // Ciclo só entre módulos (Auth → Users → Progression → Realtime → Auth); os providers não se repetem nele.
+    // Ciclo só entre módulos (Auth → Users → Progression → Realtime → Auth, e Auth → Economy → Realtime → Auth); os providers não se repetem nele.
     forwardRef(() => UsersModule),
     forwardRef(() => RealtimeModule),
+    forwardRef(() => EconomyModule),
   ],
   controllers: [AuthController, NativeAuthController],
   providers: [AuthService, JwtStrategy, RejectBrowserOriginGuard],

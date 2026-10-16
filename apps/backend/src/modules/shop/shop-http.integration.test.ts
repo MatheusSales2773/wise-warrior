@@ -5,7 +5,6 @@ import { DataSource } from 'typeorm';
 import { AppModule } from '../../app.module';
 import { configureApp } from '../../app.setup';
 import { createIntegrationDatabase, type IntegrationDatabase } from '../../test/integration-database';
-import { EconomyService } from '../economy/economy.service';
 import { RaidsService } from '../raids/raids.service';
 
 const REWARD_ITEM_ID = 'c05e71c0-0000-4000-8000-000000000007';
@@ -66,11 +65,8 @@ describe('Loja: Compra de Missões over HTTP against MySQL, with the real AppMod
     const body = (await response.json()) as { accessToken: string };
     const [row] = (await dataSource!.query('SELECT id FROM users WHERE email = ?', [email])) as Array<{ id: string }>;
     const userId = row!.id;
-    if (coins > 0) {
-      await dataSource!.transaction((m) =>
-        app!.get(EconomyService).credit(m, userId, coins, { type: 'study-session', ref: `seed-${userId}` }),
-      );
-    }
+    // Registration already grants the welcome Moedas (#165); pin the balance so each test starts from a known amount.
+    await dataSource!.query('UPDATE coin_balances SET balance = ? WHERE user_id = ?', [coins, userId]);
     return { accessToken: body.accessToken, userId };
   }
 
