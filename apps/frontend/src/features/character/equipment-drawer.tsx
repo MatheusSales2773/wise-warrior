@@ -187,7 +187,7 @@ function PanelBody({ catalog, category, equipment, equipped, level, onCategoryCh
       </Pressable>
     </View>
     {tabs}
-    <View accessibilityLabel={`Opções de ${definition.noun}`} accessibilityRole="radiogroup" style={styles.options}>{optionRows}</View>
+    <ScrollView accessibilityLabel={`Opções de ${definition.noun}`} accessibilityRole="radiogroup" contentContainerStyle={styles.options} style={styles.drawerOptions}>{optionRows}</ScrollView>
     {unequipAction}
     <View style={styles.spacer} />
     <View style={styles.footer}>
@@ -299,6 +299,7 @@ const styles = StyleSheet.create({
   sheetTitle: { fontFamily: 'Cinzel-Bold', fontSize: 18, lineHeight: 24, textAlign: 'center', color: theme.color.textPrimary },
   sheetDescription: { fontFamily: inter.regular, fontSize: 13, lineHeight: 16, textAlign: 'center', color: theme.color.textSecondary },
   sheetOptions: { flexShrink: 1 },
+  drawerOptions: { flexShrink: 1 },
 
   segmented: { flexDirection: 'row', gap: theme.space.inlineHairline, padding: theme.space.inlineHairline, borderRadius: theme.radius.control, borderWidth: theme.border.standard, borderColor: theme.color.borderGhost, backgroundColor: theme.color.surfaceInset },
   segment: { flex: 1, minWidth: 0, alignItems: 'center', paddingVertical: 9, borderRadius: theme.radius.detail, borderWidth: theme.border.standard, borderColor: 'transparent' },
