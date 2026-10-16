@@ -99,14 +99,7 @@ export class UsersService {
     const unlocked = (await this.readCatalog(manager.getRepository(CosmeticItem)))
       .filter(({ condition }) => isUnlockedAtLevel(condition, level));
     if (unlocked.length === 0) return;
-    await manager
-      .createQueryBuilder()
-      .insert()
-      .into(UserCosmeticItem)
-      .values(unlocked.map(({ item }) => ({ userId, cosmeticItemId: item.id, equipped: false })))
-      // Só a linha repetida (usuário + item) é tolerada; qualquer outro erro continua sendo erro.
-      .orUpdate(['cosmetic_item_id'], ['user_id', 'cosmetic_item_id'])
-      .execute();
+    await this.grantToInventory(manager, unlocked.map(({ item }) => ({ userId, cosmeticItemId: item.id })));
   }
 
   /**
@@ -120,14 +113,8 @@ export class UsersService {
       .filter(({ condition }) => isUnlockedByRaid(condition, missionSlug))
       .map(({ item }) => item.id);
     if (items.length === 0) return [];
-    await manager
-      .createQueryBuilder()
-      .insert()
-      .into(UserCosmeticItem)
-      .values(userIds.flatMap((userId) => items.map((cosmeticItemId) => ({ userId, cosmeticItemId, equipped: false }))))
-      // Vencer de novo a mesma Missão, ou reprocessar o fechamento, não duplica nem reequipa nada.
-      .orUpdate(['cosmetic_item_id'], ['user_id', 'cosmetic_item_id'])
-      .execute();
+    // Vencer de novo a mesma Missão, ou reprocessar o fechamento, não duplica nem reequipa nada.
+    await this.grantToInventory(manager, userIds.flatMap((userId) => items.map((cosmeticItemId) => ({ userId, cosmeticItemId }))));
     return items;
   }
 
@@ -148,7 +135,8 @@ export class UsersService {
   }
 
   /**
-   * Compra de um Cosmetic Item (ADR-012): a Condição de desbloqueio `purchase`. Concede o item ao Inventário na
+   * Compra de um Cosmetic Item (ADR-012): a Condição de desbloqueio `purchase`, concedida pelo mesmo Desbloqueio
+   * idempotente das demais. Concede o item ao Inventário na
    * transação de quem chama, que debita o preço na mesma transação. 404 para item que não está À venda, 409 para
    * item que o usuário já tem. Devolve o preço a debitar. Nunca equipa.
    */
@@ -157,15 +145,30 @@ export class UsersService {
     if (!item || item.price === null) {
       throw new NotFoundException('Item não está À venda');
     }
-    try {
-      await manager.getRepository(UserCosmeticItem).insert({ userId, cosmeticItemId, equipped: false });
-    } catch (error) {
-      if ((error as { code?: string }).code === 'ER_DUP_ENTRY') {
-        throw new ConflictException('Você já possui este item');
-      }
-      throw error;
+    // O chamador já travou a linha do usuário (`lockForUpdate`), então verificar e conceder não corre contra outra Compra.
+    if (await manager.getRepository(UserCosmeticItem).exists({ where: { userId, cosmeticItemId } })) {
+      throw new ConflictException('Você já possui este item');
     }
+    await this.grantToInventory(manager, [{ userId, cosmeticItemId }]);
     return { price: item.price };
+  }
+
+  /**
+   * O Desbloqueio idempotente, comum a nível, Raid e Compra: insere no Inventário na transação de quem chama e, pelo
+   * índice único (usuário + item), repetir um par não duplica nem reequipa nada.
+   */
+  private async grantToInventory(
+    manager: EntityManager,
+    grants: Array<{ userId: string; cosmeticItemId: string }>,
+  ): Promise<void> {
+    await manager
+      .createQueryBuilder()
+      .insert()
+      .into(UserCosmeticItem)
+      .values(grants.map(({ userId, cosmeticItemId }) => ({ userId, cosmeticItemId, equipped: false })))
+      // Só a linha repetida (usuário + item) é tolerada; qualquer outro erro continua sendo erro.
+      .orUpdate(['cosmetic_item_id'], ['user_id', 'cosmetic_item_id'])
+      .execute();
   }
 
   /** Inventário de um Character recém-criado: os Itens iniciais, já equipados. */
