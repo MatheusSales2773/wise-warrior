@@ -10,7 +10,6 @@ import {
   type StudySessionSnapshot,
 } from '@/features/study-session/api';
 import { clearCompletionIntent } from '@/features/study-session/completion-intent';
-import { clearBreak } from '@/features/study-session/pomodoro-break';
 import { useStudySessionAppActive } from '@/features/study-session/use-study-session-app-active';
 
 jest.mock('@/features/guild/api', () => ({
@@ -94,7 +93,6 @@ const advance = (seconds: number) => act(async () => {
 
 beforeEach(() => {
   clearCompletionIntent();
-  clearBreak();
   mockedNow = new Date('2026-09-22T12:00:00.000Z').getTime();
   timerTick = undefined;
   appActive.mockReturnValue(true);
@@ -111,7 +109,6 @@ beforeEach(() => {
 
 afterEach(() => {
   clearCompletionIntent();
-  clearBreak();
   queryClients.splice(0).forEach((client) => client.clear());
   jest.restoreAllMocks();
   jest.clearAllMocks();
@@ -197,4 +194,19 @@ it('does not offer a break after an early stop', async () => {
   await fireEvent.press(await view.findByTestId('study-session-stop'));
   await view.findByText('Sessão encerrada antecipadamente');
   await waitFor(() => expect(view.queryByRole('button', { name: /Iniciar pausa/ })).toBeNull());
+});
+
+it('drops the break when a session is started on another device', async () => {
+  const view = await renderCompletedFocus(inCycle(1));
+  await fireEvent.press(await view.findByRole('button', { name: 'Iniciar pausa curta' }));
+  expect(view.getByTestId('study-session-break')).toBeTruthy();
+
+  const client = queryClients[0];
+  if (!client) throw new Error('Expected a query client');
+  getActive.mockResolvedValue({ ...running, canControl: false });
+  await act(async () => { await client.invalidateQueries({ queryKey: ['study-session', 'active'] }); });
+
+  await view.findByTestId('study-session-remote-conflict');
+  expect(view.queryByTestId('study-session-break')).toBeNull();
+  expect(client.getQueryData(['study-session', 'break'])).toBeUndefined();
 });

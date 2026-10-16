@@ -1,3 +1,4 @@
+import { QueryClient } from '@tanstack/react-query';
 import {
   BREAK_SECONDS,
   breakRemainingSeconds,
@@ -6,21 +7,23 @@ import {
   startBreak,
 } from '@/features/study-session/pomodoro-break';
 
-afterEach(() => clearBreak());
+let queryClient: QueryClient;
+beforeEach(() => { queryClient = new QueryClient(); });
+afterEach(() => queryClient.clear());
 
 it('uses 5 minutes for the short break and 15 for the long one', () => {
   expect(BREAK_SECONDS).toEqual({ short: 300, long: 900 });
 });
 
 it('starts a break whose deadline is its duration after the start', () => {
-  const run = startBreak('short', 1_000_000);
+  const run = startBreak(queryClient, 'short', 1_000_000);
 
   expect(run).toEqual({ kind: 'short', durationSeconds: 300, deadlineMs: 1_300_000 });
-  expect(currentBreak()).toBe(run);
+  expect(currentBreak(queryClient)).toEqual(run);
 });
 
 it('counts down to the second from the local deadline and never goes below zero', () => {
-  const run = startBreak('long', 0);
+  const run = startBreak(queryClient, 'long', 0);
 
   expect(breakRemainingSeconds(run, 0)).toBe(900);
   expect(breakRemainingSeconds(run, 1)).toBe(900);
@@ -31,8 +34,28 @@ it('counts down to the second from the local deadline and never goes below zero'
 });
 
 it('forgets the break once cleared', () => {
-  startBreak('short', 0);
-  clearBreak();
+  startBreak(queryClient, 'short', 0);
+  clearBreak(queryClient);
 
-  expect(currentBreak()).toBeNull();
+  expect(currentBreak(queryClient)).toBeNull();
+});
+
+it('does not carry a break over to the next user: logout clears the whole cache', () => {
+  startBreak(queryClient, 'long', 0);
+
+  queryClient.clear();
+
+  expect(currentBreak(queryClient)).toBeNull();
+});
+
+it('keeps the break past the default garbage collection time', () => {
+  jest.useFakeTimers();
+  try {
+    startBreak(queryClient, 'long', 0);
+    jest.advanceTimersByTime(10 * 60_000);
+
+    expect(currentBreak(queryClient)).not.toBeNull();
+  } finally {
+    jest.useRealTimers();
+  }
 });

@@ -418,7 +418,8 @@ export function StudySessionScreen({ initialMode = 'solo' }: { initialMode?: Ses
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [focusedDuration, setFocusedDuration] = useState<PlannedDurationSeconds | null>(null);
   const [now, setNow] = useState(0);
-  const [breakRun, setBreakRun] = useState<BreakRun | null>(() => currentBreak());
+  const [breakRun, setBreakRun] = useState<BreakRun | null>(() => currentBreak(queryClient));
+  const [sawActiveSession, setSawActiveSession] = useState(false);
   const [cycleFresh, setCycleFresh] = useState(true);
   const [breakNow, setBreakNow] = useState(() => Date.now());
   const [retryTransition, setRetryTransition] = useState<TransitionCommand | null>(null);
@@ -447,6 +448,15 @@ export function StudySessionScreen({ initialMode = 'solo' }: { initialMode?: Ses
     return result;
   }, [refetchActive]);
   const activeSnapshot = active.data;
+  // A session started elsewhere ends the local break: drop it once, not on every render.
+  if ((activeSnapshot != null) !== sawActiveSession) {
+    setSawActiveSession(activeSnapshot != null);
+    if (activeSnapshot != null && breakRun) setBreakRun(null);
+  }
+  const hasActiveSession = activeSnapshot != null;
+  useEffect(() => {
+    if (hasActiveSession) clearBreak(queryClient);
+  }, [hasActiveSession, queryClient]);
   const retainedCompletionIntent = activeSnapshot
     ? getCompletionIntentForSnapshot(activeSnapshot)
     : getRetainedCompletionIntent();
@@ -536,7 +546,7 @@ export function StudySessionScreen({ initialMode = 'solo' }: { initialMode?: Ses
       setSubjectInput('');
       setSettingsOpen(false);
       setTerminalResult(null);
-      clearBreak();
+      clearBreak(queryClient);
       setBreakRun(null);
       clearCompletionIntent();
       setCompletionIntentState(null);
@@ -765,7 +775,7 @@ export function StudySessionScreen({ initialMode = 'solo' }: { initialMode?: Ses
 
   const startNewSession = () => {
     pendingKey.current = null;
-    clearBreak();
+    clearBreak(queryClient);
     setBreakRun(null);
     clearCompletionIntent();
     setCompletionIntentState(null);
@@ -775,7 +785,7 @@ export function StudySessionScreen({ initialMode = 'solo' }: { initialMode?: Ses
   const beginBreak = (kind: BreakKind) => {
     const at = Date.now();
     setBreakNow(at);
-    setBreakRun(startBreak(kind, at));
+    setBreakRun(startBreak(queryClient, kind, at));
   };
 
   // A break is offered only after a focus completed in full; early stops and discards skip it.
