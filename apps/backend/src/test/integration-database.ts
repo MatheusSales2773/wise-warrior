@@ -1,6 +1,6 @@
 import type { Connection } from 'mysql2/promise';
 import mysql from 'mysql2/promise';
-import type { DataSourceOptions } from 'typeorm';
+import type { DataSource, DataSourceOptions, MigrationInterface } from 'typeorm';
 import { createDatabaseOptions } from '../config/database.config';
 import { AddSessionRefreshTokenHistory1788458460000 } from '../migrations/1788458460000-add-session-refresh-token-history';
 import { CreateWiseSchema1788458400000 } from '../migrations/1788458400000-create-wise-schema';
@@ -28,7 +28,9 @@ import { KeepBadgesOffSale1788460080000 } from '../migrations/1788460080000-keep
 import { SeedCosmeticItemsForSale1788460140000 } from '../migrations/1788460140000-seed-cosmetic-items-for-sale';
 import { SeedMissionsForSale1788460200000 } from '../migrations/1788460200000-seed-missions-for-sale';
 
-export const APPLICATION_MIGRATIONS: NonNullable<DataSourceOptions['migrations']> = [
+export type MigrationClass = new () => MigrationInterface;
+
+export const APPLICATION_MIGRATIONS: MigrationClass[] = [
   CreateWiseSchema1788458400000,
   AddSessionRefreshTokenHistory1788458460000,
   AddStudySessionRecentIndex1788458520000,
@@ -55,6 +57,40 @@ export const APPLICATION_MIGRATIONS: NonNullable<DataSourceOptions['migrations']
   SeedCosmeticItemsForSale1788460140000,
   SeedMissionsForSale1788460200000,
 ];
+
+function positionOf(migration: MigrationClass): number {
+  const position = APPLICATION_MIGRATIONS.indexOf(migration);
+  if (position < 0) {
+    throw new Error(`${migration.name} is not in APPLICATION_MIGRATIONS`);
+  }
+  return position;
+}
+
+/** The migrations up to `migration`, in application order, without it: the schema production had just before it. */
+export function migrationsBefore(migration: MigrationClass): MigrationClass[] {
+  return APPLICATION_MIGRATIONS.slice(0, positionOf(migration));
+}
+
+/** The migrations up to `migration`, in application order, including it. Newer migrations never run. */
+export function migrationsThrough(migration: MigrationClass): MigrationClass[] {
+  return APPLICATION_MIGRATIONS.slice(0, positionOf(migration) + 1);
+}
+
+/**
+ * Undoes migrations from the top until `migration` is no longer applied.
+ * `undoLastMigration()` pops by the `migrations` table order, so each step reads the last row first.
+ */
+export async function revertThrough(dataSource: DataSource, migration: MigrationClass): Promise<void> {
+  positionOf(migration);
+  const applied = async () => (await dataSource.query('SELECT name FROM migrations ORDER BY id DESC')) as Array<{ name: string }>;
+  if (!(await applied()).some((row) => row.name === migration.name)) {
+    throw new Error(`${migration.name} is not applied, so there is nothing to revert`);
+  }
+  for (let last = (await applied())[0]; last; last = (await applied())[0]) {
+    await dataSource.undoLastMigration();
+    if (last.name === migration.name) return;
+  }
+}
 
 export interface IntegrationDatabase {
   readonly admin: Connection;
