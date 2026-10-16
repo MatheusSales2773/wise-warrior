@@ -5,6 +5,7 @@ import { ApiError } from '@/core/api/api-error';
 import { createGuild, getActiveRaid, getMyGuild, getRaidRanking, joinGuild, joinRaid, leaveGuild, listGuildMembers, listGuilds, listPastRaids, type ActiveRaid, type PastRaid, type GuildMemberPage, type GuildPage, type MyGuild, type RaidRankingEntry, type RaidRankingPage } from '@/features/guild/api';
 import { GuildScreen } from '@/features/guild/guild-screen';
 
+jest.mock('@/features/dashboard/api', () => ({ getMyProfile: jest.fn(() => new Promise(() => undefined)) }));
 jest.mock('@/features/guild/api', () => ({
   getMyGuild: jest.fn(),
   getActiveRaid: jest.fn(),

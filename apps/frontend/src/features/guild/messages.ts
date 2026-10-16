@@ -1,4 +1,5 @@
 import { isApiError } from '@/core/api/api-error';
+import type { ChatAckError } from './guild-chat';
 
 /** The UI owns the public text; the backend `detail` never reaches the screen. */
 export function createGuildErrorMessage(error: unknown): string {
@@ -102,4 +103,21 @@ export function formatPastRaidOutcome(status: 'completed' | 'expired'): string {
 export function formatPastRaidMine(me: { participated: boolean; contributionXp: number; position: number | null }): string {
   if (!me.participated) return 'Você não participou';
   return me.position === null ? `Você: ${me.contributionXp} XP` : `Você: ${formatPosition(me.position)} · ${me.contributionXp} XP`;
+}
+
+/** The UI owns the public text: the ack code picks it, the server message never reaches the screen. */
+export function chatErrorMessage(error: ChatAckError): string {
+  switch (error.code) {
+    case 'EMPTY': return 'Escreva algo antes de enviar.';
+    case 'TOO_LONG': return 'A mensagem ficou longa demais. Encurte e envie de novo.';
+    case 'ABUSIVE': return 'A mensagem tem termos não permitidos no Mural. Reescreva e envie de novo.';
+    case 'RATE_LIMITED': {
+      const seconds = Math.max(1, Math.ceil((error.retryAfterMs ?? 0) / 1000));
+      return `Você enviou muitas mensagens seguidas. Espere ${seconds} s e tente de novo.`;
+    }
+    case 'FORBIDDEN': return 'Só membros da guilda podem escrever no Mural.';
+    case 'DISCONNECTED': return 'Sem conexão com o Mural. A mensagem não foi enviada.';
+    case 'TIMEOUT': return 'O Mural não respondeu. Confira se a mensagem apareceu antes de enviar de novo.';
+    default: return 'Não foi possível enviar a mensagem agora. Tente novamente.';
+  }
 }

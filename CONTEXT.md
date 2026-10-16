@@ -98,6 +98,14 @@ _Avoid_: clã, grupo, time
 O membro da Guild com papel de liderança. Quando sai, o membro mais antigo assume. Quando o último membro sai, a Guild deixa de existir.
 _Avoid_: dono, admin, criador
 
+**Mural**:
+O chat da Guild, em tempo real e com histórico. Só membros leem e escrevem. Mensagens perdidas durante uma queda de conexão são recuperadas na reconexão.
+_Avoid_: chat (como termo próprio), feed, mensagens
+
+**Presença** (online):
+Se um membro da Guild está conectado agora, em qualquer dispositivo. Só é conhecida enquanto o próprio usuário está conectado; sem conexão, o app não mostra presença.
+_Avoid_: status, ativo, disponível
+
 **Nível da Guild**:
 A contagem de Raids que a Guild venceu. Começa em 1 e sobe um nível a cada Meta batida.
 _Avoid_: rank da guilda, XP da guilda

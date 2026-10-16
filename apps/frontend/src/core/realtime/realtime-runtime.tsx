@@ -1,5 +1,5 @@
 import { useQueryClient } from '@tanstack/react-query';
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { View } from 'react-native';
 import { getPublicApiUrl } from '@/config/environment';
 import { recoverAuthenticationOnce } from '@/core/api/api-client';
@@ -7,6 +7,7 @@ import { getAccessToken } from '@/core/api/token-memory';
 import { useAuth } from '@/core/auth/auth-context';
 import { FeedbackMessage } from '@/design-system';
 import { createRealtimeClient, type RealtimeStatus } from './realtime-client';
+import { setActiveRealtime, useActiveRealtime } from './realtime-store';
 
 const notices: Partial<Record<RealtimeStatus, { variant: 'warning' | 'error'; title: string; message: string }>> = {
   reconnecting: { variant: 'warning', title: 'Reconectando', message: 'Reconectando para manter seu progresso atualizado em tempo real.' },
@@ -24,7 +25,7 @@ export function RealtimeStatusNotice({ status }: { status: RealtimeStatus }) {
 export function RealtimeRuntime() {
   const { status, sessionId } = useAuth();
   const queryClient = useQueryClient();
-  const [realtimeStatus, setRealtimeStatus] = useState<RealtimeStatus>('connecting');
+  const realtime = useActiveRealtime();
 
   useEffect(() => {
     if (status !== 'authenticated') return;
@@ -35,13 +36,15 @@ export function RealtimeRuntime() {
       getToken: getAccessToken,
       recover: recoverAuthenticationOnce,
     });
-    const unsubscribe = client.subscribe(() => setRealtimeStatus(client.getStatus()));
+    const publish = () => setActiveRealtime({ channel: client, status: client.getStatus() });
+    publish();
+    const unsubscribe = client.subscribe(publish);
     return () => {
       unsubscribe();
+      setActiveRealtime(null);
       client.dispose();
-      setRealtimeStatus('connecting');
     };
   }, [status, sessionId, queryClient]);
 
-  return <RealtimeStatusNotice status={realtimeStatus} />;
+  return <RealtimeStatusNotice status={realtime?.status ?? 'connecting'} />;
 }
