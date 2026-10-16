@@ -13,6 +13,8 @@ import {
 import { clearCompletionIntent } from '@/features/study-session/completion-intent';
 import { useStudySessionAppActive } from '@/features/study-session/use-study-session-app-active';
 
+// The day history and the week chart have their own tests (forge-history.test.tsx).
+jest.mock('@/features/study-session/forge-history', () => ({ ForgeHistory: () => null }));
 jest.mock('@/features/guild/api', () => ({
   getMyGuild: jest.fn(async () => null),
   getActiveRaid: jest.fn(async () => null),

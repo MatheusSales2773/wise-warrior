@@ -24,6 +24,10 @@ import { formatRemainingTime, remainingStudySeconds } from './timer';
 import { MAX_SUBJECT_LENGTH, validateSubject, type SubjectValidation } from './subject';
 import { FeedbackMessage } from '@/design-system/components/FeedbackMessage';
 import { dashboardKeys, sessionMetricsQueryOptions } from '@/features/dashboard/queries';
+import { useIsOnline } from '@/core/query/online-manager';
+import { ForgeHistory } from './forge-history';
+import { ForgeSyncIndicator } from './sync-indicator';
+import { forgeSyncStatus } from './sync-status';
 import { formatSessionsToday } from '@/features/dashboard/formatters';
 import { isApiError } from '@/core/api/api-error';
 import { joinRaid, type ActiveRaid } from '@/features/guild/api';
@@ -437,6 +441,7 @@ export function StudySessionScreen({ initialMode = 'solo' }: { initialMode?: Ses
   const applicationActive = useStudySessionAppActive();
   const wasApplicationActive = useRef(applicationActive);
   const active = useActiveStudySession();
+  const online = useIsOnline();
   const focusCycle = useFocusCycle();
   const refetchActive = active.refetch;
   const refreshActive = useCallback(async () => {
@@ -482,6 +487,8 @@ export function StudySessionScreen({ initialMode = 'solo' }: { initialMode?: Ses
       queryClient.invalidateQueries({ queryKey: dashboardKeys.profile() }),
       queryClient.invalidateQueries({ queryKey: dashboardKeys.recentActivity() }),
       queryClient.invalidateQueries({ queryKey: dashboardKeys.metrics() }),
+      // Every day of the history: the session lands in its UTC day, whatever day the screen shows.
+      queryClient.invalidateQueries({ queryKey: [...dashboardKeys.all, 'history'] }),
       queryClient.invalidateQueries({ queryKey: focusCycleQueryKey }),
       // A guild-mode session may have become a Contribution: the Raid card shows the new progress.
       ...(result.mode === 'guild' ? [queryClient.invalidateQueries({ queryKey: [...guildKeys.all, 'raid'] })] : []),
@@ -792,10 +799,20 @@ export function StudySessionScreen({ initialMode = 'solo' }: { initialMode?: Ses
   // A break is offered only after a focus completed in full; early stops and discards skip it.
   const nextBreak: BreakKind = focusCycle.data?.nextBreak ?? 'short';
 
+  // #17: where the session stands against the server. Offline, TanStack Query pauses the requests and resumes
+  // them, with a refetch of the active session, when the network comes back.
+  const syncStatus = forgeSyncStatus({
+    online,
+    syncing: foregroundSyncPending || (active.isFetching && !active.isPending) || transition.isPending || start.isPending || completionPending,
+    failed: (active.isError && snapshot !== null) || (transition.isError && !transition.isPending) || completionRetryAvailable,
+  });
+  const showSync = activeSnapshot != null || completionPending || completionRetryAvailable;
+
   return (
     <Screen avoidKeyboard backgroundOverlay={<ForgePageGradient />} hasBottomNavigation safeAreaEdges={['right', 'left']} testID="study-session" title="Forja" contentContainerStyle={styles.screenContent}>
       <View style={styles.layout}>
         <TodayPill />
+        {showSync ? <ForgeSyncIndicator onRetry={() => void refreshActive()} status={syncStatus} /> : null}
         {active.isPending && !snapshot ? <WiseText variant="body">Buscando sua sessão ativa…</WiseText> : null}
         {active.isError && !snapshot ? (
           <WiseCard style={styles.messageCard} testID="study-session-load-error">
@@ -1100,6 +1117,7 @@ export function StudySessionScreen({ initialMode = 'solo' }: { initialMode?: Ses
           </View>
           </View>
         ) : null}
+        <ForgeHistory wide={wideLayout} />
       </View>
     </Screen>
   );

@@ -13,6 +13,8 @@ import {
 import { dashboardKeys } from '@/features/dashboard/queries';
 
 // Without a Guild the Forja offers only solo sessions.
+// The day history and the week chart have their own tests (forge-history.test.tsx).
+jest.mock('@/features/study-session/forge-history', () => ({ ForgeHistory: () => null }));
 jest.mock('@/features/guild/api', () => ({
   getMyGuild: jest.fn(async () => null),
   getActiveRaid: jest.fn(async () => null),

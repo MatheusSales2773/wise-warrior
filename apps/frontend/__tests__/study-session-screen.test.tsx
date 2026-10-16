@@ -10,6 +10,8 @@ import { clearCompletionIntent } from '@/features/study-session/completion-inten
 import { ApiError } from '@/core/api/api-error';
 import { getActiveRaid, getMyGuild, joinRaid, type ActiveRaid, type MyGuild } from '@/features/guild/api';
 
+// The day history and the week chart have their own tests (forge-history.test.tsx).
+jest.mock('@/features/study-session/forge-history', () => ({ ForgeHistory: () => null }));
 jest.mock('@/features/guild/api', () => ({
   getMyGuild: jest.fn(),
   getActiveRaid: jest.fn(),
