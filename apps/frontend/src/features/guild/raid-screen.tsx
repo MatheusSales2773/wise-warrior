@@ -188,7 +188,7 @@ function WeekGrid({ raid }: { raid: ActiveRaid }) {
 function FuriaCard({ raid }: { raid: ActiveRaid }) {
   return <Card label="Fúria do dragão" testID="raid-furia">
     <CardHeader aside="Regra da raid">Fúria do dragão</CardHeader>
-    <Text style={styles.cardNote}>{FURIA_COPY}</Text>
+    <Text style={styles.furiaCopy}>{FURIA_COPY}</Text>
     <WeekGrid raid={raid} />
     <Text style={styles.streak} testID="raid-streak">{formatStreak(raid.streak)}</Text>
   </Card>;
@@ -196,11 +196,10 @@ function FuriaCard({ raid }: { raid: ActiveRaid }) {
 
 function FuriaStrip({ raid }: { raid: ActiveRaid }) {
   return <View accessibilityLabel="Fúria do dragão" role="region" style={styles.furiaStrip} testID="raid-furia">
-    <WiseIcon color="feedbackDanger" name="flame" size="xsmall" />
-    <View style={styles.furiaStripCopy}>
-      <Text style={styles.furiaStripText}>Dias sem estudo devolvem 5% de vida ao dragão.</Text>
-      <Text style={styles.furiaStripText} testID="raid-streak">{formatStreak(raid.streak, { compact: true })}</Text>
-    </View>
+    <WiseIcon color="feedbackDanger" name="flame" size="small" />
+    <Text style={styles.furiaStripText}>
+      Dias sem estudo devolvem 5% de vida ao dragão. <Text testID="raid-streak">{formatStreak(raid.streak, { compact: true })}</Text>
+    </Text>
   </View>;
 }
 
@@ -411,19 +410,19 @@ const styles = StyleSheet.create({
   cardAside: { fontFamily: mono, fontSize: 10, lineHeight: 13, letterSpacing: 1, color: theme.color.textTertiary },
   cardNote: { fontFamily: 'Inter-Regular', fontSize: 13, lineHeight: 18, color: theme.color.textSecondary },
 
-  weekGrid: { flexDirection: 'row', gap: 8 },
-  weekDay: { flex: 1, alignItems: 'center', gap: 8, paddingVertical: 10, borderRadius: theme.radius.detail, borderWidth: theme.border.standard, borderColor: 'transparent', backgroundColor: theme.color.backgroundCanvas },
-  weekDayStudied: { borderColor: theme.color.feedbackSuccess, backgroundColor: theme.color.surfaceInset },
-  weekDayToday: { borderColor: theme.color.accentMuted },
-  weekDayInitial: { fontFamily: mono, fontSize: 10, lineHeight: 13, color: theme.color.textTertiary },
+  furiaCopy: { fontFamily: 'Inter-Regular', fontSize: 13, lineHeight: 20, color: theme.color.textSecondary },
+  weekGrid: { flexDirection: 'row', gap: 6 },
+  weekDay: { flex: 1, alignItems: 'center', gap: 4, paddingVertical: 8, borderRadius: theme.radius.control, borderWidth: theme.border.standard, borderColor: theme.color.borderGhost, backgroundColor: theme.color.surfaceInset },
+  weekDayStudied: { borderColor: theme.color.feedbackSuccess, backgroundColor: theme.color.surfaceElevated },
+  weekDayToday: { borderColor: theme.color.accentPrimary },
+  weekDayInitial: { fontFamily: mono, fontSize: 10, color: theme.color.textTertiary },
   weekDayInitialToday: { color: theme.color.accentHighlight },
-  weekDayMark: { fontFamily: mono, fontSize: 12, lineHeight: 16, color: theme.color.textTertiary },
+  weekDayMark: { fontFamily: 'Inter-SemiBold', fontSize: 13, color: theme.color.textTertiary },
   weekDayMarkStudied: { color: theme.color.feedbackSuccess },
   weekDayMarkToday: { color: theme.color.accentHighlight },
   streak: { fontFamily: mono, fontSize: 10, lineHeight: 13, color: theme.color.feedbackSuccess },
-  furiaStrip: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 14, paddingVertical: 12, borderRadius: theme.radius.card, borderWidth: theme.border.standard, borderColor: theme.color.borderSubtle, backgroundColor: theme.color.surfaceCard },
-  furiaStripCopy: { flex: 1 },
-  furiaStripText: { fontFamily: 'Inter-Regular', fontSize: 12, lineHeight: 17, color: theme.color.textSecondary },
+  furiaStrip: { flexDirection: 'row', alignItems: 'center', gap: 6, padding: 12, borderRadius: theme.radius.card, borderWidth: theme.border.standard, borderColor: theme.color.borderSubtle, backgroundColor: theme.color.surfaceCard },
+  furiaStripText: { flex: 1, fontFamily: 'Inter-Regular', fontSize: 12, lineHeight: 17, color: theme.color.textSecondary },
 
   strike: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   avatar: { width: 32, height: 32, overflow: 'hidden', borderRadius: 4, borderWidth: theme.border.standard, borderColor: theme.color.borderSubtle, backgroundColor: theme.color.surfaceInset },
