@@ -17,6 +17,13 @@ export type RaidCompleteEvent = {
   rewardItemId: string | null;
 };
 
+/** Payload of the `character:equipmentChanged` event (docs/api/asyncapi.yaml). */
+export type EquipmentChangedEvent = {
+  category: 'avatar' | 'badge' | 'title' | 'accessory';
+  /** The item now equipped in the category, or `null` when it was emptied. */
+  cosmeticItemId: string | null;
+};
+
 /** Where the connection stands, for the visible indicator. */
 export type RealtimeStatus = 'connecting' | 'connected' | 'reconnecting' | 'offline';
 
@@ -58,6 +65,15 @@ export function applyXpUpdated(queryClient: QueryClient): void {
 /** A level-up also unlocks cosmetics, so the catalog is refreshed along with the Dashboard. */
 export function applyLevelUp(queryClient: QueryClient): void {
   applyXpUpdated(queryClient);
+  void queryClient.invalidateQueries({ queryKey: profileKeys.cosmeticsCatalog() });
+}
+
+/**
+ * Equipping on another device changes the profile (equipped items and Título) and the catalog's `equipped` flags.
+ * The device that made the change receives it too; refetching there is harmless.
+ */
+export function applyEquipmentChanged(queryClient: QueryClient): void {
+  void queryClient.invalidateQueries({ queryKey: dashboardKeys.profile() });
   void queryClient.invalidateQueries({ queryKey: profileKeys.cosmeticsCatalog() });
 }
 
@@ -121,6 +137,7 @@ export function createRealtimeClient({
   const onRaidComplete = () => applyRaidComplete(queryClient);
   const onXpUpdated = () => applyXpUpdated(queryClient);
   const onLevelUp = () => applyLevelUp(queryClient);
+  const onEquipmentChanged = () => applyEquipmentChanged(queryClient);
   const handleConnectionLoss = () => {
     if (disposed) return;
     if (socket.active) {
@@ -148,6 +165,7 @@ export function createRealtimeClient({
   socket.on('notification:raidComplete', onRaidComplete);
   socket.on('progress:xpUpdated', onXpUpdated);
   socket.on('notification:levelup', onLevelUp);
+  socket.on('character:equipmentChanged', onEquipmentChanged);
   socket.on('connect', onConnect);
   socket.on('connect_error', handleConnectionLoss);
   socket.on('disconnect', handleConnectionLoss);
@@ -165,6 +183,7 @@ export function createRealtimeClient({
       socket.off('notification:raidComplete', onRaidComplete);
       socket.off('progress:xpUpdated', onXpUpdated);
       socket.off('notification:levelup', onLevelUp);
+      socket.off('character:equipmentChanged', onEquipmentChanged);
       socket.off('connect', onConnect);
       socket.off('connect_error', handleConnectionLoss);
       socket.off('disconnect', handleConnectionLoss);
