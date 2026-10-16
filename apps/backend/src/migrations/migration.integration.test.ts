@@ -53,7 +53,7 @@ const tablesBeforeCoinEconomy = expectedTables.filter(
 const expectedColumns: Record<string, string[]> = {
   users: ['id', 'email', 'password_hash', 'display_name', 'plan_tier', 'created_at'],
   characters: ['id', 'user_id', 'level', 'xp_total', 'companion_id'],
-  cosmetic_items: ['id', 'category', 'name', 'unlock_condition', 'requires_premium'],
+  cosmetic_items: ['id', 'category', 'name', 'unlock_condition', 'requires_premium', 'price', 'for_sale'],
   user_cosmetic_items: ['id', 'user_id', 'cosmetic_item_id', 'equipped', 'unlocked_at'],
   sessions: [
     'id',
@@ -394,6 +394,11 @@ describe('TypeORM migrations against an empty MySQL schema', () => {
       database!.admin,
       `SELECT name FROM ${database!.identifier}.migrations`,
     );
+    const forSaleBeforeRevert = await rows(
+      database!.admin,
+      `SELECT name, price FROM ${database!.identifier}.cosmetic_items WHERE for_sale = 1`,
+    );
+    expect(forSaleBeforeRevert).toEqual([{ name: '[TESTE] Item de teste da Loja - remover', price: 30 }]);
     expect(migrationRows.map((row) => row.name)).toEqual([
       'CreateWiseSchema1788458400000',
       'AddSessionRefreshTokenHistory1788458460000',
@@ -414,9 +419,26 @@ describe('TypeORM migrations against an empty MySQL schema', () => {
       'AddCoinEconomy1788459660000',
       'GrantWelcomeCoins1788459720000',
       'AddMissionStore1788459780000',
+      'AddCosmeticItemSale1788459840000',
+      'SeedTestCosmeticItemForSale1788459900000',
     ]);
 
-    await dataSource.undoLastMigration(); // mission store, the newest migration
+    await dataSource.undoLastMigration(); // temporary test item À venda, the newest migration
+    const testItemRevertRows = await rows(
+      database!.admin,
+      `SELECT id FROM ${database!.identifier}.cosmetic_items WHERE for_sale = 1`,
+    );
+    expect(testItemRevertRows).toHaveLength(0);
+    await dataSource.undoLastMigration(); // cosmetic item sale
+    const saleRevertRows = await rows(
+      database!.admin,
+      `SELECT COLUMN_NAME FROM information_schema.COLUMNS
+       WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'cosmetic_items' ORDER BY ORDINAL_POSITION`,
+      [database!.name],
+    );
+    expect(saleRevertRows.map((row) => row.COLUMN_NAME)).toEqual(['id', 'category', 'name', 'unlock_condition', 'requires_premium']);
+
+    await dataSource.undoLastMigration(); // mission store
     await dataSource.undoLastMigration(); // welcome coins
     await dataSource.undoLastMigration(); // coin economy, which sits below the welcome coins
     const coinRevertRows = await rows(
@@ -800,6 +822,8 @@ await dataSource.undoLastMigration();
     expect(receiptsWithSubject).toEqual([{ idempotency_key: 'solo-start-key', subject: 'Cálculo II' }]);
 
     // M6 revert: only the receipt column goes away; every persisted Matéria (including legacy Guild rows) stays.
+    await dataSource.undoLastMigration(); // temporary test item À venda, the newest migration
+    await dataSource.undoLastMigration(); // cosmetic item sale
     await dataSource.undoLastMigration(); // mission store, the newest migration
     await dataSource.undoLastMigration(); // welcome coins
     await dataSource.undoLastMigration(); // coin economy
@@ -1001,6 +1025,7 @@ await dataSource.undoLastMigration();
       ['badge', 'Marcador do Grimório', 'raid:cerco-ao-grimorio', 0],
       ['accessory', 'Lanterna do Silêncio', 'raid:marcha-do-silencio', 0],
       ['badge', 'Brasão da Forja', 'raid:forja-dos-sabios', 0],
+      ['badge', '[TESTE] Item de teste da Loja - remover', 'purchase', 0], // temporary seed, see #174
     ]);
 
     const inventory = await rows(
@@ -1338,7 +1363,9 @@ await dataSource.undoLastMigration();
       `INSERT INTO ${db}.user_missions (id, user_id, mission_id) VALUES ('o2', 'u', 'p1')`,
     )).rejects.toThrow(/Duplicate entry/);
 
-    await dataSource.undoLastMigration();
+    await dataSource.undoLastMigration(); // temporary test item À venda, which sits above the mission store
+    await dataSource.undoLastMigration(); // cosmetic item sale
+    await dataSource.undoLastMigration(); // mission store
     expect(await rows(database.admin, `SELECT COUNT(*) AS n FROM ${db}.missions`)).toEqual([{ n: 4 }]);
     expect(await rows(
       database.admin,
