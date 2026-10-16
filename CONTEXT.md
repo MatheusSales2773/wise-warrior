@@ -31,12 +31,16 @@ A entrada de um Cosmetic Item no Inventário de um usuário quando a Condição 
 _Avoid_: ganho
 
 **Compra**:
-A troca de Moedas por uma Missão ou por um Cosmetic Item à venda na Loja. A Compra de um Cosmetic Item é uma Condição de desbloqueio. Não se compra o que já se tem.
+A troca de Moedas por uma Missão ou por um Cosmetic Item à venda na Loja. A Compra de um Cosmetic Item é uma Condição de desbloqueio. Não se compra o que já se tem. O que foi comprado fica com o usuário para sempre, mesmo que saia de venda.
 _Avoid_: aquisição, transação
 
 **À venda**:
-A marca de um Cosmetic Item que pode ser comprado na Loja. Recompensas de Raid, itens de nível e Itens premium nunca estão à venda.
+A marca de um Cosmetic Item que pode ser comprado na Loja. Recompensas de Raid, itens de nível, Itens premium e Badges nunca estão à venda: o Badge é sempre conquistado.
 _Avoid_: vendável, disponível
+
+**Fora de venda**:
+Um Cosmetic Item cuja Condição de desbloqueio é a Compra mas que saiu da Loja. Quem o comprou continua com ele; quem não comprou não tem como obtê-lo.
+_Avoid_: descontinuado, esgotado
 
 **Equipar**:
 Escolher qual Cosmetic Item do Inventário o Character exibe em uma categoria. Fica no máximo um equipado por categoria, e um item pode ser desequipado.
