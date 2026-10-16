@@ -19,6 +19,7 @@ import { DropCharacterTitle1788459300000 } from './1788459300000-drop-character-
 import { SeedInitialCosmeticItems1788459240000 } from './1788459240000-seed-initial-cosmetic-items';
 import { GrantWelcomeCoins1788459720000 } from './1788459720000-grant-welcome-coins';
 import { AddMissionRewardItems1788459960000 } from './1788459960000-add-mission-reward-items';
+import { SeedMissionsForSale1788460200000 } from './1788460200000-seed-missions-for-sale';
 import { raidWeekAt } from '../modules/raids/domain/raid-week';
 import { StudySession } from '../modules/sessions/entities/study-session.entity';
 
@@ -455,14 +456,17 @@ describe('TypeORM migrations against an empty MySQL schema', () => {
       'AddMissionRewardItems1788459960000',
       'AddGuildMissionChoice1788460020000',
       'KeepBadgesOffSale1788460080000',
+      'SeedMissionsForSale1788460200000',
     ]);
 
-    await dataSource.undoLastMigration(); // badges off sale, the newest migration
+    await dataSource.undoLastMigration(); // missions for sale
+    await dataSource.undoLastMigration(); // badges off sale
     await badgeInsert('badge-for-sale-after-revert', 1); // the previous CHECK did not know Badges
     await database!.admin.query(`DELETE FROM ${database!.identifier}.cosmetic_items WHERE id = 'badge-for-sale-after-revert'`);
     await dataSource.runMigrations(); // reapply
     await expect(badgeInsert('badge-for-sale-again', 1)).rejects.toThrow(/CHK_cosmetic_items_for_sale/);
-    await dataSource.undoLastMigration();
+    await dataSource.undoLastMigration(); // missions for sale
+    await dataSource.undoLastMigration(); // badges off sale
     await dataSource.undoLastMigration(); // guild mission choices
     await dataSource.undoLastMigration(); // mission reward items
     expect(await rows(database!.admin, `SHOW COLUMNS FROM ${database!.identifier}.missions LIKE 'reward_cosmetic_item_id'`)).toHaveLength(1);
@@ -865,7 +869,8 @@ await dataSource.undoLastMigration();
     expect(receiptsWithSubject).toEqual([{ idempotency_key: 'solo-start-key', subject: 'Cálculo II' }]);
 
     // M6 revert: only the receipt column goes away; every persisted Matéria (including legacy Guild rows) stays.
-    await dataSource.undoLastMigration(); // badges off sale, the newest migration
+    await dataSource.undoLastMigration(); // missions for sale
+    await dataSource.undoLastMigration(); // badges off sale
     await dataSource.undoLastMigration(); // guild mission choices
     await dataSource.undoLastMigration(); // mission reward items
     await dataSource.undoLastMigration(); // temporary test item À venda
@@ -1020,7 +1025,7 @@ await dataSource.undoLastMigration();
   it('seeds the Catalog, backfills existing Characters without re-equipping, and reverts the seed', async () => {
     database = await createIntegrationDatabase('wise_migrations_test');
     initialDataSource = new DataSource(database.options(
-      (APPLICATION_MIGRATIONS as unknown[]).filter((migration) => migration !== SeedInitialCosmeticItems1788459240000 && migration !== AddRaidMissions1788459360000 && migration !== AddMissionStore1788459780000 && migration !== AddMissionRewardItems1788459960000 && migration !== AddGuildMissionChoice1788460020000 && migration !== AddRaidParticipations1788459420000) as typeof APPLICATION_MIGRATIONS,
+      (APPLICATION_MIGRATIONS as unknown[]).filter((migration) => migration !== SeedMissionsForSale1788460200000 && migration !== SeedInitialCosmeticItems1788459240000 && migration !== AddRaidMissions1788459360000 && migration !== AddMissionStore1788459780000 && migration !== AddMissionRewardItems1788459960000 && migration !== AddGuildMissionChoice1788460020000 && migration !== AddRaidParticipations1788459420000) as typeof APPLICATION_MIGRATIONS,
     ));
     await initialDataSource.initialize();
     await initialDataSource.runMigrations();
@@ -1071,6 +1076,14 @@ await dataSource.undoLastMigration();
       ['badge', 'Marcador do Grimório', 'raid:cerco-ao-grimorio', 0],
       ['accessory', 'Lanterna do Silêncio', 'raid:marcha-do-silencio', 0],
       ['badge', 'Brasão da Forja', 'raid:forja-dos-sabios', 0],
+      ['badge', 'Pluma de Grifo', 'raid:contrato-do-grifo', 0],
+      ['badge', 'Sino da Torre', 'raid:torre-dos-ratos', 0],
+      ['accessory', 'Chave da Torre', 'raid:torre-dos-ratos', 0],
+      ['badge', 'Âncora das Brumas', 'raid:ilha-das-brumas', 0],
+      ['title', 'Navegante das Brumas', 'raid:ilha-das-brumas', 0],
+      ['badge', 'Medalhão do Lobo', 'raid:cacada-selvagem', 0],
+      ['title', 'Caçador de Monstros', 'raid:cacada-selvagem', 0],
+      ['avatar', 'Armadura do Lobo', 'raid:cacada-selvagem', 0],
       ['badge', '[TESTE] Item de teste da Loja - remover', 'purchase', 0], // temporary seed, see #174
     ]);
 
@@ -1095,7 +1108,8 @@ await dataSource.undoLastMigration();
     expect(owned('newcomer')).toEqual([['Capuz do Erudito', 1], ['Aprendiz', 1]]);
     expect(owned('collector')).toEqual([['Capuz do Erudito', 1], ['Aprendiz', 1], ['Madrugador', 0]]);
 
-    await dataSource.undoLastMigration(); // badges off sale, the newest migration
+    await dataSource.undoLastMigration(); // missions for sale, the newest migration
+    await dataSource.undoLastMigration(); // badges off sale
     await dataSource.undoLastMigration(); // mission reward items
     await dataSource.undoLastMigration(); // study session capped reason
     await dataSource.undoLastMigration(); // raid goal reached at
@@ -1120,7 +1134,7 @@ await dataSource.undoLastMigration();
   it('drops the textual Character title and restores it from the equipped Título on downgrade', async () => {
     database = await createIntegrationDatabase('wise_migrations_test');
     initialDataSource = new DataSource(database.options(
-      (APPLICATION_MIGRATIONS as unknown[]).filter((migration) => migration !== DropCharacterTitle1788459300000) as typeof APPLICATION_MIGRATIONS,
+      (APPLICATION_MIGRATIONS as unknown[]).filter((migration) => migration !== SeedMissionsForSale1788460200000 && migration !== DropCharacterTitle1788459300000) as typeof APPLICATION_MIGRATIONS,
     ));
     await initialDataSource.initialize();
     await initialDataSource.runMigrations();
@@ -1153,7 +1167,8 @@ await dataSource.undoLastMigration();
     );
     expect(columns.map((row) => row.COLUMN_NAME)).not.toContain('title');
 
-    await dataSource.undoLastMigration(); // badges off sale, the newest migration
+    await dataSource.undoLastMigration(); // missions for sale, the newest migration
+    await dataSource.undoLastMigration(); // badges off sale
     await dataSource.undoLastMigration(); // mission reward items
     await dataSource.undoLastMigration(); // study session capped reason
     await dataSource.undoLastMigration(); // raid goal reached at
@@ -1173,7 +1188,7 @@ await dataSource.undoLastMigration();
   it('seeds the Missões, links reward items, gives Raids a Missão and the current week to existing Guilds, and reverts', async () => {
     database = await createIntegrationDatabase('wise_migrations_test');
     initialDataSource = new DataSource(database.options(
-      (APPLICATION_MIGRATIONS as unknown[]).filter((migration) => migration !== AddRaidMissions1788459360000 && migration !== AddMissionStore1788459780000 && migration !== AddMissionRewardItems1788459960000 && migration !== AddGuildMissionChoice1788460020000 && migration !== AddRaidParticipations1788459420000) as typeof APPLICATION_MIGRATIONS,
+      (APPLICATION_MIGRATIONS as unknown[]).filter((migration) => migration !== SeedMissionsForSale1788460200000 && migration !== AddRaidMissions1788459360000 && migration !== AddMissionStore1788459780000 && migration !== AddMissionRewardItems1788459960000 && migration !== AddGuildMissionChoice1788460020000 && migration !== AddRaidParticipations1788459420000) as typeof APPLICATION_MIGRATIONS,
     ));
     await initialDataSource.initialize();
     await initialDataSource.runMigrations();
@@ -1209,7 +1224,7 @@ await dataSource.undoLastMigration();
        FROM ${database.identifier}.missions m
        JOIN ${database.identifier}.mission_reward_items mri ON mri.mission_id = m.id
        JOIN ${database.identifier}.cosmetic_items ci ON ci.id = mri.cosmetic_item_id
-       ORDER BY m.rotation_order`,
+       WHERE m.rotation_order IS NOT NULL ORDER BY m.rotation_order`,
     );
     expect(missions.map((row) => [row.slug, row.name, row.image_url, row.reward, row.unlock_condition])).toEqual([
       ['vigilia-da-aurora', 'Vigília da Aurora', null, 'Selo dos Madrugadores', 'raid:vigilia-da-aurora'],
@@ -1237,7 +1252,8 @@ await dataSource.undoLastMigration();
     expect(Number(current.goal_xp)).toBeGreaterThan(0);
     expect(Number(current.goal_xp)).toBeLessThanOrEqual(3000);
 
-    await dataSource.undoLastMigration(); // badges off sale, the newest migration
+    await dataSource.undoLastMigration(); // missions for sale, the newest migration
+    await dataSource.undoLastMigration(); // badges off sale
     await dataSource.undoLastMigration(); // mission reward items
     await dataSource.undoLastMigration(); // study session capped reason
     await dataSource.undoLastMigration(); // raid goal reached at
@@ -1270,7 +1286,7 @@ await dataSource.undoLastMigration();
   it('turns earlier Contributors into Participantes and drops the table on downgrade', async () => {
     database = await createIntegrationDatabase('wise_migrations_test');
     initialDataSource = new DataSource(database.options(
-      (APPLICATION_MIGRATIONS as unknown[]).filter((migration) => migration !== AddRaidParticipations1788459420000) as typeof APPLICATION_MIGRATIONS,
+      (APPLICATION_MIGRATIONS as unknown[]).filter((migration) => migration !== SeedMissionsForSale1788460200000 && migration !== AddRaidParticipations1788459420000) as typeof APPLICATION_MIGRATIONS,
     ));
     await initialDataSource.initialize();
     await initialDataSource.runMigrations();
@@ -1317,7 +1333,8 @@ await dataSource.undoLastMigration();
       [raidId],
     )).rejects.toThrow(/Duplicate entry/);
 
-    await dataSource.undoLastMigration(); // badges off sale, the newest migration
+    await dataSource.undoLastMigration(); // missions for sale, the newest migration
+    await dataSource.undoLastMigration(); // badges off sale
     await dataSource.undoLastMigration(); // mission reward items
     await dataSource.undoLastMigration(); // study session capped reason
     await dataSource.undoLastMigration(); // raid goal reached at
@@ -1332,7 +1349,7 @@ await dataSource.undoLastMigration();
   it('dates the Meta batida, reopens the Raids of the current week and keeps one Contribution per Study Session', async () => {
     database = await createIntegrationDatabase('wise_migrations_test');
     initialDataSource = new DataSource(database.options(
-      (APPLICATION_MIGRATIONS as unknown[]).filter((migration) => migration !== AddRaidGoalReachedAt1788459480000) as typeof APPLICATION_MIGRATIONS,
+      (APPLICATION_MIGRATIONS as unknown[]).filter((migration) => migration !== SeedMissionsForSale1788460200000 && migration !== AddRaidGoalReachedAt1788459480000) as typeof APPLICATION_MIGRATIONS,
     ));
     await initialDataSource.initialize();
     await initialDataSource.runMigrations();
@@ -1385,6 +1402,7 @@ await dataSource.undoLastMigration();
       `INSERT INTO ${db}.raid_contributions (id, raid_id, user_id, study_session_id, xp_contributed) VALUES ('c4', 'current', 'u', 's1', 10)`,
     )).rejects.toThrow(/Duplicate entry/);
 
+    await dataSource.undoLastMigration(); // missions for sale
     await dataSource.undoLastMigration();
     expect(await rows(database.admin, `SELECT id, status FROM ${db}.raids WHERE guild_id = 'g' ORDER BY id`))
       .toEqual([{ id: 'current', status: 'completed' }, { id: 'past', status: 'expired' }]);
@@ -1404,7 +1422,8 @@ await dataSource.undoLastMigration();
       .toEqual([{ n: 4 }]);
 
     // Back to the single-reward-item schema, where the store migration is the newest.
-    await dataSource.undoLastMigration(); // badges off sale, the newest migration
+    await dataSource.undoLastMigration(); // missions for sale
+    await dataSource.undoLastMigration(); // badges off sale
     await dataSource.undoLastMigration(); // guild mission choices
     await dataSource.undoLastMigration(); // mission reward items
 
@@ -1434,10 +1453,64 @@ await dataSource.undoLastMigration();
     )).toHaveLength(0);
   });
 
+  it('seeds the four Missões for sale with off-sale reward items, reverts them and reapplies', async () => {
+    database = await createIntegrationDatabase('wise_migrations_test');
+    dataSource = new DataSource(database.options(APPLICATION_MIGRATIONS));
+    await dataSource.initialize();
+    await dataSource.runMigrations();
+    const db = database.identifier;
+
+    const forSale = () => rows(
+      database!.admin,
+      `SELECT slug, price, rotation_order, image_url FROM ${db}.missions WHERE price IS NOT NULL ORDER BY price`,
+    );
+    const rewards = () => rows(
+      database!.admin,
+      `SELECT m.slug, ci.category, ci.name, ci.unlock_condition, ci.for_sale, ci.price, ci.requires_premium
+       FROM ${db}.mission_reward_items r
+       JOIN ${db}.missions m ON m.id = r.mission_id
+       JOIN ${db}.cosmetic_items ci ON ci.id = r.cosmetic_item_id
+       WHERE m.price IS NOT NULL ORDER BY m.price, ci.id`,
+    );
+
+    expect(await forSale()).toEqual([
+      { slug: 'contrato-do-grifo', price: 90, rotation_order: null, image_url: null },
+      { slug: 'torre-dos-ratos', price: 180, rotation_order: null, image_url: null },
+      { slug: 'ilha-das-brumas', price: 300, rotation_order: null, image_url: null },
+      { slug: 'cacada-selvagem', price: 480, rotation_order: null, image_url: null },
+    ]);
+    const seeded = await rewards();
+    expect(seeded.map((row) => [row.slug, row.category])).toEqual([
+      ['contrato-do-grifo', 'badge'],
+      ['torre-dos-ratos', 'badge'],
+      ['torre-dos-ratos', 'accessory'],
+      ['ilha-das-brumas', 'badge'],
+      ['ilha-das-brumas', 'title'],
+      ['cacada-selvagem', 'badge'],
+      ['cacada-selvagem', 'title'],
+      ['cacada-selvagem', 'avatar'],
+    ]);
+    for (const row of seeded) {
+      expect(row).toMatchObject({ unlock_condition: `raid:${row.slug}`, for_sale: 0, price: null, requires_premium: 0 });
+    }
+    // The rotation keeps its four free Missões.
+    expect(await rows(database.admin, `SELECT COUNT(*) AS n FROM ${db}.missions WHERE price IS NULL AND rotation_order IS NOT NULL`))
+      .toEqual([{ n: 4 }]);
+
+    await dataSource.undoLastMigration();
+    expect(await forSale()).toEqual([]);
+    expect(await rows(database.admin, `SELECT COUNT(*) AS n FROM ${db}.missions`)).toEqual([{ n: 4 }]);
+    expect(await rows(database.admin, `SELECT COUNT(*) AS n FROM ${db}.cosmetic_items WHERE id LIKE 'c05e71c0-0000-4000-8000-0000000002%'`))
+      .toEqual([{ n: 0 }]);
+
+    await dataSource.runMigrations();
+    expect(await rewards()).toEqual(seeded);
+  });
+
   it('credits 90 welcome coins once to each existing account, skips repeats and reverts cleanly', async () => {
     database = await createIntegrationDatabase('wise_migrations_test');
     initialDataSource = new DataSource(database.options(
-      (APPLICATION_MIGRATIONS as unknown[]).filter((migration) => migration !== GrantWelcomeCoins1788459720000) as typeof APPLICATION_MIGRATIONS,
+      (APPLICATION_MIGRATIONS as unknown[]).filter((migration) => migration !== SeedMissionsForSale1788460200000 && migration !== GrantWelcomeCoins1788459720000) as typeof APPLICATION_MIGRATIONS,
     ));
     await initialDataSource.initialize();
     await initialDataSource.runMigrations();
@@ -1477,6 +1550,7 @@ await dataSource.undoLastMigration();
     expect(await welcomes()).toEqual([['newcomer', 90, 90], ['veteran', 90, 102]]);
 
     // Revert and reapply: the credit happens once per account, never twice.
+    await dataSource.undoLastMigration(); // missions for sale
     await dataSource.undoLastMigration();
     expect(await welcomes()).toEqual([]);
     expect(await balances()).toEqual([['newcomer', 0], ['signed-up', 90], ['veteran', 12]]);

@@ -76,6 +76,14 @@ const spriteByName: Record<string, ItemSpriteName> = {
   'Estudante Crepuscular': 'estudanteCrepuscular',
   'Mestre da Aurora': 'mestreDaAurora',
   'Selo dos Madrugadores': 'seloDosMadrugadores',
+  'Pluma de Grifo': 'plumaDeGrifo',
+  'Sino da Torre': 'sinoDaTorre',
+  'Chave da Torre': 'chaveDaTorre',
+  'Âncora das Brumas': 'ancoraDasBrumas',
+  'Navegante das Brumas': 'naveganteDasBrumas',
+  'Medalhão do Lobo': 'medalhaoDoLobo',
+  'Caçador de Monstros': 'cacadorDeMonstros',
+  'Armadura do Lobo': 'armaduraDoLobo',
 };
 
 const spriteByCategory: Record<EquipmentCategory, ItemSpriteName> = {

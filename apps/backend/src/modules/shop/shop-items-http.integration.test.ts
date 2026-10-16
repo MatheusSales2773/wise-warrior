@@ -140,6 +140,14 @@ describe('Loja: Compra de Cosmetic Items À venda over HTTP against MySQL, with 
     expect(items.find((item) => item.id === CAPA)).toMatchObject({ category: 'avatar' });
   });
 
+  it('does not offer the Recompensas das Missões à venda in the item shop', async () => {
+    const account = await newAccount(1000);
+    const names = (await listItems(account)).map((item) => item.name);
+    for (const reward of ['Pluma de Grifo', 'Sino da Torre', 'Chave da Torre', 'Âncora das Brumas', 'Navegante das Brumas', 'Medalhão do Lobo', 'Caçador de Monstros', 'Armadura do Lobo']) {
+      expect(names).not.toContain(reward);
+    }
+  });
+
   it('debits the price and puts the item in the Inventário, ready to Equipar', async () => {
     const account = await newAccount(150);
     const response = await purchase(account, CAPA);

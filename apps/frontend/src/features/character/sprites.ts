@@ -127,6 +127,38 @@ export const itemSprites = {
     palette: ['#0a0a12', '#c44545', '#7d2a2a', '#d4a85a', '#f0c97a'],
     rows: ['..aaaa..', '.abbbba.', 'abcddcba', 'abdeedba', 'abdeedba', 'abcddcba', '.abbbba.', '..aaaa..'],
   },
+  plumaDeGrifo: {
+    palette: ['#0a0a12', '#c9a37a', '#f3ead4', '#d4a85a'],
+    rows: ['.....aa.', '....abca', '...abcca', '..abccba', '.abccba.', 'dabcba..', 'da.aa...', 'd.......'],
+  },
+  sinoDaTorre: {
+    palette: ['#0a0a12', '#d4a85a', '#f0c97a', '#7a5f28'],
+    rows: ['...aa...', '..abba..', '.abccba.', '.abbbba.', 'abbbbbba', 'abdddbba', 'aaaaaaaa', '..adda..'],
+  },
+  chaveDaTorre: {
+    palette: ['#0a0a12', '#b3a98e', '#f3ead4', '#7a7466'],
+    rows: ['.aaaa...', 'abccba..', 'ab.cba..', 'abccba..', '.abba...', '.abba...', '.abdbaa.', '.abdbba.'],
+  },
+  ancoraDasBrumas: {
+    palette: ['#0a0a12', '#5b9fc4', '#a9e0ff', '#2f4a80'],
+    rows: ['..aaaa..', '..abba..', '.aaabaa.', '...bb...', 'a..bb..a', 'abbbbbba', '.abbbba.', '..aaaa..'],
+  },
+  medalhaoDoLobo: {
+    palette: ['#0a0a12', '#b3a98e', '#f3ead4', '#c44545', '#7a7466'],
+    rows: ['a.aaaa.a', 'abaccaba', 'abbbbbba', 'abcbbcba', 'abbddbba', '.abbbba.', '..abba..', '...aa...'],
+  },
+  armaduraDoLobo: {
+    palette: ['#0a0a12', '#7a7466', '#b3a98e', '#c44545'],
+    rows: ['a.aaaa.a', 'abaccaba', 'abbbbbba', 'abdbbdba', 'abbbbbba', 'abcbbcba', 'abbbbbba', '.aaaaaa.'],
+  },
+  naveganteDasBrumas: {
+    palette: ['#0a0a12', '#a9e0ff', '#2f4a80'],
+    rows: ['.aaaaaa.', 'abbbbbba', '.abccba.', '.abbbba.', '.abccba.', '.abbbba.', 'abbbbbba', '.aaaaaa.'],
+  },
+  cacadorDeMonstros: {
+    palette: ['#0a0a12', '#b3a98e', '#c44545'],
+    rows: ['.aaaaaa.', 'abbbbbba', '.abccba.', '.abbbba.', '.abccba.', '.abbbba.', 'abbbbbba', '.aaaaaa.'],
+  },
   cristalDaAurora: {
     palette: ['#0a0a12', '#a9e0ff', '#5b9fc4'],
     rows: ['...aa...', '..abca..', '.abccba.', 'abcbbcca', 'acbcccba', '.accbca.', '..acca..', '...aa...'],
