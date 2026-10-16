@@ -256,7 +256,7 @@ export class StudySessionTransitionService {
       this.progression.publishAwardedXp(userId, result.xpGained, result.progressionResult);
     }
     if (result.coinMovement?.applied) {
-      this.economy.publishBalanceChanged(userId, result.coinMovement, { type: 'study-session', ref: studySessionId });
+      this.economy.publishBalanceChanged(userId, result.coinMovement);
     }
     if (result.raidContributionOutcome?.status === 'counted' && result.raidContributionOutcome.progress) {
       this.raids.publishProgress(result.raidContributionOutcome.progress);

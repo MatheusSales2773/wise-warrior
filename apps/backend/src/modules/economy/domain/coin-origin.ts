@@ -14,4 +14,5 @@ export interface CoinMovementResult {
   balance: number;
   /** Positivo para crédito, negativo para débito, zero quando nada mudou. */
   delta: number;
+  origin: CoinOrigin;
 }

@@ -1,4 +1,4 @@
-import { getCoinsPerFocusMinutesDivisor } from './economy-config';
+import { getCoinsPerFocusMinutesDivisor } from '../../economy/domain/coin-config';
 import { MIN_FOCUS_SECONDS_FOR_XP } from './xp-rate';
 
 /**

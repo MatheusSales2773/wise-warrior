@@ -1,7 +1,8 @@
 import { randomUUID } from 'node:crypto';
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { type EntityManager, Repository } from 'typeorm';
+import { decodeDatetimeCursor, encodeDatetimeCursor } from '../../shared/pagination/datetime-cursor';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
 import { CoinBalance } from './entities/coin-balance.entity';
 import { CoinLedgerEntry } from './entities/coin-ledger-entry.entity';
@@ -43,7 +44,7 @@ export class EconomyService {
   /** Extrato do usuário, do lançamento mais recente para o mais antigo. */
   async listStatement(userId: string, query: CoinStatementQueryDto): Promise<CoinStatementPageDto> {
     const limit = query.limit ?? COIN_STATEMENT_PAGE_SIZE_DEFAULT;
-    const after = query.cursor ? decodeStatementCursor(query.cursor) : null;
+    const after = query.cursor ? decodeDatetimeCursor(query.cursor) : null;
 
     // O cursor leva o `created_at` como o MySQL o escreveu: um Date em JavaScript arredondaria a precisão.
     const rows = await this.ledger.query<Array<{
@@ -62,7 +63,7 @@ export class EconomyService {
          ${after ? 'AND (entry.created_at < ? OR (entry.created_at = ? AND entry.id < ?))' : ''}
        ORDER BY entry.created_at DESC, entry.id DESC
        LIMIT ?`,
-      [userId, ...(after ? [after.createdAt, after.createdAt, after.id] : []), limit + 1],
+      [userId, ...(after ? [after.datetime, after.datetime, after.id] : []), limit + 1],
     );
     const page = rows.slice(0, limit);
     const last = page[page.length - 1];
@@ -74,16 +75,16 @@ export class EconomyService {
         origin: { type: row.origin_type, ref: row.origin_ref },
         createdAt: row.created_at.toISOString(),
       })),
-      nextCursor: rows.length > limit && last ? encodeStatementCursor(last.created_at_text, last.id) : null,
+      nextCursor: rows.length > limit && last ? encodeDatetimeCursor(last.created_at_text, last.id) : null,
     };
   }
 
   /** Depois do commit: o app do usuário atualiza o saldo sem recarregar (ADR-009). */
-  publishBalanceChanged(userId: string, result: CoinMovementResult, origin: CoinOrigin): void {
+  publishBalanceChanged(userId: string, result: CoinMovementResult): void {
     this.realtime.emitToUser(userId, 'coins:changed', {
       balance: result.balance,
       delta: result.delta,
-      origin: { type: origin.type, ref: origin.ref },
+      origin: { type: result.origin.type, ref: result.origin.ref },
     });
   }
 
@@ -100,7 +101,7 @@ export class EconomyService {
     const balances = manager.getRepository(CoinBalance);
     if (amount === 0) {
       const current = await balances.findOne({ where: { userId } });
-      return { applied: false, balance: current?.balance ?? 0, delta: 0 };
+      return { applied: false, balance: current?.balance ?? 0, delta: 0, origin };
     }
 
     // ON DUPLICATE KEY UPDATE, e não INSERT IGNORE: com a linha já existente, o IGNORE pega trava compartilhada, e
@@ -122,7 +123,7 @@ export class EconomyService {
       const alreadyApplied = await ledgerEntries.exists({
         where: { userId, originType: origin.type, originRef: origin.ref },
       });
-      if (alreadyApplied) return { applied: false, balance: row.balance, delta: 0 };
+      if (alreadyApplied) return { applied: false, balance: row.balance, delta: 0, origin };
       throw new InsufficientCoinsError(-next);
     }
 
@@ -141,29 +142,10 @@ export class EconomyService {
         createdAt: now,
       });
     } catch (error) {
-      if ((error as { code?: string }).code === 'ER_DUP_ENTRY') return { applied: false, balance: row.balance, delta: 0 };
+      if ((error as { code?: string }).code === 'ER_DUP_ENTRY') return { applied: false, balance: row.balance, delta: 0, origin };
       throw error;
     }
     await balances.update({ userId }, { balance: next, updatedAt: now });
-    return { applied: true, balance: next, delta };
+    return { applied: true, balance: next, delta, origin };
   }
-}
-
-/** Formato exato do MySQL para DATETIME(3) com DATE_FORMAT(..., '%f'): seis casas decimais, no máximo. */
-const MYSQL_DATETIME_TEXT = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(\.\d{1,6})?$/;
-const UUID_TEXT = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-function encodeStatementCursor(createdAtText: string, id: string): string {
-  return Buffer.from(`${createdAtText}|${id}`, 'utf8').toString('base64url');
-}
-
-function decodeStatementCursor(cursor: string): { createdAt: string; id: string } {
-  const text = Buffer.from(cursor, 'base64url').toString('utf8');
-  const separator = text.indexOf('|');
-  if (separator > 0) {
-    const createdAt = text.slice(0, separator);
-    const id = text.slice(separator + 1);
-    if (MYSQL_DATETIME_TEXT.test(createdAt) && UUID_TEXT.test(id)) return { createdAt, id };
-  }
-  throw new BadRequestException('Cursor inválido');
 }

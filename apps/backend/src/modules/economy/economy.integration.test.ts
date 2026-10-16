@@ -44,10 +44,10 @@ describe('EconomyService against MySQL', () => {
   });
 
   it('credits and debits, recording each movement with its sign and the balance after it', async () => {
-    expect(await inTransaction((m) => economy.credit(m, userId, 12, session('session-1')))).toEqual({
+    expect(await inTransaction((m) => economy.credit(m, userId, 12, session('session-1')))).toMatchObject({
       applied: true, balance: 12, delta: 12,
     });
-    expect(await inTransaction((m) => economy.debit(m, userId, 5, purchase('item-1')))).toEqual({
+    expect(await inTransaction((m) => economy.debit(m, userId, 5, purchase('item-1')))).toMatchObject({
       applied: true, balance: 7, delta: -5,
     });
 
@@ -66,7 +66,7 @@ describe('EconomyService against MySQL', () => {
   });
 
   it('treats a zero amount as a no-op that writes no statement line', async () => {
-    expect(await inTransaction((m) => economy.credit(m, userId, 0, session('nothing')))).toEqual({
+    expect(await inTransaction((m) => economy.credit(m, userId, 0, session('nothing')))).toMatchObject({
       applied: false, balance: 0, delta: 0,
     });
     expect(await ledgerRows()).toHaveLength(0);
@@ -82,12 +82,12 @@ describe('EconomyService against MySQL', () => {
 
   it('applies each origin once: a repeated credit or debit changes nothing', async () => {
     await inTransaction((m) => economy.credit(m, userId, 12, session('session-1')));
-    expect(await inTransaction((m) => economy.credit(m, userId, 12, session('session-1')))).toEqual({
+    expect(await inTransaction((m) => economy.credit(m, userId, 12, session('session-1')))).toMatchObject({
       applied: false, balance: 12, delta: 0,
     });
 
     await inTransaction((m) => economy.debit(m, userId, 5, purchase('item-1')));
-    expect(await inTransaction((m) => economy.debit(m, userId, 5, purchase('item-1')))).toEqual({
+    expect(await inTransaction((m) => economy.debit(m, userId, 5, purchase('item-1')))).toMatchObject({
       applied: false, balance: 7, delta: 0,
     });
 
@@ -112,7 +112,7 @@ describe('EconomyService against MySQL', () => {
     expect(await economy.getBalance(userId)).toBe(2);
 
     // The same origin again, with 2 Moedas left for an 8 debit: it already counted, so nothing changes and nothing throws.
-    expect(await inTransaction((m) => economy.debit(m, userId, 8, purchase('item-1')))).toEqual({
+    expect(await inTransaction((m) => economy.debit(m, userId, 8, purchase('item-1')))).toMatchObject({
       applied: false, balance: 2, delta: 0,
     });
     expect(await economy.getBalance(userId)).toBe(2);
@@ -135,7 +135,7 @@ describe('EconomyService against MySQL', () => {
       const passed = results.filter((result): result is PromiseFulfilledResult<CoinMovementResult> => result.status === 'fulfilled');
       const failed = results.filter((result): result is PromiseRejectedResult => result.status === 'rejected');
       expect(passed).toHaveLength(1);
-      expect(passed[0]!.value).toEqual({ applied: true, balance: 2, delta: -8 });
+      expect(passed[0]!.value).toMatchObject({ applied: true, balance: 2, delta: -8 });
       expect(failed).toHaveLength(1);
       expect(failed[0]!.reason).toBeInstanceOf(InsufficientCoinsError);
       expect(failed[0]!.reason).toMatchObject({ missing: 6 });
@@ -158,7 +158,7 @@ describe('EconomyService against MySQL', () => {
   });
 
   it('publishes the change to the user room with its origin', () => {
-    economy.publishBalanceChanged(userId, { applied: true, balance: 12, delta: 12 }, session('session-1'));
+    economy.publishBalanceChanged(userId, { applied: true, balance: 12, delta: 12, origin: session('session-1') });
 
     expect(realtime.emitToUser).toHaveBeenCalledWith(userId, 'coins:changed', {
       balance: 12, delta: 12, origin: { type: 'study-session', ref: 'session-1' },
