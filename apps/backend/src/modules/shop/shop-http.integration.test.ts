@@ -10,6 +10,13 @@ import { RaidsService } from '../raids/raids.service';
 const REWARD_ITEM_ID = 'c05e71c0-0000-4000-8000-000000000007';
 const CHEAP_ID = 'a1550000-0000-4000-8000-0000000000a1';
 const DEAR_ID = 'a1550000-0000-4000-8000-0000000000a2';
+/** Missões à venda semeadas pela migration (#177), na ordem da Loja: preço e depois slug. */
+const SEEDED_IDS = [
+  'a1550000-0000-4000-8000-000000000101',
+  'a1550000-0000-4000-8000-000000000102',
+  'a1550000-0000-4000-8000-000000000103',
+  'a1550000-0000-4000-8000-000000000104',
+];
 const ROTATION_ID = 'a1550000-0000-4000-8000-000000000001';
 
 type StoreMission = {
@@ -142,9 +149,12 @@ describe('Loja: Compra de Missões over HTTP against MySQL, with the real AppMod
     const response = await call('GET', '/shop/missions', user.accessToken);
     expect(response.status).toBe(200);
     const missions = (await response.json()) as StoreMission[];
-    expect(missions.map((m) => m.id)).toEqual([CHEAP_ID, DEAR_ID]);
+    // The migrated catalog is on sale (#177); the two Missões of this suite sit among them, by price and then slug.
+    expect(missions.map((m) => m.id)).toEqual([
+      ...SEEDED_IDS.slice(0, 1), CHEAP_ID, ...SEEDED_IDS.slice(1, 4), DEAR_ID,
+    ]);
     expect(missions.find((m) => m.id === ROTATION_ID)).toBeUndefined();
-    expect(missions[0]).toEqual({
+    expect(missions.find((m) => m.id === CHEAP_ID)).toEqual({
       id: CHEAP_ID,
       slug: 'ronda-barata',
       name: 'Ronda Barata',
@@ -155,7 +165,21 @@ describe('Loja: Compra de Missões over HTTP against MySQL, with the real AppMod
       state: 'purchasable',
       missing: 0,
     });
-    expect(missions[1]).toMatchObject({ id: DEAR_ID, price: 480, state: 'insufficient', missing: 380 });
+    expect(missions.find((m) => m.id === DEAR_ID)).toMatchObject({ id: DEAR_ID, price: 480, state: 'insufficient', missing: 380 });
+  });
+
+  it('lists the seeded Missões à venda on a freshly migrated database, from 90 to 480 Moedas', async () => {
+    const user = await register('semeadas', 90);
+    const missions = (await (await call('GET', '/shop/missions', user.accessToken)).json()) as StoreMission[];
+    const seeded = missions.filter((m) => SEEDED_IDS.includes(m.id));
+    expect(seeded.map((m) => [m.slug, m.price, m.imageUrl])).toEqual([
+      ['contrato-do-grifo', 90, null],
+      ['torre-dos-ratos', 180, null],
+      ['ilha-das-brumas', 300, null],
+      ['cacada-selvagem', 480, null],
+    ]);
+    expect(seeded[0]).toMatchObject({ state: 'purchasable', missing: 0 });
+    expect(seeded[1]).toMatchObject({ state: 'insufficient', missing: 90 });
   });
 
   it('buys a Missão: debits the price, records the ownership and keeps it', async () => {

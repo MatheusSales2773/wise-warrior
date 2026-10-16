@@ -130,12 +130,16 @@ describe('Cosmetics Catalog HTTP contract against MySQL', () => {
     expect(response.status).toBe(200);
     const catalog = await response.json() as CatalogCosmeticItem[];
     expect(summarize(catalog)).toEqual([
+      ['Âncora das Brumas', false, false],
       ['Andarilho do Saber', false, false],
       ['Aprendiz', true, true],
+      ['Armadura do Lobo', false, false],
       ['Arquimago dos Prazos', false, false],
       ['Brasão da Forja', false, false],
+      ['Caçador de Monstros', false, false],
       ['Capuz do Erudito', true, true],
       ['Cem Sessões', false, false],
+      ['Chave da Torre', false, false],
       ['Estudante Crepuscular', false, false],
       ['Guardião das Páginas', false, false],
       ['Lanterna do Silêncio', false, false],
@@ -145,9 +149,13 @@ describe('Cosmetics Catalog HTTP contract against MySQL', () => {
       ['Manto Estelar', false, false],
       ['Marcador de Fita', false, false],
       ['Marcador do Grimório', false, false],
+      ['Medalhão do Lobo', false, false],
       ['Mestre da Aurora', false, false],
+      ['Navegante das Brumas', false, false],
       ['Pena do Escriba', false, false],
+      ['Pluma de Grifo', false, false],
       ['Selo dos Madrugadores', false, false],
+      ['Sino da Torre', false, false],
       ['Túnica do Viajante', false, false],
     ]);
     expect(catalog).toContainEqual({
@@ -219,7 +227,7 @@ describe('Cosmetics Catalog HTTP contract against MySQL', () => {
 
     expect(response.status).toBe(200);
     const catalog = await response.json() as CatalogCosmeticItem[];
-    expect(catalog).toHaveLength(19); // the 11 level and Raid items plus the 8 items À venda (#174)
+    expect(catalog).toHaveLength(27); // the 11 level and Raid items, the 8 items À venda (#174) and the 8 Recompensas das Missões à venda (#177)
     expect(catalog.map((item) => item.name)).not.toContain('Quebrado');
   });
 
@@ -235,12 +243,16 @@ describe('Cosmetics Catalog HTTP contract against MySQL', () => {
 
     const catalog = await (await getCatalog(veteran)).json() as CatalogCosmeticItem[];
     expect(summarize(catalog)).toEqual([
+      ['Âncora das Brumas', false, false],
       ['Andarilho do Saber', false, false],
       ['Aprendiz', true, false],
+      ['Armadura do Lobo', false, false],
       ['Arquimago dos Prazos', false, false],
       ['Brasão da Forja', false, false],
+      ['Caçador de Monstros', false, false],
       ['Capuz do Erudito', true, false],
       ['Cem Sessões', true, false],
+      ['Chave da Torre', false, false],
       ['Estudante Crepuscular', true, false],
       ['Guardião das Páginas', false, false],
       ['Lanterna do Silêncio', false, false],
@@ -250,9 +262,13 @@ describe('Cosmetics Catalog HTTP contract against MySQL', () => {
       ['Manto Estelar', false, false],
       ['Marcador de Fita', false, false],
       ['Marcador do Grimório', false, false],
+      ['Medalhão do Lobo', false, false],
       ['Mestre da Aurora', false, false],
+      ['Navegante das Brumas', false, false],
       ['Pena do Escriba', false, false],
+      ['Pluma de Grifo', false, false],
       ['Selo dos Madrugadores', false, false],
+      ['Sino da Torre', false, false],
       ['Túnica do Viajante', false, false],
     ]);
     expect(await dataSource!.getRepository(UserCosmeticItem).count({ where: { userId: veteran } })).toBe(6);
