@@ -959,6 +959,59 @@ paths:
         "404": { $ref: "#/components/responses/NotFound" }
         "409": { $ref: "#/components/responses/Conflict" }
 
+  /shop/missions:
+    get:
+      summary: Loja, seção Missões, com preço e estado para o usuário
+      description: >
+        Missões à venda (preço de 90 a 480), das mais baratas às mais caras (ADR-012). As Missões do rodízio são
+        grátis, todo usuário as possui e elas não aparecem aqui. `state` é `owned` (já possui), `purchasable`
+        (o saldo basta) ou `insufficient` (faltam `missing` Moedas).
+      operationId: listShopMissions
+      tags: [Shop]
+      responses:
+        "200":
+          description: Missões à venda
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/StoreMission" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /shop/missions/{id}/purchase:
+    post:
+      summary: Compra uma Missão
+      description: >
+        Debita o preço e registra a posse numa única transação; a Missão fica com o usuário para sempre. `404` para
+        Missão inexistente ou do rodízio (não está à venda). `409` quando o usuário já possui a Missão.
+        `422` quando o saldo não basta: o corpo traz `missing` (Moedas que faltam) e nada muda. Duas Compras
+        simultâneas nunca deixam o saldo negativo. Limite de 30 Compras por minuto por usuário.
+      operationId: purchaseShopMission
+      tags: [Shop]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "201":
+          description: Missão comprada
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MissionPurchase" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422":
+          description: Saldo insuficiente
+          content:
+            application/problem+json:
+              schema:
+                allOf:
+                  - { $ref: "#/components/schemas/Problem" }
+                  - type: object
+                    required: [missing]
+                    properties:
+                      missing: { type: integer, minimum: 1, description: "Moedas que faltam para a Compra" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+
 components:
   securitySchemes:
     BearerAuth:
@@ -1129,6 +1182,34 @@ components:
           properties:
             type: { type: string, const: raid }
             slug: { type: string, description: "Slug da Raid. `*` vale para qualquer Raid." }
+
+    StoreMission:
+      type: object
+      required: [id, slug, name, description, imageUrl, price, reward, state, missing]
+      properties:
+        id: { type: string, format: uuid }
+        slug: { type: string }
+        name: { type: string }
+        description: { type: string, maxLength: 140 }
+        imageUrl: { type: [string, "null"] }
+        price: { type: integer, minimum: 1, description: "Preço em Moedas" }
+        reward:
+          type: object
+          required: [id, name, category]
+          properties:
+            id: { type: string, format: uuid }
+            name: { type: string }
+            category: { type: string, enum: [avatar, badge, title, accessory] }
+        state: { type: string, enum: [owned, purchasable, insufficient] }
+        missing: { type: integer, minimum: 0, description: "Moedas que faltam; 0 quando já possui ou o saldo basta" }
+
+    MissionPurchase:
+      type: object
+      required: [missionId, price, balance]
+      properties:
+        missionId: { type: string, format: uuid }
+        price: { type: integer, minimum: 1 }
+        balance: { type: integer, minimum: 0, description: "Saldo depois da Compra" }
 
     CoinBalance:
       type: object
@@ -1580,7 +1661,7 @@ components:
       description: >
         Limite de requisições excedido (#13). Login e cadastro: 10 por minuto por IP e por rota;
         renovação de Session: 30 por minuto por IP; mutações de Study Session: 60 por minuto por
-        usuário. Os valores são configuráveis por `RATE_LIMIT_*`.
+        usuário; Compras na Loja: 30 por minuto por usuário. Os valores são configuráveis por `RATE_LIMIT_*`.
       headers:
         Retry-After:
           description: Segundos até o limite liberar a próxima requisição.

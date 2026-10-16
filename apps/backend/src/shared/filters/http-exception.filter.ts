@@ -38,6 +38,10 @@ export class HttpExceptionFilter implements ExceptionFilter {
       status,
       detail: Array.isArray(detail) ? detail.join('; ') : detail,
       instance: request.url,
+      // Membro de extensão do RFC 7807: quanto falta de saldo numa Compra recusada (422).
+      ...(status === HttpStatus.UNPROCESSABLE_ENTITY && typeof (body as { missing?: unknown } | null)?.missing === 'number'
+        ? { missing: (body as { missing: number }).missing }
+        : {}),
     });
   }
 }

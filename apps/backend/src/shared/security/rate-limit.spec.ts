@@ -13,6 +13,7 @@ describe('createRateLimitOptions', () => {
       credentials: { limit: 10, ttl: 60_000 },
       refresh: { limit: 30, ttl: 60_000 },
       'study-session': { limit: 60, ttl: 60_000 },
+      shop: { limit: 30, ttl: 60_000 },
     });
   });
 
