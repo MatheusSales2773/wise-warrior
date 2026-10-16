@@ -170,9 +170,28 @@ describe('TypeORM migrations against an empty MySQL schema', () => {
     }
   });
 
-  it('creates, inspects, and reverts the complete schema', async () => {
+  it('applies every migration in order and reverts them all down to an empty schema', async () => {
     database = await createIntegrationDatabase('wise_migrations_test');
     dataSource = new DataSource(database.options(APPLICATION_MIGRATIONS));
+    await dataSource.initialize();
+    await dataSource.runMigrations();
+
+    const appliedRows = await rows(database.admin, `SELECT name FROM ${database.identifier}.migrations ORDER BY id`);
+    expect(appliedRows.map((row) => row.name)).toEqual(APPLICATION_MIGRATIONS.map((migration) => migration.name));
+
+    await revertThrough(dataSource, APPLICATION_MIGRATIONS[0]!);
+    const leftoverRows = await rows(
+      database.admin,
+      `SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA = ? AND TABLE_NAME <> 'migrations'`,
+      [database.name],
+    );
+    expect(leftoverRows).toEqual([]);
+  });
+
+  // Pinned at the last migration this snapshot describes, so a newer migration needs no edit here.
+  it('creates, inspects, and reverts the schema as of the Missões for sale seed', async () => {
+    database = await createIntegrationDatabase('wise_migrations_test');
+    dataSource = new DataSource(database.options(migrationsThrough(SeedMissionsForSale1788460200000)));
     await dataSource.initialize();
     await dataSource.runMigrations();
 
@@ -444,7 +463,7 @@ describe('TypeORM migrations against an empty MySQL schema', () => {
        VALUES ('accessory-for-sale', 'accessory', 'accessory-for-sale', 'purchase', 0, 100, 1)`,
     );
     await database!.admin.query(`DELETE FROM ${database!.identifier}.cosmetic_items WHERE id IN ('badge-off-sale', 'accessory-for-sale')`);
-    expect(migrationRows.map((row) => row.name)).toEqual(APPLICATION_MIGRATIONS.map((migration) => migration.name));
+    expect(migrationRows.map((row) => row.name)).toEqual(migrationsThrough(SeedMissionsForSale1788460200000).map((migration) => migration.name));
 
     await revertThrough(dataSource, SeedCosmeticItemsForSale1788460140000); // also takes the Missões for sale seed above it
     const testItemRevertRows = await rows(
