@@ -27,6 +27,14 @@
 |---|---|---|
 | Fonte do título do Character | O Título é o Cosmetic Item da categoria `title` equipado; `Character.title` deixa de ser fonte | ADR-010 (Aceito) |
 
+### Registro de decisões fechadas em 15/10/2026
+
+| Ponto aberto | Decisão | ADR |
+|---|---|---|
+| Taxa de XP e configurabilidade | 10 XP/min proporcional ao tempo; taxa e limites antifraude expostos como env vars | ADR-011 (Aceito) |
+| Antifraude: descartar vs truncar | Sessões que atingem o limite contínuo (4h) ou diário (16h) são truncadas, não descartadas; sinal `capped_reason` no snapshot | ADR-011 (Aceito) |
+| Limite diário para stops manuais | Stops manuais também verificam e truncam ao saldo diário restante | ADR-011 (Aceito) |
+
 > Este documento consolida e substitui as lacunas dos documentos orientadores (Documento de Visão, Documento de Arquitetura, Documentação de Interface, Pitch e Casos de Uso UC01–UC04), resolvendo inconsistências entre eles e propondo um caminho técnico único para a Fase 1 de desenvolvimento.
 
 ---
@@ -195,12 +203,25 @@ fazem parte desse primeiro corte.
 
 *(Requisitos completos, com fluxos alternativos e de exceção, já estão detalhados nos UC01–UC04; este PRD não os duplica — apenas resolve as lacunas identificadas na seção 3.)*
 
-### 7.3 Regra de negócio antifraude (RN-ANTIFRAUDE) — nova, preenche gap 3.5
-- O backend shall considerar inválida qualquer sessão cuja duração reportada exceda 4 horas contínuas sem pausa registrada, ou cuja soma diária de sessões exceda 16 horas.
-- A validação shall ocorrer exclusivamente no servidor, a partir de timestamps de início/fim gerados pelo servidor (heartbeat periódico, conforme UC03/S01) — o cliente não é fonte de verdade.
-- O tempo pausado shall ser excluído tanto da duração válida de foco quanto dos limites antifraude.
-- Uma sessão encerrada antecipadamente shall conceder `floor(segundosDeFocoValidados / 60) × 10 XP`, limitada à duração planejada; abaixo de cinco minutos completos, ela shall conceder zero XP e zero contribuição para raid.
-- Sessões descartadas por antifraude shall permanecer visíveis ao usuário com um indicador de "não contabilizada", nunca silenciosamente removidas.
+### 7.3 Regra de negócio antifraude (RN-ANTIFRAUDE) — revisada em 15/10/2026 (ADR-011)
+
+**Taxa de XP**
+- O backend shall conceder `floor(segundosDeFocoVálidos / 60) × XP_PER_MINUTE` XP por sessão, onde `XP_PER_MINUTE` é uma env var (padrão `10`).
+- A taxa é proporcional ao tempo para qualquer duração; abaixo de 5 minutos completos de foco, a sessão shall conceder zero XP e zero Contribuição para Raid.
+
+**Limites e truncamento**
+- Os limiares são configuráveis via env vars: `ANTIFRAUDE_MAX_CONTINUOUS_HOURS` (padrão `4`) e `ANTIFRAUDE_MAX_DAILY_HOURS` (padrão `16`).
+- Quando o foco válido de uma sessão excede o limite contínuo, o backend shall **truncar** `durationValidSeconds` ao máximo permitido e calcular XP sobre esse valor truncado — a sessão não é descartada.
+- Quando o foco válido somado ao total diário do usuário excede o limite diário, o backend shall **truncar** ao saldo restante do dia e calcular XP sobre ele — a sessão não é descartada.
+- O truncamento shall se aplicar tanto a conclusões automáticas (`complete`) quanto a encerramentos antecipados manuais (`stop`); ambas as ações shall consultar a soma diária prévia do usuário antes de calcular o XP.
+- O limite diário é aferido pelos segundos de foco válido de sessões `completed` e `stopped_early` não descartadas, iniciadas a partir de meia-noite do dia corrente (horário do servidor).
+- Quando qualquer truncamento ocorrer, o snapshot de resposta e a entidade `StudySession` shall registrar o motivo em `cappedReason: 'continuous-limit' | 'daily-limit'`; sem truncamento, `cappedReason` é `null`.
+
+**Fonte de verdade e visibilidade**
+- A validação shall ocorrer exclusivamente no servidor, a partir de timestamps gerados pelo servidor — o cliente não é fonte de verdade.
+- O tempo pausado shall ser excluído tanto do foco válido quanto dos limiares antifraude.
+- Sessões `discarded` (estado legado, mantido para sessões de duração zero ou inválidas) shall permanecer visíveis ao usuário com um indicador de "não contabilizada", nunca silenciosamente removidas.
+- Sessões truncadas shall exibir o `cappedReason` como contexto ao usuário ("XP limitado pelo teto diário" / "XP limitado ao máximo de sessão contínua").
 
 ### 7.4 Critérios de aceite — ADR-008 e ADR-009 (feature-forge)
 
@@ -228,7 +249,7 @@ fazem parte desse primeiro corte.
 - [x] Frontend Web atual: shell responsivo e páginas de login/cadastro/dashboard/sessão/guilda/perfil
 - [x] Frontend universal ADR-008: migrado para Expo e validado em Web/iOS/Android (M1–M5, `docs/validation/`)
 - [x] Contrato de API publicado e validado (`docs/api/openapi.yaml`, lint limpo — seção 10)
-- [ ] `docs/api/asyncapi.yaml` (contrato dos eventos WebSocket) — publicado com `raid:progress` e o aviso de Raid encerrada; faltam `progress:xpUpdated` e as notificações de level-up
+- [x] `docs/api/asyncapi.yaml` (contrato dos eventos WebSocket) — publicado com `raid:progress`, `progress:xpUpdated`, `notification:levelup` e o aviso de Raid encerrada
 - [x] Migrations TypeORM versionadas (`apps/backend/src/migrations`, com teste de upgrade e downgrade)
 - [ ] Provisionamento real da VM Oracle Always Free e primeiro deploy (ADR-006)
 - [x] Boot do NestJS + testes de integração contra MySQL real (job `backend` da CI, com serviço MySQL 8.0, e E2E Playwright via Docker Compose)
@@ -282,6 +303,17 @@ fazem parte desse primeiro corte.
 
 ### ADR-010: Título é o Cosmetic Item equipado da categoria `title`
 **Status:** Aceito em 08/10/2026. **Contexto:** o modelo de dados tinha duas fontes de título: a coluna de texto `Character.title`, exibida pela tela Personagem, e a categoria `title` de Cosmetic Item, que o usuário equipa. Nada sincronizava as duas, e o UC03/UC04 tratam o título como algo conquistado e equipado. **Alternativas:** (a) usar só o Cosmetic Item equipado; (b) gravar o nome do item em `Character.title` ao equipar, duplicando o dado; (c) manter os dois conceitos separados. **Decisão:** (a). O Título exibido em qualquer lugar (Personagem, membros da Guilda, ranking) é o nome do Cosmetic Item `title` equipado. Sem item equipado, não há título. `Character.title` deixa de ser lido e pode ser removido por migration. Títulos entram no Inventário pelo mesmo Desbloqueio dos demais itens, incluindo um Item inicial no nível 1. **Consequência:** uma única regra de equipagem (no máximo um item por categoria, com possibilidade de desequipar) vale também para títulos; `GET /users/me` e as listagens que mostram título passam a ler o item equipado; o PRD de Guilda/Perfil e a seção 9 refletem a mudança. Glossário em `CONTEXT.md`.
+
+### ADR-011: Economia de XP, antifraude por truncamento e configurabilidade
+**Status:** Aceito em 15/10/2026. **Contexto:** issue #6 identificou quatro lacunas abertas: (1) UC01 define 100 XP por ciclo de 25 min, mas a implementação usava 10 XP/min (250 XP/ciclo) sem decisão formal do PO; (2) os dois limiares antifraude (contínuo de 4h e diário de 16h) descartavam sessões inteiras, penalizando estudantes legítimos; (3) encerramentos manuais não verificavam o limite diário, criando uma brecha de acumulação; (4) nenhum parâmetro de balanceamento era ajustável sem PR. **Alternativas avaliadas para o XP/ciclo:** UC01 (100 XP / 25 min = 4 XP/min) vs. implementação vigente (10 XP/min). A simulação para uso moderado (2h/dia) mostrou que 4 XP/min resulta em nível 9 após 1 mês e nível 29 após 6 meses; 10 XP/min resulta em nível 18 e nível 52, respectivamente — progressão mais frequente e coerente com o `xp_base=500` da fórmula de nível já calibrada. **Alternativas avaliadas para o antifraude:** descartar sessão inteira vs. truncar ao limite. Descartar pune estudantes legítimos com maratonas longas; truncar mantém o incentivo correto (mais foco = mais XP, mas com teto). **Decisões:**
+1. Taxa canônica: **10 XP por minuto completo de foco válido**, proporcional a qualquer duração planejada. UC01 está incorreto neste ponto; este ADR prevalece.
+2. Taxa e limiares configuráveis via env vars: `XP_PER_MINUTE` (padrão `10`), `ANTIFRAUDE_MAX_CONTINUOUS_HOURS` (padrão `4`), `ANTIFRAUDE_MAX_DAILY_HOURS` (padrão `16`).
+3. Antifraude por **truncamento**: ao atingir o limite contínuo ou o saldo diário restante, o XP é calculado sobre o tempo truncado; a sessão não é descartada. O motivo é exposto em `capped_reason` no snapshot e na entidade.
+4. Encerramentos manuais (`stop`) também verificam e truncam ao saldo diário, igualando o comportamento com conclusões automáticas.
+5. Modo Guilda usa a mesma taxa de XP do modo solo; o XP concedido é simultaneamente a Contribuição para a Raid ativa.
+6. O timer é server-side (`runDeadlineAt`); a sessão completa no prazo independentemente de heartbeat — o cliente não é fonte de verdade.
+7. Tabela de recompensas de Raid (Cosmetic Item por Missão) ficou fora do escopo desta decisão — ver sub-issue de Missões.
+**Consequência:** `xp-rate.ts` lê `XP_PER_MINUTE` do env; `session-validator.ts` lê os limiares do env e implementa truncamento; `applyStudySessionStop` passa a receber e aplicar `priorDailySeconds`; a entidade `StudySession` ganha a coluna `capped_reason nullable`.
 
 ### 8.1 Diagrama de arquitetura (implementado em `dev/phase-1`)
 
@@ -340,7 +372,7 @@ Entidades principais (nomes lógicos, DDL real fica para a implementação):
 - **Companion** `(id, species, level, xp_total)` — sub-feature ADR-004
 - **CosmeticItem** `(id, category, name, unlock_condition)`
 - **UserCosmeticItem** `(user_id FK, cosmetic_item_id FK, equipped BOOL, unlocked_at)`
-- **StudySession** `(id, user_id FK, subject, mode[solo|guild], started_at, ended_at, duration_valid_seconds, xp_awarded, discarded_reason nullable)`
+- **StudySession** `(id, user_id FK, subject, mode[solo|guild], started_at, ended_at, duration_valid_seconds, xp_awarded, discarded_reason nullable, capped_reason nullable['continuous-limit'|'daily-limit'])` — `capped_reason` não nulo indica que o XP foi truncado pelo antifraude (ADR-011)
 - **Guild** `(id, name, level, created_by FK)`
 - **GuildMembership** `(guild_id FK, user_id FK, role, joined_at)`
 - **Raid** `(id, guild_id FK, title, goal_xp, progress_xp, starts_at, ends_at, status)`

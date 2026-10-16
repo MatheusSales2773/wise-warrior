@@ -97,6 +97,7 @@ describe('RealtimeGateway authentication', () => {
     expect(socket.data).toEqual({
       userId: 'user-1',
       sessionId: 'session-1',
+      identity: expect.objectContaining({ sub: 'user-1', sessionId: 'session-1' }),
     });
     expect(socket.join).toHaveBeenCalledWith('user:user-1');
     expect(socket.disconnect).not.toHaveBeenCalled();
@@ -113,5 +114,16 @@ describe('RealtimeGateway authentication', () => {
     expect(next).toHaveBeenCalledWith(expect.any(Error));
     expect(socket.join).not.toHaveBeenCalled();
     expect(socket.disconnect).not.toHaveBeenCalled();
+  });
+
+  it('drops a socket whose Session was revoked between the handshake and the room join', async () => {
+    const { gateway, jwtStrategy } = createGateway();
+    const socket = client('access-token');
+    await middlewareFor(gateway)(socket, jest.fn());
+    (jwtStrategy.validate as jest.Mock).mockRejectedValue(new Error('revoked'));
+
+    await gateway.handleConnection(socket);
+
+    expect(socket.disconnect).toHaveBeenCalled();
   });
 });

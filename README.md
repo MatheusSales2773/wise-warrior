@@ -200,6 +200,7 @@ npm run verify:m2
 # Matriz de versões do Expo SDK. Fora dos gates: a Expo publica patches sem aviso e
 # derrubaria PRs que não tocam nas dependências. O workflow semanal Expo drift roda isto.
 npm run expo:check --workspace apps/frontend
+npm run expo:doctor --workspace apps/frontend
 
 # Somente o bundle Web pronto para servir
 npm run build --workspace apps/frontend

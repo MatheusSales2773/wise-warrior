@@ -3,7 +3,7 @@ import type { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import type { AddressInfo } from 'node:net';
-import { DataSource } from 'typeorm';
+import { DataSource, type EntityManager } from 'typeorm';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RateLimitGuard } from '../../shared/security/rate-limit';
 import type { JwtPayload } from '../auth/strategies/jwt.strategy';
@@ -216,7 +216,10 @@ describe('Study Session de modo Guilda against MySQL', () => {
       const completed = await completeAtDeadline(bruno, session, 'complete-done');
 
       expect(completed.status).toBe(200);
-      expect(await completed.json()).toMatchObject({ state: 'completed', xpAwarded: 150 });
+      const body = await completed.json() as Snapshot & { xpAwarded: number };
+      expect(body).toMatchObject({ state: 'completed', xpAwarded: 150 });
+      const [contribution] = await contributions();
+      expect(contribution?.xpContributed).toBe(body.xpAwarded);
       expect(await activeRaid(bruno)).toMatchObject({ progressXp: 150, goalReachedAt: null, me: { participating: true, contributionXp: 150 } });
       expect((await activeRaid(ana)).me.contributionXp).toBe(0);
       expect(await contributions()).toEqual([expect.objectContaining({ userId: bruno, studySessionId: session.id, xpContributed: 150 })]);
@@ -232,6 +235,114 @@ describe('Study Session de modo Guilda against MySQL', () => {
       expect((await completeAtDeadline(bruno, session, 'replay-done')).status).toBe(200);
 
       expect((await activeRaid()).progressXp).toBe(150);
+      expect(await contributions()).toHaveLength(1);
+      expect(realtime.emitToGuild).toHaveBeenCalledTimes(1);
+    });
+
+    // Each case lets the work up to that point run, then throws, so the transaction must undo all of it.
+    const failureAfter: Record<string, () => void> = {
+      'the XP award, before the Contribution': () => {
+        const progression = app!.get(ProgressionService);
+        const original = progression.awardXpInTransaction.bind(progression);
+        jest.spyOn(progression, 'awardXpInTransaction').mockImplementationOnce(async (manager, userId, xp) => {
+          await original(manager, userId, xp);
+          throw new Error('falha depois de conceder o XP');
+        });
+      },
+      'the Contribution': () => {
+        const raids = app!.get(RaidsService);
+        const original = raids.recordContributionInTransaction.bind(raids);
+        jest.spyOn(raids, 'recordContributionInTransaction').mockImplementationOnce(async (manager, contribution) => {
+          await original(manager, contribution);
+          throw new Error('falha depois de gravar a Contribuição');
+        });
+      },
+      'the receipt, as the last write of the transaction': () => {
+        const original = dataSource!.transaction.bind(dataSource) as (work: (manager: EntityManager) => Promise<unknown>) => Promise<unknown>;
+        jest.spyOn(dataSource!, 'transaction').mockImplementationOnce(((work: (manager: EntityManager) => Promise<unknown>) =>
+          original(async (manager) => {
+            await work(manager);
+            throw new Error('falha depois do recibo');
+          })) as never);
+      },
+    };
+
+    it.each(Object.keys(failureAfter))('rolls back the whole completion when it fails after %s, then a retry counts it once', async (point) => {
+      const session = await joinAndStart(bruno, 'retry');
+      failureAfter[point]!();
+
+      const failed = await completeAtDeadline(bruno, session, 'retry-done');
+
+      expect(failed.status).toBe(500);
+      expect(await contributions()).toEqual([]);
+      expect((await dataSource!.getRepository(Raid).findOneByOrFail({ id: raidId })).progressXp).toBe(0);
+      expect((await dataSource!.getRepository(StudySession).findOneByOrFail({ id: session.id })).state).toBe('running');
+      expect((await dataSource!.getRepository(Character).findOneByOrFail({ userId: bruno })).xpTotal).toBe(0);
+      expect(realtime.emitToGuild).not.toHaveBeenCalled();
+      const rowsOf = async (table: string) => await dataSource!.query(`SELECT 1 FROM ${table} WHERE user_id = ?`, [bruno]) as unknown[];
+      expect(await rowsOf('study_session_command_keys')).toHaveLength(1); // só a chave do início
+      expect(await rowsOf('study_session_transition_receipts')).toEqual([]);
+      expect(await rowsOf('active_study_sessions')).toHaveLength(1);
+
+      const retried = await completeAtDeadline(bruno, session, 'retry-done');
+
+      expect(retried.status).toBe(200);
+      expect(await retried.json()).toMatchObject({ state: 'completed', xpAwarded: 150 });
+      expect(await activeRaid(bruno)).toMatchObject({ progressXp: 150, me: { contributionXp: 150 } });
+      expect(await contributions()).toHaveLength(1);
+      expect(realtime.emitToGuild).toHaveBeenCalledTimes(1);
+    });
+
+    it('counts one Contribution when the same Study Session is completed concurrently', async () => {
+      const session = await joinAndStart(bruno, 'race');
+      completionNow = new Date(new Date(session.startedAt).getTime() + 900_000);
+
+      const statuses = await Promise.all(['a', 'b', 'c'].map(async (suffix) =>
+        (await call('POST', `/sessions/${session.id}/complete`, bruno, { expectedVersion: 1 }, `race-done-${suffix}`)).status,
+      ));
+
+      // A transição serializa as chamadas: este teste cobre o lock e a versão, não o índice único.
+      expect([...statuses].sort()).toEqual([200, 409, 409]);
+      expect((await activeRaid(bruno)).progressXp).toBe(150);
+      expect(await contributions()).toHaveLength(1);
+      expect(realtime.emitToGuild).toHaveBeenCalledTimes(1);
+    });
+
+    it('counts one Contribution when the same Study Session reaches the Raid concurrently, by the unique index', async () => {
+      const session = await joinAndStart(bruno, 'index');
+      const raids = app!.get(RaidsService);
+      const contribute = () => dataSource!.transaction((manager) => raids.recordContributionInTransaction(manager, {
+        raidId, userId: bruno, studySessionId: session.id, xpContributed: 150, endedAt: new Date(),
+      }));
+
+      const results = await Promise.all([contribute(), contribute(), contribute()]);
+
+      // Every attempt reports the same counted XP, but only the one that inserted carries the progress to publish.
+      expect(results.map((outcome) => outcome.status)).toEqual(['counted', 'counted', 'counted']);
+      expect(results.filter((outcome) => outcome.status === 'counted' && outcome.progress)).toHaveLength(1);
+      expect(results.find((outcome) => outcome.status === 'counted' && outcome.progress)).toMatchObject({
+        progress: { raidId, progressXp: 150 },
+      });
+      expect((await dataSource!.getRepository(Raid).findOneByOrFail({ id: raidId })).progressXp).toBe(150);
+      expect(await contributions()).toHaveLength(1);
+    });
+
+    it('rejects a second Contribution row for the same Study Session at the database', async () => {
+      const session = await joinAndStart(bruno, 'unique');
+      const repository = dataSource!.getRepository(RaidContribution);
+      await repository.insert({ raidId, userId: bruno, studySessionId: session.id, xpContributed: 150 });
+
+      await expect(repository.insert({ raidId, userId: bruno, studySessionId: session.id, xpContributed: 150 }))
+        .rejects.toMatchObject({ code: 'ER_DUP_ENTRY' });
+    });
+
+    it('counts one Contribution when the legacy path is replayed concurrently', async () => {
+      const session = await joinAndStart(bruno, 'legacy');
+      const raids = app!.get(RaidsService);
+
+      await Promise.all([1, 2].map(() => raids.recordContribution(raidId, bruno, session.id, 150)));
+
+      expect((await dataSource!.getRepository(Raid).findOneByOrFail({ id: raidId })).progressXp).toBe(150);
       expect(await contributions()).toHaveLength(1);
       expect(realtime.emitToGuild).toHaveBeenCalledTimes(1);
     });
@@ -286,21 +397,21 @@ describe('Study Session de modo Guilda against MySQL', () => {
       expect((await activeRaid()).progressXp).toBe(100);
     });
 
-    it('does not count a Study Session discarded by the antifraude', async () => {
+    it('counts only the truncated XP of a Study Session capped by the daily limit', async () => {
       const session = await joinAndStart(bruno, 'discarded');
       completionNow = new Date(new Date(session.startedAt).getTime() + 900_000);
       // Earlier focus today already used the whole daily limit.
       await dataSource!.getRepository(StudySession).save(dataSource!.getRepository(StudySession).create({
         userId: bruno, subject: null, mode: 'solo', raidId: null,
         startedAt: new Date(completionNow.getTime() - 2_000), endedAt: new Date(completionNow.getTime() - 1_000),
-        durationValidSeconds: 16 * 60 * 60, xpAwarded: 0,
+        durationValidSeconds: 16 * 60 * 60 - 300, xpAwarded: 0,
       }));
 
       const completed = await completeAtDeadline(bruno, session, 'discarded-done');
 
-      expect(await completed.json()).toMatchObject({ state: 'discarded', xpAwarded: 0 });
-      expect((await activeRaid()).progressXp).toBe(0);
-      expect(await contributions()).toEqual([]);
+      expect(await completed.json()).toMatchObject({ state: 'completed', xpAwarded: 50, cappedReason: 'daily-limit' });
+      expect((await activeRaid()).progressXp).toBe(50);
+      expect(await contributions()).toEqual([expect.objectContaining({ userId: bruno, xpContributed: 50 })]);
     });
 
     it('records the Meta batida once and keeps adding Contributions until the end of the week', async () => {
@@ -320,6 +431,132 @@ describe('Study Session de modo Guilda against MySQL', () => {
       expect(realtime.emitToGuild).toHaveBeenLastCalledWith(guildId, 'raid:progress', {
         raidId, progressXp: 450, goalXp: 200, goalReachedAt: new Date(reachedAt),
       });
+    });
+  });
+
+  describe('raid contribution feedback', () => {
+    const joinAndStart = async (as: string, key: string, plannedDurationSeconds = 900) => {
+      await call('POST', `/raids/${raidId}/join`, as);
+      const started = await startGuildSession(as, `${key}-start`, plannedDurationSeconds);
+      expect(started.status).toBe(201);
+      return await started.json() as Snapshot;
+    };
+
+    it('includes counted feedback when the session contributes at the deadline', async () => {
+      const session = await joinAndStart(bruno, 'feedback-counted');
+
+      const response = await completeAtDeadline(bruno, session, 'feedback-counted-done');
+
+      expect(response.status).toBe(200);
+      const result = await response.json() as Snapshot & { raidContribution: unknown };
+      expect(result.raidContribution).toEqual({ status: 'counted', xpContributed: 150 });
+    });
+
+    it('includes outside-raid-window feedback when completed before the raid startsAt', async () => {
+      // A Study Session só começa com a Raid aberta, então este é o único jeito de a conclusão cair antes de `startsAt`.
+      const session = await joinAndStart(bruno, 'feedback-before-start');
+      // The Raid window now opens only after the canonical deadline, so the completion lands before `startsAt`.
+      const deadline = new Date(new Date(session.startedAt).getTime() + 900_000);
+      await dataSource!.getRepository(Raid).update({ id: raidId }, { startsAt: new Date(deadline.getTime() + 1000) });
+
+      const response = await completeAtDeadline(bruno, session, 'feedback-before-start-done');
+
+      expect(response.status).toBe(200);
+      const result = await response.json() as Snapshot & { raidContribution: unknown };
+      expect(result.raidContribution).toEqual({ status: 'outside-raid-window', xpContributed: 0 });
+      expect(await contributions()).toEqual([]);
+    });
+
+    it('includes outside-raid-window feedback when completed after the raid endsAt', async () => {
+      const raid = await dataSource!.getRepository(Raid).findOneByOrFail({ id: raidId });
+      const session = await joinAndStart(bruno, 'feedback-after-end');
+
+      // Complete after the Raid ends
+      completionNow = new Date(raid.endsAt.getTime() + 1000);
+
+      const response = await call('POST', `/sessions/${session.id}/complete`, bruno, { expectedVersion: 1 }, 'feedback-after-end-done');
+
+      expect(response.status).toBe(200);
+      const result = await response.json() as Snapshot & { raidContribution: unknown };
+      expect(result.raidContribution).toEqual({ status: 'outside-raid-window', xpContributed: 0 });
+      expect(await contributions()).toEqual([]);
+    });
+
+    it('includes no-validated-xp feedback when early stop with 0 XP', async () => {
+      const session = await joinAndStart(bruno, 'feedback-no-xp');
+      completionNow = new Date(new Date(session.startedAt).getTime() + 120_000);
+
+      const response = await call('POST', `/sessions/${session.id}/stop`, bruno, { expectedVersion: 1 }, 'feedback-no-xp-stop');
+
+      expect(response.status).toBe(200);
+      const result = await response.json() as Snapshot & { raidContribution: unknown };
+      expect(result.raidContribution).toEqual({ status: 'no-validated-xp', xpContributed: 0 });
+      expect(await contributions()).toEqual([]);
+    });
+
+    it('reports the Contribution already recorded, without adding or publishing again, when the same Study Session is recorded twice', async () => {
+      const session = await joinAndStart(bruno, 'feedback-ignored-insert');
+      await completeAtDeadline(bruno, session, 'feedback-ignored-insert-done');
+      realtime.emitToGuild.mockClear();
+      const raids = app!.get(RaidsService);
+
+      const outcome = await dataSource!.transaction((manager) => raids.recordContributionInTransaction(manager, {
+        raidId, userId: bruno, studySessionId: session.id, xpContributed: 999, endedAt: completionNow,
+      }));
+
+      expect(outcome).toEqual({ status: 'counted', xpContributed: 150, progress: null });
+      expect((await activeRaid()).progressXp).toBe(150);
+      expect(await contributions()).toHaveLength(1);
+      expect(realtime.emitToGuild).not.toHaveBeenCalled();
+    });
+
+    it('returns identical raidContribution on replay with same Idempotency-Key', async () => {
+      const session = await joinAndStart(bruno, 'feedback-replay');
+
+      const first = await completeAtDeadline(bruno, session, 'feedback-replay-done');
+      const firstResult = await first.json() as Snapshot & { raidContribution: unknown };
+
+      const second = await completeAtDeadline(bruno, session, 'feedback-replay-done');
+      const secondResult = await second.json() as Snapshot & { raidContribution: unknown };
+
+      expect(firstResult.raidContribution).toEqual(secondResult.raidContribution);
+      expect(firstResult.raidContribution).toEqual({ status: 'counted', xpContributed: 150 });
+      expect(await contributions()).toHaveLength(1);
+    });
+
+    it('includes null raidContribution for solo session', async () => {
+      await call('POST', `/raids/${raidId}/join`, bruno);
+      const started = await call('POST', '/sessions', bruno, { plannedDurationSeconds: 900 }, 'solo-start');
+      expect(started.status).toBe(201);
+      const session = await started.json() as Snapshot;
+
+      completionNow = new Date(new Date(session.startedAt).getTime() + 900_000);
+      const response = await call('POST', `/sessions/${session.id}/complete`, bruno, { expectedVersion: 1 }, 'solo-done');
+
+      expect(response.status).toBe(200);
+      const result = await response.json() as Snapshot & { raidContribution: unknown };
+      expect(result.raidContribution).toBeNull();
+    });
+
+    it('includes null raidContribution for pause transitions', async () => {
+      const session = await joinAndStart(bruno, 'feedback-pause');
+
+      const response = await call('POST', `/sessions/${session.id}/pause`, bruno, { expectedVersion: 1 }, 'feedback-pause-action');
+
+      expect(response.status).toBe(200);
+      const result = await response.json() as Snapshot & { raidContribution: unknown };
+      expect(result.raidContribution).toBeNull();
+    });
+
+    it('includes null raidContribution for resume transitions', async () => {
+      const session = await joinAndStart(bruno, 'feedback-resume');
+      await call('POST', `/sessions/${session.id}/pause`, bruno, { expectedVersion: 1 }, 'pause-first');
+
+      const response = await call('POST', `/sessions/${session.id}/resume`, bruno, { expectedVersion: 2 }, 'feedback-resume-action');
+
+      expect(response.status).toBe(200);
+      const result = await response.json() as Snapshot & { raidContribution: unknown };
+      expect(result.raidContribution).toBeNull();
     });
   });
 });

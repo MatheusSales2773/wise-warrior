@@ -68,6 +68,7 @@ export class SessionsService {
       durationValidSeconds: session.durationValidSeconds,
       xpAwarded: session.xpAwarded,
       discardedReason: session.discardedReason ?? null,
+      cappedReason: session.cappedReason ?? null,
     }));
   }
 
@@ -181,13 +182,11 @@ export class SessionsService {
 
     session.endedAt = endedAt;
     session.durationValidSeconds = validation.validSeconds;
-    session.discardedReason = validation.discardedReason;
-    session.xpAwarded = validation.discardedReason
-      ? 0
-      : xpForDuration(validation.validSeconds);
+    session.cappedReason = validation.cappedReason;
+    session.xpAwarded = xpForDuration(validation.validSeconds);
     await this.studySessions.save(session);
 
-    if (!validation.discardedReason && session.xpAwarded > 0) {
+    if (session.xpAwarded > 0) {
       await this.progression.awardXp(userId, session.xpAwarded);
       if (session.mode === 'guild' && session.raidId) {
         await this.raids.recordContribution(
@@ -236,7 +235,7 @@ export class SessionsService {
       .select('COALESCE(SUM(session.durationValidSeconds), 0)', 'total')
       .where('session.userId = :userId', { userId })
       .andWhere('session.id != :excludeSessionId', { excludeSessionId })
-      .andWhere('session.endedAt >= :startOfDay', { startOfDay })
+      .andWhere('session.startedAt >= :startOfDay', { startOfDay })
       .andWhere('session.discardedReason IS NULL')
       .andWhere("(session.state IS NULL OR session.state IN ('completed', 'stopped_early'))")
       .getRawOne<{ total: string }>();

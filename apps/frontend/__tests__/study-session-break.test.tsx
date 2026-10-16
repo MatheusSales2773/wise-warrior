@@ -8,6 +8,7 @@ import {
   stopStudySession,
   type FocusCycle,
   type StudySessionSnapshot,
+  type StudySessionTransitionResult,
 } from '@/features/study-session/api';
 import { clearCompletionIntent } from '@/features/study-session/completion-intent';
 import { useStudySessionAppActive } from '@/features/study-session/use-study-session-app-active';
@@ -62,8 +63,8 @@ function atZero(): StudySessionSnapshot {
   };
 }
 
-const completedResult = (): StudySessionSnapshot => ({
-  ...atZero(), state: 'completed', endedAt: new Date(mockedNow).toISOString(),
+const completedResult = (): StudySessionTransitionResult => ({
+  ...atZero(), raidContribution: null, state: 'completed', endedAt: new Date(mockedNow).toISOString(),
   durationValidSeconds: 1500, xpAwarded: 250, terminalReason: 'auto-complete',
 });
 
@@ -185,7 +186,7 @@ it('skips a running break and returns to the setup without touching the cycle', 
 
 it('does not offer a break after an early stop', async () => {
   getActive.mockResolvedValue({ ...running, remainingSeconds: 600, runDeadlineAt: new Date(mockedNow + 600_000).toISOString() });
-  stop.mockResolvedValue({ ...running, state: 'stopped_early', durationValidSeconds: 900, xpAwarded: 150, terminalReason: 'manual-stop' });
+  stop.mockResolvedValue({ ...running, raidContribution: null, state: 'stopped_early', durationValidSeconds: 900, xpAwarded: 150, terminalReason: 'manual-stop' });
   cycle.mockResolvedValue(inCycle(1));
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
   queryClients.push(queryClient);

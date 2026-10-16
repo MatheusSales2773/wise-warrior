@@ -7,7 +7,7 @@ info:
     com o access token em `auth.token` do handshake. Ao conectar, o servidor coloca o socket na room
     `user:{userId}` e, se o usuário tem Guild, na room `guild:{guildId}`. Criar, entrar ou sair de uma
     Guild atualiza as rooms de todos os sockets do usuário sem reconectar, então ninguém recebe eventos
-    de uma Guild que não é sua. Os eventos abaixo só descem; o app não emite eventos.
+    de uma Guild que não é sua. Revogar uma Sessão (logout, revogação de dispositivo, reuso de refresh token ou limite de dispositivos) encerra o socket daquele dispositivo; os demais seguem conectados. Os eventos abaixo só descem; o app não emite eventos.
 servers:
   development:
     host: localhost:3000
@@ -34,6 +34,10 @@ channels:
     messages:
       raidComplete:
         $ref: "#/components/messages/raidComplete"
+      xpUpdated:
+        $ref: "#/components/messages/xpUpdated"
+      levelUp:
+        $ref: "#/components/messages/levelUp"
 operations:
   receiveRaidProgress:
     action: receive
@@ -56,6 +60,26 @@ operations:
       anteriores, a Guild (Nível) e o Catálogo de cosméticos.
     messages:
       - $ref: "#/channels/userRoom/messages/raidComplete"
+  receiveXpUpdated:
+    action: receive
+    channel:
+      $ref: "#/channels/userRoom"
+    summary: O usuário ganhou XP
+    description: >
+      Emitido para todos os dispositivos do usuário depois que uma Sessão de estudo concede XP. O app
+      invalida o Dashboard (perfil, atividade recente e métricas), que também alimenta o Personagem.
+    messages:
+      - $ref: "#/channels/userRoom/messages/xpUpdated"
+  receiveLevelUp:
+    action: receive
+    channel:
+      $ref: "#/channels/userRoom"
+    summary: O usuário subiu de Nível
+    description: >
+      Emitido depois de `progress:xpUpdated` quando o XP cruza o limite de um Nível. O app atualiza o
+      Dashboard e o Catálogo de cosméticos, porque subir de Nível libera itens.
+    messages:
+      - $ref: "#/channels/userRoom/messages/levelUp"
 components:
   securitySchemes:
     accessToken:
@@ -76,7 +100,40 @@ components:
       contentType: application/json
       payload:
         $ref: "#/components/schemas/RaidComplete"
+    xpUpdated:
+      name: progress:xpUpdated
+      title: XP atualizado
+      contentType: application/json
+      payload:
+        $ref: "#/components/schemas/XpUpdated"
+    levelUp:
+      name: notification:levelup
+      title: Novo Nível
+      contentType: application/json
+      payload:
+        $ref: "#/components/schemas/LevelUp"
   schemas:
+    XpUpdated:
+      type: object
+      required: [xpGained, xpTotal, level]
+      properties:
+        xpGained:
+          type: integer
+          description: XP concedido pela Sessão de estudo
+        xpTotal:
+          type: integer
+          description: XP acumulado do Personagem depois da concessão
+        level:
+          type: integer
+          description: Nível do Personagem depois da concessão
+    LevelUp:
+      type: object
+      required: [previousLevel, newLevel]
+      properties:
+        previousLevel:
+          type: integer
+        newLevel:
+          type: integer
     RaidProgress:
       type: object
       required: [raidId, progressXp, goalXp, goalReachedAt]

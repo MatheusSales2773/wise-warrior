@@ -15,6 +15,7 @@ import { GuildsService } from '../guilds/guilds.service';
 
 const GUILD_ROOM_PREFIX = 'guild:';
 const userRoom = (userId: string) => `user:${userId}`;
+const sessionRoom = (sessionId: string) => `session:${sessionId}`;
 const guildRoom = (guildId: string) => `${GUILD_ROOM_PREFIX}${guildId}`;
 
 /**
@@ -55,10 +56,25 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
     }
 
     await client.join(userRoom(client.data.userId));
+    await client.join(sessionRoom(client.data.sessionId));
+    // A revocation that landed between the handshake and this join found an empty session room.
+    if (!(await this.sessionStillValid(client))) {
+      client.disconnect(true);
+      return;
+    }
     try {
       await this.joinCurrentGuildRoom(client);
     } catch (error) {
       this.logger.warn(`Falha ao entrar na room da Guild: ${(error as Error).message}`);
+    }
+  }
+
+  private async sessionStillValid(client: Socket): Promise<boolean> {
+    try {
+      await this.jwtStrategy.validate(client.data.identity as JwtPayload);
+      return true;
+    } catch {
+      return false;
     }
   }
 
@@ -98,6 +114,7 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
       const identity = await this.jwtStrategy.validate(payload);
       client.data.userId = identity.sub;
       client.data.sessionId = identity.sessionId;
+      client.data.identity = payload;
       next();
     } catch {
       next(new Error('Unauthorized'));
@@ -131,6 +148,16 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
       // O membership já foi commitado; a próxima conexão volta a sincronizar a room.
       this.logger.warn(`Falha ao sincronizar a room da Guild: ${(error as Error).message}`);
     }
+  }
+
+  /**
+   * Encerra os sockets das Sessões revogadas (logout, revogação de dispositivo, replay de refresh, limite de
+   * dispositivos). O access token já emitido continua válido até expirar, mas a conexão em tempo real não.
+   * Alcança apenas os sockets deste processo: com mais de uma instância seria preciso o adapter Redis do Socket.IO.
+   */
+  disconnectSessions(sessionIds: readonly string[]): void {
+    if (!this.server || sessionIds.length === 0) return;
+    this.server.in(sessionIds.map(sessionRoom)).disconnectSockets(true);
   }
 
   emitToUser(userId: string, event: string, payload: unknown): void {

@@ -5,7 +5,6 @@ import { SessionsService } from './sessions.service';
 import { StudySession } from './entities/study-session.entity';
 import { ProgressionService } from '../progression/progression.service';
 import { RaidsService } from '../raids/raids.service';
-import { MAX_CONTINUOUS_SESSION_SECONDS } from './domain/session-validator';
 
 function queryBuilderReturning(total: number) {
   return {
@@ -84,7 +83,7 @@ describe('SessionsService', () => {
 
       const result = await service.complete('user-1', 'session-1');
 
-      expect(result.discardedReason).toBeNull();
+      expect(result.cappedReason).toBeNull();
       expect(result.xpAwarded).toBeGreaterThan(0);
       expect(mockProgression.awardXp).toHaveBeenCalledWith(
         'user-1',
@@ -93,23 +92,24 @@ describe('SessionsService', () => {
       expect(mockRaids.recordContribution).not.toHaveBeenCalled();
     });
 
-    it('discards a session exceeding the antifraud limit and skips XP entirely', async () => {
+    it('truncates a session exceeding the continuous limit and awards XP on the capped time', async () => {
       mockRepo.findOne.mockResolvedValue({
         id: 'session-2',
         userId: 'user-1',
         mode: 'solo',
         raidId: null,
-        startedAt: new Date(Date.now() - (MAX_CONTINUOUS_SESSION_SECONDS + 60) * 1000),
+        startedAt: new Date(Date.now() - 5 * 3600 * 1000),
         endedAt: null,
       });
 
       const result = await service.complete('user-1', 'session-2');
 
-      expect(result.discardedReason).toBe('continuous-session-exceeds-limit');
-      expect(result.xpAwarded).toBe(0);
-      expect(mockProgression.awardXp).not.toHaveBeenCalled();
+      expect(result.cappedReason).toBe('continuous-limit');
+      expect(result.discardedReason).toBeUndefined();
+      expect(result.durationValidSeconds).toBe(4 * 3600);
+      expect(result.xpAwarded).toBe(2400);
+      expect(mockProgression.awardXp).toHaveBeenCalledWith('user-1', 2400);
     });
-
     it('records a raid contribution for a valid guild-mode session', async () => {
       mockRepo.findOne.mockResolvedValue({
         id: 'session-3',
@@ -176,7 +176,7 @@ describe('SessionsService', () => {
         }),
       ]);
       expect(Object.keys(result[0]!)).toEqual([
-        'id', 'subject', 'mode', 'state', 'startedAt', 'endedAt', 'durationValidSeconds', 'xpAwarded', 'discardedReason',
+        'id', 'subject', 'mode', 'state', 'startedAt', 'endedAt', 'durationValidSeconds', 'xpAwarded', 'discardedReason', 'cappedReason',
       ]);
       expect(mockRepo.find).toHaveBeenCalledWith({
         where: { userId: 'user-1', endedAt: expect.anything() },
