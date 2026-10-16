@@ -23,12 +23,20 @@ Os Cosmetic Items que um usuário já desbloqueou.
 _Avoid_: Coleção, bolsa
 
 **Condição de desbloqueio**:
-A regra que dá um Cosmetic Item a um usuário, por exemplo alcançar um nível ou concluir uma Raid.
+A regra que dá um Cosmetic Item a um usuário, por exemplo alcançar um nível, concluir uma Raid ou fazer a Compra do item.
 _Avoid_: requisito, critério
 
 **Desbloqueio**:
 A entrada de um Cosmetic Item no Inventário de um usuário quando a Condição de desbloqueio é atendida. Ocorre uma única vez por item.
-_Avoid_: compra, ganho
+_Avoid_: ganho
+
+**Compra**:
+A troca de Moedas por uma Missão ou por um Cosmetic Item à venda na Loja. A Compra de um Cosmetic Item é uma Condição de desbloqueio. Não se compra o que já se tem.
+_Avoid_: aquisição, transação
+
+**À venda**:
+A marca de um Cosmetic Item que pode ser comprado na Loja. Recompensas de Raid, itens de nível e Itens premium nunca estão à venda.
+_Avoid_: vendável, disponível
 
 **Equipar**:
 Escolher qual Cosmetic Item do Inventário o Character exibe em uma categoria. Fica no máximo um equipado por categoria, e um item pode ser desequipado.
@@ -103,8 +111,8 @@ O modelo temático de uma Raid, com nome, descrição, imagem e a Recompensa de 
 _Avoid_: quest, modelo de raid, template
 
 **Loja**:
-Onde o usuário compra Missões com a moeda do jogo. A Missão comprada pertence a quem comprou e não é consumida ao ser usada. O Líder escolhe, entre as Missões dos membros atuais, a Missão da próxima Raid. Se o dono sai da Guild durante a Raid, a Raid continua.
-_Avoid_: Catálogo (que é dos Cosmetic Items), mercado
+O único lugar onde o usuário gasta Moedas, com duas seções: Missões e os Cosmetic Items À venda. A Missão comprada pertence a quem comprou e não é consumida ao ser usada. O Líder escolhe, entre as Missões dos membros atuais, a Missão da próxima Raid, e pode repetir uma Missão. A escolha trava quando a Raid começa; se o dono sai da Guild antes disso, a escolha é anulada e vale o rodízio. Se o dono sai durante a Raid, a Raid continua. O dono não ganha nada quando sua Missão é usada.
+_Avoid_: Catálogo (que é todo o conjunto de Cosmetic Items, à venda ou não), mercado
 
 **Participante**:
 O membro da Guild que confirmou participação numa Raid. Só as Study Sessions de um Participante contam para a Raid.
@@ -123,5 +131,17 @@ A classificação dos membros por Contribuição na Raid da semana. Não existe 
 _Avoid_: ranking geral, leaderboard, placar
 
 **Recompensa de Raid**:
-O Desbloqueio do Cosmetic Item indicado pela Missão, dado no fim da Raid com Meta batida a cada Participante com pelo menos uma Contribuição.
+Os Desbloqueios dos Cosmetic Items indicados pela Missão e as Moedas de vitória, dados no fim da Raid com Meta batida a cada Participante com pelo menos uma Contribuição. Itens que o Participante já tem são pulados; as Moedas são pagas mesmo quando a Missão se repete.
 _Avoid_: prêmio, loot, drop
+
+**Fúria do dragão** (Fúria):
+A vida que o chefe da Raid recupera a cada dia sem nenhuma Contribuição da Guild. Para quando a Meta é batida.
+_Avoid_: regeneração, cura
+
+**Moeda**:
+A moeda do jogo, ganha com Study Sessions, com a Recompensa de Raid e no cadastro, e gasta na Loja. É do usuário, não da Guild, e não pode ser transferida. Não tem relação com o plano premium.
+_Avoid_: ouro, coin, crédito, tesouro
+
+**Extrato**:
+O histórico de Moedas ganhas e gastas por um usuário, com a origem de cada uma.
+_Avoid_: livro-razão, histórico de transações
