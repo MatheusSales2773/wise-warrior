@@ -51,6 +51,7 @@ services:
       TRUST_PROXY: 1
       # Every Playwright user registers and logs in from the same address.
       RATE_LIMIT_CREDENTIALS_LIMIT: 1000
+      RATE_LIMIT_REFRESH_LIMIT: 1000
       PORT: 3000
     ports:
       - "127.0.0.1:${E2E_BACKEND_PORT:?E2E_BACKEND_PORT is required}:3000"

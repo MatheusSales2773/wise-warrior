@@ -36,7 +36,23 @@ export interface RealtimeSocket {
   off(event: string, listener?: Listener): unknown;
   connect(): unknown;
   disconnect(): unknown;
+  emit(event: string, ...args: any[]): unknown;
 }
+
+/** Answer of a client → server command (the gateway's ack). `E`: fields a gateway adds to its errors. */
+export type RealtimeAck<T, E extends object = object> = ({ ok: true } & T) | { ok: false; error: { code: string; message: string } & E };
+
+/** The error a command gets when the socket is not connected, or drops before the ack arrives. */
+export const REALTIME_DISCONNECTED = { code: 'DISCONNECTED', message: 'Sem conexão' } as const;
+
+/** Commands and events beyond the ones the client applies itself, on the same socket (the Guild chat). */
+export type RealtimeChannel = {
+  request<T extends object>(event: string, payload: unknown): Promise<RealtimeAck<T>>;
+  listen(event: string, listener: Listener): () => void;
+};
+
+/** A command without an answer in this long counts as lost, so the UI never waits forever. */
+export const REALTIME_REQUEST_TIMEOUT_MS = 10_000;
 
 export type RealtimeSocketFactory = (
   url: string,
@@ -51,7 +67,7 @@ export type RealtimeClientOptions = {
   createSocket?: RealtimeSocketFactory;
 };
 
-export type RealtimeClient = {
+export type RealtimeClient = RealtimeChannel & {
   dispose(): void;
   getStatus(): RealtimeStatus;
   subscribe(listener: () => void): () => void;
@@ -122,6 +138,12 @@ export function createRealtimeClient({
   let connectedBefore = false;
   let status: RealtimeStatus = 'connecting';
   const subscribers = new Set<() => void>();
+  // Commands waiting for an ack; a dropped connection will never answer them, so they fail at once.
+  const pending = new Set<() => void>();
+  const failPending = () => {
+    pending.forEach((fail) => fail());
+    pending.clear();
+  };
   const setStatus = (next: RealtimeStatus) => {
     if (status === next) return;
     status = next;
@@ -139,6 +161,7 @@ export function createRealtimeClient({
   const onLevelUp = () => applyLevelUp(queryClient);
   const onEquipmentChanged = () => applyEquipmentChanged(queryClient);
   const handleConnectionLoss = () => {
+    failPending();
     if (disposed) return;
     if (socket.active) {
       // Socket.IO keeps retrying on its own.
@@ -172,6 +195,30 @@ export function createRealtimeClient({
   socket.connect();
 
   return {
+    request<T extends object>(event: string, payload: unknown) {
+      return new Promise<RealtimeAck<T>>((resolve) => {
+        if (status !== 'connected') {
+          resolve({ ok: false, error: REALTIME_DISCONNECTED });
+          return;
+        }
+        let settled = false;
+        const settle = (answer: RealtimeAck<T>) => {
+          if (settled) return;
+          settled = true;
+          clearTimeout(timer);
+          pending.delete(fail);
+          resolve(answer);
+        };
+        const fail = () => settle({ ok: false, error: REALTIME_DISCONNECTED });
+        const timer = setTimeout(() => settle({ ok: false, error: { code: 'TIMEOUT', message: 'Sem resposta' } }), REALTIME_REQUEST_TIMEOUT_MS);
+        pending.add(fail);
+        socket.emit(event, payload, settle);
+      });
+    },
+    listen(event, listener) {
+      socket.on(event, listener);
+      return () => { socket.off(event, listener); };
+    },
     getStatus: () => status,
     subscribe(listener) {
       subscribers.add(listener);
@@ -179,6 +226,7 @@ export function createRealtimeClient({
     },
     dispose() {
       disposed = true;
+      failPending();
       socket.off('raid:progress', onRaidProgress);
       socket.off('notification:raidComplete', onRaidComplete);
       socket.off('progress:xpUpdated', onXpUpdated);

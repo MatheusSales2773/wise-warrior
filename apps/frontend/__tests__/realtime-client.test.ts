@@ -22,7 +22,17 @@ class FakeSocket implements RealtimeSocket {
   }
   connect() { this.connectCalls += 1; }
   disconnect() { this.disconnectCalls += 1; }
-  emit(event: string, ...args: unknown[]) { this.listeners.get(event)?.forEach((listener) => listener(...args)); }
+  /** Commands the client sent, with the ack callback the server would call. */
+  commands: { event: string; payload: unknown; ack: (answer: unknown) => void }[] = [];
+  /** Plays the server: delivers an event to the client's listeners, or records a command that carries an ack. */
+  emit(event: string, ...args: unknown[]) {
+    const ack = args.at(-1);
+    if (args.length === 2 && typeof ack === 'function') {
+      this.commands.push({ event, payload: args[0], ack: ack as (answer: unknown) => void });
+      return;
+    }
+    this.listeners.get(event)?.forEach((listener) => listener(...args));
+  }
   count(event: string) { return this.listeners.get(event)?.size ?? 0; }
   handshakeToken() {
     let token: string | null | undefined;
@@ -320,5 +330,35 @@ describe('character:equipmentChanged', () => {
     client.dispose();
 
     expect(socket.count('character:equipmentChanged')).toBe(0);
+  });
+});
+
+describe('chat channel on the same socket', () => {
+  it('answers a command with the gateway ack once connected, and refuses while disconnected', async () => {
+    const { socket, client } = setup();
+    await expect(client.request('chat:join', { guildId: 'g1' })).resolves.toEqual({ ok: false, error: { code: 'DISCONNECTED', message: 'Sem conexão' } });
+    socket.emit('connect');
+    const answer = client.request('chat:join', { guildId: 'g1' });
+    expect(socket.commands.map(({ event, payload }) => [event, payload])).toEqual([['chat:join', { guildId: 'g1' }]]);
+    socket.commands[0]!.ack({ ok: true, onlineUserIds: ['u1'] });
+    await expect(answer).resolves.toEqual({ ok: true, onlineUserIds: ['u1'] });
+  });
+
+  it('fails a command in flight as soon as the connection drops', async () => {
+    const { socket, client } = setup();
+    socket.emit('connect');
+    const answer = client.request('chat:send', { guildId: 'g1', body: 'oi' });
+    socket.emit('disconnect');
+    await expect(answer).resolves.toEqual({ ok: false, error: { code: 'DISCONNECTED', message: 'Sem conexão' } });
+  });
+
+  it('lets screens listen to room events and stop listening', () => {
+    const { socket, client } = setup();
+    const listener = jest.fn();
+    const stop = client.listen('member:online', listener);
+    socket.emit('member:online', { userId: 'u1' });
+    stop();
+    socket.emit('member:online', { userId: 'u2' });
+    expect(listener).toHaveBeenCalledTimes(1);
   });
 });

@@ -10,6 +10,9 @@ import {
   joinGuildErrorMessage, joinRaidErrorMessage, leaveGuildErrorMessage, raidProgressPercent, rankingEntryLabel,
 } from './messages';
 import { activeRaidQueryOptions, guildDirectoryQueryOptions, guildKeys, guildMembersQueryOptions, myGuildQueryOptions, pastRaidsQueryOptions, raidRankingQueryOptions } from './queries';
+import { profileQueryOptions } from '@/features/dashboard/queries';
+import { useGuildChat } from './guild-chat';
+import { GuildTabs, MuralAnnouncer, MuralPanel, OnlineIndicator, PresenceDot, type GuildTab } from './guild-mural';
 import { RaidScene } from './raid-scene';
 import { RAID_SCENE_HEIGHT, RAID_SCENE_WIDTH } from './raid-scene-sprites';
 import { GUILD_NAME_MAX_LENGTH, normalizeGuildName, validateGuildName } from './validation';
@@ -19,12 +22,16 @@ function thumbnailScale(width: number): number {
   return Math.min(6, Math.max(2, Math.ceil(width / RAID_SCENE_WIDTH)));
 }
 
-function MemberItem({ member }: { member: GuildMember }) {
+function MemberItem({ member, online }: { member: GuildMember; online: boolean | null }) {
   const detail = [`Nível ${member.level}`, member.title].filter(Boolean).join(' · ');
+  const presence = online === null ? '' : online ? ', online' : ', offline';
   return (
-    <View accessible accessibilityLabel={`${member.displayName}, ${formatGuildRole(member.role)}. ${detail}`} style={styles.directoryItem} testID={`guild-member-${member.userId}`}>
+    <View accessible accessibilityLabel={`${member.displayName}${presence}, ${formatGuildRole(member.role)}. ${detail}`} style={styles.directoryItem} testID={`guild-member-${member.userId}`}>
       <View style={styles.directoryMain}>
-        <WiseText variant="label">{member.displayName}</WiseText>
+        <View style={styles.memberName}>
+          {online === null ? null : <PresenceDot online={online} testID={`guild-member-${online ? 'online' : 'offline'}-${member.userId}`} />}
+          <WiseText variant="label">{member.displayName}</WiseText>
+        </View>
         <WiseText color="textSecondary" variant="body">{detail}</WiseText>
       </View>
       {member.role === 'leader' ? <WiseText color="accentPrimary" variant="caption">LÍDER</WiseText> : null}
@@ -32,7 +39,7 @@ function MemberItem({ member }: { member: GuildMember }) {
   );
 }
 
-function MembersCard({ guildId }: { guildId: string }) {
+function MembersCard({ guildId, onlineUserIds }: { guildId: string; onlineUserIds: ReadonlySet<string> | null }) {
   const members = useInfiniteQuery(guildMembersQueryOptions(guildId));
   const items = members.data?.pages.flatMap((page) => page.items) ?? [];
 
@@ -45,7 +52,7 @@ function MembersCard({ guildId }: { guildId: string }) {
       </View>;
     }
     return <>
-      {items.map((member) => <MemberItem key={member.userId} member={member} />)}
+      {items.map((member) => <MemberItem key={member.userId} member={member} online={onlineUserIds ? onlineUserIds.has(member.userId) : null} />)}
       {members.isFetchNextPageError ? <FeedbackMessage message="Não foi possível carregar mais membros." title="Lista incompleta" variant="error" /> : null}
       {members.hasNextPage
         ? <WiseButton label="Carregar mais membros" loading={members.isFetchingNextPage} onPress={() => void members.fetchNextPage()} testID="guild-members-more" variant="ghost" />
@@ -82,7 +89,7 @@ function LeaveGuildAction({ guildId, isLeader, onLeft, onConflict }: { guildId: 
   );
 }
 
-function GuildCard({ mine }: { mine: MyGuild }) {
+function GuildCard({ mine, onlineUserIds }: { mine: MyGuild; onlineUserIds: ReadonlySet<string> | null }) {
   const { guild, role } = mine;
   return (
     <WiseCard accessibilityLabel="Sua guilda" role="region" testID="guild-mine" variant="ornamented">
@@ -91,6 +98,7 @@ function GuildCard({ mine }: { mine: MyGuild }) {
         <WiseText accessibilityRole="header" aria-level={2} testID="guild-mine-name" variant="subtitle">{guild.name}</WiseText>
         <WiseText testID="guild-mine-level" variant="body">Nível {guild.level}</WiseText>
         <WiseText color="textSecondary" testID="guild-mine-members" variant="body">{formatMemberCount(guild.memberCount)}</WiseText>
+        <OnlineIndicator onlineUserIds={onlineUserIds} />
         {guild.leader ? <WiseText color="textSecondary" testID="guild-mine-leader" variant="body">Líder: {guild.leader.displayName}</WiseText> : null}
       </View>
     </WiseCard>
@@ -462,6 +470,31 @@ function DirectoryCard({ onJoined, onConflict }: { onJoined: () => void } & Guil
   );
 }
 
+function MemberGuild({ mine, desktop, onLeft, onConflict }: { mine: MyGuild; desktop: boolean; onLeft: () => void; onConflict: (error: unknown) => void }) {
+  const { guild, role } = mine;
+  const profile = useQuery(profileQueryOptions());
+  const chat = useGuildChat(guild.id, profile.data?.id);
+  const [tab, setTab] = useState<GuildTab>('raid');
+  const header = <GuildCard mine={mine} onlineUserIds={chat.onlineUserIds} />;
+  const tabs = <GuildTabs onSelect={setTab} selected={tab} />;
+  const content = tab === 'raid' ? <RaidSection guildId={guild.id} /> : <MuralPanel chat={chat} />;
+  const members = <MembersCard guildId={guild.id} onlineUserIds={chat.onlineUserIds} />;
+  const pastRaids = <PastRaidsCard guildId={guild.id} />;
+  const announcer = <MuralAnnouncer arrival={chat.arrival} />;
+  const leave = (
+    <View testID="guild-leave-section">
+      <LeaveGuildAction guildId={guild.id} isLeader={role === 'leader'} onConflict={onConflict} onLeft={onLeft} />
+    </View>
+  );
+  return desktop
+    ? <View style={styles.desktopGrid} testID="guild-layout-desktop">
+      <View style={[styles.column, styles.stack]} testID="guild-column-main">{header}{tabs}{content}</View>
+      <View style={[styles.column, styles.stack]} testID="guild-column-side">{pastRaids}{members}{leave}</View>
+      {announcer}
+    </View>
+    : <View style={styles.stack} testID="guild-layout-stacked">{header}{tabs}{content}{pastRaids}{members}{leave}{announcer}</View>;
+}
+
 export function GuildScreen() {
   const mine = useQuery(myGuildQueryOptions());
   const queryClient = useQueryClient();
@@ -498,24 +531,7 @@ export function GuildScreen() {
     <Screen safeAreaEdges={[]} testID="guild" title="Guilda">
       {mine.isError ? <FeedbackMessage message="Não foi possível atualizar sua guilda." testID="guild-refresh-error" title="Dados desatualizados" variant="error" /> : null}
       {mine.data
-        ? (() => {
-          const { guild, role } = mine.data;
-          const header = <GuildCard mine={mine.data} />;
-          const raid = <RaidSection guildId={guild.id} />;
-          const members = <MembersCard guildId={guild.id} />;
-          const pastRaids = <PastRaidsCard guildId={guild.id} />;
-          const leave = (
-            <View testID="guild-leave-section">
-              <LeaveGuildAction guildId={guild.id} isLeader={role === 'leader'} onConflict={refreshOnConflict} onLeft={() => void refreshGuild()} />
-            </View>
-          );
-          return desktop
-            ? <View style={styles.desktopGrid} testID="guild-layout-desktop">
-              <View style={[styles.column, styles.stack]} testID="guild-column-main">{header}{raid}</View>
-              <View style={[styles.column, styles.stack]} testID="guild-column-side">{pastRaids}{members}{leave}</View>
-            </View>
-            : <View style={styles.stack} testID="guild-layout-stacked">{header}{raid}{pastRaids}{members}{leave}</View>;
-        })()
+        ? <MemberGuild key={mine.data.guild.id} desktop={desktop} mine={mine.data} onConflict={refreshOnConflict} onLeft={() => void refreshGuild()} />
         : <View style={[styles.grid, desktop && styles.desktopGrid]}>
           <View style={styles.column}><CreateGuildCard onConflict={refreshOnConflict} onCreated={() => void refreshGuild()} /></View>
           <View style={styles.column}><DirectoryCard onConflict={refreshOnConflict} onJoined={() => void refreshGuild()} /></View>
@@ -539,4 +555,5 @@ const styles = StyleSheet.create({
   cardContent: { padding: theme.space.cardInset, gap: theme.space.stackTight },
   directoryItem: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: theme.space.stackTight },
   directoryMain: { flex: 1, gap: theme.space.inlineHairline },
+  memberName: { flexDirection: 'row', alignItems: 'center', gap: theme.space.inlineTight },
 });
