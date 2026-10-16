@@ -9,10 +9,10 @@ import { PixelSprite } from '@/features/character/PixelSprite';
 import { itemSprites } from '@/features/character/sprites';
 import { useFocusRing } from '@/features/character/character-parts';
 import { CoinMark } from '@/features/market/coin';
-import type { ActiveRaid, MyGuild, RaidRankingEntry } from './api';
+import type { ActiveRaid, MyGuild, RaidHit, RaidRankingEntry } from './api';
 import { RAID_GOAL_REACHED, formatPosition, formatRewardCoins, formatRewardName } from './messages';
 import { activeRaidQueryOptions, myGuildQueryOptions, raidRankingQueryOptions } from './queries';
-import { bossLifePercent, formatBattleTimeLeft, formatFocusHours, formatStreak, heroOf, partyHeroSprites, raidParty, raidWeekGrid, weeklyStrikes, type Strike, type WeekDay } from './raid-battle';
+import { bossLifePercent, formatBattleTimeLeft, formatFocusHours, formatRaidHit, formatStreak, heroOf, partyHeroSprites, raidParty, raidWeekGrid, weeklyStrikes, type Strike, type WeekDay } from './raid-battle';
 import { raidSceneArt } from './raid-scene-art';
 import { RaidScene, raidSceneScale } from './raid-scene';
 
@@ -92,6 +92,18 @@ function BossLifeRow({ raid }: { raid: ActiveRaid }) {
       <Text style={styles.lifeMeta} testID="raid-boss-life-percent">{percent}% · {formatFocusHours(raid.progressXp)}/{formatFocusHours(raid.goalXp)}</Text>
     </View>
     <LifeBar label={label} percent={percent} />
+  </View>;
+}
+
+/**
+ * O Golpe mais recente diante do chefe: o dano grande e, abaixo, autor e minutos. Anunciado ao chegar ao vivo
+ * (`raid:hit`). Só no desktop: o Figma 06b não o mostra na cena estreita do celular.
+ */
+function LastHit({ hit }: { hit: RaidHit }) {
+  const { damage, detail, label } = formatRaidHit(hit);
+  return <View accessible accessibilityLabel={label} accessibilityLiveRegion="polite" style={styles.hit} testID="raid-last-hit">
+    <Text style={styles.hitDamage}>{damage}</Text>
+    <Text numberOfLines={1} style={styles.hitDetail}>{detail}</Text>
   </View>;
 }
 
@@ -271,6 +283,7 @@ function Battle({ desktop, mine, raid, viewport }: { desktop: boolean; mine: MyG
       <View style={[styles.overlayTopLeft, !desktop && styles.overlayTopLeftCompact]}><TimePill compact={!desktop} raid={raid} /></View>
       {desktop ? <View style={styles.overlayTopRight}><BossLifePanel raid={raid} /></View> : null}
     </>}
+    hit={desktop && raid.lastHit ? <LastHit hit={raid.lastHit} /> : null}
     party={party}
     scale={scale}
     showTags={desktop}
@@ -370,6 +383,8 @@ const glassBackground = 'rgba(7, 7, 12, 0.72)';
 // The Figma panels blur the scene behind them. React Native Web supports it; native keeps the translucent fill.
 const webGlassBlur = (Platform.OS === 'web' ? { backdropFilter: 'blur(3px)' } : {}) as ViewStyle;
 
+const hitShadow = { textShadowColor: 'rgba(0, 0, 0, 0.8)', textShadowOffset: { width: 0, height: 2 }, textShadowRadius: 4 } as const;
+
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: theme.color.backgroundCanvas },
   fill: { flex: 1 },
@@ -398,6 +413,10 @@ const styles = StyleSheet.create({
   overlayTopLeft: { position: 'absolute', top: 20, left: 20 },
   overlayTopLeftCompact: { top: 10, left: 10 },
   overlayTopRight: { position: 'absolute', top: 20, right: 20, width: 300 },
+  // Figma 06b: texto solto sobre a cena, com sombra para ler sobre o céu.
+  hit: { alignItems: 'center', maxWidth: '100%' },
+  hitDamage: { fontFamily: cinzel, fontSize: 26, lineHeight: 35, color: theme.color.accentHighlight, ...hitShadow },
+  hitDetail: { fontFamily: mono, fontSize: 10, lineHeight: 13, color: theme.color.textPrimary, ...hitShadow },
   timePill: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 12, paddingVertical: 7, borderRadius: theme.radius.pill },
   timePillCompact: { gap: 6, paddingHorizontal: 9, paddingVertical: 4 },
   timeText: { fontFamily: mono, fontSize: 11, lineHeight: 15, letterSpacing: 0.4, color: theme.color.textPrimary },

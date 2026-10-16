@@ -258,9 +258,7 @@ export class StudySessionTransitionService {
     if (result.coinMovement?.applied) {
       this.economy.publishBalanceChanged(userId, result.coinMovement);
     }
-    if (result.raidContributionOutcome?.status === 'counted' && result.raidContributionOutcome.progress) {
-      this.raids.publishProgress(result.raidContributionOutcome.progress);
-    }
+    if (result.raidContributionOutcome) this.raids.publishContribution(result.raidContributionOutcome);
     return result.snapshot;
   }
 

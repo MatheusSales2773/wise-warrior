@@ -39,6 +39,7 @@ describe('Raid da semana against MySQL', () => {
   let dataSource: DataSource | undefined;
   let app: INestApplication | undefined;
   let baseUrl: string;
+  let raids: RaidsService;
   /** Wednesday 2026-10-07 12:00 in São Paulo. */
   let now: Date;
 
@@ -100,6 +101,7 @@ describe('Raid da semana against MySQL', () => {
       })
       .compile();
 
+    raids = moduleRef.get(RaidsService);
     app = moduleRef.createNestApplication();
     app.setGlobalPrefix('api/v1');
     app.useGlobalPipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }));
@@ -142,6 +144,7 @@ describe('Raid da semana against MySQL', () => {
       studyDays: [],
       streak: 0,
       me: { participating: false, contributionXp: 0, position: null },
+      lastHit: null,
     });
   });
 
@@ -242,5 +245,30 @@ describe('Raid da semana against MySQL', () => {
     const response = await call('GET', `/guilds/${guildId}/raids/active`);
     expect(response.status).toBe(200);
     expect(await response.json()).toMatchObject({ progressXp: 1000, status: 'completed' });
+  });
+
+  it('shows the most recent Golpe with its author, XP and focus minutes', async () => {
+    const guildId = await createGuild('Ordem do Foco');
+    await call('POST', `/guilds/${guildId}/members`, bruno);
+    const raid = await dataSource!.getRepository(Raid).findOneByOrFail({ guildId });
+    const strike = async (userId: string, studySessionId: string, xp: number, focusSeconds: number) => {
+      await dataSource!.getRepository(StudySession).insert({
+        id: studySessionId, userId, mode: 'guild', raidId: raid.id, state: 'completed', xpAwarded: xp, durationValidSeconds: focusSeconds, endedAt: now,
+      });
+      await raids.recordContribution(raid.id, userId, studySessionId, xp);
+    };
+
+    await strike(ana, '00000000-0000-4000-8000-000000000c01', 250, 25 * 60);
+    now = new Date(now.getTime() + 60_000);
+    await strike(bruno, '00000000-0000-4000-8000-000000000c02', 75, 7 * 60 + 40);
+
+    const response = await call('GET', `/guilds/${guildId}/raids/active`, ana);
+    expect(((await response.json()) as { lastHit: unknown }).lastHit).toEqual({
+      userId: bruno,
+      displayName: 'Bruno',
+      xp: 75,
+      focusMinutes: 7,
+      at: expect.any(String),
+    });
   });
 });

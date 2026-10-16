@@ -63,6 +63,21 @@ export interface ActiveRaid {
   streak: number;
   /** `position` is the caller's place in the Ranking interno, or `null` while they are not a Participant. */
   me: { participating: boolean; contributionXp: number; position: number | null };
+  /** The most recent Golpe, or `null` before the first Contribution. */
+  lastHit: RaidHit | null;
+}
+
+/**
+ * Golpe: one Contribution seen as damage to the boss, with its author, the XP and the focus minutes of the Study
+ * Session. Derived from `raid_contributions`, with no table of its own.
+ */
+export interface RaidHit {
+  userId: string;
+  displayName: string;
+  xp: number;
+  /** Whole minutes of validated focus; `null` when the Contribution has no Study Session any more. */
+  focusMinutes: number | null;
+  at: Date;
 }
 
 export interface RaidRankingEntry extends EquippedAppearance {
@@ -134,8 +149,16 @@ export interface RaidProgress {
   goalReachedAt: Date | null;
 }
 
+/** The Golpe of a new Contribution, for the `raid:hit` event. */
+export interface RaidHitNotice {
+  raidId: string;
+  guildId: string;
+  hit: RaidHit;
+}
+
+/** `progress` and `hit` are set only when this call recorded the Contribution, so a repeated completion publishes nothing. */
 export type RaidContributionOutcome =
-  | { status: 'counted'; xpContributed: number; progress: RaidProgress | null }
+  | { status: 'counted'; xpContributed: number; progress: RaidProgress | null; hit: RaidHitNotice | null }
   | { status: 'outside-raid-window'; xpContributed: 0 }
   | { status: 'no-validated-xp'; xpContributed: 0 };
 
@@ -150,6 +173,24 @@ export interface GuildSessionContribution {
 
 /** How many members the Raid scene has room for. */
 const RAID_PARTY_SIZE = 5;
+
+/**
+ * Golpes of one Raid, most recent first. `created_at` only keeps seconds, so the end of the Study Session breaks ties.
+ * Callers append their own filter after `WHERE contribution.raid_id = ?`.
+ */
+const RAID_HITS_SQL = `
+  SELECT
+    contribution.user_id AS user_id,
+    u.display_name AS display_name,
+    contribution.xp_contributed AS xp,
+    session.duration_valid_seconds AS focus_seconds,
+    contribution.created_at AS created_at
+  FROM raid_contributions contribution
+  JOIN users u ON u.id = contribution.user_id
+  LEFT JOIN study_sessions session ON session.id = contribution.study_session_id
+  WHERE contribution.raid_id = ?`;
+
+const LATEST_RAID_HIT = 'ORDER BY contribution.created_at DESC, session.ended_at DESC, contribution.id DESC LIMIT 1';
 
 const RAID_ENDED_PROBLEM = 'https://wise.app/errors/raid-ended';
 
@@ -322,6 +363,7 @@ export class RaidsService {
       studyDays,
       streak: studyStreak(studyDays, week, now),
       me: await this.myStanding(raid.id, requesterId),
+      lastHit: await this.findHit(this.raids.manager, raid.id),
     };
   }
 
@@ -415,7 +457,7 @@ export class RaidsService {
     if ((inserted.raw as { affectedRows: number }).affectedRows === 0) {
       // Já contou antes: informa o XP gravado na primeira vez, sem somar nem publicar de novo.
       const existing = await manager.findOneByOrFail(RaidContribution, { studySessionId });
-      return { status: 'counted', xpContributed: existing.xpContributed, progress: null };
+      return { status: 'counted', xpContributed: existing.xpContributed, progress: null, hit: null };
     }
 
     // Atomic in the database. MySQL evaluates the assignments left to right, so the goal check runs before the increment.
@@ -427,6 +469,7 @@ export class RaidsService {
       [xpContributed, endedAt, xpContributed, raidId],
     );
     const updated = await manager.findOneOrFail(Raid, { where: { id: raidId } });
+    const hit = await this.findHit(manager, raidId, studySessionId);
     return {
       status: 'counted',
       xpContributed,
@@ -437,10 +480,21 @@ export class RaidsService {
         goalXp: updated.goalXp,
         goalReachedAt: updated.goalReachedAt,
       },
+      hit: hit && { raidId, guildId: updated.guildId, hit },
     };
   }
 
-  /** Depois do commit: todos os membros conectados veem o progresso (UC02 RE01). */
+  /**
+   * Depois do commit da Contribuição: o `raid:progress` e, logo depois, o `raid:hit`. Uma Contribuição que já tinha
+   * contado não publica nada.
+   */
+  publishContribution(outcome: RaidContributionOutcome): void {
+    if (outcome.status !== 'counted') return;
+    if (outcome.progress) this.publishProgress(outcome.progress);
+    if (outcome.hit) this.publishHit(outcome.hit);
+  }
+
+  /** Todos os membros conectados veem o progresso (UC02 RE01). */
   publishProgress(progress: RaidProgress): void {
     this.realtime.emitToGuild(progress.guildId, 'raid:progress', {
       raidId: progress.raidId,
@@ -448,6 +502,11 @@ export class RaidsService {
       goalXp: progress.goalXp,
       goalReachedAt: progress.goalReachedAt,
     });
+  }
+
+  /** A Guild vê quem causou o Golpe. */
+  publishHit({ raidId, guildId, hit }: RaidHitNotice): void {
+    this.realtime.emitToGuild(guildId, 'raid:hit', { raidId, ...hit });
   }
 
   /** Conclusão das Study Sessions legadas, sem estado canônico, que ainda não usam a transação da conclusão. */
@@ -466,7 +525,7 @@ export class RaidsService {
         endedAt: this.clock(),
       }),
     );
-    if (outcome.status === 'counted' && outcome.progress) this.publishProgress(outcome.progress);
+    this.publishContribution(outcome);
   }
 
   /**
@@ -698,6 +757,28 @@ export class RaidsService {
       this.positionOf(raidId, userId),
     ]);
     return { participating, contributionXp, position };
+  }
+
+  /** The most recent Golpe of the Raid or, with `studySessionId`, the Golpe of that Study Session. */
+  private async findHit(manager: EntityManager, raidId: string, studySessionId?: string): Promise<RaidHit | null> {
+    const [sql, params] = studySessionId === undefined
+      ? [`${RAID_HITS_SQL} ${LATEST_RAID_HIT}`, [raidId]]
+      : [`${RAID_HITS_SQL} AND contribution.study_session_id = ? ${LATEST_RAID_HIT}`, [raidId, studySessionId]];
+    const [row] = await manager.query<Array<{
+      user_id: string;
+      display_name: string;
+      xp: number | string;
+      focus_seconds: number | string | null;
+      created_at: Date;
+    }>>(sql, params);
+    if (!row) return null;
+    return {
+      userId: row.user_id,
+      displayName: row.display_name,
+      xp: Number(row.xp),
+      focusMinutes: row.focus_seconds === null ? null : Math.floor(Number(row.focus_seconds) / 60),
+      at: row.created_at,
+    };
   }
 
   private async positionOf(raidId: string, userId: string): Promise<number | null> {

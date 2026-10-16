@@ -42,6 +42,7 @@ const raid = (overrides: Partial<ActiveRaid> = {}): ActiveRaid => ({
   studyDays: [],
   streak: 0,
   me: { participating: true, contributionXp: 6_780, position: 4 },
+  lastHit: null,
   ...overrides,
 });
 function setViewport(width: number, height: number) {
@@ -85,6 +86,36 @@ describe('RaidBattleScreen on desktop', () => {
     expect(strikes.getByTestId('raid-strike-u-Astaroth').props.accessibilityLabel).toBe('1º: Astaroth, 24,2h de foco');
     expect(strikes.getByTestId('raid-strike-u-Guilherme').props.accessibilityLabel).toBe('4º: você, 11,3h de foco');
     expect(strikes.queryByTestId('raid-strike-u-Brisa')).toBeNull();
+  });
+
+  it('shows the most recent Golpe over the scene, with its damage, author and focus minutes', async () => {
+    mockedRaid.mockResolvedValue(raid({
+      lastHit: { userId: 'u-Eldoria', displayName: 'Eldoria', xp: 75, focusMinutes: 25, at: new Date().toISOString() },
+    }));
+    await renderRaid();
+
+    const hit = await screen.findByTestId('raid-last-hit');
+    expect(within(hit).getByText('−75')).toBeTruthy();
+    expect(within(hit).getByText('Eldoria · 25 min')).toBeTruthy();
+    expect(hit.props.accessibilityLabel).toBe('Último golpe: Eldoria causou 75 de dano em 25 min de foco');
+  });
+
+  it('leaves the minutes out of a Golpe whose Study Session is gone', async () => {
+    mockedRaid.mockResolvedValue(raid({
+      lastHit: { userId: 'u-Eldoria', displayName: 'Eldoria', xp: 75, focusMinutes: null, at: new Date().toISOString() },
+    }));
+    await renderRaid();
+
+    const hit = within(await screen.findByTestId('raid-last-hit'));
+    expect(hit.getByText('−75')).toBeTruthy();
+    expect(hit.getByText('Eldoria')).toBeTruthy();
+  });
+
+  it('shows no Golpe before the first Contribution', async () => {
+    await renderRaid();
+    await screen.findByTestId('raid-mission-name');
+
+    expect(screen.queryByTestId('raid-last-hit')).toBeNull();
   });
 
   it('keeps the scene out of the accessibility tree', async () => {
@@ -233,6 +264,16 @@ describe('RaidBattleScreen on a phone', () => {
     expect(strikes.queryByTestId('raid-strike-u-Ravenstone')).toBeNull();
     expect(screen.queryByTestId('raid-scene-tag-u-Astaroth', { includeHiddenElements: true })).toBeNull();
     expect(screen.getByTestId('raid-attack')).toBeTruthy();
+  });
+
+  it('leaves the Golpe out of the narrow scene, as in the Figma', async () => {
+    mockedRaid.mockResolvedValue(raid({
+      lastHit: { userId: 'u-Eldoria', displayName: 'Eldoria', xp: 75, focusMinutes: 25, at: new Date().toISOString() },
+    }));
+    await renderRaid();
+    await screen.findByTestId('raid-layout-mobile');
+
+    expect(screen.queryByTestId('raid-last-hit')).toBeNull();
   });
 });
 

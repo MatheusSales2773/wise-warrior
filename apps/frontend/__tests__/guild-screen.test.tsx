@@ -48,6 +48,7 @@ const raid = (overrides: Partial<ActiveRaid> = {}): ActiveRaid => ({
   studyDays: [],
   streak: 0,
   me: { participating: false, contributionXp: 0, position: null },
+  lastHit: null,
   ...overrides,
 });
 

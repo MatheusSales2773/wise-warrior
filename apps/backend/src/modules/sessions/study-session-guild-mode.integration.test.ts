@@ -56,6 +56,8 @@ describe('Study Session de modo Guilda against MySQL', () => {
   let app: INestApplication | undefined;
   let baseUrl: string;
   let realtime: { emitToGuild: jest.Mock; emitToUser: jest.Mock; syncGuildRoom: jest.Mock };
+  /** The events published to Guild rooms, in order. */
+  const guildEvents = () => realtime.emitToGuild.mock.calls.map(([, event]) => event as string);
   /** The completion clock; each test moves it to the end of the Study Session it completes. */
   let completionNow: Date;
   let guildId: string;
@@ -231,6 +233,9 @@ describe('Study Session de modo Guilda against MySQL', () => {
       expect(realtime.emitToGuild).toHaveBeenCalledWith(guildId, 'raid:progress', {
         raidId, progressXp: 150, goalXp: 100_000, goalReachedAt: null,
       });
+      expect(realtime.emitToGuild).toHaveBeenCalledWith(guildId, 'raid:hit', {
+        raidId, userId: bruno, displayName: 'User 1', xp: 150, focusMinutes: 15, at: expect.any(Date),
+      });
     });
 
     it('does not add twice when the completion is replayed', async () => {
@@ -241,7 +246,7 @@ describe('Study Session de modo Guilda against MySQL', () => {
 
       expect((await activeRaid()).progressXp).toBe(150);
       expect(await contributions()).toHaveLength(1);
-      expect(realtime.emitToGuild).toHaveBeenCalledTimes(1);
+      expect(guildEvents()).toEqual(['raid:progress', 'raid:hit']);
     });
 
     // Each case lets the work up to that point run, then throws, so the transaction must undo all of it.
@@ -295,7 +300,7 @@ describe('Study Session de modo Guilda against MySQL', () => {
       expect(await retried.json()).toMatchObject({ state: 'completed', xpAwarded: 150 });
       expect(await activeRaid(bruno)).toMatchObject({ progressXp: 150, me: { contributionXp: 150 } });
       expect(await contributions()).toHaveLength(1);
-      expect(realtime.emitToGuild).toHaveBeenCalledTimes(1);
+      expect(guildEvents()).toEqual(['raid:progress', 'raid:hit']);
     });
 
     it('counts one Contribution when the same Study Session is completed concurrently', async () => {
@@ -310,7 +315,7 @@ describe('Study Session de modo Guilda against MySQL', () => {
       expect([...statuses].sort()).toEqual([200, 409, 409]);
       expect((await activeRaid(bruno)).progressXp).toBe(150);
       expect(await contributions()).toHaveLength(1);
-      expect(realtime.emitToGuild).toHaveBeenCalledTimes(1);
+      expect(guildEvents()).toEqual(['raid:progress', 'raid:hit']);
     });
 
     it('counts one Contribution when the same Study Session reaches the Raid concurrently, by the unique index', async () => {
@@ -349,7 +354,7 @@ describe('Study Session de modo Guilda against MySQL', () => {
 
       expect((await dataSource!.getRepository(Raid).findOneByOrFail({ id: raidId })).progressXp).toBe(150);
       expect(await contributions()).toHaveLength(1);
-      expect(realtime.emitToGuild).toHaveBeenCalledTimes(1);
+      expect(guildEvents()).toEqual(['raid:progress', 'raid:hit']);
     });
 
     it('sums exactly when several members complete at the same time', async () => {
@@ -433,7 +438,7 @@ describe('Study Session de modo Guilda against MySQL', () => {
       const third = await joinAndStart(diego, 'goal-3');
       await completeAtDeadline(diego, third, 'goal-3-done');
       expect(await activeRaid()).toMatchObject({ progressXp: 450, goalReachedAt: reachedAt, status: 'active' });
-      expect(realtime.emitToGuild).toHaveBeenLastCalledWith(guildId, 'raid:progress', {
+      expect(realtime.emitToGuild).toHaveBeenCalledWith(guildId, 'raid:progress', {
         raidId, progressXp: 450, goalXp: 200, goalReachedAt: new Date(reachedAt),
       });
     });
@@ -509,7 +514,7 @@ describe('Study Session de modo Guilda against MySQL', () => {
         raidId, userId: bruno, studySessionId: session.id, xpContributed: 999, endedAt: completionNow,
       }));
 
-      expect(outcome).toEqual({ status: 'counted', xpContributed: 150, progress: null });
+      expect(outcome).toEqual({ status: 'counted', xpContributed: 150, progress: null, hit: null });
       expect((await activeRaid()).progressXp).toBe(150);
       expect(await contributions()).toHaveLength(1);
       expect(realtime.emitToGuild).not.toHaveBeenCalled();

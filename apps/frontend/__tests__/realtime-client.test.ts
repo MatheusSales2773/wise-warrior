@@ -59,6 +59,7 @@ const raid = (overrides: Partial<ActiveRaid> = {}): ActiveRaid => ({
   endsAt: '2026-10-12T02:59:59.000Z',
   status: 'active',
   me: { participating: true, contributionXp: 100, position: 1 },
+  lastHit: null,
   ...overrides,
 });
 
@@ -108,6 +109,22 @@ describe('realtime client', () => {
     socket.emit('raid:progress', { raidId: 'raid-1', progressXp: 1000, goalXp: 1000, goalReachedAt: '2026-10-08T12:00:00.000Z' });
 
     expect(queryClient.getQueryData<ActiveRaid>(guildKeys.raid('guild-1'))?.goalReachedAt).toBe('2026-10-08T12:00:00.000Z');
+  });
+
+  it('shows the Golpe on raid:hit and refreshes that Raid and its Ranking interno', () => {
+    const { socket, queryClient } = setup();
+    queryClient.setQueryData(guildKeys.raid('guild-1'), raid());
+    queryClient.setQueryData(guildKeys.raidRanking('guild-1', 'raid-1'), { pages: [], pageParams: [] });
+    queryClient.setQueryData(guildKeys.raid('guild-2'), raid({ id: 'raid-other' }));
+    const hit = { userId: 'user-2', displayName: 'Eldoria', xp: 75, focusMinutes: 25, at: '2026-10-08T12:00:00.000Z' };
+
+    socket.emit('raid:hit', { raidId: 'raid-1', ...hit });
+
+    expect(queryClient.getQueryData<ActiveRaid>(guildKeys.raid('guild-1'))?.lastHit).toEqual(hit);
+    expect(queryClient.getQueryState(guildKeys.raid('guild-1'))?.isInvalidated).toBe(true);
+    expect(queryClient.getQueryState(guildKeys.raidRanking('guild-1', 'raid-1'))?.isInvalidated).toBe(true);
+    expect(queryClient.getQueryData<ActiveRaid>(guildKeys.raid('guild-2'))?.lastHit).toBeNull();
+    expect(queryClient.getQueryState(guildKeys.raid('guild-2'))?.isInvalidated).toBe(false);
   });
 
   it('refreshes the token and reconnects once when the server rejects the handshake, without duplicating listeners', async () => {
@@ -190,6 +207,7 @@ describe('realtime client', () => {
 
     expect(socket.disconnectCalls).toBe(1);
     expect(socket.count('raid:progress')).toBe(0);
+    expect(socket.count('raid:hit')).toBe(0);
     expect(socket.connectCalls).toBe(1);
   });
 });

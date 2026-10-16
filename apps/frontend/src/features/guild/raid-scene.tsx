@@ -10,6 +10,7 @@ import {
   RAID_PARTY_SPACING,
   RAID_SCENE_BOSS_POSITION,
   RAID_SCENE_HEIGHT,
+  RAID_SCENE_HIT_ANCHOR,
   RAID_SCENE_WIDTH,
   RAID_SHADOW,
   raidWeapons,
@@ -61,12 +62,14 @@ function PartyTag({ index, member, scale }: { index: number; member: PartyMember
 }
 
 const TAG_SLOT_WIDTH = 140;
+const HIT_SLOT_WIDTH = 220;
 
 /**
  * A cena da batalha em pixel art. Decorativa para leitores de tela: o progresso e os membros aparecem como texto
- * fora dela. `overlay` recebe os painéis que ficam por cima (tempo, vida do chefe).
+ * fora dela. `overlay` recebe os painéis que ficam por cima (tempo, vida do chefe); `hit`, o Golpe mais recente, que fica
+ * diante do chefe e acompanha a escala e o corte da cena, fora da parte escondida dos leitores de tela.
  */
-export function RaidScene({ art = defaultRaidSceneArt, overlay, party, scale, showTags, viewportWidth }: {
+export function RaidScene({ art = defaultRaidSceneArt, hit, overlay, party, scale, showTags, viewportWidth }: {
   /** The Missão's illustration; the default scene when omitted. */
   art?: RaidSceneArt;
   party: readonly PartyMember[];
@@ -75,12 +78,14 @@ export function RaidScene({ art = defaultRaidSceneArt, overlay, party, scale, sh
   /** Largura visível; a cena fica centralizada e cortada nas bordas quando é mais larga. */
   viewportWidth: number;
   overlay?: ReactNode;
+  hit?: ReactNode;
 }) {
   const width = RAID_SCENE_WIDTH * scale;
   const height = RAID_SCENE_HEIGHT * scale;
   const visibleWidth = Math.min(viewportWidth, width);
+  const canvasLeft = (visibleWidth - width) / 2;
   return <View style={[styles.frame, { width: visibleWidth, height }]} testID="raid-scene">
-    <View accessibilityElementsHidden aria-hidden importantForAccessibility="no-hide-descendants" style={[styles.canvas, { width, height, left: (visibleWidth - width) / 2 }]}>
+    <View accessibilityElementsHidden aria-hidden importantForAccessibility="no-hide-descendants" style={[styles.canvas, { width, height, left: canvasLeft }]}>
       <PixelSprite scale={scale} sprite={art.background} style={styles.layerOrigin} testID="raid-scene-background" />
       {party.map((member, index) => <PartyHeroFigure index={index} key={member.userId} member={member} scale={scale} />)}
       <PixelSprite scale={scale} sprite={art.boss} style={[styles.layer, { left: RAID_SCENE_BOSS_POSITION.x * scale, top: RAID_SCENE_BOSS_POSITION.y * scale }]} testID="raid-scene-boss" />
@@ -88,6 +93,10 @@ export function RaidScene({ art = defaultRaidSceneArt, overlay, party, scale, sh
     </View>
     {/* Drawn over the pixels so the border does not crop the scene. */}
     <View pointerEvents="none" style={[StyleSheet.absoluteFill, styles.frameBorder]} />
+    {hit ? <View
+      pointerEvents="none"
+      style={[styles.hitSlot, { left: canvasLeft + RAID_SCENE_HIT_ANCHOR.x * scale - HIT_SLOT_WIDTH / 2, top: RAID_SCENE_HIT_ANCHOR.y * scale }]}
+    >{hit}</View> : null}
     {overlay}
   </View>;
 }
@@ -98,6 +107,7 @@ const styles = StyleSheet.create({
   canvas: { position: 'absolute', top: 0 },
   layer: { position: 'absolute' },
   layerOrigin: { position: 'absolute', left: 0, top: 0 },
+  hitSlot: { position: 'absolute', width: HIT_SLOT_WIDTH, alignItems: 'center' },
   tagSlot: { position: 'absolute', width: TAG_SLOT_WIDTH, alignItems: 'center' },
   tag: {
     flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 8, paddingVertical: 3, maxWidth: TAG_SLOT_WIDTH,

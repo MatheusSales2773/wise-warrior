@@ -1,7 +1,7 @@
 import { DEFAULT_HERO_ID, cosmeticSprite } from '@/features/character/catalog';
 import type { ItemSpriteName, PixelSpriteData } from '@/features/character/sprites';
 import { heroSprites } from '@/features/character/sprites';
-import type { ActiveRaid, RaidRankingEntry } from './api';
+import type { ActiveRaid, RaidHit, RaidRankingEntry } from './api';
 import { raidProgressPercent } from './messages';
 import { raidWeapons, sentinelaSprite } from './raid-scene-sprites';
 
@@ -23,6 +23,22 @@ export function formatFocusHours(xp: number, { precise = false }: { precise?: bo
   const hours = Math.max(0, xp) / XP_PER_FOCUS_HOUR;
   if (!precise && hours >= 10) return `${WHOLE.format(Math.floor(hours))}h`;
   return `${ONE_DECIMAL.format(Math.floor(hours * 10) / 10)}h`;
+}
+
+/**
+ * Golpe sobre a cena: o dano ("−75") e, abaixo, "Eldoria · 25 min". O dano fica em XP e a duração substitui os
+ * "ciclos" do Figma, porque cada Golpe é um Ciclo. Sem a Study Session, a segunda linha traz só o autor.
+ */
+export function formatRaidHit({ displayName, xp, focusMinutes }: Pick<RaidHit, 'displayName' | 'xp' | 'focusMinutes'>): { damage: string; detail: string; label: string } {
+  const damage = `−${WHOLE.format(xp)}`;
+  if (focusMinutes === null) {
+    return { damage, detail: displayName, label: `Último golpe: ${displayName} causou ${WHOLE.format(xp)} de dano` };
+  }
+  return {
+    damage,
+    detail: `${displayName} · ${focusMinutes} min`,
+    label: `Último golpe: ${displayName} causou ${WHOLE.format(xp)} de dano em ${focusMinutes} min de foco`,
+  };
 }
 
 /** Vida que resta ao chefe: o que falta para a meta. Zero depois da Meta batida. */

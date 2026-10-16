@@ -1,7 +1,7 @@
 import type { QueryClient } from '@tanstack/react-query';
 import { io } from 'socket.io-client';
 import type { AuthenticationRecoveryResult } from '@/core/api/api-client';
-import type { ActiveRaid } from '@/features/guild/api';
+import type { ActiveRaid, RaidHit } from '@/features/guild/api';
 import { dashboardKeys } from '@/features/dashboard/queries';
 import { guildKeys } from '@/features/guild/queries';
 import type { CoinOrigin } from '@/features/market/api';
@@ -10,6 +10,9 @@ import { profileKeys } from '@/features/profile/queries';
 
 /** Payload of the `raid:progress` event (docs/api/asyncapi.yaml). */
 export type RaidProgressEvent = Pick<ActiveRaid, 'progressXp' | 'goalXp' | 'goalReachedAt'> & { raidId: string };
+
+/** Payload of the `raid:hit` event (docs/api/asyncapi.yaml). */
+export type RaidHitEvent = RaidHit & { raidId: string };
 
 /** Payload of the `notification:raidComplete` event (docs/api/asyncapi.yaml). */
 export type RaidCompleteEvent = {
@@ -136,6 +139,24 @@ export function applyRaidProgress(queryClient: QueryClient, event: RaidProgressE
 }
 
 /**
+ * A Golpe shows over the scene at once, then the Raid (boss life) and its Ranking interno refetch. Only the Raid the
+ * event names is touched.
+ */
+export function applyRaidHit(queryClient: QueryClient, { raidId, ...hit }: RaidHitEvent): void {
+  for (const query of queryClient.getQueryCache().findAll({ queryKey: guildKeys.all })) {
+    if (!isActiveRaidKey(query.queryKey)) continue;
+    const raid = queryClient.getQueryData<ActiveRaid>(query.queryKey);
+    if (raid?.id !== raidId) continue;
+    queryClient.setQueryData<ActiveRaid>(query.queryKey, { ...raid, lastHit: hit });
+    // Prefix match: the active Raid and the ranking nested under its key.
+    void queryClient.invalidateQueries({
+      queryKey: query.queryKey,
+      predicate: ({ queryKey }) => queryKey.length === 3 || (queryKey[3] === 'ranking' && queryKey[4] === raidId),
+    });
+  }
+}
+
+/**
  * A closed Raid changes the Guild screen (result, Nível, next week's Raid) and, with a Recompensa, the cosmetics
  * catalog. The `['guild', 'raid']` prefix covers the active Raid, its ranking and the past Raids.
  */
@@ -181,6 +202,7 @@ export function createRealtimeClient({
   });
 
   const onRaidProgress = (event: RaidProgressEvent) => applyRaidProgress(queryClient, event);
+  const onRaidHit = (event: RaidHitEvent) => applyRaidHit(queryClient, event);
   const onRaidComplete = () => applyRaidComplete(queryClient);
   const onXpUpdated = () => applyXpUpdated(queryClient);
   const onLevelUp = () => applyLevelUp(queryClient);
@@ -211,6 +233,7 @@ export function createRealtimeClient({
   };
 
   socket.on('raid:progress', onRaidProgress);
+  socket.on('raid:hit', onRaidHit);
   socket.on('notification:raidComplete', onRaidComplete);
   socket.on('progress:xpUpdated', onXpUpdated);
   socket.on('notification:levelup', onLevelUp);
@@ -255,6 +278,7 @@ export function createRealtimeClient({
       disposed = true;
       failPending();
       socket.off('raid:progress', onRaidProgress);
+      socket.off('raid:hit', onRaidHit);
       socket.off('notification:raidComplete', onRaidComplete);
       socket.off('progress:xpUpdated', onXpUpdated);
       socket.off('notification:levelup', onLevelUp);
