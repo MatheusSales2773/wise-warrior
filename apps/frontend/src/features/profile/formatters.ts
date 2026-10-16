@@ -11,26 +11,32 @@ export function describeDevice(device: Pick<DeviceSession, 'deviceLabel' | 'user
   return 'Dispositivo desconhecido';
 }
 
-export function describeUnlockCondition(condition: UnlockCondition): string {
+export function describeUnlockCondition(item: Pick<CatalogCosmeticItem, 'unlockCondition' | 'forSale'>): string {
+  const condition: UnlockCondition = item.unlockCondition;
   if (condition.type === 'level') return `Alcance o nível ${condition.level}`;
+  if (condition.type === 'purchase') return item.forSale ? 'À venda na Loja' : 'Fora de venda';
   return condition.slug === '*' ? 'Conclua uma Raid com sua Guilda' : `Conclua a Raid ${condition.slug}`;
 }
 
-export type CosmeticItemState = 'equipped' | 'unlocked' | 'lockedByLevel' | 'lockedByRaid';
+export type CosmeticItemState = 'equipped' | 'unlocked' | 'lockedByLevel' | 'lockedByPurchase' | 'lockedByRaid' | 'offSale';
 
 export function cosmeticItemState(item: CatalogCosmeticItem): CosmeticItemState {
   if (item.equipped) return 'equipped';
   if (item.unlocked) return 'unlocked';
-  return item.unlockCondition.type === 'level' ? 'lockedByLevel' : 'lockedByRaid';
+  switch (item.unlockCondition.type) {
+    case 'level': return 'lockedByLevel';
+    case 'purchase': return item.forSale ? 'lockedByPurchase' : 'offSale';
+    case 'raid': return 'lockedByRaid';
+  }
 }
 
-const STATE_ORDER: Record<CosmeticItemState, number> = { equipped: 0, unlocked: 1, lockedByLevel: 2, lockedByRaid: 3 };
+const STATE_ORDER: Record<CosmeticItemState, number> = { equipped: 0, unlocked: 1, lockedByLevel: 2, lockedByPurchase: 3, lockedByRaid: 4, offSale: 5 };
 
 function conditionLevel(item: CatalogCosmeticItem): number {
   return item.unlockCondition.type === 'level' ? item.unlockCondition.level : 0;
 }
 
-/** Ordem dentro de uma categoria: equipado, desbloqueados, bloqueados pelo nível da condição e, por último, os de Raid. */
+/** Ordem dentro de uma categoria: equipado, desbloqueados, bloqueados pelo nível da condição, à venda, Raids e, por último, Fora de venda. */
 export function orderCategoryItems(items: CatalogCosmeticItem[]): CatalogCosmeticItem[] {
   return [...items].sort((a, b) =>
     STATE_ORDER[cosmeticItemState(a)] - STATE_ORDER[cosmeticItemState(b)]
@@ -40,10 +46,21 @@ export function orderCategoryItems(items: CatalogCosmeticItem[]): CatalogCosmeti
 /** Meta de uma categoria sem item desbloqueado (UC04 A01): quanto falta para o próximo item por nível. */
 export function describeNextUnlock(items: CatalogCosmeticItem[], level: number): string {
   const next = orderCategoryItems(items).find((item) => cosmeticItemState(item) === 'lockedByLevel');
-  if (!next) return 'Os itens desta categoria são conquistados em Raids com sua Guilda.';
+  if (!next) return describeRemainingSources(items);
   const missing = conditionLevel(next) - level;
   if (missing <= 0) return `${next.name} já está liberado para o seu nível.`;
   return missing === 1
     ? `Falta 1 nível para desbloquear ${next.name}.`
     : `Faltam ${missing} níveis para desbloquear ${next.name}.`;
+}
+
+/** Sem item por nível à frente, diz de onde vêm os que restam: Raids, Loja ou nenhum lugar (Fora de venda). */
+function describeRemainingSources(items: CatalogCosmeticItem[]): string {
+  const states = new Set(items.map(cosmeticItemState));
+  const raids = states.has('lockedByRaid');
+  const shop = states.has('lockedByPurchase');
+  if (raids && shop) return 'Os itens desta categoria são conquistados em Raids com sua Guilda ou comprados na Loja.';
+  if (raids) return 'Os itens desta categoria são conquistados em Raids com sua Guilda.';
+  if (shop) return 'Os itens desta categoria são comprados na Loja.';
+  return 'Os itens desta categoria estão fora de venda.';
 }

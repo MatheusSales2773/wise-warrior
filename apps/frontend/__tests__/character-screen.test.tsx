@@ -45,6 +45,7 @@ function cosmetic(
     requiresPremium: state.requiresPremium ?? false,
     unlocked: state.unlocked ?? state.equipped ?? false,
     equipped: state.equipped ?? false,
+    forSale: false,
   };
 }
 

@@ -129,6 +129,7 @@ export type CosmeticOption = {
 function ownedCaption(item: CatalogCosmeticItem): string {
   const { unlockCondition } = item;
   if (unlockCondition.type === 'raid') return 'Conquistado em Raid';
+  if (unlockCondition.type === 'purchase') return 'Comprado na Loja';
   if (unlockCondition.level <= 1) return `${equipmentCategoryById[item.category].label} inicial`;
   return `Liberado no nível ${unlockCondition.level}`;
 }
@@ -143,7 +144,7 @@ export function optionsFor(catalog: readonly CatalogCosmeticItem[], category: Eq
   return orderCategoryItems(catalog.filter((item) => item.category === category))
     .map((item): CosmeticOption => {
       if (premiumBlocked(item) && !item.equipped) return { item, sprite: cosmeticSprite(item), availability: { kind: 'premium' }, caption: 'Plano premium' };
-      if (!item.unlocked) return { item, sprite: cosmeticSprite(item), availability: { kind: 'locked' }, caption: describeUnlockCondition(item.unlockCondition) };
+      if (!item.unlocked) return { item, sprite: cosmeticSprite(item), availability: { kind: 'locked' }, caption: describeUnlockCondition(item) };
       return { item, sprite: cosmeticSprite(item), availability: { kind: 'owned' }, caption: ownedCaption(item) };
     })
     .sort((left, right) => rank(left) - rank(right));
