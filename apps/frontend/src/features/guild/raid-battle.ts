@@ -1,7 +1,7 @@
 import { DEFAULT_HERO_ID } from '@/features/character/catalog';
 import type { PixelSpriteData } from '@/features/character/sprites';
 import { heroSprites } from '@/features/character/sprites';
-import type { RaidRankingEntry } from './api';
+import type { ActiveRaid, RaidRankingEntry } from './api';
 import { raidProgressPercent } from './messages';
 import { RAID_PARTY_SIZE, raidWeapons, sentinelaSprite } from './raid-scene-sprites';
 
@@ -115,30 +115,30 @@ export function weeklyStrikes(entries: readonly RaidRankingEntry[], limit: numbe
   return rows.map((entry) => ({ entry, fraction: best > 0 ? entry.contributionXp / best : 0 }));
 }
 
-const HOUR_MS = 60 * 60 * 1000;
 const WEEKDAY_INITIALS = ['S', 'T', 'Q', 'Q', 'S', 'S', 'D'] as const;
-const DAY_MS = 24 * HOUR_MS;
-const saoPauloDay = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo', year: 'numeric', month: '2-digit', day: '2-digit' });
 
-/** The São Paulo calendar day (`YYYY-MM-DD`) of an instant, the same day the backend counts as Dia de estudo. */
-export function saoPauloDayKey(instant: Date | number): string {
-  return saoPauloDay.format(instant);
-}
+export type WeekDay = { key: string; initial: (typeof WEEKDAY_INITIALS)[number]; name: string; state: 'studied' | 'missed' | 'today' | 'upcoming' };
 
-export type WeekDay = { key: string; initial: (typeof WEEKDAY_INITIALS)[number]; state: 'studied' | 'missed' | 'today' | 'upcoming' };
+const WEEKDAY_NAMES = ['segunda', 'terça', 'quarta', 'quinta', 'sexta', 'sábado', 'domingo'] as const;
 
-/** The seven days of the Raid week, Monday first; `today` is a day without study yet, past days without study are `missed`. */
-export function raidWeekGrid(weekStartsAt: string, studyDays: readonly string[], now: number): WeekDay[] {
-  const mondayKey = saoPauloDayKey(new Date(weekStartsAt));
-  const today = saoPauloDayKey(now);
+/**
+ * The seven days of the Raid week, Monday first. The backend owns the calendar (`weekDays`, `today`, `studyDays`,
+ * all São Paulo days), so this only compares the `YYYY-MM-DD` keys: `today` without study is `today`, earlier days
+ * without study are `missed`.
+ */
+export function raidWeekGrid({ weekDays, studyDays, today }: Pick<ActiveRaid, 'weekDays' | 'studyDays' | 'today'>): WeekDay[] {
   const studied = new Set(studyDays);
-  return WEEKDAY_INITIALS.map((initial, index) => {
-    const key = new Date(Date.parse(`${mondayKey}T00:00:00Z`) + index * DAY_MS).toISOString().slice(0, 10);
-    const state = studied.has(key) ? 'studied' : key === today ? 'today' : key < today ? 'missed' : 'upcoming';
-    return { key, initial, state };
-  });
+  return weekDays.map((key, index) => ({
+    key,
+    initial: WEEKDAY_INITIALS[index] ?? 'S',
+    name: WEEKDAY_NAMES[index] ?? '',
+    state: studied.has(key) ? 'studied' : key === today ? 'today' : key < today ? 'missed' : 'upcoming',
+  }));
 }
 
-export function formatStreak(streak: number): string {
-  return streak === 0 ? 'Sequência da guilda: nenhum dia ainda' : `Sequência da guilda: ${streak} ${streak === 1 ? 'dia' : 'dias'} sem falhar`;
+/** "4 dias sem falhar"; `compact` drops the "da guilda" label for the phone strip. */
+export function formatStreak(streak: number, { compact = false }: { compact?: boolean } = {}): string {
+  const label = compact ? 'Guilda' : 'Sequência da guilda';
+  if (streak === 0) return `${label}: nenhum dia ainda`;
+  return `${label}: ${streak} ${streak === 1 ? 'dia' : 'dias'} sem falhar`;
 }

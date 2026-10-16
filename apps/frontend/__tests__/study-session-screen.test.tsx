@@ -405,6 +405,8 @@ describe('Sessão de guilda on the Forja', () => {
     goalXp: 1000,
     progressXp: 0,
     goalReachedAt: null,
+    weekDays: ['2026-10-05', '2026-10-06', '2026-10-07', '2026-10-08', '2026-10-09', '2026-10-10', '2026-10-11'],
+    today: '2026-10-07',
     studyDays: [],
     streak: 0,
     startsAt: new Date(Date.now() - 86_400_000).toISOString(),

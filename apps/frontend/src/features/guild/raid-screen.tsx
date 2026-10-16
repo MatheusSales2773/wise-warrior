@@ -11,7 +11,7 @@ import { useFocusRing } from '@/features/character/character-parts';
 import type { ActiveRaid, MyGuild, RaidRankingEntry } from './api';
 import { RAID_GOAL_REACHED, formatPosition } from './messages';
 import { activeRaidQueryOptions, myGuildQueryOptions, raidRankingQueryOptions } from './queries';
-import { assignHeroes, bossLifePercent, formatBattleTimeLeft, formatFocusHours, formatStreak, partyHeroSprites, raidParty, raidWeekGrid, weeklyStrikes, type PartyHero, type Strike } from './raid-battle';
+import { assignHeroes, bossLifePercent, formatBattleTimeLeft, formatFocusHours, formatStreak, partyHeroSprites, raidParty, raidWeekGrid, weeklyStrikes, type PartyHero, type Strike, type WeekDay } from './raid-battle';
 import { RaidScene, raidSceneScale } from './raid-scene';
 
 /* Tela da Raid, Figma "06b · Guilda — Raid · O Devorador de Horas" (desktop e mobile). */
@@ -149,26 +149,39 @@ function StrikesCard({ compact, entries, failed, heroes, loading }: { compact: b
   </Card>;
 }
 
-const FURIA_COPY = 'Cada dia em que a guilda não estuda, o dragão recupera vida. Mantenha a chama acesa.';
-const DAY_STATE_LABEL = { studied: 'com estudo', missed: 'sem estudo', today: 'hoje, ainda sem estudo', upcoming: 'ainda não chegou' } as const;
-const WEEKDAY_NAMES = ['segunda', 'terça', 'quarta', 'quinta', 'sexta', 'sábado', 'domingo'] as const;
+const FURIA_COPY = 'Cada dia em que a guilda não estuda, o dragão recupera 5% de vida. Mantenham a chama acesa.';
+
+type DayLook = {
+  label: string;
+  glyph: string;
+  cell?: 'weekDayStudied' | 'weekDayToday';
+  initial?: 'weekDayInitialToday';
+  glyphStyle?: 'weekDayMarkStudied' | 'weekDayMarkToday';
+};
+
+/** One entry per day state: spoken label, glyph and the style keys that draw it (Figma 06b, card "Fúria do dragão"). */
+const DAY_LOOKS: Record<WeekDay['state'], DayLook> = {
+  studied: { label: 'com estudo', glyph: '✓', cell: 'weekDayStudied', glyphStyle: 'weekDayMarkStudied' },
+  today: { label: 'hoje, ainda sem estudo', glyph: '•', cell: 'weekDayToday', initial: 'weekDayInitialToday', glyphStyle: 'weekDayMarkToday' },
+  missed: { label: 'sem estudo', glyph: '·' },
+  upcoming: { label: 'ainda não chegou', glyph: '·' },
+};
 
 function WeekGrid({ raid }: { raid: ActiveRaid }) {
-  const now = useNow(60_000);
-  const days = raidWeekGrid(raid.startsAt, raid.studyDays, now);
   return <View style={styles.weekGrid} testID="raid-week-grid">
-    {days.map((day, index) => <View
-      accessible
-      accessibilityLabel={`${WEEKDAY_NAMES[index]}: ${DAY_STATE_LABEL[day.state]}`}
-      key={day.key}
-      style={[styles.weekDay, day.state === 'studied' && styles.weekDayStudied, day.state === 'today' && styles.weekDayToday]}
-      testID={`raid-week-day-${day.state}`}
-    >
-      <Text style={[styles.weekDayInitial, day.state === 'studied' && styles.weekDayMarkStudied]}>{day.initial}</Text>
-      <Text aria-hidden accessibilityElementsHidden importantForAccessibility="no" style={[styles.weekDayMark, day.state === 'studied' && styles.weekDayMarkStudied]}>
-        {day.state === 'studied' ? '✓' : day.state === 'today' ? '•' : '·'}
-      </Text>
-    </View>)}
+    {raidWeekGrid(raid).map((day) => {
+      const look = DAY_LOOKS[day.state];
+      return <View
+        accessible
+        accessibilityLabel={`${day.name}: ${look.label}`}
+        key={day.key}
+        style={[styles.weekDay, look.cell && styles[look.cell]]}
+        testID={`raid-week-day-${day.state}`}
+      >
+        <Text style={[styles.weekDayInitial, look.initial && styles[look.initial]]}>{day.initial}</Text>
+        <Text aria-hidden accessibilityElementsHidden importantForAccessibility="no" style={[styles.weekDayMark, look.glyphStyle && styles[look.glyphStyle]]}>{look.glyph}</Text>
+      </View>;
+    })}
   </View>;
 }
 
@@ -185,8 +198,8 @@ function FuriaStrip({ raid }: { raid: ActiveRaid }) {
   return <View accessibilityLabel="Fúria do dragão" role="region" style={styles.furiaStrip} testID="raid-furia">
     <WiseIcon color="feedbackDanger" name="flame" size="xsmall" />
     <View style={styles.furiaStripCopy}>
-      <Text style={styles.furiaStripText}>Dias sem estudo devolvem vida ao dragão.</Text>
-      <Text style={styles.furiaStripText} testID="raid-streak">{formatStreak(raid.streak).replace('Sequência da guilda: ', 'Guilda: ')}</Text>
+      <Text style={styles.furiaStripText}>Dias sem estudo devolvem 5% de vida ao dragão.</Text>
+      <Text style={styles.furiaStripText} testID="raid-streak">{formatStreak(raid.streak, { compact: true })}</Text>
     </View>
   </View>;
 }
@@ -398,13 +411,15 @@ const styles = StyleSheet.create({
   cardAside: { fontFamily: mono, fontSize: 10, lineHeight: 13, letterSpacing: 1, color: theme.color.textTertiary },
   cardNote: { fontFamily: 'Inter-Regular', fontSize: 13, lineHeight: 18, color: theme.color.textSecondary },
 
-  weekGrid: { flexDirection: 'row', gap: 6 },
-  weekDay: { flex: 1, alignItems: 'center', gap: 4, paddingVertical: 8, borderRadius: theme.radius.detail, borderWidth: theme.border.standard, borderColor: theme.color.borderGhost, backgroundColor: theme.color.surfaceInset },
-  weekDayStudied: { borderColor: theme.color.feedbackSuccess },
-  weekDayToday: { borderColor: theme.color.accentHighlight },
+  weekGrid: { flexDirection: 'row', gap: 8 },
+  weekDay: { flex: 1, alignItems: 'center', gap: 8, paddingVertical: 10, borderRadius: theme.radius.detail, borderWidth: theme.border.standard, borderColor: 'transparent', backgroundColor: theme.color.backgroundCanvas },
+  weekDayStudied: { borderColor: theme.color.feedbackSuccess, backgroundColor: theme.color.surfaceInset },
+  weekDayToday: { borderColor: theme.color.accentMuted },
   weekDayInitial: { fontFamily: mono, fontSize: 10, lineHeight: 13, color: theme.color.textTertiary },
+  weekDayInitialToday: { color: theme.color.accentHighlight },
   weekDayMark: { fontFamily: mono, fontSize: 12, lineHeight: 16, color: theme.color.textTertiary },
   weekDayMarkStudied: { color: theme.color.feedbackSuccess },
+  weekDayMarkToday: { color: theme.color.accentHighlight },
   streak: { fontFamily: mono, fontSize: 10, lineHeight: 13, color: theme.color.feedbackSuccess },
   furiaStrip: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 14, paddingVertical: 12, borderRadius: theme.radius.card, borderWidth: theme.border.standard, borderColor: theme.color.borderSubtle, backgroundColor: theme.color.surfaceCard },
   furiaStripCopy: { flex: 1 },

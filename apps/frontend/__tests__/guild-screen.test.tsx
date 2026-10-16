@@ -41,6 +41,8 @@ const raid = (overrides: Partial<ActiveRaid> = {}): ActiveRaid => ({
   endsAt: new Date(Date.now() + 2 * DAY + 3.5 * 60 * 60 * 1000).toISOString(),
   status: 'active',
   goalReachedAt: null,
+  weekDays: ['2026-10-05', '2026-10-06', '2026-10-07', '2026-10-08', '2026-10-09', '2026-10-10', '2026-10-11'],
+  today: '2026-10-07',
   studyDays: [],
   streak: 0,
   me: { participating: false, contributionXp: 0, position: null },

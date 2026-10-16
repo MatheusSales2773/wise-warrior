@@ -68,7 +68,7 @@ const dayFormat = new Intl.DateTimeFormat('en-CA', {
 });
 
 /** The São Paulo calendar day (`YYYY-MM-DD`) of an instant. */
-function zonedDayKey(instant: Date): string {
+export function zonedDayKey(instant: Date): string {
   return dayFormat.format(instant);
 }
 
@@ -96,4 +96,10 @@ export function studyStreak(studyDays: string[], week: RaidWeek, now: Date): num
     day = shiftDayKey(day, -1);
   }
   return streak;
+}
+
+/** The seven São Paulo days of the Raid week, Monday first, as `YYYY-MM-DD`. */
+export function raidWeekDayKeys(week: RaidWeek): string[] {
+  const monday = zonedDayKey(week.startsAt);
+  return Array.from({ length: 7 }, (_, index) => shiftDayKey(monday, index));
 }

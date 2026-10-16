@@ -30,6 +30,8 @@ const raid = (overrides: Partial<ActiveRaid> = {}): ActiveRaid => ({
   endsAt: new Date(Date.now() + (3 * 24 + 14) * HOUR + 5 * 60_000).toISOString(),
   status: 'active',
   goalReachedAt: null,
+  weekDays: ['2026-10-05', '2026-10-06', '2026-10-07', '2026-10-08', '2026-10-09', '2026-10-10', '2026-10-11'],
+  today: '2026-10-07',
   studyDays: [],
   streak: 0,
   me: { participating: true, contributionXp: 6_780, position: 4 },
@@ -132,13 +134,8 @@ describe('RaidBattleScreen on desktop', () => {
 });
 
 describe('Fúria card and Sequência', () => {
+  // Wednesday 2026-10-07 by the server clock
   const week = { startsAt: '2026-10-05T03:00:00.000Z', endsAt: '2026-10-12T02:59:59.000Z' };
-
-  beforeEach(() => {
-    // Wednesday 2026-10-07 12:00 in São Paulo
-    jest.spyOn(Date, 'now').mockReturnValue(Date.parse('2026-10-07T15:00:00Z'));
-  });
-  afterEach(() => { jest.restoreAllMocks(); });
 
   it('marks the studied days of the week and states the Sequência on desktop', async () => {
     mockedRaid.mockResolvedValue(raid({ ...week, studyDays: ['2026-10-05', '2026-10-06'], streak: 2 }));
@@ -168,6 +165,15 @@ describe('Fúria card and Sequência', () => {
     await renderRaid();
 
     expect((await screen.findByTestId('raid-streak')).props.children).toBe('Sequência da guilda: nenhum dia ainda');
+  });
+
+  it('follows the server day across the São Paulo midnight, not the device clock', async () => {
+    mockedRaid.mockResolvedValue(raid({ ...week, today: '2026-10-08', studyDays: ['2026-10-06'], streak: 0 }));
+    await renderRaid();
+
+    expect(await screen.findByLabelText('quarta: sem estudo')).toBeTruthy();
+    expect(screen.getByLabelText('quinta: hoje, ainda sem estudo')).toBeTruthy();
+    expect(screen.getByLabelText('sexta: ainda não chegou')).toBeTruthy();
   });
 
   it('shows the Fúria strip with the Sequência on a phone', async () => {

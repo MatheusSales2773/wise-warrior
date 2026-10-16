@@ -1,4 +1,4 @@
-import { missionIndexForWeek, proportionalGoalXp, raidWeekAt, studyDaysOf, studyStreak } from './raid-week';
+import { missionIndexForWeek, proportionalGoalXp, raidWeekAt, raidWeekDayKeys, studyDaysOf, studyStreak } from './raid-week';
 
 describe('raidWeekAt', () => {
   it('runs from Monday 00:00 to Sunday 23:59:59 in America/Sao_Paulo, stored in UTC', () => {
@@ -100,5 +100,13 @@ describe('studyStreak', () => {
     // 2026-10-07T02:00Z is Tuesday 23:00 in São Paulo: today is still the 6th
     const now = new Date('2026-10-07T02:00:00Z');
     expect(studyStreak(['2026-10-05', '2026-10-06'], raidWeekAt(now), now)).toBe(2);
+  });
+});
+
+describe('raidWeekDayKeys', () => {
+  it('lists Monday to Sunday in São Paulo days', () => {
+    expect(raidWeekDayKeys(raidWeekAt(new Date('2026-10-07T15:00:00Z')))).toEqual([
+      '2026-10-05', '2026-10-06', '2026-10-07', '2026-10-08', '2026-10-09', '2026-10-10', '2026-10-11',
+    ]);
   });
 });

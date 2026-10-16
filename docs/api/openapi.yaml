@@ -1772,7 +1772,7 @@ components:
 
     ActiveRaid:
       type: object
-      required: [id, mission, reward, goalXp, progressXp, goalReachedAt, startsAt, endsAt, status, studyDays, streak, me]
+      required: [id, mission, reward, goalXp, progressXp, goalReachedAt, startsAt, endsAt, status, weekDays, today, studyDays, streak, me]
       properties:
         id: { type: string, format: uuid }
         mission:
@@ -1800,6 +1800,13 @@ components:
         startsAt: { type: string, format: date-time }
         endsAt: { type: string, format: date-time }
         status: { type: string, enum: [active, completed, expired] }
+        weekDays:
+          type: array
+          description: Os sete dias da semana da Raid em `America/Sao_Paulo`, da segunda ao domingo.
+          minItems: 7
+          maxItems: 7
+          items: { type: string, format: date, example: "2026-10-05" }
+        today: { type: string, format: date, description: "Hoje em `America/Sao_Paulo` pelo relógio do servidor; a tela não usa o calendário do aparelho.", example: "2026-10-07" }
         studyDays:
           type: array
           description: Dias de estudo da semana da Raid até agora, em ordem. Um dia em `America/Sao_Paulo` com pelo menos uma Contribuição na Raid da Guild; sessões solo não contam.
