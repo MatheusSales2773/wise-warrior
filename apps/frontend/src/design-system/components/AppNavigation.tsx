@@ -1,4 +1,4 @@
-import { useCallback, useRef } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import { useAuth } from '@/core/auth/auth-context';
 import { useRouter } from 'expo-router';
 import { AccessibilityInfo, findNodeHandle, Platform, type View } from 'react-native';
@@ -18,6 +18,14 @@ export function AppNavigation({ bottomInset, isDesktop, modalVisible, onModalVis
   const { logout } = useAuth();
   const router = useRouter();
   const moreButtonRef = useRef<View>(null);
+  const shownPathname = useRef(pathname);
+
+  // A destination opened from "Mais" changes the route; the menu closes so the new screen is reachable.
+  useEffect(() => {
+    if (shownPathname.current === pathname) return;
+    shownPathname.current = pathname;
+    if (modalVisible) onModalVisibilityChange(false);
+  }, [modalVisible, onModalVisibilityChange, pathname]);
 
   const handleLogout = useCallback(async () => {
     await logout();
@@ -47,7 +55,7 @@ export function AppNavigation({ bottomInset, isDesktop, modalVisible, onModalVis
         pathname={pathname}
         ref={moreButtonRef}
       />
-      <MoreMenu bottomInset={bottomInset} onClose={closeMore} onLogout={handleLogout} visible={modalVisible} />
+      <MoreMenu bottomInset={bottomInset} onClose={closeMore} onLogout={handleLogout} pathname={pathname} visible={modalVisible} />
     </>
   );
 }

@@ -4,6 +4,7 @@ import type { ActiveRaid } from '@/features/guild/api';
 import { dashboardKeys } from '@/features/dashboard/queries';
 import { guildKeys } from '@/features/guild/queries';
 import { profileKeys } from '@/features/profile/queries';
+import { marketKeys } from '@/features/market/queries';
 
 class FakeSocket implements RealtimeSocket {
   active = true;
@@ -330,6 +331,42 @@ describe('character:equipmentChanged', () => {
     client.dispose();
 
     expect(socket.count('character:equipmentChanged')).toBe(0);
+  });
+});
+
+describe('coins:changed', () => {
+  const invalidated = (queryClient: QueryClient, key: readonly unknown[]) => queryClient.getQueryState(key)?.isInvalidated;
+
+  it('applies the new balance at once and refreshes the Extrato and the Loja', () => {
+    const { socket, queryClient } = setup();
+    queryClient.setQueryData(marketKeys.balance(), 12);
+    [marketKeys.statement(), marketKeys.missions(), marketKeys.items(), profileKeys.cosmeticsCatalog()].forEach((key) => queryClient.setQueryData(key, {}));
+
+    socket.emit('coins:changed', { balance: 24, delta: 12, origin: { type: 'study-session', ref: 's1' } });
+
+    expect(queryClient.getQueryData(marketKeys.balance())).toBe(24);
+    expect(invalidated(queryClient, marketKeys.statement())).toBe(true);
+    expect(invalidated(queryClient, marketKeys.missions())).toBe(true);
+    expect(invalidated(queryClient, marketKeys.items())).toBe(true);
+    expect(invalidated(queryClient, profileKeys.cosmeticsCatalog())).toBe(false);
+  });
+
+  it('refreshes the Inventário when an item was bought on another device', () => {
+    const { socket, queryClient } = setup();
+    queryClient.setQueryData(profileKeys.cosmeticsCatalog(), []);
+
+    socket.emit('coins:changed', { balance: 12, delta: -120, origin: { type: 'purchase', ref: 'cosmetic:i1' } });
+
+    expect(invalidated(queryClient, profileKeys.cosmeticsCatalog())).toBe(true);
+  });
+
+  it('registers the listener once and removes it on dispose', () => {
+    const { socket, client } = setup();
+    expect(socket.count('coins:changed')).toBe(1);
+
+    client.dispose();
+
+    expect(socket.count('coins:changed')).toBe(0);
   });
 });
 
