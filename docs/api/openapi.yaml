@@ -517,6 +517,31 @@ paths:
                 items: { $ref: "#/components/schemas/RecentStudySession" }
         "401": { $ref: "#/components/responses/Unauthorized" }
 
+  /sessions/history:
+    get:
+      summary: Histórico do dia do usuário autenticado
+      description: >
+        Toda Sessão de estudo encerrada num dia em UTC (o mesmo recorte das métricas
+        do Dashboard), da mais recente para a mais antiga, com todos os desfechos:
+        concluída, encerrada antecipadamente, cancelada e descartada. Cada foco
+        concluído por inteiro traz `cyclePosition`, sua posição no ciclo Pomodoro
+        (1 a 4), contada sobre os mesmos focos de `/sessions/cycle`. `nextCursor` é
+        opaco; `null` indica a última página.
+      operationId: getStudySessionHistory
+      tags: [Sessions]
+      parameters:
+        - { name: date, in: query, required: false, description: "Dia em UTC (AAAA-MM-DD); hoje por padrão", schema: { type: string, format: date } }
+        - { name: cursor, in: query, required: false, schema: { type: string, maxLength: 200 } }
+        - { name: limit, in: query, required: false, schema: { type: integer, minimum: 1, maximum: 50, default: 20 } }
+      responses:
+        "200":
+          description: Página do histórico do dia
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/StudySessionHistoryPage" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
   /sessions/subjects/recent:
     get:
       summary: Sugere as Matérias usadas mais recentemente pelo usuário autenticado
@@ -1217,6 +1242,28 @@ components:
           type: [string, "null"]
           enum: [continuous-limit, daily-limit, null]
           description: Antifraude limit that truncated the valid focus; XP is computed on the truncated time (ADR-011).
+
+    StudySessionHistoryItem:
+      allOf:
+        - $ref: "#/components/schemas/RecentStudySession"
+        - type: object
+          required: [cyclePosition]
+          properties:
+            cyclePosition:
+              type: [integer, "null"]
+              minimum: 1
+              maximum: 4
+              description: Posição do foco concluído por inteiro no ciclo Pomodoro; null para os outros desfechos
+
+    StudySessionHistoryPage:
+      type: object
+      required: [date, items, nextCursor]
+      properties:
+        date: { type: string, format: date, description: "O dia em UTC listado" }
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/StudySessionHistoryItem" }
+        nextCursor: { type: [string, "null"] }
 
     RecentStudySessionSubjects:
       type: object

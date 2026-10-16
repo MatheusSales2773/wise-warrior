@@ -1,6 +1,7 @@
 import { QueryClient, QueryClientProvider, focusManager } from '@tanstack/react-query';
 import { useEffect, type PropsWithChildren } from 'react';
 import { AppState, Platform, type AppStateStatus } from 'react-native';
+import { installNativeOnlineManager } from './online-manager';
 
 /**
  * The remote cache is deliberately runtime-only. Auth invalidation can clear
@@ -32,6 +33,7 @@ export function QueryRuntime({
   useEffect(() => {
     if (Platform.OS === 'web') return;
 
+    installNativeOnlineManager();
     const subscription = AppState.addEventListener('change', onAppStateChange);
     return () => subscription.remove();
   }, []);
