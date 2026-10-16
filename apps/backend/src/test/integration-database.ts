@@ -18,6 +18,7 @@ import { AddRaidParticipations1788459420000 } from '../migrations/1788459420000-
 import { AddRaidGoalReachedAt1788459480000 } from '../migrations/1788459480000-add-raid-goal-reached-at';
 import { AddGuildChatMessageSequence1788459540000 } from '../migrations/1788459540000-add-guild-chat-message-sequence';
 import { AddStudySessionCappedReason1788459600000 } from '../migrations/1788459600000-add-study-session-capped-reason';
+import { AddCoinEconomy1788459660000 } from '../migrations/1788459660000-add-coin-economy';
 
 export const APPLICATION_MIGRATIONS: NonNullable<DataSourceOptions['migrations']> = [
   CreateWiseSchema1788458400000,
@@ -36,6 +37,7 @@ export const APPLICATION_MIGRATIONS: NonNullable<DataSourceOptions['migrations']
   AddRaidGoalReachedAt1788459480000,
   AddGuildChatMessageSequence1788459540000,
   AddStudySessionCappedReason1788459600000,
+  AddCoinEconomy1788459660000,
 ];
 
 export interface IntegrationDatabase {
