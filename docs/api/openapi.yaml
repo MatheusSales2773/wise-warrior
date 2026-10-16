@@ -301,6 +301,41 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
 
+  /users/me/coins:
+    get:
+      summary: Saldo de Moedas do usuário autenticado
+      description: >
+        Saldo do usuário (ADR-012). Sem registro de saldo, o saldo é zero. Devolve só os dados de quem está autenticado.
+      operationId: getMyCoinBalance
+      tags: [Users]
+      responses:
+        "200":
+          description: Saldo
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CoinBalance" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /users/me/coins/statement:
+    get:
+      summary: Extrato de Moedas do usuário autenticado
+      description: >
+        Cada crédito e débito de Moedas, do mais recente para o mais antigo, com a origem de cada um. `nextCursor`
+        é opaco; `null` indica a última página.
+      operationId: getMyCoinStatement
+      tags: [Users]
+      parameters:
+        - { name: cursor, in: query, required: false, schema: { type: string, maxLength: 200 } }
+        - { name: limit, in: query, required: false, schema: { type: integer, minimum: 1, maximum: 50, default: 20 } }
+      responses:
+        "200":
+          description: Página do Extrato
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CoinStatementPage" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
   /users/me/sessions:
     get:
       summary: Lista dispositivos com sessão ativa (ADR-009)
@@ -1094,6 +1129,38 @@ components:
           properties:
             type: { type: string, const: raid }
             slug: { type: string, description: "Slug da Raid. `*` vale para qualquer Raid." }
+
+    CoinBalance:
+      type: object
+      required: [balance]
+      properties:
+        balance: { type: integer, minimum: 0 }
+
+    CoinOrigin:
+      type: object
+      required: [type, ref]
+      properties:
+        type: { type: string, enum: [study-session, raid-win, purchase, signup, migration] }
+        ref: { type: string, maxLength: 64, description: "Referência da origem, como o id da Study Session" }
+
+    CoinStatementItem:
+      type: object
+      required: [id, amount, balanceAfter, origin, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        amount: { type: integer, description: "Positivo para crédito, negativo para débito" }
+        balanceAfter: { type: integer, minimum: 0, description: "Saldo logo depois deste lançamento" }
+        origin: { $ref: "#/components/schemas/CoinOrigin" }
+        createdAt: { type: string, format: date-time }
+
+    CoinStatementPage:
+      type: object
+      required: [items, nextCursor]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/CoinStatementItem" }
+        nextCursor: { type: [string, "null"] }
 
     SessionSummary:
       type: object
