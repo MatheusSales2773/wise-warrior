@@ -5,8 +5,8 @@ import { MigrationInterface, QueryRunner, Table } from 'typeorm';
  * segunda a usa e a apaga. `owner_user_id` é o dono declarado de uma Missão à venda; nulo na Missão do rodízio,
  * que é de todos. Se o dono sai da Guild ou da conta, a escolha deixa de valer.
  */
-export class AddGuildMissionChoice1788459960000 implements MigrationInterface {
-  name = 'AddGuildMissionChoice1788459960000';
+export class AddGuildMissionChoice1788460020000 implements MigrationInterface {
+  name = 'AddGuildMissionChoice1788460020000';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.createTable(new Table({

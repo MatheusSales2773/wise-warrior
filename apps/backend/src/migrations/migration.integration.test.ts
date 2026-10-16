@@ -12,7 +12,7 @@ import { AddCanonicalStudySessionStart1788458760000 } from './1788458760000-add-
 import { AddStudySessionPauseResume1788458880000 } from './1788458880000-add-study-session-pause-resume';
 import { AddRaidMissions1788459360000 } from './1788459360000-add-raid-missions';
 import { AddMissionStore1788459780000 } from './1788459780000-add-mission-store';
-import { AddGuildMissionChoice1788459960000 } from './1788459960000-add-guild-mission-choice';
+import { AddGuildMissionChoice1788460020000 } from './1788460020000-add-guild-mission-choice';
 import { AddRaidParticipations1788459420000 } from './1788459420000-add-raid-participations';
 import { AddRaidGoalReachedAt1788459480000 } from './1788459480000-add-raid-goal-reached-at';
 import { DropCharacterTitle1788459300000 } from './1788459300000-drop-character-title';
@@ -429,7 +429,7 @@ describe('TypeORM migrations against an empty MySQL schema', () => {
       'AddMissionStore1788459780000',
       'AddCosmeticItemSale1788459840000',
       'SeedTestCosmeticItemForSale1788459900000',
-      'AddGuildMissionChoice1788459960000',
+      'AddGuildMissionChoice1788460020000',
     ]);
 
     await dataSource.undoLastMigration(); // guild mission choices
@@ -985,7 +985,7 @@ await dataSource.undoLastMigration();
   it('seeds the Catalog, backfills existing Characters without re-equipping, and reverts the seed', async () => {
     database = await createIntegrationDatabase('wise_migrations_test');
     initialDataSource = new DataSource(database.options(
-      (APPLICATION_MIGRATIONS as unknown[]).filter((migration) => migration !== SeedInitialCosmeticItems1788459240000 && migration !== AddRaidMissions1788459360000 && migration !== AddMissionStore1788459780000 && migration !== AddGuildMissionChoice1788459960000 && migration !== AddRaidParticipations1788459420000) as typeof APPLICATION_MIGRATIONS,
+      (APPLICATION_MIGRATIONS as unknown[]).filter((migration) => migration !== SeedInitialCosmeticItems1788459240000 && migration !== AddRaidMissions1788459360000 && migration !== AddMissionStore1788459780000 && migration !== AddGuildMissionChoice1788460020000 && migration !== AddRaidParticipations1788459420000) as typeof APPLICATION_MIGRATIONS,
     ));
     await initialDataSource.initialize();
     await initialDataSource.runMigrations();
@@ -1134,7 +1134,7 @@ await dataSource.undoLastMigration();
   it('seeds the Missões, links reward items, gives Raids a Missão and the current week to existing Guilds, and reverts', async () => {
     database = await createIntegrationDatabase('wise_migrations_test');
     initialDataSource = new DataSource(database.options(
-      (APPLICATION_MIGRATIONS as unknown[]).filter((migration) => migration !== AddRaidMissions1788459360000 && migration !== AddMissionStore1788459780000 && migration !== AddGuildMissionChoice1788459960000 && migration !== AddRaidParticipations1788459420000) as typeof APPLICATION_MIGRATIONS,
+      (APPLICATION_MIGRATIONS as unknown[]).filter((migration) => migration !== AddRaidMissions1788459360000 && migration !== AddMissionStore1788459780000 && migration !== AddGuildMissionChoice1788460020000 && migration !== AddRaidParticipations1788459420000) as typeof APPLICATION_MIGRATIONS,
     ));
     await initialDataSource.initialize();
     await initialDataSource.runMigrations();
