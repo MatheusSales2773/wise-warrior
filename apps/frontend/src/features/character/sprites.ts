@@ -163,6 +163,38 @@ export const itemSprites = {
     palette: ['#0a0a12', '#a9e0ff', '#5b9fc4'],
     rows: ['...aa...', '..abca..', '.abccba.', 'abcbbcca', 'acbcccba', '.accbca.', '..acca..', '...aa...'],
   },
+  marcadorDeFita: {
+    palette: ['#0a0a12', '#c44545', '#f0c97a'],
+    rows: ['.aaaaaa.', 'abbbbbba', 'abbccbba', 'abbccbba', 'abbbbbba', 'abbbbbba', 'abbaabba', '.aa..aa.'],
+  },
+  guardiaoDasPaginas: {
+    palette: ['#0a0a12', '#a9e0ff', '#2f4a80'],
+    rows: ['.aaaaaa.', 'abbbbbba', '.abccba.', '.abbbba.', '.abccba.', '.abbbba.', 'abbbbbba', '.aaaaaa.'],
+  },
+  penaDoEscriba: {
+    palette: ['#0a0a12', '#f3ead4', '#d4a85a', '#7a4a2a'],
+    rows: ['.....aa.', '....abba', '...abbba', '..abbbca', '.abbbca.', 'abbcca..', 'adca....', 'aa......'],
+  },
+  andarilhoDoSaber: {
+    palette: ['#0a0a12', '#a8d5a2', '#3f7a4a'],
+    rows: ['.aaaaaa.', 'abbbbbba', '.abccba.', '.abbbba.', '.abccba.', '.abbbba.', 'abbbbbba', '.aaaaaa.'],
+  },
+  tunicaDoViajante: {
+    palette: ['#0a0a12', '#3f7a4a', '#d4a85a', '#2a4f31'],
+    rows: ['..aaaa..', '.abccba.', 'abbbbbba', 'abdbbdba', 'abdbbdba', 'abdbbdba', 'addbbdda', 'aaaaaaaa'],
+  },
+  lanternaDoVigia: {
+    palette: ['#0a0a12', '#7a4a2a', '#f0c97a', '#fff3b0'],
+    rows: ['..aaaa..', '..a..a..', '.abbbba.', 'abcddcba', 'abcddcba', 'abcddcba', '.abbbba.', '..aaaa..'],
+  },
+  arquimagoDosPrazos: {
+    palette: ['#0a0a12', '#e0c3ff', '#8a5bc4'],
+    rows: ['.aaaaaa.', 'abbbbbba', '.abccba.', '.abbbba.', '.abccba.', '.abbbba.', 'abbbbbba', '.aaaaaa.'],
+  },
+  mantoEstelar: {
+    palette: ['#0a0a12', '#2a1f5e', '#f0c97a', '#5b3fa0'],
+    rows: ['..aaaa..', '.abccba.', 'abbbbbba', 'abdbbdba', 'abdbbdba', 'abdbbdba', 'addbbdda', 'aaaaaaaa'],
+  },
 } as const satisfies Record<string, PixelSpriteData>;
 
 export const companionSprites = {
