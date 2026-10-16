@@ -25,10 +25,11 @@ import type { Request, Response } from 'express';
  * - `study-session`: iniciar, pausar, retomar, encerrar, heartbeat e concluir. Por usuário, padrão 60 a
  *   cada 60 s, para colegas na mesma rede não se bloquearem.
  * - `shop`: Compras na Loja (#166). Por usuário, padrão 30 a cada 60 s.
+ * - `mission-choice`: escolha da Missão da próxima Raid pelo Líder (#168). Por usuário, padrão 30 a cada 60 s.
  *
  * Os valores vêm de `RATE_LIMIT_<LIMITE>_LIMIT` e `RATE_LIMIT_<LIMITE>_TTL_SECONDS`.
  */
-export type RateLimitName = 'credentials' | 'refresh' | 'study-session' | 'shop';
+export type RateLimitName = 'credentials' | 'refresh' | 'study-session' | 'shop' | 'mission-choice';
 
 const RATE_LIMIT_KEY = 'wise:rate-limit';
 
@@ -38,6 +39,7 @@ const DEFAULTS: Record<RateLimitName, { limit: number; ttlSeconds: number; envPr
   refresh: { limit: 30, ttlSeconds: 60, envPrefix: 'RATE_LIMIT_REFRESH' },
   'study-session': { limit: 60, ttlSeconds: 60, envPrefix: 'RATE_LIMIT_STUDY_SESSION', perUser: true },
   shop: { limit: 30, ttlSeconds: 60, envPrefix: 'RATE_LIMIT_SHOP', perUser: true },
+  'mission-choice': { limit: 30, ttlSeconds: 60, envPrefix: 'RATE_LIMIT_MISSION_CHOICE', perUser: true },
 };
 
 export const RATE_LIMIT_MESSAGE = 'Muitas requisições. Aguarde um instante e tente novamente.';

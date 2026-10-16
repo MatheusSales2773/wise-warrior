@@ -69,6 +69,29 @@ export class MissionsService {
     });
   }
 
+  /** O catálogo inteiro, rodízio e à venda, para quem monta a escolha do Líder. */
+  listAll(): Promise<Mission[]> {
+    return this.missions.find({ order: { rotationOrder: 'ASC', price: 'ASC', slug: 'ASC' } });
+  }
+
+  findById(missionId: string): Promise<Mission | null> {
+    return this.missions.findOne({ where: { id: missionId } });
+  }
+
+  /** Quem entre `userIds` possui cada Missão à venda (a posse das Missões do rodízio é de todos e não tem linha). */
+  async ownersOf(userIds: string[]): Promise<Map<string, string[]>> {
+    const owners = new Map<string, string[]>();
+    if (userIds.length === 0) return owners;
+    for (const { missionId, userId } of await this.ownerships.find({ where: { userId: In(userIds) }, order: { acquiredAt: 'ASC' } })) {
+      owners.set(missionId, [...(owners.get(missionId) ?? []), userId]);
+    }
+    return owners;
+  }
+
+  async owns(userId: string, missionId: string): Promise<boolean> {
+    return this.ownerships.exists({ where: { userId, missionId } });
+  }
+
   /**
    * Registra a posse na transação de quem chama, junto com o débito. Missão inexistente ou do rodízio → 404;
    * já possuída → 409 (a unicidade do par decide, então duas Compras simultâneas não passam as duas).
