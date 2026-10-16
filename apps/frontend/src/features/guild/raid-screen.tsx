@@ -11,7 +11,8 @@ import { useFocusRing } from '@/features/character/character-parts';
 import type { ActiveRaid, MyGuild, RaidRankingEntry } from './api';
 import { RAID_GOAL_REACHED, formatPosition } from './messages';
 import { activeRaidQueryOptions, myGuildQueryOptions, raidRankingQueryOptions } from './queries';
-import { assignHeroes, bossLifePercent, formatBattleTimeLeft, formatFocusHours, partyHeroSprites, raidParty, weeklyStrikes, type PartyHero, type Strike } from './raid-battle';
+import { bossLifePercent, formatBattleTimeLeft, formatFocusHours, heroOf, partyHeroSprites, raidParty, weeklyStrikes, type Strike } from './raid-battle';
+import { raidSceneArt } from './raid-scene-art';
 import { RaidScene, raidSceneScale } from './raid-scene';
 
 /* Tela da Raid, Figma "06b · Guilda — Raid · O Devorador de Horas" (desktop e mobile). */
@@ -112,7 +113,7 @@ function CardHeader({ aside, children }: PropsWithChildren<{ aside?: string }>) 
   </View>;
 }
 
-function StrikeRow({ compact, hero, strike }: { compact: boolean; hero: PartyHero; strike: Strike }) {
+function StrikeRow({ compact, strike }: { compact: boolean; strike: Strike }) {
   const { entry, fraction } = strike;
   const name = entry.isMe ? (compact ? `Você · ${formatPosition(entry.position)}` : 'Você') : entry.displayName;
   const hours = formatFocusHours(entry.contributionXp, { precise: true });
@@ -123,7 +124,7 @@ function StrikeRow({ compact, hero, strike }: { compact: boolean; hero: PartyHer
     testID={`raid-strike-${entry.userId}`}
   >
     <View style={styles.avatar}>
-      <PixelSprite scale={2} sprite={partyHeroSprites[hero]} style={styles.avatarSprite} />
+      <PixelSprite scale={2} sprite={partyHeroSprites[heroOf(entry)]} style={styles.avatarSprite} />
     </View>
     <View style={styles.strikeMain}>
       <View style={styles.spread}>
@@ -135,13 +136,13 @@ function StrikeRow({ compact, hero, strike }: { compact: boolean; hero: PartyHer
   </View>;
 }
 
-function StrikesCard({ compact, entries, failed, heroes, loading }: { compact: boolean; entries: readonly RaidRankingEntry[]; failed: boolean; heroes: Map<string, PartyHero>; loading: boolean }) {
+function StrikesCard({ compact, entries, failed, loading }: { compact: boolean; entries: readonly RaidRankingEntry[]; failed: boolean; loading: boolean }) {
   const strikes = weeklyStrikes(entries, compact ? STRIKE_ROWS.mobile : STRIKE_ROWS.desktop);
   const body = (() => {
     if (loading) return <Text style={styles.cardNote}>Carregando os golpes…</Text>;
     if (failed && !entries.length) return <FeedbackMessage message="Não foi possível carregar o Ranking interno." testID="raid-strikes-error" title="Ranking indisponível" variant="error" />;
     if (!strikes.length) return <Text style={styles.cardNote} testID="raid-strikes-empty">Ninguém atacou ainda. Participe e conclua uma sessão de guilda na Forja.</Text>;
-    return strikes.map((strike) => <StrikeRow compact={compact} hero={heroes.get(strike.entry.userId) ?? 'erudito'} key={strike.entry.userId} strike={strike} />);
+    return strikes.map((strike) => <StrikeRow compact={compact} key={strike.entry.userId} strike={strike} />);
   })();
   return <Card label="Golpes da semana" testID="raid-strikes">
     <CardHeader aside="Ranking">Golpes da semana</CardHeader>
@@ -149,8 +150,17 @@ function StrikesCard({ compact, entries, failed, heroes, loading }: { compact: b
   </Card>;
 }
 
-function rewardName(raid: ActiveRaid): string {
-  return raid.reward.category === 'title' ? `Título “${raid.reward.name}”` : raid.reward.name;
+type Reward = ActiveRaid['rewards'][number];
+
+function rewardName(reward: Reward): string {
+  return reward.category === 'title' ? `Título “${reward.name}”` : reward.name;
+}
+
+const coinsLabel = (coins: number) => `+${coins} Moedas`;
+
+/** What the Raid gives, for the screen readers: every item, then the Moedas. */
+function rewardsLabel(raid: ActiveRaid): string {
+  return [...raid.rewards.map(rewardName), coinsLabel(raid.coins)].join(', ');
 }
 
 function AttackButton({ raid }: { raid: ActiveRaid }) {
@@ -170,12 +180,13 @@ function AttackButton({ raid }: { raid: ActiveRaid }) {
 function RewardsCard({ raid }: { raid: ActiveRaid }) {
   return <Card label="Ao derrotar" testID="raid-rewards">
     <CardHeader>Ao derrotar</CardHeader>
-    <View accessible accessibilityLabel={`${rewardName(raid)}. ${REWARD_RULE_CAPTION}.`} style={styles.reward} testID="raid-reward">
-      <View style={styles.rewardIcon}><PixelSprite scale={4} sprite={itemSprites[cosmeticSprite(raid.reward)]} /></View>
-      <View style={styles.rewardCopy}>
-        <Text style={styles.rewardName}>{rewardName(raid)}</Text>
-        <Text style={styles.rewardCaption}>{REWARD_RULE_CAPTION}</Text>
-      </View>
+    <View accessible accessibilityLabel={`${rewardsLabel(raid)}. ${REWARD_RULE_CAPTION}.`} style={styles.rewardList} testID="raid-reward">
+      {raid.rewards.map((reward) => <View key={reward.itemId} style={styles.reward} testID={`raid-reward-${reward.itemId}`}>
+        <View style={styles.rewardIcon}><PixelSprite scale={4} sprite={itemSprites[cosmeticSprite(reward)]} /></View>
+        <Text style={styles.rewardName}>{rewardName(reward)}</Text>
+      </View>)}
+      <Text style={styles.rewardCoins} testID="raid-reward-coins">{coinsLabel(raid.coins)}</Text>
+      <Text style={styles.rewardCaption}>{REWARD_RULE_CAPTION}</Text>
     </View>
     <View style={styles.fill} />
     <AttackButton raid={raid} />
@@ -183,24 +194,26 @@ function RewardsCard({ raid }: { raid: ActiveRaid }) {
 }
 
 function RewardChips({ raid }: { raid: ActiveRaid }) {
-  return <View accessible accessibilityLabel={`Ao derrotar: ${rewardName(raid)}. ${REWARD_RULE_CAPTION}.`} style={styles.chips} testID="raid-reward">
+  return <View accessible accessibilityLabel={`Ao derrotar: ${rewardsLabel(raid)}. ${REWARD_RULE_CAPTION}.`} style={styles.chips} testID="raid-reward">
     <Text style={styles.chipsLabel}>AO DERROTAR</Text>
-    <View style={styles.chip}>
-      <PixelSprite scale={3} sprite={itemSprites[cosmeticSprite(raid.reward)]} />
-      <Text numberOfLines={1} style={styles.chipText}>{raid.reward.name}</Text>
-    </View>
+    {raid.rewards.map((reward) => <View key={reward.itemId} style={styles.chip}>
+      <PixelSprite scale={3} sprite={itemSprites[cosmeticSprite(reward)]} />
+      <Text numberOfLines={1} style={styles.chipText}>{reward.name}</Text>
+    </View>)}
+    <View style={styles.chip}><Text numberOfLines={1} style={styles.chipText} testID="raid-reward-coins">{coinsLabel(raid.coins)}</Text></View>
   </View>;
 }
 
 function Battle({ desktop, mine, raid, viewport }: { desktop: boolean; mine: MyGuild; raid: ActiveRaid; viewport: number }) {
   const ranking = useInfiniteQuery(raidRankingQueryOptions(mine.guild.id, raid.id));
   const entries = ranking.data?.pages.flatMap((page) => page.items) ?? [];
-  const heroes = assignHeroes(entries);
-  const party = raidParty(entries, heroes);
+  const party = raidParty(raid.party);
+  const art = raidSceneArt(raid.mission.slug);
   const scale = raidSceneScale(viewport);
-  const strikes = <StrikesCard compact={!desktop} entries={entries} failed={ranking.isError} heroes={heroes} loading={ranking.isPending} />;
+  const strikes = <StrikesCard compact={!desktop} entries={entries} failed={ranking.isError} loading={ranking.isPending} />;
 
   const scene = <RaidScene
+    art={art}
     overlay={<>
       <View style={[styles.overlayTopLeft, !desktop && styles.overlayTopLeftCompact]}><TimePill compact={!desktop} raid={raid} /></View>
       {desktop ? <View style={styles.overlayTopRight}><BossLifePanel raid={raid} /></View> : null}
@@ -362,10 +375,11 @@ const styles = StyleSheet.create({
   strikeNameMe: { color: theme.color.accentHighlight },
   strikeHours: { fontFamily: mono, fontSize: 11, lineHeight: 15, color: theme.color.textSecondary },
 
+  rewardList: { gap: 10 },
   reward: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  rewardCoins: { fontFamily: mono, fontSize: 13, lineHeight: 16, color: theme.color.accentHighlight },
   rewardIcon: { padding: 6, borderRadius: theme.radius.detail, borderWidth: theme.border.standard, borderColor: theme.color.borderSubtle, backgroundColor: theme.color.surfaceInset },
-  rewardCopy: { flex: 1, gap: 2 },
-  rewardName: { fontFamily: 'Inter-SemiBold', fontSize: 13, lineHeight: 16, color: theme.color.textPrimary },
+  rewardName: { flex: 1, fontFamily: 'Inter-SemiBold', fontSize: 13, lineHeight: 16, color: theme.color.textPrimary },
   rewardCaption: { fontFamily: 'Inter-Regular', fontSize: 11, lineHeight: 13, color: theme.color.textTertiary },
 
   chips: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 8 },

@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { theme } from '@/design-system';
 import { PixelSprite } from '@/features/character/PixelSprite';
+import { itemSprites } from '@/features/character/sprites';
 import { partyHeroSprites, partyHeroWeapons, type PartyMember } from './raid-battle';
 import {
   RAID_HERO_SIZE,
@@ -11,10 +12,9 @@ import {
   RAID_SCENE_HEIGHT,
   RAID_SCENE_WIDTH,
   RAID_SHADOW,
-  raidSceneBackground,
-  raidSceneBoss,
   raidWeapons,
 } from './raid-scene-sprites';
+import { defaultRaidSceneArt, type RaidSceneArt } from './raid-scene-art';
 
 /**
  * Maior escala inteira que cabe na largura, com folga para um corte pequeno nas bordas (o celular usa ×2 em 342px,
@@ -28,6 +28,9 @@ function slotOrigin(index: number) {
   return { x: RAID_PARTY_ORIGIN.x + index * RAID_PARTY_SPACING, y: RAID_PARTY_ORIGIN.y };
 }
 
+/** Where the Acessório (8 × 8) hangs, relative to the hero's slot: at the hero's feet, away from the weapon. */
+const ACCESSORY_OFFSET = { x: -4, y: 16 } as const;
+
 function PartyHeroFigure({ index, member, scale }: { index: number; member: PartyMember; scale: number }) {
   const origin = slotOrigin(index);
   const weapon = raidWeapons[partyHeroWeapons[member.hero]];
@@ -35,6 +38,9 @@ function PartyHeroFigure({ index, member, scale }: { index: number; member: Part
     <View style={[styles.layer, { left: (origin.x + RAID_SHADOW.x) * scale, top: (origin.y + RAID_SHADOW.y) * scale, width: RAID_SHADOW.width * scale, height: scale, backgroundColor: RAID_SHADOW.color }]} />
     <PixelSprite scale={scale} sprite={partyHeroSprites[member.hero]} style={[styles.layer, { left: origin.x * scale, top: origin.y * scale }]} testID={`raid-scene-hero-${member.userId}`} />
     <PixelSprite scale={scale} sprite={weapon.sprite} style={[styles.layer, { left: (origin.x + weapon.offset.x) * scale, top: (origin.y + weapon.offset.y) * scale }]} />
+    {member.accessory
+      ? <PixelSprite scale={scale} sprite={itemSprites[member.accessory]} style={[styles.layer, { left: (origin.x + ACCESSORY_OFFSET.x) * scale, top: (origin.y + ACCESSORY_OFFSET.y) * scale }]} testID={`raid-scene-accessory-${member.userId}`} />
+      : null}
   </>;
 }
 
@@ -60,7 +66,9 @@ const TAG_SLOT_WIDTH = 140;
  * A cena da batalha em pixel art. Decorativa para leitores de tela: o progresso e os membros aparecem como texto
  * fora dela. `overlay` recebe os painéis que ficam por cima (tempo, vida do chefe).
  */
-export function RaidScene({ overlay, party, scale, showTags, viewportWidth }: {
+export function RaidScene({ art = defaultRaidSceneArt, overlay, party, scale, showTags, viewportWidth }: {
+  /** The Missão's illustration; the default scene when omitted. */
+  art?: RaidSceneArt;
   party: readonly PartyMember[];
   scale: number;
   showTags: boolean;
@@ -73,9 +81,9 @@ export function RaidScene({ overlay, party, scale, showTags, viewportWidth }: {
   const visibleWidth = Math.min(viewportWidth, width);
   return <View style={[styles.frame, { width: visibleWidth, height }]} testID="raid-scene">
     <View accessibilityElementsHidden aria-hidden importantForAccessibility="no-hide-descendants" style={[styles.canvas, { width, height, left: (visibleWidth - width) / 2 }]}>
-      <PixelSprite scale={scale} sprite={raidSceneBackground} style={styles.layerOrigin} testID="raid-scene-background" />
+      <PixelSprite scale={scale} sprite={art.background} style={styles.layerOrigin} testID="raid-scene-background" />
       {party.map((member, index) => <PartyHeroFigure index={index} key={member.userId} member={member} scale={scale} />)}
-      <PixelSprite scale={scale} sprite={raidSceneBoss} style={[styles.layer, { left: RAID_SCENE_BOSS_POSITION.x * scale, top: RAID_SCENE_BOSS_POSITION.y * scale }]} testID="raid-scene-boss" />
+      <PixelSprite scale={scale} sprite={art.boss} style={[styles.layer, { left: RAID_SCENE_BOSS_POSITION.x * scale, top: RAID_SCENE_BOSS_POSITION.y * scale }]} testID="raid-scene-boss" />
       {showTags ? party.map((member, index) => <PartyTag index={index} key={member.userId} member={member} scale={scale} />) : null}
     </View>
     {/* Drawn over the pixels so the border does not crop the scene. */}

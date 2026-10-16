@@ -31,7 +31,7 @@ import { RaidsController } from './raids.controller';
 import { RaidsService } from './raids.service';
 
 type RankingPage = {
-  items: Array<{ position: number; userId: string; displayName: string; level: number; title: string | null; contributionXp: number; isMe: boolean }>;
+  items: Array<{ position: number; userId: string; displayName: string; level: number; title: string | null; contributionXp: number; isMe: boolean; avatar: { itemId: string; name: string } | null; accessory: { itemId: string; name: string } | null }>;
   nextCursor: string | null;
 };
 
@@ -188,6 +188,22 @@ describe('Ranking interno of a Raid against MySQL', () => {
     expect(byName.Carla).toMatchObject({ level: 7, title: null });
   });
 
+  it('carries the equipped Avatar and Acessório of each Participant, read through the Inventory owner', async () => {
+    const items = dataSource!.getRepository(CosmeticItem);
+    const avatar = await items.findOneByOrFail({ category: 'avatar' });
+    const [accessory, unequipped] = await items.find({ where: { category: 'accessory' }, take: 2 });
+    const owned = dataSource!.getRepository(UserCosmeticItem);
+    await owned.insert({ userId: ana, cosmeticItemId: avatar.id, equipped: true });
+    await owned.insert({ userId: ana, cosmeticItemId: accessory!.id, equipped: true });
+    await owned.insert({ userId: bruno, cosmeticItemId: unequipped!.id, equipped: false });
+
+    const byName = Object.fromEntries((await ranking(carla)).items.map((row) => [row.displayName, row]));
+
+    expect(byName.Ana).toMatchObject({ avatar: { itemId: avatar.id, name: avatar.name }, accessory: { itemId: accessory!.id, name: accessory!.name } });
+    expect(byName.Bruno).toMatchObject({ avatar: null, accessory: null });
+    expect(byName.Eva).toMatchObject({ avatar: null, accessory: null });
+  });
+
   it('pages without repeating or skipping rows, with dense positions', async () => {
     const first = await ranking(ana, '?limit=2');
     const second = await ranking(ana, `?limit=2&cursor=${first.nextCursor}`);
@@ -219,6 +235,23 @@ describe('Ranking interno of a Raid against MySQL', () => {
     await dataSource!.getRepository(RaidParticipation).delete({ raidId, userId: carla });
 
     expect((await ranking(ana)).items.map((row) => row.displayName)).toContain('Carla');
+  });
+
+  it('puts the first five of the ranking, with their look, in the active Raid and keeps it for members only', async () => {
+    const avatar = await dataSource!.getRepository(CosmeticItem).findOneByOrFail({ category: 'avatar' });
+    await dataSource!.getRepository(UserCosmeticItem).insert({ userId: bruno, cosmeticItemId: avatar.id, equipped: true });
+    const sixth = '00000000-0000-4000-8000-000000000c06';
+    await dataSource!.getRepository(User).insert({ id: sixth, email: 'gui@example.com', passwordHash: 'hash', displayName: 'Gui', planTier: 'free' });
+    await dataSource!.getRepository(GuildMembership).insert({ guildId, userId: sixth, role: 'member' });
+    await dataSource!.getRepository(RaidParticipation).insert({ raidId, userId: sixth });
+
+    const active = await (await get(`/guilds/${guildId}/raids/active`, carla)).json() as { party: RankingPage['items']; rewards: unknown[]; coins: number };
+
+    expect(active.party.map((row) => row.displayName)).toEqual(['Bruno', 'Ana', 'Carla', 'Dani', 'Eva']);
+    expect(active.party[0]).toMatchObject({ avatar: { itemId: avatar.id }, accessory: null });
+    expect(active.rewards).toHaveLength(1);
+    expect(active.coins).toBe(50);
+    expect((await get(`/guilds/${guildId}/raids/active`, outsider)).status).toBe(403);
   });
 
   it('reports the place of the caller in the active Raid, or null before participating', async () => {

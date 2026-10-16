@@ -43,7 +43,11 @@ export type RaidRewardCategory = 'avatar' | 'badge' | 'title' | 'accessory';
 export type ActiveRaid = {
   id: string;
   mission: { slug: string; name: string; description: string; imageUrl: string | null };
-  reward: { itemId: string; name: string; category: RaidRewardCategory };
+  /** Every Cosmetic Item the Missão gives, plus `coins` Moedas, to whoever contributes to a won Raid. */
+  rewards: { itemId: string; name: string; category: RaidRewardCategory }[];
+  coins: number;
+  /** The first five of the Ranking interno, in ranking order, with their equipped look. */
+  party: RaidRankingEntry[];
   goalXp: number;
   progressXp: number;
   /** The first time the progress reached the goal (Meta batida); Contributions keep adding until `endsAt`. */
@@ -55,6 +59,9 @@ export type ActiveRaid = {
   me: { participating: boolean; contributionXp: number; position: number | null };
 };
 
+/** An equipped Cosmetic Item as shown on someone else's screen; `null` when the slot is empty. */
+export type EquippedLook = { itemId: string; name: string } | null;
+
 export type RaidRankingEntry = {
   position: number;
   userId: string;
@@ -62,6 +69,8 @@ export type RaidRankingEntry = {
   level: number;
   /** The equipped Título (ADR-010); `null` when the slot is empty. */
   title: string | null;
+  avatar: EquippedLook;
+  accessory: EquippedLook;
   contributionXp: number;
   isMe: boolean;
 };

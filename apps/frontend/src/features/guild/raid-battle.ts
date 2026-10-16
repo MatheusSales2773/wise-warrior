@@ -1,5 +1,5 @@
-import { DEFAULT_HERO_ID } from '@/features/character/catalog';
-import type { PixelSpriteData } from '@/features/character/sprites';
+import { DEFAULT_HERO_ID, cosmeticSprite } from '@/features/character/catalog';
+import type { ItemSpriteName, PixelSpriteData } from '@/features/character/sprites';
 import { heroSprites } from '@/features/character/sprites';
 import type { RaidRankingEntry } from './api';
 import { raidProgressPercent } from './messages';
@@ -42,8 +42,6 @@ export function formatBattleTimeLeft(milliseconds: number, { long = false }: { l
 
 export type PartyHero = 'guerreira' | 'sentinela' | 'paladino' | 'arcanista' | 'erudito';
 
-const PARTY_HEROES: readonly PartyHero[] = ['guerreira', 'sentinela', 'paladino', 'arcanista', 'erudito'];
-
 export const partyHeroSprites: Record<PartyHero, PixelSpriteData> = {
   guerreira: heroSprites.guerreira,
   sentinela: sentinelaSprite,
@@ -60,44 +58,37 @@ export const partyHeroWeapons: Record<PartyHero, keyof typeof raidWeapons> = {
   erudito: 'staff',
 };
 
-function preferredHero(userId: string): number {
-  let hash = 0;
-  for (let index = 0; index < userId.length; index += 1) hash = (hash * 31 + userId.charCodeAt(index)) >>> 0;
-  return hash % PARTY_HEROES.length;
+/** The class a worn Avatar dresses; Avatars without one (and an empty slot) keep the initial class. */
+const heroByAvatar: Record<string, PartyHero> = {
+  'Armadura do Lobo': 'guerreira',
+  'Manto Estelar': 'arcanista',
+  'Manto da Vigília': 'sentinela',
+};
+
+/** The hero drawn for a member, from the Avatar they have equipped. */
+export function heroOf(member: Pick<RaidRankingEntry, 'avatar'>): PartyHero {
+  return (member.avatar && heroByAvatar[member.avatar.name]) || DEFAULT_HERO_ID;
 }
 
-/**
- * Herói de cada membro até a aparência real chegar ao ranking (#145). Você aparece com o herói do Personagem; os
- * demais recebem o herói preferido pelo id, ou o próximo livre, para que o grupo da cena não repita heróis enquanto
- * houver heróis diferentes. A mesma lista dá sempre o mesmo resultado.
- */
-export function assignHeroes(entries: readonly Pick<RaidRankingEntry, 'userId' | 'isMe'>[]): Map<string, PartyHero> {
-  const heroes = new Map<string, PartyHero>();
-  const used = new Set<PartyHero>();
-  const me = entries.find((entry) => entry.isMe);
-  if (me) { heroes.set(me.userId, DEFAULT_HERO_ID); used.add(DEFAULT_HERO_ID); }
-  for (const entry of entries) {
-    if (heroes.has(entry.userId)) continue;
-    const start = preferredHero(entry.userId);
-    let hero = PARTY_HEROES[start]!;
-    for (let step = 0; step < PARTY_HEROES.length && used.has(hero); step += 1) hero = PARTY_HEROES[(start + step + 1) % PARTY_HEROES.length]!;
-    heroes.set(entry.userId, hero);
-    used.add(hero);
-    if (used.size === PARTY_HEROES.length) used.clear();
-  }
-  return heroes;
-}
+export type PartyMember = {
+  userId: string;
+  displayName: string;
+  level: number;
+  isMe: boolean;
+  hero: PartyHero;
+  /** The sprite of the equipped Acessório, drawn beside the hero; `null` with the slot empty. */
+  accessory: ItemSpriteName | null;
+};
 
-export type PartyMember = { userId: string; displayName: string; level: number; isMe: boolean; hero: PartyHero };
-
-/** Quem aparece na cena: os primeiros Participantes do Ranking interno, até as cinco vagas. */
-export function raidParty(entries: readonly RaidRankingEntry[], heroes = assignHeroes(entries)): PartyMember[] {
-  return entries.slice(0, RAID_PARTY_SIZE).map((entry) => ({
+/** Quem aparece na cena: os primeiros Participantes do Ranking interno (`party` da Raid), até as cinco vagas. */
+export function raidParty(party: readonly RaidRankingEntry[]): PartyMember[] {
+  return party.slice(0, RAID_PARTY_SIZE).map((entry) => ({
     userId: entry.userId,
     displayName: entry.isMe ? 'Você' : entry.displayName,
     level: entry.level,
     isMe: entry.isMe,
-    hero: heroes.get(entry.userId) ?? DEFAULT_HERO_ID,
+    hero: heroOf(entry),
+    accessory: entry.accessory ? cosmeticSprite({ category: 'accessory', name: entry.accessory.name }) : null,
   }));
 }
 

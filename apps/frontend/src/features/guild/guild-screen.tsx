@@ -195,8 +195,11 @@ function RaidDetails({ guildId, raid }: { guildId: string; raid: ActiveRaid }) {
       <WiseText color="textSecondary" testID="guild-raid-time-left" variant="body">{formatRaidTimeLeft(new Date(raid.endsAt).getTime() - now)}</WiseText>
       <View style={styles.stack} testID="guild-raid-reward">
         <WiseText color="accentPrimary" variant="caption">RECOMPENSA DE RAID</WiseText>
-        <WiseText variant="label">{raid.reward.name}</WiseText>
-        <WiseText color="textSecondary" variant="body">{formatRewardCategory(raid.reward.category)}</WiseText>
+        {raid.rewards.map((reward) => <View key={reward.itemId}>
+          <WiseText variant="label">{reward.name}</WiseText>
+          <WiseText color="textSecondary" variant="body">{formatRewardCategory(reward.category)}</WiseText>
+        </View>)}
+        <WiseText color="textSecondary" variant="body">+{raid.coins} Moedas</WiseText>
         <WiseText color="textSecondary" variant="caption">{RAID_REWARD_RULE}</WiseText>
       </View>
       <RaidParticipation guildId={guildId} raid={raid} />
