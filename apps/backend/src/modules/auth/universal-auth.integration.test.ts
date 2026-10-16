@@ -340,6 +340,20 @@ describe('Universal authentication security contract', () => {
     );
     expect(Number(characterRows[0]!.xp_total)).toBe(0);
 
+    const welcomeBalanceRows = (await dataSource!.query(
+      `SELECT balance FROM ${database!.identifier}.coin_balances WHERE user_id = ?`,
+      [registeredUserId],
+    )) as Row[];
+    expect(welcomeBalanceRows.map((row) => Number(row.balance))).toEqual([90]);
+    const welcomeStatementRows = (await dataSource!.query(
+      `SELECT amount, balance_after, origin_type, origin_ref FROM ${database!.identifier}.coin_ledger_entries
+       WHERE user_id = ?`,
+      [registeredUserId],
+    )) as Row[];
+    expect(welcomeStatementRows).toEqual([
+      expect.objectContaining({ amount: 90, balance_after: 90, origin_type: 'signup', origin_ref: registeredUserId }),
+    ]);
+
     const registeredSessionRows = (await dataSource!.query(
       `SELECT id, revoked_at FROM ${database!.identifier}.sessions
        WHERE user_id = ? ORDER BY created_at ASC`,
