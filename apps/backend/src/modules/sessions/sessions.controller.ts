@@ -8,6 +8,7 @@ import {
   Param,
   Patch,
   Post,
+  Query,
   Res,
   UseGuards,
 } from '@nestjs/common';
@@ -25,6 +26,8 @@ import type { RecentSessionResponseDto } from './dto/recent-session-response.dto
 import type { RecentSubjectsResponseDto } from './dto/recent-subjects-response.dto';
 import type { FocusCycle } from './domain/focus-cycle';
 import type { SessionMetricsResponseDto } from './dto/session-metrics-response.dto';
+import type { SessionHistoryPageDto } from './dto/session-history-response.dto';
+import { SessionHistoryQueryDto } from './dto/session-history-query.dto';
 
 @Controller('sessions')
 @UseGuards(JwtAuthGuard)
@@ -61,6 +64,13 @@ export class SessionsController {
   @HttpCode(HttpStatus.OK)
   recentSubjects(@CurrentUser() user: JwtPayload): Promise<RecentSubjectsResponseDto> {
     return this.sessions.recentSubjects(user.sub);
+  }
+
+  /** Histórico do dia (#17): every Study Session that ended on a UTC day, newest first. */
+  @Get('history')
+  @HttpCode(HttpStatus.OK)
+  history(@CurrentUser() user: JwtPayload, @Query() query: SessionHistoryQueryDto): Promise<SessionHistoryPageDto> {
+    return this.sessions.history(user.sub, query);
   }
 
   @Get('metrics')

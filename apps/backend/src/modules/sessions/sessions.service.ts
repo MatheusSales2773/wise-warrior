@@ -12,10 +12,12 @@ import { xpForDuration } from './domain/xp-rate';
 import { ProgressionService } from '../progression/progression.service';
 import { RaidsService } from '../raids/raids.service';
 import { RecentSessionResponseDto } from './dto/recent-session-response.dto';
+import type { SessionHistoryItemDto, SessionHistoryPageDto } from './dto/session-history-response.dto';
+import { SESSION_HISTORY_PAGE_SIZE_DEFAULT, type SessionHistoryQueryDto } from './dto/session-history-query.dto';
 import { RecentSubjectsResponseDto } from './dto/recent-subjects-response.dto';
 import { SessionMetricsResponseDto } from './dto/session-metrics-response.dto';
 import { buildCadence, calculateStreaks, type SessionActivityDay } from './domain/session-metrics';
-import { focusCycle, type FocusCycle } from './domain/focus-cycle';
+import { FOCUS_CYCLE_LENGTH, focusCycle, type FocusCycle } from './domain/focus-cycle';
 
 const RECENT_SUBJECTS_LIMIT = 6;
 
@@ -49,6 +51,73 @@ export class SessionsService {
   async focusCycle(userId: string): Promise<FocusCycle> {
     const completedFocuses = await this.studySessions.count({ where: { userId, state: 'completed' } });
     return focusCycle(completedFocuses);
+  }
+
+  /**
+   * Histórico do dia (#17): every Study Session that ended on a UTC day, newest first, with the place of each
+   * focus completed in full in the Pomodoro cycle. The cycle counts the same focuses as `focusCycle`.
+   */
+  async history(userId: string, query: SessionHistoryQueryDto, now: Date = new Date()): Promise<SessionHistoryPageDto> {
+    const date = query.date ?? utcDateKey(now);
+    if (Number.isNaN(utcDayStart(date).getTime()) || utcDateKey(utcDayStart(date)) !== date) {
+      throw new BadRequestException('Data inválida');
+    }
+    const limit = query.limit ?? SESSION_HISTORY_PAGE_SIZE_DEFAULT;
+    const after = query.cursor ? decodeHistoryCursor(query.cursor) : null;
+
+    const rows = await this.studySessions.manager.query<Array<{
+      id: string;
+      subject: string | null;
+      mode: StudySession['mode'];
+      state: StudySession['state'] | null;
+      started_at: Date;
+      ended_at: Date;
+      ended_at_text: string;
+      duration_valid_seconds: number | string;
+      xp_awarded: number | string;
+      discarded_reason: string | null;
+      capped_reason: RecentSessionResponseDto['cappedReason'];
+      cycle_number: number | string | null;
+    }>>(
+      `SELECT session.id, session.subject, session.mode, session.state, session.started_at, session.ended_at,
+              DATE_FORMAT(session.ended_at, '%Y-%m-%d %H:%i:%s.%f') AS ended_at_text,
+              session.duration_valid_seconds, session.xp_awarded, session.discarded_reason, session.capped_reason,
+              completed.cycle_number
+       FROM study_sessions session
+       LEFT JOIN (
+         SELECT id, ROW_NUMBER() OVER (ORDER BY ended_at, id) AS cycle_number
+         FROM study_sessions WHERE user_id = ? AND state = 'completed'
+       ) completed ON completed.id = session.id
+       WHERE session.user_id = ?
+         AND session.ended_at >= ? AND session.ended_at < ?
+         ${after ? 'AND (session.ended_at < ? OR (session.ended_at = ? AND session.id < ?))' : ''}
+       ORDER BY session.ended_at DESC, session.id DESC
+       LIMIT ?`,
+      [
+        userId, userId, utcDayStart(date), utcDayStart(nextDay(date)),
+        ...(after ? [after.endedAt, after.endedAt, after.id] : []),
+        limit + 1,
+      ],
+    );
+    const page = rows.slice(0, limit);
+    const last = page[page.length - 1];
+    return {
+      date,
+      items: page.map((row): SessionHistoryItemDto => ({
+        id: row.id,
+        subject: row.subject,
+        mode: row.mode,
+        state: row.state ?? null,
+        startedAt: row.started_at,
+        endedAt: row.ended_at,
+        durationValidSeconds: Number(row.duration_valid_seconds),
+        xpAwarded: Number(row.xp_awarded),
+        discardedReason: row.discarded_reason ?? null,
+        cappedReason: row.capped_reason ?? null,
+        cyclePosition: row.cycle_number === null ? null : ((Number(row.cycle_number) - 1) % FOCUS_CYCLE_LENGTH) + 1,
+      })),
+      nextCursor: rows.length > limit && last ? encodeHistoryCursor(last.ended_at_text, last.id) : null,
+    };
   }
 
   async recent(userId: string): Promise<RecentSessionResponseDto[]> {
@@ -242,6 +311,25 @@ export class SessionsService {
 
     return Number(row?.total ?? 0);
   }
+}
+
+/** The cursor carries `ended_at` as the exact text MySQL produced: a JavaScript Date would round it. */
+const MYSQL_DATETIME_TEXT = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(\.\d{1,6})?$/;
+
+function encodeHistoryCursor(endedAtText: string, id: string): string {
+  return Buffer.from(JSON.stringify([endedAtText, id]), 'utf8').toString('base64url');
+}
+
+function decodeHistoryCursor(cursor: string): { endedAt: string; id: string } {
+  try {
+    const parsed: unknown = JSON.parse(Buffer.from(cursor, 'base64url').toString('utf8'));
+    if (Array.isArray(parsed) && typeof parsed[0] === 'string' && MYSQL_DATETIME_TEXT.test(parsed[0]) && typeof parsed[1] === 'string') {
+      return { endedAt: parsed[0], id: parsed[1] };
+    }
+  } catch {
+    // Falls through to the validation error below.
+  }
+  throw new BadRequestException('Cursor inválido');
 }
 
 function previousDay(date: string, days: number): string {
