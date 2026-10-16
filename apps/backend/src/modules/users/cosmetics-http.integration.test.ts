@@ -171,14 +171,9 @@ describe('Cosmetics Catalog HTTP contract against MySQL', () => {
     await auth.register({ email: 'vitrine@example.com', password: 'senha-forte-123', displayName: 'Vitrine' }, {});
     const { id } = await dataSource!.getRepository(User).findOneByOrFail({ email: 'vitrine@example.com' });
 
-    // The temporary seed is a Badge, which stays off sale (ADR-012); move it to a category that can be sold.
-    const catalogBefore = await (await getCatalog(id)).json() as CatalogCosmeticItem[];
-    expect(catalogBefore.find((item) => item.name === TEST_ITEM[0])).toMatchObject({ unlockCondition: { type: 'purchase' }, forSale: false });
-    await dataSource!.getRepository(CosmeticItem).update({ name: String(TEST_ITEM[0]) }, { category: 'title', forSale: true });
-
     const catalog = await (await getCatalog(id)).json() as CatalogCosmeticItem[];
 
-    expect(catalog.find((item) => item.name === TEST_ITEM[0])).toMatchObject({ unlockCondition: { type: 'purchase' }, forSale: true });
+    expect(catalog.find((item) => item.name === 'Marcador de Fita')).toMatchObject({ unlockCondition: { type: 'purchase' }, forSale: true });
     expect(catalog.find((item) => item.name === 'Aprendiz')).toMatchObject({ unlockCondition: { type: 'level', level: 1 }, forSale: false });
   });
 
