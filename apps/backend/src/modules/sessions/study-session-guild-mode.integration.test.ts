@@ -28,6 +28,9 @@ import { CosmeticItem } from '../users/entities/cosmetic-item.entity';
 import { UserCosmeticItem } from '../users/entities/user-cosmetic-item.entity';
 import { User } from '../users/entities/user.entity';
 import { UsersService } from '../users/users.service';
+import { CoinBalance } from '../economy/entities/coin-balance.entity';
+import { CoinLedgerEntry } from '../economy/entities/coin-ledger-entry.entity';
+import { EconomyService } from '../economy/economy.service';
 import { StudySession } from './entities/study-session.entity';
 import { SessionsController } from './sessions.controller';
 import { SessionsService } from './sessions.service';
@@ -114,6 +117,7 @@ describe('Study Session de modo Guilda against MySQL', () => {
         StudySessionTransitionService,
         repo(Guild), repo(GuildMembership), repo(Raid), repo(RaidContribution), repo(RaidParticipation), repo(Mission),
         repo(User), repo(CosmeticItem), repo(UserCosmeticItem), repo(Character),
+        repo(CoinBalance), repo(CoinLedgerEntry), EconomyService,
         { provide: DataSource, useValue: dataSource },
         { provide: SessionsService, useValue: { usesCanonicalStudySessionState: async () => true } },
         { provide: RAID_CLOCK, useValue: () => new Date() },

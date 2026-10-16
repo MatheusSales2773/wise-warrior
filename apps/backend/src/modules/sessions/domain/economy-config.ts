@@ -19,3 +19,4 @@ export function getMaxContinuousSessionSeconds(): number {
 export function getMaxDailySeconds(): number {
   return Math.floor(positiveNumberFromEnv('ANTIFRAUDE_MAX_DAILY_HOURS', 16) * 3600);
 }
+

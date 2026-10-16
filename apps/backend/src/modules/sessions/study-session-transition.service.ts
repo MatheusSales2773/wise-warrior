@@ -8,10 +8,13 @@ import {
 import { DataSource, type EntityManager } from 'typeorm';
 import { ProgressionService } from '../progression/progression.service';
 import { RaidsService, type RaidContributionOutcome } from '../raids/raids.service';
+import { EconomyService } from '../economy/economy.service';
+import type { CoinMovementResult } from '../economy/domain/coin-origin';
 import { StudySession } from './entities/study-session.entity';
 import type { StudySessionSnapshot } from './study-session-start.service';
 import { deserializeStudySessionSnapshot, studySessionSnapshot } from './study-session-start.service';
 import { StudySessionTransitionDto } from './dto/study-session-transition.dto';
+import { coinsForDuration } from './domain/coin-rate';
 import { isValidIdempotencyKey } from './domain/idempotency-key';
 import { rejectIfStudySessionCommandKeyUsed } from './study-session-command-keys';
 import {
@@ -76,6 +79,7 @@ export class StudySessionTransitionService {
     @Inject(STUDY_SESSION_CLOCK) private readonly clock: StudySessionClock,
     private readonly progression: ProgressionService,
     private readonly raids: RaidsService,
+    private readonly economy: EconomyService,
   ) {}
 
   pause(command: StudySessionTransitionContext): Promise<StudySessionTransitionResult> {
@@ -152,6 +156,7 @@ export class StudySessionTransitionService {
           xpGained: 0,
           progressionResult: null,
           raidContributionOutcome: null,
+          coinMovement: null,
         };
       }
 
@@ -203,6 +208,7 @@ export class StudySessionTransitionService {
       let progressionResult: XpApplicationResult | null = null;
       let raidContributionOutcome: RaidContributionOutcome | null = null;
       let raidContributionFeedback: RaidContributionFeedback | null = null;
+      let coinMovement: CoinMovementResult | null = null;
       const terminalXpAwarded = stopResult?.xpAwarded ?? completionResult?.xpAwarded ?? 0;
       if (stopResult || completionResult) {
         await manager.query(
@@ -211,6 +217,11 @@ export class StudySessionTransitionService {
         );
         if (terminalXpAwarded > 0) {
           progressionResult = await this.progression.awardXpInTransaction(manager, userId, terminalXpAwarded);
+          // Mesma transação do XP: a Moeda do foco e o XP são commitados ou revertidos juntos (ADR-012).
+          coinMovement = await this.economy.credit(manager, userId, coinsForDuration(saved.durationValidSeconds), {
+            type: 'study-session',
+            ref: studySessionId,
+          });
         }
         if (saved.mode === 'guild' && saved.raidId) {
           raidContributionOutcome = await this.raids.recordContributionInTransaction(manager, {
@@ -238,11 +249,14 @@ export class StudySessionTransitionService {
          VALUES (?, ?, ?, ?, ?, ?)`,
         [userId, studySessionId, idempotencyKey, action, dto.expectedVersion, JSON.stringify(snapshot)],
       );
-      return { snapshot, xpGained: terminalXpAwarded, progressionResult, raidContributionOutcome };
+      return { snapshot, xpGained: terminalXpAwarded, progressionResult, raidContributionOutcome, coinMovement };
     });
 
     if (result.progressionResult) {
       this.progression.publishAwardedXp(userId, result.xpGained, result.progressionResult);
+    }
+    if (result.coinMovement?.applied) {
+      this.economy.publishBalanceChanged(userId, result.coinMovement);
     }
     if (result.raidContributionOutcome?.status === 'counted' && result.raidContributionOutcome.progress) {
       this.raids.publishProgress(result.raidContributionOutcome.progress);

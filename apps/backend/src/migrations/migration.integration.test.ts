@@ -36,7 +36,14 @@ const expectedTables = [
   'raid_contributions',
   'guild_chat_messages',
   'raid_participations',
+  'coin_balances',
+  'coin_ledger_entries',
 ];
+
+/** The tables that exist before the coin economy migration; the revert steps after it check these. */
+const tablesBeforeCoinEconomy = expectedTables.filter(
+  (tableName) => tableName !== 'coin_balances' && tableName !== 'coin_ledger_entries',
+);
 
 const expectedColumns: Record<string, string[]> = {
   users: ['id', 'email', 'password_hash', 'display_name', 'plan_tier', 'created_at'],
@@ -100,6 +107,8 @@ const expectedColumns: Record<string, string[]> = {
   ],
   guild_chat_messages: ['id', 'guild_id', 'user_id', 'body', 'sent_at', 'seq'],
   raid_participations: ['id', 'raid_id', 'user_id', 'created_at'],
+  coin_balances: ['user_id', 'balance', 'updated_at'],
+  coin_ledger_entries: ['id', 'user_id', 'amount', 'balance_after', 'origin_type', 'origin_ref', 'created_at'],
 };
 
 type SchemaRow = RowDataPacket & Record<string, string | number>;
@@ -173,7 +182,9 @@ describe('TypeORM migrations against an empty MySQL schema', () => {
               ? ['user_id', 'idempotency_key']
             : tableName === 'active_study_sessions'
               ? ['user_id']
-              : ['id'],
+              : tableName === 'coin_balances'
+                ? ['user_id']
+                : ['id'],
       );
     }
 
@@ -203,6 +214,11 @@ describe('TypeORM migrations against an empty MySQL schema', () => {
       ],
       ['raid_contributions', 'UQ_raid_contributions_study_session_id', 'study_session_id'],
       ['raid_participations', 'UQ_raid_participations_raid_id_user_id', 'raid_id,user_id'],
+      [
+        'coin_ledger_entries',
+        'UQ_coin_ledger_entries_user_id_origin_type_origin_ref',
+        'user_id,origin_type,origin_ref',
+      ],
     ];
     for (const expected of expectedUniques) {
       expect(uniqueRows).toEqual(
@@ -236,6 +252,7 @@ describe('TypeORM migrations against an empty MySQL schema', () => {
       ],
       ['raid_participations', 'IDX_raid_participations_user_id', 'user_id'],
       ['guild_chat_messages', 'IDX_guild_chat_messages_guild_id', 'guild_id'],
+      ['coin_ledger_entries', 'IDX_coin_ledger_entries_user_id_created_at_id', 'user_id,created_at,id'],
     ]) {
       expect(criticalIndexRows).toEqual(
         expect.arrayContaining([
@@ -345,6 +362,8 @@ describe('TypeORM migrations against an empty MySQL schema', () => {
         'id',
         'CASCADE',
       ],
+      ['FK_coin_balances_user_id_users', 'coin_balances', 'user_id', 'users', 'id', 'CASCADE'],
+      ['FK_coin_ledger_entries_user_id_users', 'coin_ledger_entries', 'user_id', 'users', 'id', 'CASCADE'],
     ];
     expect(foreignKeyRows).toHaveLength(expectedForeignKeys.length);
     for (const expected of expectedForeignKeys) {
@@ -383,9 +402,19 @@ describe('TypeORM migrations against an empty MySQL schema', () => {
       'AddRaidGoalReachedAt1788459480000',
       'AddGuildChatMessageSequence1788459540000',
       'AddStudySessionCappedReason1788459600000',
+      'AddCoinEconomy1788459660000',
     ]);
 
-    await dataSource.undoLastMigration(); // study session capped reason, the newest migration
+    await dataSource.undoLastMigration(); // coin economy, the newest migration
+    const coinRevertRows = await rows(
+      database!.admin,
+      `SELECT TABLE_NAME FROM information_schema.TABLES
+       WHERE TABLE_SCHEMA = ? AND TABLE_NAME IN ('coin_balances', 'coin_ledger_entries')`,
+      [database!.name],
+    );
+    expect(coinRevertRows).toHaveLength(0);
+
+    await dataSource.undoLastMigration(); // study session capped reason
     await dataSource.undoLastMigration(); // guild chat sequence
     const chatSeqRevertRows = await rows(
       database!.admin,
@@ -486,7 +515,7 @@ describe('TypeORM migrations against an empty MySQL schema', () => {
       [database!.name],
     );
     expect(remainingRows.map((row) => row.TABLE_NAME)).toEqual(
-      expectedTables.filter((tableName) => tableName !== 'study_session_command_keys' && tableName !== 'raid_participations').sort(),
+      tablesBeforeCoinEconomy.filter((tableName) => tableName !== 'study_session_command_keys' && tableName !== 'raid_participations').sort(),
     );
 
 await dataSource.undoLastMigration();
@@ -497,7 +526,7 @@ await dataSource.undoLastMigration();
       [database!.name],
     );
     expect(afterPauseResumeRevertRows.map((row) => row.TABLE_NAME)).toEqual(
-      expectedTables
+      tablesBeforeCoinEconomy
         .filter((tableName) => tableName !== 'raid_participations')
         .filter((tableName) => !['study_session_transition_receipts', 'study_session_command_keys'].includes(tableName))
         .sort(),
@@ -511,7 +540,7 @@ await dataSource.undoLastMigration();
       [database!.name],
     );
     expect(afterCanonicalRevertRows.map((row) => row.TABLE_NAME)).toEqual(
-      expectedTables
+      tablesBeforeCoinEconomy
         .filter((tableName) => tableName !== 'raid_participations')
         .filter((tableName) => ![
           'active_study_sessions',
@@ -531,7 +560,7 @@ await dataSource.undoLastMigration();
       [database!.name],
     );
     expect(afterHistoryRevertRows.map((row) => row.TABLE_NAME)).toEqual(
-      expectedTables
+      tablesBeforeCoinEconomy
         .filter((tableName) => tableName !== 'raid_participations')
         .filter((tableName) => !['session_refresh_token_history', 'active_study_sessions', 'study_session_start_receipts', 'study_session_transition_receipts', 'study_session_command_keys'].includes(tableName))
         .sort(),
@@ -632,7 +661,8 @@ await dataSource.undoLastMigration();
       { idempotency_key: 'rolling-transition-key', command_kind: 'resume' },
     ]);
 
-    for (let step = 0; step < 11; step += 1) await dataSource.undoLastMigration();
+    // Twelve steps: the coin economy migration now sits above the 16 earlier ones.
+    for (let step = 0; step < 12; step += 1) await dataSource.undoLastMigration();
     const leftoverTriggers = await rows(
       database.admin,
       `SELECT TRIGGER_NAME FROM information_schema.TRIGGERS
@@ -757,6 +787,7 @@ await dataSource.undoLastMigration();
     expect(receiptsWithSubject).toEqual([{ idempotency_key: 'solo-start-key', subject: 'Cálculo II' }]);
 
     // M6 revert: only the receipt column goes away; every persisted Matéria (including legacy Guild rows) stays.
+    await dataSource.undoLastMigration(); // coin economy, the newest migration
     await dataSource.undoLastMigration(); // study session capped reason
     await dataSource.undoLastMigration(); // guild chat sequence
     await dataSource.undoLastMigration(); // raid goal reached at
@@ -794,7 +825,8 @@ await dataSource.undoLastMigration();
     );
     expect(receiptsAfterReapply).toEqual([{ idempotency_key: 'solo-start-key', subject: null }]);
 
-    for (let step = 0; step < 13; step += 1) await dataSource.undoLastMigration();
+    // Fourteen steps: the coin economy migration now sits above the 13 earlier ones that this downgrade undid.
+    for (let step = 0; step < 14; step += 1) await dataSource.undoLastMigration();
     const downgradedHistory = await rows(
       database.admin,
       `SELECT id, subject, mode, raid_id FROM ${database.identifier}.study_sessions ORDER BY id`,
@@ -885,7 +917,8 @@ await dataSource.undoLastMigration();
     );
     expect(leftoverArchives).toHaveLength(0);
 
-    for (let step = 0; step < 16; step += 1) await dataSource.undoLastMigration();
+    // Seventeen steps: every migration, the coin economy one included, down to the archives.
+    for (let step = 0; step < 17; step += 1) await dataSource.undoLastMigration();
     const remainingSchemaTables = await rows(
       database.admin,
       `SELECT TABLE_NAME FROM information_schema.TABLES

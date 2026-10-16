@@ -40,6 +40,8 @@ channels:
         $ref: "#/components/messages/levelUp"
       equipmentChanged:
         $ref: "#/components/messages/equipmentChanged"
+      coinsChanged:
+        $ref: "#/components/messages/coinsChanged"
 operations:
   receiveRaidProgress:
     action: receive
@@ -92,6 +94,17 @@ operations:
       invalida o perfil (itens equipados e Título) e o Catálogo de cosméticos.
     messages:
       - $ref: "#/channels/userRoom/messages/equipmentChanged"
+  receiveCoinsChanged:
+    action: receive
+    channel:
+      $ref: "#/channels/userRoom"
+    summary: O saldo de Moedas do usuário mudou
+    description: >
+      Emitido para todos os dispositivos do usuário depois do commit de um crédito ou débito de Moedas (ADR-012).
+      Só sai quando a origem foi aplicada agora, e não quando a movimentação já tinha sido feita. O app atualiza o
+      saldo e o Extrato.
+    messages:
+      - $ref: "#/channels/userRoom/messages/coinsChanged"
 components:
   securitySchemes:
     accessToken:
@@ -130,7 +143,30 @@ components:
       contentType: application/json
       payload:
         $ref: "#/components/schemas/EquipmentChanged"
+    coinsChanged:
+      name: coins:changed
+      title: Saldo de Moedas alterado
+      contentType: application/json
+      payload:
+        $ref: "#/components/schemas/CoinsChanged"
   schemas:
+    CoinsChanged:
+      type: object
+      required: [balance, delta, origin]
+      properties:
+        balance:
+          type: integer
+          minimum: 0
+          description: Saldo do usuário depois da movimentação
+        delta:
+          type: integer
+          description: Positivo para crédito, negativo para débito
+        origin:
+          type: object
+          required: [type, ref]
+          properties:
+            type: { type: string, enum: [study-session, raid-win, purchase, signup, migration] }
+            ref: { type: string, maxLength: 64 }
     EquipmentChanged:
       type: object
       required: [category, cosmeticItemId]
