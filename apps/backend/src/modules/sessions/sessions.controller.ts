@@ -23,6 +23,7 @@ import { StudySessionTransitionService } from './study-session-transition.servic
 import { StudySessionTransitionDto } from './dto/study-session-transition.dto';
 import type { RecentSessionResponseDto } from './dto/recent-session-response.dto';
 import type { RecentSubjectsResponseDto } from './dto/recent-subjects-response.dto';
+import type { FocusCycle } from './domain/focus-cycle';
 import type { SessionMetricsResponseDto } from './dto/session-metrics-response.dto';
 
 @Controller('sessions')
@@ -42,6 +43,12 @@ export class SessionsController {
       return;
     }
     return snapshot;
+  }
+
+  @Get('cycle')
+  @HttpCode(HttpStatus.OK)
+  cycle(@CurrentUser() user: JwtPayload): Promise<FocusCycle> {
+    return this.sessions.focusCycle(user.sub);
   }
 
   @Get('recent')

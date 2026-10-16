@@ -17,11 +17,13 @@ import {
   type StudySessionTransitionAction,
   type StudySessionTransitionRequest,
 } from './api';
-import { activeStudySessionQueryKey, recentStudySessionSubjectsQueryKey, useActiveStudySession, useRecentStudySessionSubjects } from './queries';
+import { activeStudySessionQueryKey, focusCycleQueryKey, recentStudySessionSubjectsQueryKey, useActiveStudySession, useFocusCycle, useRecentStudySessionSubjects } from './queries';
+import { BREAK_SECONDS, breakRemainingSeconds, clearBreak, currentBreak, startBreak, type BreakKind, type BreakRun } from './pomodoro-break';
 import { formatRemainingTime, remainingStudySeconds } from './timer';
 import { MAX_SUBJECT_LENGTH, validateSubject, type SubjectValidation } from './subject';
 import { FeedbackMessage } from '@/design-system/components/FeedbackMessage';
-import { dashboardKeys } from '@/features/dashboard/queries';
+import { dashboardKeys, sessionMetricsQueryOptions } from '@/features/dashboard/queries';
+import { formatSessionsToday } from '@/features/dashboard/formatters';
 import { isApiError } from '@/core/api/api-error';
 import { joinRaid, type ActiveRaid } from '@/features/guild/api';
 import { activeRaidQueryOptions, guildKeys, myGuildQueryOptions } from '@/features/guild/queries';
@@ -305,6 +307,95 @@ function SessionModeOptions({ mode, disabled, onSelect }: {
   );
 }
 
+/** "Hoje" pill of the Forja header: sessions concluded today against the daily goal. Hidden until known. */
+function TodayPill() {
+  const { data: metrics } = useQuery(sessionMetricsQueryOptions());
+  if (!metrics) return null;
+  const goal = Math.min(8, Math.max(0, Math.trunc(metrics.dailyGoal)));
+  const { value, spoken } = formatSessionsToday(metrics);
+  return (
+    <View accessibilityLabel={`Hoje: ${spoken} sessões`} accessible style={styles.todayPill} testID="study-session-today">
+      <Text allowFontScaling style={styles.todayLabel}>Hoje</Text>
+      <View style={styles.todayBars}>
+        {Array.from({ length: goal }, (_, index) => (
+          <View key={index} style={[styles.todayBar, index < metrics.sessionsToday && styles.todayBarDone]} />
+        ))}
+      </View>
+      <Text allowFontScaling style={styles.todayValue}>{value}</Text>
+    </View>
+  );
+}
+
+const BREAK_COPY: Record<BreakKind, { title: string; phase: string; action: string; offer: (minutes: number) => string }> = {
+  short: {
+    title: 'Pausa curta',
+    phase: 'PAUSA CURTA',
+    action: 'Iniciar pausa curta',
+    offer: (minutes) => `Pausa curta de ${minutes} minutos. Não concede XP.`,
+  },
+  long: {
+    title: 'Pausa longa',
+    phase: 'PAUSA LONGA',
+    action: 'Iniciar pausa longa',
+    offer: (minutes) => `Quatro focos concluídos. Pausa longa de ${minutes} minutos, sem XP.`,
+  },
+};
+
+/** After a completed focus: the next break and where the user stands in the cycle of four. */
+function BreakOffer({ kind, completedInCycle, onStart }: {
+  kind: BreakKind;
+  completedInCycle: number | null;
+  onStart: (kind: BreakKind) => void;
+}) {
+  const copy = BREAK_COPY[kind];
+  return (
+    <View style={styles.breakOffer} testID="study-session-break-offer">
+      <ForgeCardTitle>Hora de descansar</ForgeCardTitle>
+      {completedInCycle !== null ? <WiseText color="accentHighlight" variant="mono">Forja {completedInCycle} de 4</WiseText> : null}
+      <WiseText color="textSecondary" variant="body">{copy.offer(BREAK_SECONDS[kind] / 60)}</WiseText>
+      <WiseButton label={copy.action} onPress={() => onStart(kind)} testID="study-session-break-start" />
+    </View>
+  );
+}
+
+function BreakStage({ run, remaining, ringSize, onSkip, onFinish }: {
+  run: BreakRun;
+  remaining: number;
+  ringSize: number;
+  onSkip: () => void;
+  onFinish: () => void;
+}) {
+  const copy = BREAK_COPY[run.kind];
+  const finished = remaining === 0;
+  return (
+    <WiseCard style={styles.stage} testID="study-session-break">
+      <ForgeStageGradient />
+      <View style={styles.stageHeader}>
+        <Text accessibilityRole="header" allowFontScaling style={styles.stageTitle}>{copy.title}</Text>
+        <Text allowFontScaling style={styles.stageMeta}>{run.durationSeconds / 60} min · sem XP</Text>
+      </View>
+      <View style={styles.stageBody}>
+        <ForgeTimer
+          remaining={remaining}
+          duration={run.durationSeconds}
+          phase={copy.phase}
+          size={ringSize}
+          testID="study-session-break-timer"
+          accessibilityLabel={`Tempo restante da pausa: ${Math.floor(remaining / 60)} minutos e ${remaining % 60} segundos.`}
+        />
+      </View>
+      <View style={styles.stageActions}>
+        <WiseText accessibilityLiveRegion="polite" aria-live="polite" color="textSecondary" variant="body">
+          {finished ? 'Pausa concluída. Pronto para outra forja?' : 'Descanse. O contador segue mesmo se você sair desta tela.'}
+        </WiseText>
+        {finished
+          ? <WiseButton label="Nova sessão" onPress={onFinish} size="large" testID="study-session-break-new" />
+          : <WiseButton label="Pular pausa" onPress={onSkip} variant="secondary" testID="study-session-break-skip" />}
+      </View>
+    </WiseCard>
+  );
+}
+
 function isVersionConflict(error: unknown): boolean {
   if (typeof error !== 'object' || error === null) return false;
   const responseData = (error as { response?: { data?: unknown } }).response?.data;
@@ -327,6 +418,9 @@ export function StudySessionScreen({ initialMode = 'solo' }: { initialMode?: Ses
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [focusedDuration, setFocusedDuration] = useState<PlannedDurationSeconds | null>(null);
   const [now, setNow] = useState(0);
+  const [breakRun, setBreakRun] = useState<BreakRun | null>(() => currentBreak());
+  const [cycleFresh, setCycleFresh] = useState(true);
+  const [breakNow, setBreakNow] = useState(() => Date.now());
   const [retryTransition, setRetryTransition] = useState<TransitionCommand | null>(null);
   const [terminalResult, setTerminalResult] = useState<StudySessionSnapshot | null>(null);
   const [completionIntentState, setCompletionIntentState] = useState<StudySessionCompletionIntent | null>(
@@ -341,6 +435,7 @@ export function StudySessionScreen({ initialMode = 'solo' }: { initialMode?: Ses
   const applicationActive = useStudySessionAppActive();
   const wasApplicationActive = useRef(applicationActive);
   const active = useActiveStudySession();
+  const focusCycle = useFocusCycle();
   const refetchActive = active.refetch;
   const refreshActive = useCallback(async () => {
     const result = await refetchActive();
@@ -369,15 +464,19 @@ export function StudySessionScreen({ initialMode = 'solo' }: { initialMode?: Ses
 
   const settleTerminalResult = useCallback(async (result: StudySessionSnapshot) => {
     setTerminalResult(result);
+    setCycleFresh(false);
     await queryClient.cancelQueries({ queryKey: activeStudySessionQueryKey });
     queryClient.setQueryData(activeStudySessionQueryKey, null);
     await Promise.allSettled([
       queryClient.invalidateQueries({ queryKey: dashboardKeys.profile() }),
       queryClient.invalidateQueries({ queryKey: dashboardKeys.recentActivity() }),
       queryClient.invalidateQueries({ queryKey: dashboardKeys.metrics() }),
+      queryClient.invalidateQueries({ queryKey: focusCycleQueryKey }),
       // A guild-mode session may have become a Contribution: the Raid card shows the new progress.
       ...(result.mode === 'guild' ? [queryClient.invalidateQueries({ queryKey: [...guildKeys.all, 'raid'] })] : []),
     ]);
+    // Only now does the cycle include this focus, so the right break (short or long) can be offered.
+    setCycleFresh(true);
   }, [queryClient]);
 
   const observeCompletion = useCallback((intent: StudySessionCompletionIntent) => {
@@ -437,6 +536,8 @@ export function StudySessionScreen({ initialMode = 'solo' }: { initialMode?: Ses
       setSubjectInput('');
       setSettingsOpen(false);
       setTerminalResult(null);
+      clearBreak();
+      setBreakRun(null);
       clearCompletionIntent();
       setCompletionIntentState(null);
       queryClient.setQueryData(activeStudySessionQueryKey, snapshot);
@@ -524,6 +625,16 @@ export function StudySessionScreen({ initialMode = 'solo' }: { initialMode?: Ses
     const interval = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(interval);
   }, [snapshotId, snapshotState, applicationActive]);
+
+  useEffect(() => {
+    if (!breakRun || !applicationActive) return;
+    const interval = setInterval(() => {
+      const at = Date.now();
+      setBreakNow(at);
+      if (breakRemainingSeconds(breakRun, at) === 0) clearInterval(interval);
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [breakRun, applicationActive]);
 
   const projectedRemaining = snapshot
     ? now === 0 ? snapshot.remainingSeconds : remainingStudySeconds(snapshot, now, clockOffset)
@@ -652,9 +763,28 @@ export function StudySessionScreen({ initialMode = 'solo' }: { initialMode?: Ses
     if (retryTransition) transition.mutate(retryTransition);
   };
 
+  const startNewSession = () => {
+    pendingKey.current = null;
+    clearBreak();
+    setBreakRun(null);
+    clearCompletionIntent();
+    setCompletionIntentState(null);
+    setTerminalResult(null);
+  };
+
+  const beginBreak = (kind: BreakKind) => {
+    const at = Date.now();
+    setBreakNow(at);
+    setBreakRun(startBreak(kind, at));
+  };
+
+  // A break is offered only after a focus completed in full; early stops and discards skip it.
+  const nextBreak: BreakKind = focusCycle.data?.nextBreak ?? 'short';
+
   return (
     <Screen avoidKeyboard backgroundOverlay={<ForgePageGradient />} hasBottomNavigation safeAreaEdges={['right', 'left']} testID="study-session" title="Forja" contentContainerStyle={styles.screenContent}>
       <View style={styles.layout}>
+        <TodayPill />
         {active.isPending && !snapshot ? <WiseText variant="body">Buscando sua sessão ativa…</WiseText> : null}
         {active.isError && !snapshot ? (
           <WiseCard style={styles.messageCard} testID="study-session-load-error">
@@ -669,7 +799,16 @@ export function StudySessionScreen({ initialMode = 'solo' }: { initialMode?: Ses
             <WiseButton label="Atualizar estado" onPress={() => void refreshActive()} variant="secondary" />
           </WiseCard>
         ) : null}
-        {displayedTerminalResult ? (
+        {breakRun && !activeSnapshot ? (
+          <BreakStage
+            onFinish={startNewSession}
+            onSkip={startNewSession}
+            remaining={breakRemainingSeconds(breakRun, breakNow)}
+            ringSize={ringSize}
+            run={breakRun}
+          />
+        ) : null}
+        {displayedTerminalResult && !breakRun ? (
           <WiseCard style={styles.messageCard} testID="study-session-result">
             <WiseText accessibilityLiveRegion="polite" aria-live="polite" variant="subtitle">
               {displayedTerminalResult.state === 'discarded'
@@ -699,16 +838,15 @@ export function StudySessionScreen({ initialMode = 'solo' }: { initialMode?: Ses
                   : 'O limite diário de foco foi atingido.'}
               </WiseText>
             ) : null}
+            {displayedTerminalResult.state === 'completed' && cycleFresh && !focusCycle.isFetching ? (
+              <BreakOffer kind={nextBreak} completedInCycle={focusCycle.data?.completedInCycle ?? null} onStart={beginBreak} />
+            ) : null}
             <WiseButton
               label="Nova sessão"
-              onPress={() => {
-                pendingKey.current = null;
-                clearCompletionIntent();
-                setCompletionIntentState(null);
-                setTerminalResult(null);
-              }}
+              onPress={startNewSession}
               size="large"
               testID="study-session-new"
+              variant={displayedTerminalResult.state === 'completed' ? 'secondary' : 'primary'}
             />
           </WiseCard>
         ) : null}
@@ -868,7 +1006,7 @@ export function StudySessionScreen({ initialMode = 'solo' }: { initialMode?: Ses
           </View>
           </View>
         ) : null}
-        {!displayedTerminalResult && !active.isPending && !active.isError && !snapshot ? (
+        {!displayedTerminalResult && !breakRun && !active.isPending && !active.isError && !snapshot ? (
           <View style={[styles.forgeColumns, wideLayout && styles.forgeColumnsWide]} testID="study-session-setup">
           <WiseCard style={[styles.stage, wideLayout && styles.stageWide]} testID="study-session-stage">
             <ForgeStageGradient />
@@ -943,6 +1081,13 @@ export function StudySessionScreen({ initialMode = 'solo' }: { initialMode?: Ses
 const styles = StyleSheet.create({
   screenContent: { justifyContent: 'flex-start' },
   layout: { width: '100%', maxWidth: 1040, alignSelf: 'center', gap: theme.space.sectionGap },
+  todayPill: { alignSelf: 'flex-end', flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 14, paddingVertical: 8, borderWidth: 1, borderColor: theme.color.borderEmphasis, borderRadius: theme.radius.pill, backgroundColor: theme.color.surfaceCard },
+  todayLabel: { fontFamily: 'Inter-SemiBold', fontSize: 13, color: theme.color.textSecondary },
+  todayBars: { flexDirection: 'row', gap: 4 },
+  todayBar: { width: 18, height: 6, borderRadius: 2, borderWidth: 1, borderColor: theme.color.borderSubtle, backgroundColor: theme.color.surfaceInset },
+  todayBarDone: { backgroundColor: theme.color.accentPrimary },
+  todayValue: { fontFamily: 'JetBrainsMono-Medium', fontSize: 11, color: theme.color.textPrimary },
+  breakOffer: { gap: theme.space.stackTight, borderTopWidth: 1, borderTopColor: theme.color.borderGhost, paddingTop: theme.space.controlInset },
   messageCard: { maxWidth: 580, alignSelf: 'center', padding: theme.space.cardInset, gap: theme.space.controlInset },
   forgeColumns: { width: '100%', gap: theme.space.cardInset },
   forgeColumnsWide: { flexDirection: 'row', alignItems: 'flex-start' },

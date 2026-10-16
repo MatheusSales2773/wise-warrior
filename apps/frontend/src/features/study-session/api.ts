@@ -24,6 +24,11 @@ export type StudySessionSnapshot = {
   canControl: boolean;
   receivedAtMs: number;
 };
+export type FocusCycle = {
+  completedInCycle: number;
+  cycleLength: 4;
+  nextBreak: 'short' | 'long';
+};
 export type StudySessionTransitionAction = 'pause' | 'resume' | 'stop' | 'complete';
 export type StudySessionTransitionRequest = {
   id: string;
@@ -34,6 +39,11 @@ export type StudySessionTransitionRequest = {
 export async function getActiveStudySession(signal?: AbortSignal): Promise<StudySessionSnapshot | null> {
   const response = await getAuthenticatedHttpClient().get<StudySessionSnapshot>('/sessions/active', { signal });
   return response.status === 204 ? null : { ...response.data, receivedAtMs: Date.now() };
+}
+
+export async function getFocusCycle(signal?: AbortSignal): Promise<FocusCycle> {
+  const response = await getAuthenticatedHttpClient().get<FocusCycle>('/sessions/cycle', { signal });
+  return response.data;
 }
 
 export async function getRecentStudySessionSubjects(signal?: AbortSignal): Promise<string[]> {
