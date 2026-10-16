@@ -127,7 +127,9 @@ describe('Raid da semana against MySQL', () => {
         description: expect.any(String),
         imageUrl: null,
       },
-      reward: { itemId: 'c05e71c0-0000-4000-8000-000000000009', name: 'Marcador do Grimório', category: 'badge' },
+      rewards: [{ itemId: 'c05e71c0-0000-4000-8000-000000000009', name: 'Marcador do Grimório', category: 'badge' }],
+      coins: 50,
+      party: [], // nobody has confirmed participation yet
       goalXp: 1000, // 1.500 × 108h left of 168h = 964.3, up to a multiple of 50
       progressXp: 0,
       goalReachedAt: null,

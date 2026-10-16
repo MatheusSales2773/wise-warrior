@@ -45,7 +45,9 @@ class FakeSocket implements RealtimeSocket {
 const raid = (overrides: Partial<ActiveRaid> = {}): ActiveRaid => ({
   id: 'raid-1',
   mission: { slug: 'cerco', name: 'Cerco', description: '', imageUrl: null },
-  reward: { itemId: 'item-1', name: 'Marcador', category: 'badge' },
+  rewards: [{ itemId: 'item-1', name: 'Marcador', category: 'badge' }],
+  coins: 50,
+  party: [],
   goalXp: 1000,
   progressXp: 100,
   goalReachedAt: null,

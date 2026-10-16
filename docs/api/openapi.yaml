@@ -1772,25 +1772,34 @@ components:
 
     ActiveRaid:
       type: object
-      required: [id, mission, reward, goalXp, progressXp, goalReachedAt, startsAt, endsAt, status, me]
+      required: [id, mission, rewards, coins, party, goalXp, progressXp, goalReachedAt, startsAt, endsAt, status, me]
       properties:
         id: { type: string, format: uuid }
         mission:
           type: object
           required: [slug, name, description, imageUrl]
           properties:
-            slug: { type: string, example: vigilia-da-aurora }
+            slug: { type: string, example: vigilia-da-aurora, description: "Chave da ilustração da cena: o cliente mapeia slug → arte e usa a padrão para um slug desconhecido" }
             name: { type: string }
             description: { type: string, maxLength: 140 }
             imageUrl: { type: [string, "null"], description: Nulo enquanto a Missão não tem imagem }
-        reward:
-          type: object
-          description: Recompensa de Raid, um dos Cosmetic Items da Missão (o primeiro; a Missão pode ter vários, todos dados no fechamento, além de `RAID_WIN_COINS` Moedas). Dado a quem tiver Contribuição numa Raid vencida.
-          required: [itemId, name, category]
-          properties:
-            itemId: { type: string, format: uuid }
-            name: { type: string }
-            category: { type: string, enum: [avatar, badge, title, accessory] }
+        rewards:
+          type: array
+          description: Recompensa de Raid, todos os Cosmetic Items da Missão em ordem estável. Dados a quem tiver Contribuição numa Raid vencida, junto com `coins`.
+          minItems: 1
+          items:
+            type: object
+            required: [itemId, name, category]
+            properties:
+              itemId: { type: string, format: uuid }
+              name: { type: string }
+              category: { type: string, enum: [avatar, badge, title, accessory] }
+        coins: { type: integer, minimum: 0, description: "Moedas que cada premiado também recebe (`RAID_WIN_COINS`)" }
+        party:
+          type: array
+          maxItems: 5
+          description: Os 5 primeiros do Ranking interno (mesma ordem e desempate dele, com Participantes de 0 XP), com a aparência equipada, para a cena da Raid.
+          items: { $ref: "#/components/schemas/RaidRankingEntry" }
         goalXp: { type: integer, description: "Meta coletiva, congelada na criação da Raid" }
         progressXp: { type: integer, description: "Soma das Contribuições; continua subindo depois da Meta batida até endsAt" }
         goalReachedAt:
@@ -1821,15 +1830,25 @@ components:
 
     RaidRankingEntry:
       type: object
-      required: [position, userId, displayName, level, title, contributionXp, isMe]
+      required: [position, userId, displayName, level, title, avatar, accessory, contributionXp, isMe]
       properties:
         position: { type: integer, minimum: 1 }
         userId: { type: string, format: uuid }
         displayName: { type: string }
         level: { type: integer, minimum: 1 }
         title: { type: [string, "null"], description: "O Título equipado (ADR-010); null com o espaço vazio" }
+        avatar: { $ref: "#/components/schemas/EquippedAppearanceItem" }
+        accessory: { $ref: "#/components/schemas/EquippedAppearanceItem" }
         contributionXp: { type: integer, minimum: 0 }
         isMe: { type: boolean, description: "Se a linha é de quem consulta" }
+
+    EquippedAppearanceItem:
+      type: [object, "null"]
+      description: O Cosmetic Item equipado naquele espaço; null com o espaço vazio
+      required: [itemId, name]
+      properties:
+        itemId: { type: string, format: uuid }
+        name: { type: string }
 
     RaidRankingPage:
       type: object
