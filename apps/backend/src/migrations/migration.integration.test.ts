@@ -12,13 +12,14 @@ import { AddCanonicalStudySessionStart1788458760000 } from './1788458760000-add-
 import { AddStudySessionPauseResume1788458880000 } from './1788458880000-add-study-session-pause-resume';
 import { AddRaidMissions1788459360000 } from './1788459360000-add-raid-missions';
 import { AddMissionStore1788459780000 } from './1788459780000-add-mission-store';
+import { AddGuildMissionChoice1788460020000 } from './1788460020000-add-guild-mission-choice';
 import { AddRaidParticipations1788459420000 } from './1788459420000-add-raid-participations';
 import { AddRaidGoalReachedAt1788459480000 } from './1788459480000-add-raid-goal-reached-at';
 import { DropCharacterTitle1788459300000 } from './1788459300000-drop-character-title';
 import { SeedInitialCosmeticItems1788459240000 } from './1788459240000-seed-initial-cosmetic-items';
 import { GrantWelcomeCoins1788459720000 } from './1788459720000-grant-welcome-coins';
 import { AddMissionRewardItems1788459960000 } from './1788459960000-add-mission-reward-items';
-import { KeepBadgesOffSale1788460020000 } from './1788460020000-keep-badges-off-sale';
+import { KeepBadgesOffSale1788460080000 } from './1788460080000-keep-badges-off-sale';
 import { raidWeekAt } from '../modules/raids/domain/raid-week';
 import { StudySession } from '../modules/sessions/entities/study-session.entity';
 
@@ -46,11 +47,12 @@ const expectedTables = [
   'coin_ledger_entries',
   'mission_reward_items',
   'user_missions',
+  'guild_mission_choices',
 ];
 
 /** The tables that exist before the coin economy migration; the revert steps after it check these. */
 const tablesBeforeCoinEconomy = expectedTables.filter(
-  (tableName) => !['coin_balances', 'coin_ledger_entries', 'mission_reward_items', 'user_missions'].includes(tableName),
+  (tableName) => !['coin_balances', 'coin_ledger_entries', 'mission_reward_items', 'user_missions', 'guild_mission_choices'].includes(tableName),
 );
 
 const expectedColumns: Record<string, string[]> = {
@@ -119,6 +121,7 @@ const expectedColumns: Record<string, string[]> = {
   coin_balances: ['user_id', 'balance', 'updated_at'],
   coin_ledger_entries: ['id', 'user_id', 'amount', 'balance_after', 'origin_type', 'origin_ref', 'created_at'],
   user_missions: ['id', 'user_id', 'mission_id', 'acquired_at'],
+  guild_mission_choices: ['guild_id', 'mission_id', 'owner_user_id', 'chosen_at'],
 };
 
 type SchemaRow = RowDataPacket & Record<string, string | number>;
@@ -196,6 +199,8 @@ describe('TypeORM migrations against an empty MySQL schema', () => {
               ? ['user_id']
               : tableName === 'coin_balances'
                 ? ['user_id']
+                : tableName === 'guild_mission_choices'
+                  ? ['guild_id']
                 : ['id'],
       );
     }
@@ -378,6 +383,9 @@ describe('TypeORM migrations against an empty MySQL schema', () => {
       ],
       ['FK_user_missions_user_id_users', 'user_missions', 'user_id', 'users', 'id', 'CASCADE'],
       ['FK_user_missions_mission_id_missions', 'user_missions', 'mission_id', 'missions', 'id', 'CASCADE'],
+      ['FK_guild_mission_choices_guild_id_guilds', 'guild_mission_choices', 'guild_id', 'guilds', 'id', 'CASCADE'],
+      ['FK_guild_mission_choices_mission_id_missions', 'guild_mission_choices', 'mission_id', 'missions', 'id', 'CASCADE'],
+      ['FK_guild_mission_choices_owner_user_id_users', 'guild_mission_choices', 'owner_user_id', 'users', 'id', 'CASCADE'],
       ['FK_coin_balances_user_id_users', 'coin_balances', 'user_id', 'users', 'id', 'CASCADE'],
       ['FK_coin_ledger_entries_user_id_users', 'coin_ledger_entries', 'user_id', 'users', 'id', 'CASCADE'],
     ];
@@ -446,7 +454,8 @@ describe('TypeORM migrations against an empty MySQL schema', () => {
       'AddCosmeticItemSale1788459840000',
       'SeedTestCosmeticItemForSale1788459900000',
       'AddMissionRewardItems1788459960000',
-      'KeepBadgesOffSale1788460020000',
+      'AddGuildMissionChoice1788460020000',
+      'KeepBadgesOffSale1788460080000',
     ]);
 
     await dataSource.undoLastMigration(); // badges off sale, the newest migration
@@ -455,6 +464,7 @@ describe('TypeORM migrations against an empty MySQL schema', () => {
     await dataSource.runMigrations(); // reapply
     await expect(badgeInsert('badge-for-sale-again', 1)).rejects.toThrow(/CHK_cosmetic_items_for_sale/);
     await dataSource.undoLastMigration();
+    await dataSource.undoLastMigration(); // guild mission choices
     await dataSource.undoLastMigration(); // mission reward items
     expect(await rows(database!.admin, `SHOW COLUMNS FROM ${database!.identifier}.missions LIKE 'reward_cosmetic_item_id'`)).toHaveLength(1);
     await dataSource.undoLastMigration(); // temporary test item À venda
@@ -857,6 +867,7 @@ await dataSource.undoLastMigration();
 
     // M6 revert: only the receipt column goes away; every persisted Matéria (including legacy Guild rows) stays.
     await dataSource.undoLastMigration(); // badges off sale, the newest migration
+    await dataSource.undoLastMigration(); // guild mission choices
     await dataSource.undoLastMigration(); // mission reward items
     await dataSource.undoLastMigration(); // temporary test item À venda
     await dataSource.undoLastMigration(); // cosmetic item sale
@@ -1010,7 +1021,7 @@ await dataSource.undoLastMigration();
   it('seeds the Catalog, backfills existing Characters without re-equipping, and reverts the seed', async () => {
     database = await createIntegrationDatabase('wise_migrations_test');
     initialDataSource = new DataSource(database.options(
-      (APPLICATION_MIGRATIONS as unknown[]).filter((migration) => migration !== SeedInitialCosmeticItems1788459240000 && migration !== AddRaidMissions1788459360000 && migration !== AddMissionStore1788459780000 && migration !== AddMissionRewardItems1788459960000 && migration !== AddRaidParticipations1788459420000) as typeof APPLICATION_MIGRATIONS,
+      (APPLICATION_MIGRATIONS as unknown[]).filter((migration) => migration !== SeedInitialCosmeticItems1788459240000 && migration !== AddRaidMissions1788459360000 && migration !== AddMissionStore1788459780000 && migration !== AddMissionRewardItems1788459960000 && migration !== AddGuildMissionChoice1788460020000 && migration !== AddRaidParticipations1788459420000) as typeof APPLICATION_MIGRATIONS,
     ));
     await initialDataSource.initialize();
     await initialDataSource.runMigrations();
@@ -1163,7 +1174,7 @@ await dataSource.undoLastMigration();
   it('seeds the Missões, links reward items, gives Raids a Missão and the current week to existing Guilds, and reverts', async () => {
     database = await createIntegrationDatabase('wise_migrations_test');
     initialDataSource = new DataSource(database.options(
-      (APPLICATION_MIGRATIONS as unknown[]).filter((migration) => migration !== AddRaidMissions1788459360000 && migration !== AddMissionStore1788459780000 && migration !== AddMissionRewardItems1788459960000 && migration !== AddRaidParticipations1788459420000) as typeof APPLICATION_MIGRATIONS,
+      (APPLICATION_MIGRATIONS as unknown[]).filter((migration) => migration !== AddRaidMissions1788459360000 && migration !== AddMissionStore1788459780000 && migration !== AddMissionRewardItems1788459960000 && migration !== AddGuildMissionChoice1788460020000 && migration !== AddRaidParticipations1788459420000) as typeof APPLICATION_MIGRATIONS,
     ));
     await initialDataSource.initialize();
     await initialDataSource.runMigrations();
@@ -1395,6 +1406,7 @@ await dataSource.undoLastMigration();
 
     // Back to the single-reward-item schema, where the store migration is the newest.
     await dataSource.undoLastMigration(); // badges off sale, the newest migration
+    await dataSource.undoLastMigration(); // guild mission choices
     await dataSource.undoLastMigration(); // mission reward items
 
     await database.admin.query(

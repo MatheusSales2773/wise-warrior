@@ -24,7 +24,8 @@ import { AddMissionStore1788459780000 } from '../migrations/1788459780000-add-mi
 import { AddCosmeticItemSale1788459840000 } from '../migrations/1788459840000-add-cosmetic-item-sale';
 import { SeedTestCosmeticItemForSale1788459900000 } from '../migrations/1788459900000-seed-test-cosmetic-item-for-sale';
 import { AddMissionRewardItems1788459960000 } from '../migrations/1788459960000-add-mission-reward-items';
-import { KeepBadgesOffSale1788460020000 } from '../migrations/1788460020000-keep-badges-off-sale';
+import { AddGuildMissionChoice1788460020000 } from '../migrations/1788460020000-add-guild-mission-choice';
+import { KeepBadgesOffSale1788460080000 } from '../migrations/1788460080000-keep-badges-off-sale';
 
 export const APPLICATION_MIGRATIONS: NonNullable<DataSourceOptions['migrations']> = [
   CreateWiseSchema1788458400000,
@@ -49,7 +50,8 @@ export const APPLICATION_MIGRATIONS: NonNullable<DataSourceOptions['migrations']
   AddCosmeticItemSale1788459840000,
   SeedTestCosmeticItemForSale1788459900000,
   AddMissionRewardItems1788459960000,
-  KeepBadgesOffSale1788460020000,
+  AddGuildMissionChoice1788460020000,
+  KeepBadgesOffSale1788460080000,
 ];
 
 export interface IntegrationDatabase {

@@ -8,7 +8,7 @@ import {
   forwardRef,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { EntityManager, Repository } from 'typeorm';
 import { RaidsService } from '../raids/raids.service';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
 import { Character } from '../progression/entities/character.entity';
@@ -340,6 +340,20 @@ export class GuildsService {
       where: { guildId, userId },
     });
     return membership !== null;
+  }
+
+  /** Same as `isMember`, inside the caller's transaction. */
+  async isMemberIn(manager: EntityManager, guildId: string, userId: string): Promise<boolean> {
+    return manager.exists(GuildMembership, { where: { guildId, userId } });
+  }
+
+  async isLeader(guildId: string, userId: string): Promise<boolean> {
+    return this.memberships.exists({ where: { guildId, userId, role: 'leader' } });
+  }
+
+  async memberIds(guildId: string): Promise<string[]> {
+    const rows = await this.memberships.find({ where: { guildId }, order: { joinedAt: 'ASC', id: 'ASC' } });
+    return rows.map((membership) => membership.userId);
   }
 
   async guildIdsOf(userId: string): Promise<string[]> {

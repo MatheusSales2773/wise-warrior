@@ -5,8 +5,8 @@ import { MigrationInterface, QueryRunner } from 'typeorm';
  * em Badge, mesmo para quem escreve direto no banco. Um Badge que já estivesse À venda (o item de teste da #174) sai
  * da Loja antes, senão o ADD CONSTRAINT falharia; o `down` restaura o CHECK anterior e não recoloca nada À venda.
  */
-export class KeepBadgesOffSale1788460020000 implements MigrationInterface {
-  name = 'KeepBadgesOffSale1788460020000';
+export class KeepBadgesOffSale1788460080000 implements MigrationInterface {
+  name = 'KeepBadgesOffSale1788460080000';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query("UPDATE cosmetic_items SET for_sale = 0 WHERE category = 'badge' AND for_sale = 1");
