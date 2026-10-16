@@ -42,6 +42,13 @@ export function formatRewardCategory(category: keyof typeof RAID_REWARD_CATEGORY
   return RAID_REWARD_CATEGORY_LABELS[category];
 }
 
+/** A reward item as named on the Raid screens: a Título is quoted, the rest by name. */
+export function formatRewardName(reward: { name: string; category: keyof typeof RAID_REWARD_CATEGORY_LABELS }): string {
+  return reward.category === 'title' ? `Título “${reward.name}”` : reward.name;
+}
+
+export const formatRewardCoins = (coins: number) => `+${coins} Moedas`;
+
 export const RAID_REWARD_RULE = 'Para receber o item, contribua com ao menos uma sessão de guilda e ajude a bater a meta até o fim da semana.';
 
 /** Remaining time shown on the Raid card; at zero the week is over and the next refetch brings the new Raid. */

@@ -20,10 +20,17 @@ const mine: MyGuild = {
   guild: { id: 'g1', name: 'Ordem dos Madrugadores', level: 7, memberCount: 23, leader: { userId: 'u1', displayName: 'Astaroth' } },
   role: 'member',
 };
+const entry = (position: number, name: string, xp: number, isMe = false): RaidRankingEntry => ({
+  position, userId: `u-${name}`, displayName: name, level: 10 + position, title: null, avatar: null, accessory: null, contributionXp: xp, isMe,
+});
+const ranking = [entry(1, 'Astaroth', 14_520), entry(2, 'Eldoria', 12_660), entry(3, 'Ravenstone', 11_160), entry(4, 'Guilherme', 6_780, true), entry(5, 'Brisa', 600)];
+
 const raid = (overrides: Partial<ActiveRaid> = {}): ActiveRaid => ({
   id: 'r1',
   mission: { slug: 'vigilia-da-aurora', name: 'Vigília da Aurora', description: 'Madrugue com a guilda.', imageUrl: null },
-  reward: { itemId: 'i1', name: 'Selo dos Madrugadores', category: 'accessory' },
+  rewards: [{ itemId: 'i1', name: 'Selo dos Madrugadores', category: 'accessory' }],
+  coins: 50,
+  party: ranking.slice(0, 5),
   goalXp: 120_000,
   progressXp: 82_800,
   startsAt: new Date(Date.now() - 3 * 24 * HOUR).toISOString(),
@@ -34,11 +41,6 @@ const raid = (overrides: Partial<ActiveRaid> = {}): ActiveRaid => ({
   lastHit: null,
   ...overrides,
 });
-const entry = (position: number, name: string, xp: number, isMe = false): RaidRankingEntry => ({
-  position, userId: `u-${name}`, displayName: name, level: 10 + position, title: null, contributionXp: xp, isMe,
-});
-const ranking = [entry(1, 'Astaroth', 14_520), entry(2, 'Eldoria', 12_660), entry(3, 'Ravenstone', 11_160), entry(4, 'Guilherme', 6_780, true), entry(5, 'Brisa', 600)];
-
 function setViewport(width: number, height: number) {
   Dimensions.set({ window: { width, height, scale: 1, fontScale: 1 } });
 }
@@ -123,17 +125,42 @@ describe('RaidBattleScreen on desktop', () => {
   it('offers the Mission reward to everyone who contributes and opens the Forja in guild mode', async () => {
     await renderRaid();
 
-    expect((await screen.findByTestId('raid-reward')).props.accessibilityLabel).toBe('Selo dos Madrugadores. Para todos que contribuírem.');
+    expect((await screen.findByTestId('raid-reward')).props.accessibilityLabel).toBe('Selo dos Madrugadores, +50 Moedas. Para todos que contribuírem.');
     const attack = screen.getByTestId('raid-attack');
     expect(attack.props.accessibilityState).toMatchObject({ disabled: false });
     expect(screen.getByRole('button', { name: /Atacar com foco/ })).toBeTruthy();
   });
 
   it('names a title reward as a Título', async () => {
-    mockedRaid.mockResolvedValue(raid({ reward: { itemId: 'i2', name: 'Caçador de Dragões', category: 'title' } }));
+    mockedRaid.mockResolvedValue(raid({ rewards: [{ itemId: 'i2', name: 'Caçador de Dragões', category: 'title' }] }));
     await renderRaid();
 
-    expect((await screen.findByTestId('raid-reward')).props.accessibilityLabel).toBe('Título “Caçador de Dragões”. Para todos que contribuírem.');
+    expect((await screen.findByTestId('raid-reward')).props.accessibilityLabel).toBe('Título “Caçador de Dragões”, +50 Moedas. Para todos que contribuírem.');
+  });
+
+  it('lists every reward item with its sprite and the Moedas from the API', async () => {
+    mockedRaid.mockResolvedValue(raid({
+      rewards: [{ itemId: 'i1', name: 'Selo dos Madrugadores', category: 'accessory' }, { itemId: 'i3', name: 'Armadura do Lobo', category: 'avatar' }],
+      coins: 80,
+    }));
+    await renderRaid();
+
+    const rewards = within(await screen.findByTestId('raid-rewards'));
+    expect(rewards.getByTestId('raid-reward-i1')).toBeTruthy();
+    expect(rewards.getByTestId('raid-reward-i3')).toBeTruthy();
+    expect(rewards.getByTestId('raid-reward-coins').props.children).toBe('+80 Moedas');
+    expect(screen.queryByText(/para o tesouro/)).toBeNull();
+  });
+
+  it('draws the party from the Raid with the equipped look and falls back to the default scene art', async () => {
+    const dressed = { ...entry(1, 'Astaroth', 14_520), avatar: { itemId: 'a1', name: 'Armadura do Lobo' }, accessory: { itemId: 'c1', name: 'Pena do Escriba' } };
+    mockedRaid.mockResolvedValue(raid({ mission: { slug: 'missao-sem-arte', name: 'Sem Arte', description: 'x', imageUrl: null }, party: [dressed] }));
+    await renderRaid();
+
+    expect(await screen.findByTestId('raid-scene-accessory-u-Astaroth', { includeHiddenElements: true })).toBeTruthy();
+    expect(screen.getByTestId('raid-scene-hero-u-Astaroth', { includeHiddenElements: true })).toBeTruthy();
+    expect(screen.queryByTestId('raid-scene-hero-u-Brisa', { includeHiddenElements: true })).toBeNull();
+    expect(screen.getByTestId('raid-scene-background', { includeHiddenElements: true })).toBeTruthy();
   });
 
   it('shows the boss defeated once the goal is reached', async () => {

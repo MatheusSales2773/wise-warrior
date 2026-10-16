@@ -16,7 +16,7 @@ import { MissionRewardItem } from './entities/mission-reward-item.entity';
 import { Raid } from './entities/raid.entity';
 import { RAID_CLOCK, type RaidClock } from './raid-clock';
 import { missionIndexForWeek, proportionalGoalXp, raidWeekAt } from './domain/raid-week';
-import { UsersService } from '../users/users.service';
+import { UsersService, type EquippedAppearance } from '../users/users.service';
 import { EconomyService } from '../economy/economy.service';
 import { getRaidWinCoins } from '../economy/domain/coin-config';
 import type { CoinMovementResult } from '../economy/domain/coin-origin';
@@ -41,7 +41,12 @@ export interface RaidDetail {
 export interface ActiveRaid {
   id: string;
   mission: { slug: string; name: string; description: string; imageUrl: string | null };
-  reward: { itemId: string; name: string; category: string };
+  /** Every Cosmetic Item the Missão gives, in a stable order. */
+  rewards: Array<{ itemId: string; name: string; category: string }>;
+  /** The Moedas each rewarded Participant also gets (`RAID_WIN_COINS`). */
+  coins: number;
+  /** The first five of the Ranking interno, with their equipped look, for the Raid scene. */
+  party: RaidRankingEntry[];
   goalXp: number;
   progressXp: number;
   goalReachedAt: Date | null;
@@ -67,7 +72,7 @@ export interface RaidHit {
   at: Date;
 }
 
-export interface RaidRankingEntry {
+export interface RaidRankingEntry extends EquippedAppearance {
   position: number;
   userId: string;
   displayName: string;
@@ -157,6 +162,9 @@ export interface GuildSessionContribution {
   /** O fim da Study Session: decide se ela ainda cabe na semana da Raid (RN01). */
   endedAt: Date;
 }
+
+/** How many members the Raid scene has room for. */
+const RAID_PARTY_SIZE = 5;
 
 /**
  * Golpes of one Raid, most recent first. `created_at` only keeps seconds, so the end of the Study Session breaks ties.
@@ -315,11 +323,14 @@ export class RaidsService {
     if (!raid) {
       throw new NotFoundException('A guilda não tem Raid ativa');
     }
-    const [rewardItemId] = await this.rewardItemIdsOf(this.missionRewardItems.manager, raid.missionId);
-    const [item] = rewardItemId ? await this.users.findCosmeticItems([rewardItemId]) : [];
-    if (!item) {
+    const rewardItemIds = await this.rewardItemIdsOf(this.missionRewardItems.manager, raid.missionId);
+    const found = await this.users.findCosmeticItems(rewardItemIds);
+    const rewards = rewardItemIds.flatMap((id) => found.find((item) => item.id === id) ?? []);
+    // A Missão without items, or with an item missing from the Catalog, is corrupt data: fail loudly.
+    if (rewardItemIds.length === 0 || rewards.length !== rewardItemIds.length) {
       throw new Error(`Recompensa da Missão ${raid.mission.slug} não encontrada`);
     }
+    const { items: party } = await this.rankingPage(raid.id, requesterId, RAID_PARTY_SIZE, 0);
     return {
       id: raid.id,
       mission: {
@@ -328,7 +339,9 @@ export class RaidsService {
         description: raid.mission.description,
         imageUrl: raid.mission.imageUrl,
       },
-      reward: { itemId: item.id, name: item.name, category: item.category },
+      rewards: rewards.map((item) => ({ itemId: item.id, name: item.name, category: item.category })),
+      coins: getRaidWinCoins(),
+      party,
       goalXp: raid.goalXp,
       progressXp: raid.progressXp,
       goalReachedAt: raid.goalReachedAt,
@@ -674,9 +687,11 @@ export class RaidsService {
   /** Ranking interno: members only, paginated by position, stable under the order documented in `RAID_RANKING_SQL`. */
   async ranking(userId: string, raidId: string, query: ListRaidRankingQueryDto): Promise<RaidRankingPage> {
     await this.findRaidForMember(userId, raidId);
-    const limit = query.limit ?? RAID_RANKING_PAGE_SIZE_DEFAULT;
-    const after = query.cursor ? decodeRankingCursor(query.cursor) : 0;
+    return this.rankingPage(raidId, userId, query.limit ?? RAID_RANKING_PAGE_SIZE_DEFAULT, query.cursor ? decodeRankingCursor(query.cursor) : 0);
+  }
 
+  /** One page of the Ranking interno after position `after`, each row with the equipped look read from the Inventory's owner. */
+  private async rankingPage(raidId: string, userId: string, limit: number, after: number): Promise<RaidRankingPage> {
     const rows = await this.raids.manager.query<Array<{
       rank_position: number | string;
       user_id: string;
@@ -690,6 +705,7 @@ export class RaidsService {
     );
     const page = rows.slice(0, limit);
     const last = page[page.length - 1];
+    const appearance = await this.users.findEquippedAppearance(page.map((row) => row.user_id));
     return {
       items: page.map((row) => ({
         position: Number(row.rank_position),
@@ -699,6 +715,8 @@ export class RaidsService {
         title: row.title ?? null,
         contributionXp: Number(row.contribution_xp),
         isMe: row.user_id === userId,
+        avatar: appearance.get(row.user_id)?.avatar ?? null,
+        accessory: appearance.get(row.user_id)?.accessory ?? null,
       })),
       nextCursor: rows.length > limit && last ? encodeRankingCursor(Number(last.rank_position)) : null,
     };
