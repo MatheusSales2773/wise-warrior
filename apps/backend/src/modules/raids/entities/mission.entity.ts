@@ -21,7 +21,11 @@ export class Mission {
   @Column({ name: 'reward_cosmetic_item_id', type: 'varchar', length: 36 })
   rewardCosmeticItemId: string;
 
-  /** Posição no rodízio, a partir de 1. */
-  @Column({ name: 'rotation_order' })
-  rotationOrder: number;
+  /** Posição no rodízio, a partir de 1. Nulo nas Missões à venda, que ficam fora do rodízio. */
+  @Column({ name: 'rotation_order', type: 'int', nullable: true })
+  rotationOrder: number | null;
+
+  /** Preço em Moedas (ADR-012). Nulo é Missão do rodízio: grátis, fora da Loja e de todo usuário. */
+  @Column({ type: 'int', unsigned: true, nullable: true })
+  price: number | null;
 }

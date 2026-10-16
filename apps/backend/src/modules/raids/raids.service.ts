@@ -8,7 +8,7 @@ import {
   forwardRef,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { EntityManager, Repository } from 'typeorm';
+import { EntityManager, IsNull, Repository } from 'typeorm';
 import { Mission } from './entities/mission.entity';
 import { Raid } from './entities/raid.entity';
 import { RAID_CLOCK, type RaidClock } from './raid-clock';
@@ -210,7 +210,7 @@ export class RaidsService {
    */
   async createForGuild(manager: EntityManager, guildId: string, memberCount: number, now: Date = this.clock()): Promise<Raid> {
     const week = raidWeekAt(now);
-    const catalog = await manager.find(Mission, { order: { rotationOrder: 'ASC' } });
+    const catalog = await manager.find(Mission, { where: { price: IsNull() }, order: { rotationOrder: 'ASC' } });
     const mission = catalog[missionIndexForWeek(week.number, catalog.length)];
     if (!mission) {
       throw new Error('Catálogo de Missões vazio');
