@@ -3,7 +3,7 @@ import type { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import type { AddressInfo } from 'node:net';
-import { DataSource } from 'typeorm';
+import { DataSource, type EntityManager } from 'typeorm';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RateLimitGuard } from '../../shared/security/rate-limit';
 import type { JwtPayload } from '../auth/strategies/jwt.strategy';
@@ -235,6 +235,114 @@ describe('Study Session de modo Guilda against MySQL', () => {
       expect((await completeAtDeadline(bruno, session, 'replay-done')).status).toBe(200);
 
       expect((await activeRaid()).progressXp).toBe(150);
+      expect(await contributions()).toHaveLength(1);
+      expect(realtime.emitToGuild).toHaveBeenCalledTimes(1);
+    });
+
+    // Each case lets the work up to that point run, then throws, so the transaction must undo all of it.
+    const failureAfter: Record<string, () => void> = {
+      'the XP award, before the Contribution': () => {
+        const progression = app!.get(ProgressionService);
+        const original = progression.awardXpInTransaction.bind(progression);
+        jest.spyOn(progression, 'awardXpInTransaction').mockImplementationOnce(async (manager, userId, xp) => {
+          await original(manager, userId, xp);
+          throw new Error('falha depois de conceder o XP');
+        });
+      },
+      'the Contribution': () => {
+        const raids = app!.get(RaidsService);
+        const original = raids.recordContributionInTransaction.bind(raids);
+        jest.spyOn(raids, 'recordContributionInTransaction').mockImplementationOnce(async (manager, contribution) => {
+          await original(manager, contribution);
+          throw new Error('falha depois de gravar a Contribuição');
+        });
+      },
+      'the receipt, as the last write of the transaction': () => {
+        const original = dataSource!.transaction.bind(dataSource) as (work: (manager: EntityManager) => Promise<unknown>) => Promise<unknown>;
+        jest.spyOn(dataSource!, 'transaction').mockImplementationOnce(((work: (manager: EntityManager) => Promise<unknown>) =>
+          original(async (manager) => {
+            await work(manager);
+            throw new Error('falha depois do recibo');
+          })) as never);
+      },
+    };
+
+    it.each(Object.keys(failureAfter))('rolls back the whole completion when it fails after %s, then a retry counts it once', async (point) => {
+      const session = await joinAndStart(bruno, 'retry');
+      failureAfter[point]!();
+
+      const failed = await completeAtDeadline(bruno, session, 'retry-done');
+
+      expect(failed.status).toBe(500);
+      expect(await contributions()).toEqual([]);
+      expect((await dataSource!.getRepository(Raid).findOneByOrFail({ id: raidId })).progressXp).toBe(0);
+      expect((await dataSource!.getRepository(StudySession).findOneByOrFail({ id: session.id })).state).toBe('running');
+      expect((await dataSource!.getRepository(Character).findOneByOrFail({ userId: bruno })).xpTotal).toBe(0);
+      expect(realtime.emitToGuild).not.toHaveBeenCalled();
+      const rowsOf = async (table: string) => await dataSource!.query(`SELECT 1 FROM ${table} WHERE user_id = ?`, [bruno]) as unknown[];
+      expect(await rowsOf('study_session_command_keys')).toHaveLength(1); // só a chave do início
+      expect(await rowsOf('study_session_transition_receipts')).toEqual([]);
+      expect(await rowsOf('active_study_sessions')).toHaveLength(1);
+
+      const retried = await completeAtDeadline(bruno, session, 'retry-done');
+
+      expect(retried.status).toBe(200);
+      expect(await retried.json()).toMatchObject({ state: 'completed', xpAwarded: 150 });
+      expect(await activeRaid(bruno)).toMatchObject({ progressXp: 150, me: { contributionXp: 150 } });
+      expect(await contributions()).toHaveLength(1);
+      expect(realtime.emitToGuild).toHaveBeenCalledTimes(1);
+    });
+
+    it('counts one Contribution when the same Study Session is completed concurrently', async () => {
+      const session = await joinAndStart(bruno, 'race');
+      completionNow = new Date(new Date(session.startedAt).getTime() + 900_000);
+
+      const statuses = await Promise.all(['a', 'b', 'c'].map(async (suffix) =>
+        (await call('POST', `/sessions/${session.id}/complete`, bruno, { expectedVersion: 1 }, `race-done-${suffix}`)).status,
+      ));
+
+      // A transição serializa as chamadas: este teste cobre o lock e a versão, não o índice único.
+      expect([...statuses].sort()).toEqual([200, 409, 409]);
+      expect((await activeRaid(bruno)).progressXp).toBe(150);
+      expect(await contributions()).toHaveLength(1);
+      expect(realtime.emitToGuild).toHaveBeenCalledTimes(1);
+    });
+
+    it('counts one Contribution when the same Study Session reaches the Raid concurrently, by the unique index', async () => {
+      const session = await joinAndStart(bruno, 'index');
+      const raids = app!.get(RaidsService);
+      const contribute = () => dataSource!.transaction((manager) => raids.recordContributionInTransaction(manager, {
+        raidId, userId: bruno, studySessionId: session.id, xpContributed: 150, endedAt: new Date(),
+      }));
+
+      const results = await Promise.all([contribute(), contribute(), contribute()]);
+
+      // Every attempt reports the same counted XP, but only the one that inserted carries the progress to publish.
+      expect(results.map((outcome) => outcome.status)).toEqual(['counted', 'counted', 'counted']);
+      expect(results.filter((outcome) => outcome.status === 'counted' && outcome.progress)).toHaveLength(1);
+      expect(results.find((outcome) => outcome.status === 'counted' && outcome.progress)).toMatchObject({
+        progress: { raidId, progressXp: 150 },
+      });
+      expect((await dataSource!.getRepository(Raid).findOneByOrFail({ id: raidId })).progressXp).toBe(150);
+      expect(await contributions()).toHaveLength(1);
+    });
+
+    it('rejects a second Contribution row for the same Study Session at the database', async () => {
+      const session = await joinAndStart(bruno, 'unique');
+      const repository = dataSource!.getRepository(RaidContribution);
+      await repository.insert({ raidId, userId: bruno, studySessionId: session.id, xpContributed: 150 });
+
+      await expect(repository.insert({ raidId, userId: bruno, studySessionId: session.id, xpContributed: 150 }))
+        .rejects.toMatchObject({ code: 'ER_DUP_ENTRY' });
+    });
+
+    it('counts one Contribution when the legacy path is replayed concurrently', async () => {
+      const session = await joinAndStart(bruno, 'legacy');
+      const raids = app!.get(RaidsService);
+
+      await Promise.all([1, 2].map(() => raids.recordContribution(raidId, bruno, session.id, 150)));
+
+      expect((await dataSource!.getRepository(Raid).findOneByOrFail({ id: raidId })).progressXp).toBe(150);
       expect(await contributions()).toHaveLength(1);
       expect(realtime.emitToGuild).toHaveBeenCalledTimes(1);
     });
