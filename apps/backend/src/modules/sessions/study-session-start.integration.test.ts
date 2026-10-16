@@ -118,7 +118,7 @@ describe('canonical Study Session start against MySQL', () => {
     )).toEqual([{ subject: 'ÁLGEBRA linear II' }]);
 
     const transitions = new StudySessionTransitionService(
-      dataSource!, { now: () => new Date(started.startedAt.getTime() + 10_000) }, {} as never, {} as never,
+      dataSource!, { now: () => new Date(started.startedAt.getTime() + 10_000) }, {} as never, {} as never, {} as never,
     );
     const paused = await transitions.pause({
       userId, authSessionId: 'device-a', studySessionId: started.id, dto: { expectedVersion: 1 }, idempotencyKey: 'subject-pause',
@@ -186,6 +186,7 @@ describe('canonical Study Session start against MySQL', () => {
     const transitionService = new StudySessionTransitionService(
       dataSource!,
       { now: () => new Date(started.startedAt.getTime() + 30_000) },
+      {} as never,
       {} as never,
       {} as never,
     );

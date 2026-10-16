@@ -64,7 +64,7 @@ describe('Study Session HTTP contract against MySQL', () => {
       users,
     );
     const start = new StudySessionStartService(dataSource, users, {} as never);
-    const transitions = new StudySessionTransitionService(dataSource, { now: () => new Date(now) }, progression, {} as never);
+    const transitions = new StudySessionTransitionService(dataSource, { now: () => new Date(now) }, progression, {} as never, {} as never);
     const controllerModule = await Test.createTestingModule({
       controllers: [SessionsController],
       providers: [

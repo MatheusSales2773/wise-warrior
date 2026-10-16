@@ -10,6 +10,9 @@ import { Session } from '../auth/entities/session.entity';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RateLimitGuard } from '../../shared/security/rate-limit';
 import type { JwtPayload } from '../auth/strategies/jwt.strategy';
+import { CoinBalance } from '../economy/entities/coin-balance.entity';
+import { CoinLedgerEntry } from '../economy/entities/coin-ledger-entry.entity';
+import { EconomyService } from '../economy/economy.service';
 import { Character } from '../progression/entities/character.entity';
 import { ProgressionService } from '../progression/progression.service';
 import type { RealtimeGateway } from '../realtime/realtime.gateway';
@@ -111,7 +114,13 @@ describe('Cosmetic Item unlock on level-up through the Study Session API', () =>
         { provide: StudySessionStartService, useValue: new StudySessionStartService(dataSource, users, {} as never) },
         {
           provide: StudySessionTransitionService,
-          useValue: new StudySessionTransitionService(dataSource, { now: () => new Date(now) }, progression, {} as never),
+          useValue: new StudySessionTransitionService(
+            dataSource,
+            { now: () => new Date(now) },
+            progression,
+            {} as never,
+            new EconomyService(dataSource.getRepository(CoinBalance), dataSource.getRepository(CoinLedgerEntry), realtime),
+          ),
         },
         { provide: UsersService, useValue: users },
         { provide: AuthService, useValue: auth },

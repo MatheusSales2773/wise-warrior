@@ -7,10 +7,11 @@ import { ProgressionModule } from '../progression/progression.module';
 import { RaidsModule } from '../raids/raids.module';
 import { StudySessionStartService } from './study-session-start.service';
 import { UsersModule } from '../users/users.module';
+import { EconomyModule } from '../economy/economy.module';
 import { StudySessionTransitionService, STUDY_SESSION_CLOCK } from './study-session-transition.service';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([StudySession]), ProgressionModule, RaidsModule, UsersModule],
+  imports: [TypeOrmModule.forFeature([StudySession]), ProgressionModule, RaidsModule, UsersModule, EconomyModule],
   controllers: [SessionsController],
   providers: [
     SessionsService,
