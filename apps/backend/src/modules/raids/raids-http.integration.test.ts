@@ -18,6 +18,10 @@ import { UserCosmeticItem } from '../users/entities/user-cosmetic-item.entity';
 import { UsersService } from '../users/users.service';
 import { ProgressionService } from '../progression/progression.service';
 import { Mission } from './entities/mission.entity';
+import { MissionRewardItem } from './entities/mission-reward-item.entity';
+import { CoinBalance } from '../economy/entities/coin-balance.entity';
+import { CoinLedgerEntry } from '../economy/entities/coin-ledger-entry.entity';
+import { EconomyService } from '../economy/economy.service';
 import { Raid } from './entities/raid.entity';
 import { RAID_CLOCK, systemRaidClock } from './raid-clock';
 import { RaidContribution } from './entities/raid-contribution.entity';
@@ -82,6 +86,10 @@ describe('Raids HTTP access control against MySQL', () => {
         { provide: RAID_CLOCK, useValue: systemRaidClock },
         { provide: ProgressionService, useValue: {} },
         { provide: getRepositoryToken(Mission), useValue: dataSource.getRepository(Mission) },
+        { provide: getRepositoryToken(MissionRewardItem), useValue: dataSource.getRepository(MissionRewardItem) },
+        { provide: getRepositoryToken(CoinBalance), useValue: dataSource.getRepository(CoinBalance) },
+        { provide: getRepositoryToken(CoinLedgerEntry), useValue: dataSource.getRepository(CoinLedgerEntry) },
+        EconomyService,
         { provide: getRepositoryToken(User), useValue: dataSource.getRepository(User) },
         { provide: getRepositoryToken(CosmeticItem), useValue: dataSource.getRepository(CosmeticItem) },
         { provide: getRepositoryToken(UserCosmeticItem), useValue: dataSource.getRepository(UserCosmeticItem) },

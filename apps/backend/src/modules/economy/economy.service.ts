@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable, forwardRef } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { type EntityManager, Repository } from 'typeorm';
 import { decodeDatetimeCursor, encodeDatetimeCursor } from '../../shared/pagination/datetime-cursor';
@@ -23,7 +23,7 @@ export class EconomyService {
   constructor(
     @InjectRepository(CoinBalance) private readonly balances: Repository<CoinBalance>,
     @InjectRepository(CoinLedgerEntry) private readonly ledger: Repository<CoinLedgerEntry>,
-    private readonly realtime: RealtimeGateway,
+    @Inject(forwardRef(() => RealtimeGateway)) private readonly realtime: RealtimeGateway,
   ) {}
 
   /** Crédito idempotente por origem. Precisa de uma transação aberta em `manager`. */

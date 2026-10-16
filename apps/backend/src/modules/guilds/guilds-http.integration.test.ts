@@ -19,6 +19,10 @@ import { UsersService } from '../users/users.service';
 import { ProgressionService } from '../progression/progression.service';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
 import { Mission } from '../raids/entities/mission.entity';
+import { MissionRewardItem } from '../raids/entities/mission-reward-item.entity';
+import { CoinBalance } from '../economy/entities/coin-balance.entity';
+import { CoinLedgerEntry } from '../economy/entities/coin-ledger-entry.entity';
+import { EconomyService } from '../economy/economy.service';
 import { Raid } from '../raids/entities/raid.entity';
 import { RaidContribution } from '../raids/entities/raid-contribution.entity';
 import { RaidParticipation } from '../raids/entities/raid-participation.entity';
@@ -70,6 +74,10 @@ describe('Guilds HTTP contract against MySQL', () => {
         { provide: getRepositoryToken(RaidContribution), useValue: dataSource.getRepository(RaidContribution) },
         { provide: getRepositoryToken(RaidParticipation), useValue: dataSource.getRepository(RaidParticipation) },
         { provide: getRepositoryToken(Mission), useValue: dataSource.getRepository(Mission) },
+        { provide: getRepositoryToken(MissionRewardItem), useValue: dataSource.getRepository(MissionRewardItem) },
+        { provide: getRepositoryToken(CoinBalance), useValue: dataSource.getRepository(CoinBalance) },
+        { provide: getRepositoryToken(CoinLedgerEntry), useValue: dataSource.getRepository(CoinLedgerEntry) },
+        EconomyService,
         { provide: getRepositoryToken(User), useValue: dataSource.getRepository(User) },
         { provide: getRepositoryToken(CosmeticItem), useValue: dataSource.getRepository(CosmeticItem) },
         { provide: getRepositoryToken(UserCosmeticItem), useValue: dataSource.getRepository(UserCosmeticItem) },

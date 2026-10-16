@@ -17,6 +17,7 @@ import { Character } from '../progression/entities/character.entity';
 import { ProgressionService } from '../progression/progression.service';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
 import { Mission } from '../raids/entities/mission.entity';
+import { MissionRewardItem } from '../raids/entities/mission-reward-item.entity';
 import { Raid } from '../raids/entities/raid.entity';
 import { RaidContribution } from '../raids/entities/raid-contribution.entity';
 import { RaidParticipation } from '../raids/entities/raid-participation.entity';
@@ -115,7 +116,7 @@ describe('Study Session de modo Guilda against MySQL', () => {
         ProgressionService,
         StudySessionStartService,
         StudySessionTransitionService,
-        repo(Guild), repo(GuildMembership), repo(Raid), repo(RaidContribution), repo(RaidParticipation), repo(Mission),
+        repo(Guild), repo(GuildMembership), repo(Raid), repo(RaidContribution), repo(RaidParticipation), repo(Mission), repo(MissionRewardItem),
         repo(User), repo(CosmeticItem), repo(UserCosmeticItem), repo(Character),
         repo(CoinBalance), repo(CoinLedgerEntry), EconomyService,
         { provide: DataSource, useValue: dataSource },

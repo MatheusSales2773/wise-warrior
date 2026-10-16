@@ -18,9 +18,6 @@ export class Mission {
   @Column({ name: 'image_url', type: 'varchar', nullable: true })
   imageUrl: string | null;
 
-  @Column({ name: 'reward_cosmetic_item_id', type: 'varchar', length: 36 })
-  rewardCosmeticItemId: string;
-
   /** Posição no rodízio, a partir de 1. Nulo nas Missões à venda, que ficam fora do rodízio. */
   @Column({ name: 'rotation_order', type: 'int', nullable: true })
   rotationOrder: number | null;

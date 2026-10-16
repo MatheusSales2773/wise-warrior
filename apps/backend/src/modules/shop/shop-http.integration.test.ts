@@ -106,9 +106,13 @@ describe('Loja: Compra de Missões over HTTP against MySQL, with the real AppMod
 
     // The art-backed catalogue arrives later; the tests carry their own priced Missões (outside the rotation).
     await source.query(
-      `INSERT INTO missions (id, slug, name, description, image_url, reward_cosmetic_item_id, rotation_order, price)
-       VALUES (?, 'ronda-barata', 'Ronda Barata', 'Uma Missão barata.', NULL, ?, NULL, 90),
-              (?, 'cerco-caro', 'Cerco Caro', 'Uma Missão cara.', NULL, ?, NULL, 480)`,
+      `INSERT INTO missions (id, slug, name, description, image_url, rotation_order, price)
+       VALUES (?, 'ronda-barata', 'Ronda Barata', 'Uma Missão barata.', NULL, NULL, 90),
+              (?, 'cerco-caro', 'Cerco Caro', 'Uma Missão cara.', NULL, NULL, 480)`,
+      [CHEAP_ID, DEAR_ID],
+    );
+    await source.query(
+      'INSERT INTO mission_reward_items (mission_id, cosmetic_item_id) VALUES (?, ?), (?, ?)',
       [CHEAP_ID, REWARD_ITEM_ID, DEAR_ID, REWARD_ITEM_ID],
     );
   });

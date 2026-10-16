@@ -21,6 +21,10 @@ import { UsersService } from '../users/users.service';
 import { ProgressionService } from '../progression/progression.service';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
 import { Mission } from './entities/mission.entity';
+import { MissionRewardItem } from './entities/mission-reward-item.entity';
+import { EconomyService } from '../economy/economy.service';
+import { CoinBalance } from '../economy/entities/coin-balance.entity';
+import { CoinLedgerEntry } from '../economy/entities/coin-ledger-entry.entity';
 import { Raid } from './entities/raid.entity';
 import { RaidContribution } from './entities/raid-contribution.entity';
 import { RaidParticipation } from './entities/raid-participation.entity';
@@ -82,8 +86,13 @@ describe('Escolha da Missão pelo Líder against MySQL', () => {
     ]);
 
     await dataSource.query(
-      `INSERT INTO missions (id, slug, name, description, image_url, reward_cosmetic_item_id, rotation_order, price)
-       SELECT ?, 'ronda-barata', 'Ronda Barata', 'Uma Missão barata.', NULL, reward_cosmetic_item_id, NULL, 90 FROM missions LIMIT 1`,
+      `INSERT INTO missions (id, slug, name, description, image_url, rotation_order, price)
+       VALUES (?, 'ronda-barata', 'Ronda Barata', 'Uma Missão barata.', NULL, NULL, 90)`,
+      [PRICED_ID],
+    );
+    await dataSource.query(
+      `INSERT INTO mission_reward_items (mission_id, cosmetic_item_id)
+       SELECT ?, cosmetic_item_id FROM mission_reward_items LIMIT 1`,
       [PRICED_ID],
     );
 
@@ -101,7 +110,7 @@ describe('Escolha da Missão pelo Líder against MySQL', () => {
         GuildsService,
         RaidsService, MissionsService, MissionChoiceService,
         UsersService,
-        repo(Guild), repo(GuildMembership), repo(Raid), repo(RaidContribution), repo(RaidParticipation), repo(Mission), repo(UserMission), repo(GuildMissionChoice),
+        repo(Guild), repo(GuildMembership), repo(Raid), repo(RaidContribution), repo(RaidParticipation), repo(Mission), repo(MissionRewardItem), repo(UserMission), repo(GuildMissionChoice), repo(CoinBalance), repo(CoinLedgerEntry), EconomyService,
         repo(User), repo(CosmeticItem), repo(UserCosmeticItem),
         { provide: RAID_CLOCK, useValue: () => now },
         { provide: ProgressionService, useValue: {} },

@@ -20,6 +20,10 @@ import { GuildsController } from '../guilds/guilds.controller';
 import { GuildsService } from '../guilds/guilds.service';
 import { ProgressionService } from '../progression/progression.service';
 import { Mission } from '../raids/entities/mission.entity';
+import { MissionRewardItem } from '../raids/entities/mission-reward-item.entity';
+import { CoinBalance } from '../economy/entities/coin-balance.entity';
+import { CoinLedgerEntry } from '../economy/entities/coin-ledger-entry.entity';
+import { EconomyService } from '../economy/economy.service';
 import { Raid } from '../raids/entities/raid.entity';
 import { RaidContribution } from '../raids/entities/raid-contribution.entity';
 import { RaidParticipation } from '../raids/entities/raid-participation.entity';
@@ -109,7 +113,7 @@ describe('raid:progress over Socket.IO against MySQL', () => {
         GuildsService,
         RaidsService,
         UsersService,
-        repo(Guild), repo(GuildMembership), repo(Raid), repo(RaidContribution), repo(RaidParticipation), repo(Mission),
+        repo(Guild), repo(GuildMembership), repo(Raid), repo(RaidContribution), repo(RaidParticipation), repo(Mission), repo(MissionRewardItem), repo(CoinBalance), repo(CoinLedgerEntry), EconomyService,
         repo(User), repo(CosmeticItem), repo(UserCosmeticItem),
         { provide: RAID_CLOCK, useValue: () => NOW },
         { provide: ProgressionService, useValue: {} },
