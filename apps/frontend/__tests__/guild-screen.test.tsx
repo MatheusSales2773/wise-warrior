@@ -34,7 +34,9 @@ const DAY = 24 * 60 * 60 * 1000;
 const raid = (overrides: Partial<ActiveRaid> = {}): ActiveRaid => ({
   id: 'r1',
   mission: { slug: 'cerco-ao-grimorio', name: 'Cerco ao Grimório', description: 'Cerque os capítulos mais difíceis.', imageUrl: null },
-  reward: { itemId: 'i1', name: 'Marcador do Grimório', category: 'badge' },
+  rewards: [{ itemId: 'i1', name: 'Marcador do Grimório', category: 'badge' }],
+  coins: 50,
+  party: [],
   goalXp: 1000,
   progressXp: 250,
   startsAt: new Date(Date.now() - 2 * DAY).toISOString(),
@@ -493,7 +495,7 @@ describe('GuildScreen', () => {
 
 describe('Ranking interno', () => {
   const row = (position: number, name: string, contributionXp: number, overrides: Partial<RaidRankingEntry> = {}): RaidRankingEntry => ({
-    position, userId: `u-${name}`, displayName: name, level: 3, title: null, contributionXp, isMe: false, ...overrides,
+    position, userId: `u-${name}`, displayName: name, level: 3, title: null, avatar: null, accessory: null, contributionXp, isMe: false, ...overrides,
   });
   const rankingPage = (items: RaidRankingEntry[], nextCursor: string | null = null): RaidRankingPage => ({ items, nextCursor });
 

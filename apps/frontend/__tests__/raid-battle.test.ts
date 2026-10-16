@@ -1,5 +1,6 @@
 import type { RaidRankingEntry } from '@/features/guild/api';
-import { XP_PER_FOCUS_HOUR, assignHeroes, bossLifePercent, formatBattleTimeLeft, formatFocusHours, formatStreak, raidParty, raidWeekGrid, weeklyStrikes } from '@/features/guild/raid-battle';
+import { XP_PER_FOCUS_HOUR, bossLifePercent, formatBattleTimeLeft, formatFocusHours, formatStreak, heroOf, raidParty, raidWeekGrid, weeklyStrikes } from '@/features/guild/raid-battle';
+import { defaultRaidSceneArt, raidSceneArt } from '@/features/guild/raid-scene-art';
 import { raidSceneScale } from '@/features/guild/raid-scene';
 import { RAID_SCENE_HEIGHT, RAID_SCENE_WIDTH, raidSceneBackground, raidSceneBoss, sentinelaSprite } from '@/features/guild/raid-scene-sprites';
 
@@ -9,6 +10,8 @@ const entry = (position: number, overrides: Partial<RaidRankingEntry> = {}): Rai
   displayName: `Membro ${position}`,
   level: position + 1,
   title: null,
+  avatar: null,
+  accessory: null,
   contributionXp: (10 - position) * XP_PER_FOCUS_HOUR,
   isMe: false,
   ...overrides,
@@ -65,28 +68,31 @@ describe('formatBattleTimeLeft', () => {
   });
 });
 
-describe('assignHeroes', () => {
-  const members = ['Astaroth', 'Eldoria', 'Ravenstone', 'Brisa'].map((name) => ({ userId: `u-${name}`, isMe: false }));
-
-  it('shows you with the Personagem hero', () => {
-    expect(assignHeroes([{ userId: 'me', isMe: true }]).get('me')).toBe('erudito');
-  });
-
-  it('gives a party of five five different heroes', () => {
-    const heroes = assignHeroes([...members, { userId: 'me', isMe: true }]);
-    expect(new Set(heroes.values()).size).toBe(5);
-  });
-
-  it('keeps everyone on the same hero for the same ranking', () => {
-    expect([...assignHeroes(members)]).toEqual([...assignHeroes(members)]);
+describe('heroOf', () => {
+  it('dresses the class of the equipped Avatar and keeps the initial class without one', () => {
+    expect(heroOf({ avatar: { itemId: 'a1', name: 'Armadura do Lobo' } })).toBe('guerreira');
+    expect(heroOf({ avatar: { itemId: 'a2', name: 'Capuz do Erudito' } })).toBe('erudito');
+    expect(heroOf({ avatar: null })).toBe('erudito');
   });
 });
 
 describe('raidParty', () => {
-  it('puts the first five Participants of the ranking in the scene and calls you "Você"', () => {
-    const party = raidParty([entry(1), entry(2, { isMe: true }), entry(3), entry(4), entry(5), entry(6)]);
+  it('puts the party in the scene and calls you "Você"', () => {
+    const party = raidParty([entry(1), entry(2, { isMe: true }), entry(3), entry(4), entry(5)]);
     expect(party.map((member) => member.displayName)).toEqual(['Membro 1', 'Você', 'Membro 3', 'Membro 4', 'Membro 5']);
-    expect(party[1]).toMatchObject({ isMe: true, hero: 'erudito', level: 3 });
+    expect(party[1]).toMatchObject({ isMe: true, hero: 'erudito', level: 3, accessory: null });
+  });
+
+  it('carries the look of each member: the class of the Avatar and the sprite of the Acessório', () => {
+    const [member] = raidParty([entry(1, { avatar: { itemId: 'a1', name: 'Manto Estelar' }, accessory: { itemId: 'c1', name: 'Pena do Escriba' } })]);
+    expect(member).toMatchObject({ hero: 'arcanista', accessory: 'penaDoEscriba' });
+  });
+});
+
+describe('raidSceneArt', () => {
+  it('uses the default illustration for a slug without art of its own', () => {
+    expect(raidSceneArt('vigilia-da-aurora')).toBe(defaultRaidSceneArt);
+    expect(raidSceneArt('constructor')).toBe(defaultRaidSceneArt);
   });
 });
 

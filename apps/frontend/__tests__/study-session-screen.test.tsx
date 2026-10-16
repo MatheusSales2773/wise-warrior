@@ -401,7 +401,9 @@ describe('Sessão de guilda on the Forja', () => {
   const raid = (overrides: Partial<ActiveRaid> = {}): ActiveRaid => ({
     id: 'raid-1',
     mission: { slug: 'cerco-ao-grimorio', name: 'Cerco ao Grimório', description: 'Cerque os capítulos.', imageUrl: null },
-    reward: { itemId: 'i1', name: 'Marcador do Grimório', category: 'badge' },
+    rewards: [{ itemId: 'i1', name: 'Marcador do Grimório', category: 'badge' }],
+    coins: 50,
+    party: [],
     goalXp: 1000,
     progressXp: 0,
     goalReachedAt: null,
