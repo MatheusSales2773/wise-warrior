@@ -41,7 +41,7 @@
 |---|---|---|
 | Moeda do jogo: do usuário ou tesouro da Guild | Moeda por usuário, sem tesouro coletivo; Loja vende Missões e Cosmetic Items À venda | ADR-012 (Aceito) |
 | Ganho e gasto de Moedas | 1 Moeda a cada 2 min de foco válido, +50 por Raid vencida, 90 no cadastro; Missões de 90 a 480, itens de 30 a 300; Badge nunca à venda | ADR-012 (Aceito) |
-| Fúria do dragão | Chefe recupera 5% da meta por dia sem Contribuição, até a Meta batida | ADR-012 (Aceito) |
+| Fúria do dragão | Chefe recupera 5% da meta por dia inteiro sem Contribuição, até a Meta batida, que passa a ser vida zero | ADR-012 (Aceito, emenda #145) |
 
 > Este documento consolida e substitui as lacunas dos documentos orientadores (Documento de Visão, Documento de Arquitetura, Documentação de Interface, Pitch e Casos de Uso UC01–UC04), resolvendo inconsistências entre eles e propondo um caminho técnico único para a Fase 1 de desenvolvimento.
 
@@ -329,7 +329,7 @@ fazem parte desse primeiro corte.
 2. **Gasto:** só na Loja, que tem um catálogo fixo com duas seções. Missões custam de 90 a 480 e itens À venda de 30 a 300, com o preço definido no seed. A Compra de um Cosmetic Item é uma Condição de desbloqueio: o item entra no Inventário pelo Desbloqueio idempotente existente. Não se compra o que já se tem. Recompensas de Raid, itens de nível e Itens premium nunca estão À venda. *Emenda de 16/10/2026 (#174):* Badges também nunca estão À venda, porque o Badge é sempre conquistado; o que foi comprado fica com o usuário mesmo que o item saia de venda (Fora de venda).
 3. **Regras da Moeda:** é do usuário, não pode ser transferida e não varia com `plan_tier` (ADR-007). Cada crédito e débito é registrado uma vez por origem (sessão, Raid + usuário, Compra, cadastro); o usuário vê esse histórico como Extrato.
 4. **Missões e escolha do Líder:** as Missões do rodízio são grátis, ficam fora da Loja e podem ser escolhidas pelo Líder. A escolha trava quando a Raid começa; se o dono sai antes, a escolha é anulada e vale o rodízio. A mesma Missão pode se repetir; itens que o Participante já tem são pulados. O dono não ganha nada quando sua Missão é usada.
-5. **Fúria do dragão:** a cada dia (`America/Sao_Paulo`) sem nenhuma Contribuição da Guild, o chefe recupera `RAID_FURY_REGEN_PERCENT`% do `goalXp` (padrão `5`), sem passar da vida cheia. Para quando a Meta é batida.
+5. **Fúria do dragão:** a cada dia (`America/Sao_Paulo`) sem nenhuma Contribuição da Guild, o chefe recupera `RAID_FURY_REGEN_PERCENT`% do `goalXp` (padrão `5`), sem passar da vida cheia. Para quando a Meta é batida. *Emenda de 16/10/2026 (#145):* a Meta batida passa a ser a Vida do chefe chegar a zero (`progress >= goal + regenerado`), não mais `progress >= goal`; sem isso a Fúria seria só visual. Regeneram apenas os dias inteiros da Raid que não foram Dia de estudo: o dia em que a Raid começou no meio e o último dia (fechado pelo fechamento semanal no mesmo instante) não contam. Dias perdidos com a aplicação fora do ar são aplicados na volta, uma vez por Raid e dia.
 **Consequência:** a #160 implementa Moeda, Extrato e Loja (Missões e itens); a #145 implementa a Fúria e paga a Recompensa de Raid pelo Service da Moeda (ADR-001); a #148 implementa as telas. O tesouro, o mercado e o quadro de missões da versão anterior da #145 ficam descartados. Glossário em `CONTEXT.md`.
 
 ### 8.1 Diagrama de arquitetura (implementado em `dev/phase-1`)

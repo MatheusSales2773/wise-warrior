@@ -134,9 +134,21 @@ _Avoid_: inscrito, jogador
 O XP de uma Study Session de modo Guilda, concluída dentro do período da Raid, somado ao progresso coletivo. Cada Study Session contribui no máximo uma vez.
 _Avoid_: doação, pontos
 
+**Vida do chefe**:
+O quanto falta para vencer a Raid: a meta, menos as Contribuições, mais o que a Fúria do dragão recuperou. Nunca passa da meta nem fica abaixo de zero.
+_Avoid_: HP restante, meta restante
+
 **Meta batida**:
-O momento em que o progresso coletivo alcança a meta da Raid. A Raid continua aceitando Contribuições até o fim da semana.
+O momento em que a Vida do chefe chega a zero. Com Fúria, isso exige mais XP do que a meta. A Raid continua aceitando Contribuições até o fim da semana.
 _Avoid_: raid concluída (antes do fim do período), vitória antecipada
+
+**Golpe**:
+Uma Contribuição vista como dano ao chefe, com autor, XP e duração da Study Session. Cada Contribuição é um único Golpe.
+_Avoid_: ataque, hit, dano (como termo próprio)
+
+**Aviso do Mural**:
+Uma mensagem automática no Mural, sem autor humano, que anuncia um Golpe. Nenhum membro escreve Avisos.
+_Avoid_: mensagem de sistema, notificação
 
 **Ranking interno**:
 A classificação dos membros por Contribuição na Raid da semana. Não existe outro ranking da Guild.
@@ -146,8 +158,16 @@ _Avoid_: ranking geral, leaderboard, placar
 Os Desbloqueios dos Cosmetic Items indicados pela Missão e as Moedas de vitória, dados no fim da Raid com Meta batida a cada Participante com pelo menos uma Contribuição. Itens que o Participante já tem são pulados; as Moedas são pagas mesmo quando a Missão se repete.
 _Avoid_: prêmio, loot, drop
 
+**Dia de estudo**:
+Um dia, no horário de São Paulo, com pelo menos uma Contribuição na Raid da Guild. Study Sessions solo não contam.
+_Avoid_: dia ativo, dia com sessão
+
+**Sequência**:
+Quantos Dias de estudo seguidos a Guild tem na semana da Raid, até hoje. Zera na segunda. Hoje sem estudo ainda não quebra a Sequência; só conta se tiver estudo.
+_Avoid_: streak, ofensiva
+
 **Fúria do dragão** (Fúria):
-A vida que o chefe da Raid recupera a cada dia sem nenhuma Contribuição da Guild. Para quando a Meta é batida.
+A vida que o chefe da Raid recupera por dia inteiro da Raid que não foi Dia de estudo. O dia em que a Raid começou no meio e o último dia não contam. Para quando a Meta é batida.
 _Avoid_: regeneração, cura
 
 **Moeda**:
