@@ -15,6 +15,7 @@ import { User } from './entities/user.entity';
 import { UserCosmeticItem } from './entities/user-cosmetic-item.entity';
 import { UsersController } from './users.controller';
 import { UsersService } from './users.service';
+import type { RealtimeGateway } from '../realtime/realtime.gateway';
 
 const ITEM = (n: number) => `c05e71c0-0000-4000-8000-00000000000${n}`;
 const APRENDIZ = ITEM(2);
@@ -57,6 +58,7 @@ describe('Equipping Cosmetic Items against MySQL', () => {
   };
 
   let users: UsersService;
+  let realtime: { emitToUser: jest.Mock };
 
   beforeEach(async () => {
     premiumForAll = 'true';
@@ -65,6 +67,7 @@ describe('Equipping Cosmetic Items against MySQL', () => {
     await dataSource.initialize();
     await dataSource.runMigrations();
 
+    realtime = { emitToUser: jest.fn() };
     const config = { get: (key: string) => (key === 'COSMETICS_PREMIUM_FOR_ALL' ? premiumForAll : undefined) } as ConfigService;
     users = new UsersService(
       dataSource.getRepository(User),
@@ -72,6 +75,7 @@ describe('Equipping Cosmetic Items against MySQL', () => {
       dataSource.getRepository(CosmeticItem),
       {} as ProgressionService,
       config,
+      realtime as unknown as RealtimeGateway,
     );
 
     const moduleRef = await Test.createTestingModule({
@@ -187,5 +191,35 @@ describe('Equipping Cosmetic Items against MySQL', () => {
     expect((await unequip(free, CREPUSCULAR)).status).toBe(404);
     expect((await unequip(free, '00000000-0000-4000-8000-0000000000ff')).status).toBe(404);
     expect(await equippedNames(stranger)).toEqual(['Aprendiz', 'Capuz do Erudito']);
+  });
+
+  describe('multi-device notice (character:equipmentChanged)', () => {
+    it('tells every device of the user which item is now equipped in the category', async () => {
+      await seedUser(free, 5);
+
+      expect((await equip(free, CREPUSCULAR)).status).toBe(204);
+
+      expect(realtime.emitToUser).toHaveBeenCalledTimes(1);
+      expect(realtime.emitToUser).toHaveBeenCalledWith(free, 'character:equipmentChanged', { category: 'title', cosmeticItemId: CREPUSCULAR });
+    });
+
+    it('reports an emptied category on unequip', async () => {
+      await seedUser(free, 1);
+
+      expect((await unequip(free, APRENDIZ)).status).toBe(204);
+
+      expect(realtime.emitToUser).toHaveBeenCalledWith(free, 'character:equipmentChanged', { category: 'title', cosmeticItemId: null });
+    });
+
+    it('says nothing when the change is refused', async () => {
+      premiumForAll = 'false';
+      await seedUser(free, 15);
+
+      expect((await equip(free, '00000000-0000-4000-8000-0000000000ff')).status).toBe(404);
+      expect((await equip(free, MESTRE_DA_AURORA)).status).toBe(403);
+      expect((await unequip(free, '00000000-0000-4000-8000-0000000000ff')).status).toBe(404);
+
+      expect(realtime.emitToUser).not.toHaveBeenCalled();
+    });
   });
 });

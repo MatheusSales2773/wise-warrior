@@ -12,6 +12,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { EntityManager, In, Repository } from 'typeorm';
 import { User } from './entities/user.entity';
 import { ProgressionService } from '../progression/progression.service';
+import { RealtimeGateway } from '../realtime/realtime.gateway';
 import { CosmeticCategory, CosmeticItem } from './entities/cosmetic-item.entity';
 import { UserCosmeticItem } from './entities/user-cosmetic-item.entity';
 import {
@@ -65,6 +66,10 @@ export class UsersService {
     @Inject(forwardRef(() => ProgressionService))
     private readonly progression: ProgressionService,
     @Optional() private readonly config?: ConfigService,
+    // Last and optional so the services built by hand in integration tests keep their positional arguments;
+    // Nest always injects it in the application.
+    @Optional() @Inject(forwardRef(() => RealtimeGateway))
+    private readonly realtime?: RealtimeGateway,
   ) {}
 
   /** Serializes work for a user inside the caller's transaction, including the first insert. */
@@ -218,7 +223,7 @@ export class UsersService {
    * usuário, então requisições simultâneas se serializam e sempre sobra um único item equipado.
    */
   async equipCosmeticItem(userId: string, cosmeticItemId: string): Promise<void> {
-    await this.users.manager.transaction(async (manager) => {
+    const category = await this.users.manager.transaction(async (manager) => {
       const user = await manager.getRepository(User).findOne({
         where: { id: userId },
         lock: { mode: 'pessimistic_write' },
@@ -242,22 +247,34 @@ export class UsersService {
         await inventory.update(others, { equipped: false });
       }
       await inventory.update({ id: target.id }, { equipped: true });
+      return target.cosmeticItem.category;
     });
+    this.publishEquipmentChanged(userId, category, cosmeticItemId);
   }
 
   /** Desequipa um item do Inventário; repetir a chamada não muda nada. */
   async unequipCosmeticItem(userId: string, cosmeticItemId: string): Promise<void> {
-    await this.users.manager.transaction(async (manager) => {
+    const category = await this.users.manager.transaction(async (manager) => {
       const user = await manager.getRepository(User).findOne({
         where: { id: userId },
         lock: { mode: 'pessimistic_write' },
       });
       const inventory = manager.getRepository(UserCosmeticItem);
-      const row = user ? await inventory.findOne({ where: { userId, cosmeticItemId } }) : null;
+      const row = user ? await inventory.findOne({ where: { userId, cosmeticItemId }, relations: ['cosmeticItem'] }) : null;
       if (!row) {
         throw new NotFoundException('Item não desbloqueado por este usuário');
       }
       await inventory.update({ id: row.id }, { equipped: false });
+      return row.cosmeticItem.category;
     });
+    this.publishEquipmentChanged(userId, category, null);
+  }
+
+  /**
+   * Depois do commit: todos os dispositivos do usuário refletem a nova equipagem sem recarregar (#22, ADR-009).
+   * `cosmeticItemId` é o item agora equipado na categoria, ou `null` quando ela ficou vazia.
+   */
+  private publishEquipmentChanged(userId: string, category: CosmeticCategory, cosmeticItemId: string | null): void {
+    this.realtime?.emitToUser(userId, 'character:equipmentChanged', { category, cosmeticItemId });
   }
 }
