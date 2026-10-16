@@ -93,12 +93,15 @@ function BossLifeRow({ raid }: { raid: ActiveRaid }) {
   </View>;
 }
 
-/** O Golpe mais recente diante do chefe: o dano grande e, abaixo, autor e minutos. Anunciado ao chegar ao vivo (`raid:hit`). */
-function LastHit({ compact, hit }: { compact: boolean; hit: RaidHit }) {
+/**
+ * O Golpe mais recente diante do chefe: o dano grande e, abaixo, autor e minutos. Anunciado ao chegar ao vivo
+ * (`raid:hit`). Só no desktop: o Figma 06b não o mostra na cena estreita do celular.
+ */
+function LastHit({ hit }: { hit: RaidHit }) {
   const { damage, detail, label } = formatRaidHit(hit);
   return <View accessible accessibilityLabel={label} accessibilityLiveRegion="polite" style={styles.hit} testID="raid-last-hit">
-    <Text style={[styles.hitDamage, compact && styles.hitDamageCompact]}>{damage}</Text>
-    <Text numberOfLines={1} style={[styles.hitDetail, compact && styles.hitDetailCompact]}>{detail}</Text>
+    <Text style={styles.hitDamage}>{damage}</Text>
+    <Text numberOfLines={1} style={styles.hitDetail}>{detail}</Text>
   </View>;
 }
 
@@ -214,7 +217,7 @@ function Battle({ desktop, mine, raid, viewport }: { desktop: boolean; mine: MyG
       <View style={[styles.overlayTopLeft, !desktop && styles.overlayTopLeftCompact]}><TimePill compact={!desktop} raid={raid} /></View>
       {desktop ? <View style={styles.overlayTopRight}><BossLifePanel raid={raid} /></View> : null}
     </>}
-    hit={raid.lastHit ? <LastHit compact={!desktop} hit={raid.lastHit} /> : null}
+    hit={desktop && raid.lastHit ? <LastHit hit={raid.lastHit} /> : null}
     party={party}
     scale={scale}
     showTags={desktop}
@@ -345,9 +348,7 @@ const styles = StyleSheet.create({
   // Figma 06b: texto solto sobre a cena, com sombra para ler sobre o céu.
   hit: { alignItems: 'center', maxWidth: '100%' },
   hitDamage: { fontFamily: cinzel, fontSize: 26, lineHeight: 35, color: theme.color.accentHighlight, ...hitShadow },
-  hitDamageCompact: { fontSize: 16, lineHeight: 20 },
   hitDetail: { fontFamily: mono, fontSize: 10, lineHeight: 13, color: theme.color.textPrimary, ...hitShadow },
-  hitDetailCompact: { fontSize: 8, lineHeight: 10 },
   timePill: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 12, paddingVertical: 7, borderRadius: theme.radius.pill },
   timePillCompact: { gap: 6, paddingHorizontal: 9, paddingVertical: 4 },
   timeText: { fontFamily: mono, fontSize: 11, lineHeight: 15, letterSpacing: 0.4, color: theme.color.textPrimary },

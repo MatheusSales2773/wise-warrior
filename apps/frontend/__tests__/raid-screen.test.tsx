@@ -179,6 +179,16 @@ describe('RaidBattleScreen on a phone', () => {
     expect(screen.queryByTestId('raid-scene-tag-u-Astaroth', { includeHiddenElements: true })).toBeNull();
     expect(screen.getByTestId('raid-attack')).toBeTruthy();
   });
+
+  it('leaves the Golpe out of the narrow scene, as in the Figma', async () => {
+    mockedRaid.mockResolvedValue(raid({
+      lastHit: { userId: 'u-Eldoria', displayName: 'Eldoria', xp: 75, focusMinutes: 25, at: new Date().toISOString() },
+    }));
+    await renderRaid();
+    await screen.findByTestId('raid-layout-mobile');
+
+    expect(screen.queryByTestId('raid-last-hit')).toBeNull();
+  });
 });
 
 describe('RaidBattleScreen without a Raid to show', () => {
