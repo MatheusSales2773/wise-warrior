@@ -6,6 +6,7 @@ import { AppModule } from '../../app.module';
 import { configureApp } from '../../app.setup';
 import { createIntegrationDatabase, type IntegrationDatabase } from '../../test/integration-database';
 import { EconomyService } from '../economy/economy.service';
+import { CosmeticItem } from '../users/entities/cosmetic-item.entity';
 
 type ShopItem = { id: string; category: string; name: string; price: number; owned: boolean; missing: number };
 type Account = { accessToken: string; userId: string };
@@ -190,6 +191,20 @@ describe('Loja: Compra de Cosmetic Items À venda over HTTP against MySQL, with 
     for (const id of [RAID_ITEM, LEVEL_ITEM, PREMIUM_ITEM]) {
       await expect(dataSource!.query('UPDATE cosmetic_items SET for_sale = 1, price = 100 WHERE id = ?', [id])).rejects.toThrow();
     }
+  });
+
+  it('enforces the À venda rule on every write path, not only on save()', async () => {
+    const items = dataSource!.getRepository(CosmeticItem);
+    const draft = { category: 'badge' as const, name: 'Rascunho', requiresPremium: false, forSale: true };
+
+    // save() trips the entity hook with a readable message.
+    await expect(items.save(items.create({ ...draft, unlockCondition: 'raid:*', price: 100 }))).rejects.toThrow(/Condição de desbloqueio de compra/);
+    // insert(), update() and the query builder skip the hook; the CHECK still refuses them.
+    await expect(items.insert({ ...draft, unlockCondition: 'level:3', price: 100 })).rejects.toThrow();
+    await expect(items.insert({ ...draft, unlockCondition: 'purchase', price: 301 })).rejects.toThrow();
+    await expect(items.update({ id: RAID_ITEM }, { forSale: true, price: 100 })).rejects.toThrow();
+    await expect(items.update({ id: PREMIUM_ITEM }, { unlockCondition: 'purchase', forSale: true, price: 100 })).rejects.toThrow();
+    await expect(items.createQueryBuilder().update().set({ forSale: true, price: 100 }).where('id = :id', { id: LEVEL_ITEM }).execute()).rejects.toThrow();
   });
 
   it('charges once when the same item is bought twice at the same time', async () => {

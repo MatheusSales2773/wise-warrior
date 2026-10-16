@@ -30,6 +30,10 @@ export class CosmeticItem {
   @Column({ name: 'for_sale', default: false })
   forSale: boolean;
 
+  /**
+   * Erro legível ao gravar a entidade completa com `save()`. Não é a garantia: o TypeORM não chama estes hooks em
+   * `insert()`, `update()`, query builder nem SQL direto. Quem garante a regra é o CHECK `CHK_cosmetic_items_for_sale`.
+   */
   @BeforeInsert()
   @BeforeUpdate()
   protected assertSellable(): void {
