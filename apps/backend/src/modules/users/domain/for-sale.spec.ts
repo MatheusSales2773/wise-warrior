@@ -1,7 +1,7 @@
 import { forSaleViolation, type SaleListing } from './for-sale';
 import { parseUnlockCondition } from './unlock-condition';
 
-const sellable: SaleListing = { forSale: true, price: 120, unlockCondition: 'purchase', requiresPremium: false };
+const sellable: SaleListing = { category: 'accessory', forSale: true, price: 120, unlockCondition: 'purchase', requiresPremium: false };
 
 describe('Cosmetic Item À venda (ADR-012)', () => {
   it('reads the purchase Condição de desbloqueio', () => {
@@ -29,7 +29,15 @@ describe('Cosmetic Item À venda (ADR-012)', () => {
     expect(forSaleViolation({ ...sellable, requiresPremium: true })).not.toBeNull();
   });
 
+  it('rejects a Badge: the Badge is always earned, never À venda', () => {
+    expect(forSaleViolation({ ...sellable, category: 'badge' })).not.toBeNull();
+  });
+
+  it.each(['avatar', 'title', 'accessory'] as const)('accepts a %s À venda', (category) => {
+    expect(forSaleViolation({ ...sellable, category })).toBeNull();
+  });
+
   it('puts no constraint on an item that is not À venda', () => {
-    expect(forSaleViolation({ forSale: false, price: null, unlockCondition: 'raid:*', requiresPremium: true })).toBeNull();
+    expect(forSaleViolation({ category: 'badge', forSale: false, price: null, unlockCondition: 'raid:*', requiresPremium: true })).toBeNull();
   });
 });
