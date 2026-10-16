@@ -37,6 +37,10 @@ const raid = (overrides: Partial<ActiveRaid> = {}): ActiveRaid => ({
   endsAt: new Date(Date.now() + (3 * 24 + 14) * HOUR + 5 * 60_000).toISOString(),
   status: 'active',
   goalReachedAt: null,
+  weekDays: ['2026-10-05', '2026-10-06', '2026-10-07', '2026-10-08', '2026-10-09', '2026-10-10', '2026-10-11'],
+  today: '2026-10-07',
+  studyDays: [],
+  streak: 0,
   me: { participating: true, contributionXp: 6_780, position: 4 },
   lastHit: null,
   ...overrides,
@@ -184,6 +188,61 @@ describe('RaidBattleScreen on desktop', () => {
     await renderRaid();
 
     expect(await screen.findByTestId('raid-strikes-empty')).toBeTruthy();
+  });
+});
+
+describe('Fúria card and Sequência', () => {
+  // Wednesday 2026-10-07 by the server clock
+  const week = { startsAt: '2026-10-05T03:00:00.000Z', endsAt: '2026-10-12T02:59:59.000Z' };
+
+  it('marks the studied days of the week and states the Sequência on desktop', async () => {
+    mockedRaid.mockResolvedValue(raid({ ...week, studyDays: ['2026-10-05', '2026-10-06'], streak: 2 }));
+    await renderRaid();
+
+    const card = within(await screen.findByTestId('raid-furia'));
+    expect(card.getAllByTestId('raid-week-day-studied')).toHaveLength(2);
+    expect(card.getAllByTestId('raid-week-day-today')).toHaveLength(1);
+    expect(card.getAllByTestId('raid-week-day-upcoming')).toHaveLength(4);
+    expect(card.getByLabelText('segunda: com estudo')).toBeTruthy();
+    expect(card.getByLabelText('quarta: hoje, ainda sem estudo')).toBeTruthy();
+    expect(card.getByTestId('raid-streak').props.children).toBe('Sequência da guilda: 2 dias sem falhar');
+    expect(screen.getByTestId('raid-details')).toContainElement(screen.getByTestId('raid-furia'));
+  });
+
+  it('shows a missed day after a gap', async () => {
+    mockedRaid.mockResolvedValue(raid({ ...week, studyDays: ['2026-10-05', '2026-10-07'], streak: 1 }));
+    await renderRaid();
+
+    expect(await screen.findByLabelText('terça: sem estudo')).toBeTruthy();
+    expect(screen.getByLabelText('quarta: com estudo')).toBeTruthy();
+    expect(screen.getByTestId('raid-streak').props.children).toBe('Sequência da guilda: 1 dia sem falhar');
+  });
+
+  it('says there is no Sequência yet', async () => {
+    mockedRaid.mockResolvedValue(raid({ ...week }));
+    await renderRaid();
+
+    expect((await screen.findByTestId('raid-streak')).props.children).toBe('Sequência da guilda: nenhum dia ainda');
+  });
+
+  it('follows the server day across the São Paulo midnight, not the device clock', async () => {
+    mockedRaid.mockResolvedValue(raid({ ...week, today: '2026-10-08', studyDays: ['2026-10-06'], streak: 0 }));
+    await renderRaid();
+
+    expect(await screen.findByLabelText('quarta: sem estudo')).toBeTruthy();
+    expect(screen.getByLabelText('quinta: hoje, ainda sem estudo')).toBeTruthy();
+    expect(screen.getByLabelText('sexta: ainda não chegou')).toBeTruthy();
+  });
+
+  it('shows the Fúria strip with the Sequência on a phone', async () => {
+    Object.defineProperty(Platform, 'OS', { configurable: true, writable: true, value: 'ios' });
+    setViewport(390, 844);
+    mockedRaid.mockResolvedValue(raid({ ...week, studyDays: ['2026-10-05', '2026-10-06', '2026-10-07'], streak: 3 }));
+    await renderRaid();
+
+    const strip = within(await screen.findByTestId('raid-furia'));
+    expect(strip.getByTestId('raid-streak').props.children).toBe('Guilda: 3 dias sem falhar');
+    expect(screen.queryByTestId('raid-week-grid')).toBeNull();
   });
 });
 

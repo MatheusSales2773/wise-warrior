@@ -1,5 +1,5 @@
 import type { RaidRankingEntry } from '@/features/guild/api';
-import { XP_PER_FOCUS_HOUR, bossLifePercent, formatBattleTimeLeft, formatFocusHours, heroOf, raidParty, weeklyStrikes } from '@/features/guild/raid-battle';
+import { XP_PER_FOCUS_HOUR, bossLifePercent, formatBattleTimeLeft, formatFocusHours, formatStreak, heroOf, raidParty, raidWeekGrid, weeklyStrikes } from '@/features/guild/raid-battle';
 import { defaultRaidSceneArt, raidSceneArt } from '@/features/guild/raid-scene-art';
 import { raidSceneScale } from '@/features/guild/raid-scene';
 import { RAID_SCENE_HEIGHT, RAID_SCENE_WIDTH, raidSceneBackground, raidSceneBoss, sentinelaSprite } from '@/features/guild/raid-scene-sprites';
@@ -134,5 +134,27 @@ describe('raid scene', () => {
     }
     expect(raidSceneBackground.rows).toHaveLength(RAID_SCENE_HEIGHT);
     expect(raidSceneBackground.rows[0]).toHaveLength(RAID_SCENE_WIDTH);
+  });
+});
+
+describe('raidWeekGrid', () => {
+  const weekDays = ['2026-10-05', '2026-10-06', '2026-10-07', '2026-10-08', '2026-10-09', '2026-10-10', '2026-10-11'];
+  it('lists Monday to Sunday with each state, by the server day', () => {
+    const grid = raidWeekGrid({ weekDays, studyDays: ['2026-10-05', '2026-10-07'], today: '2026-10-08' });
+    expect(grid.map((day) => day.initial).join('')).toBe('STQQSSD');
+    expect(grid.map((day) => day.state)).toEqual(['studied', 'missed', 'studied', 'today', 'upcoming', 'upcoming', 'upcoming']);
+  });
+  it('turns the day when the server says so, whatever the device calendar reads', () => {
+    expect(raidWeekGrid({ weekDays, studyDays: [], today: '2026-10-05' })[0]?.state).toBe('today');
+    expect(raidWeekGrid({ weekDays, studyDays: [], today: '2026-10-06' })[0]?.state).toBe('missed');
+  });
+});
+
+describe('formatStreak', () => {
+  it('pluralizes', () => {
+    expect(formatStreak(0)).toBe('Sequência da guilda: nenhum dia ainda');
+    expect(formatStreak(1)).toBe('Sequência da guilda: 1 dia sem falhar');
+    expect(formatStreak(4)).toBe('Sequência da guilda: 4 dias sem falhar');
+    expect(formatStreak(4, { compact: true })).toBe('Guilda: 4 dias sem falhar');
   });
 });

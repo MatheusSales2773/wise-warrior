@@ -15,7 +15,7 @@ import { MissionChoiceService } from './mission-choice.service';
 import { MissionRewardItem } from './entities/mission-reward-item.entity';
 import { Raid } from './entities/raid.entity';
 import { RAID_CLOCK, type RaidClock } from './raid-clock';
-import { missionIndexForWeek, proportionalGoalXp, raidWeekAt } from './domain/raid-week';
+import { missionIndexForWeek, proportionalGoalXp, raidWeekAt, raidWeekDayKeys, studyDaysOf, studyStreak, zonedDayKey } from './domain/raid-week';
 import { UsersService, type EquippedAppearance } from '../users/users.service';
 import { EconomyService } from '../economy/economy.service';
 import { getRaidWinCoins } from '../economy/domain/coin-config';
@@ -53,6 +53,14 @@ export interface ActiveRaid {
   startsAt: Date;
   endsAt: Date;
   status: string;
+  /** The seven São Paulo days of the Raid week, Monday first, as `YYYY-MM-DD`. */
+  weekDays: string[];
+  /** Today in São Paulo by the server clock, as `YYYY-MM-DD`; the screen never reads the device calendar. */
+  today: string;
+  /** Dias de estudo of the week so far, as São Paulo `YYYY-MM-DD` days in order. */
+  studyDays: string[];
+  /** Sequência: Dias de estudo in a row, ending today or yesterday; zero after a missed day. */
+  streak: number;
   /** `position` is the caller's place in the Ranking interno, or `null` while they are not a Participant. */
   me: { participating: boolean; contributionXp: number; position: number | null };
   /** The most recent Golpe, or `null` before the first Contribution. */
@@ -330,6 +338,8 @@ export class RaidsService {
     if (rewardItemIds.length === 0 || rewards.length !== rewardItemIds.length) {
       throw new Error(`Recompensa da Missão ${raid.mission.slug} não encontrada`);
     }
+    const studyDays = await this.studyDaysOfRaid(raid.id);
+    const week = raidWeekAt(raid.startsAt);
     const { items: party } = await this.rankingPage(raid.id, requesterId, RAID_PARTY_SIZE, 0);
     return {
       id: raid.id,
@@ -348,9 +358,19 @@ export class RaidsService {
       startsAt: raid.startsAt,
       endsAt: raid.endsAt,
       status: raid.status,
+      weekDays: raidWeekDayKeys(week),
+      today: zonedDayKey(now),
+      studyDays,
+      streak: studyStreak(studyDays, week, now),
       me: await this.myStanding(raid.id, requesterId),
       lastHit: await this.findHit(this.raids.manager, raid.id),
     };
+  }
+
+  /** The Raid's Dias de estudo: the one place they are read from the Contribuições (shared with the Fúria). */
+  async studyDaysOfRaid(raidId: string): Promise<string[]> {
+    const rows = await this.contributions.find({ select: { createdAt: true }, where: { raidId } });
+    return studyDaysOf(rows.map((row) => row.createdAt));
   }
 
   async findById(userId: string, raidId: string): Promise<RaidDetail> {

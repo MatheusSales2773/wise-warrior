@@ -55,6 +55,14 @@ export type ActiveRaid = {
   startsAt: string;
   endsAt: string;
   status: 'active' | 'completed' | 'expired';
+  /** The seven São Paulo days of the Raid week, Monday first, as `YYYY-MM-DD`. */
+  weekDays: string[];
+  /** Today in São Paulo by the server clock, as `YYYY-MM-DD`. */
+  today: string;
+  /** Dias de estudo of the week so far, as São Paulo `YYYY-MM-DD` days. */
+  studyDays: string[];
+  /** Sequência: Dias de estudo in a row ending today or yesterday. */
+  streak: number;
   /** `position` is the user's place in the Ranking interno, `null` while they are not a Participant. */
   me: { participating: boolean; contributionXp: number; position: number | null };
   /** The most recent Golpe, `null` before the first Contribution. */

@@ -23,6 +23,7 @@ import { MissionRewardItem } from './entities/mission-reward-item.entity';
 import { CoinBalance } from '../economy/entities/coin-balance.entity';
 import { CoinLedgerEntry } from '../economy/entities/coin-ledger-entry.entity';
 import { EconomyService } from '../economy/economy.service';
+import { StudySession } from '../sessions/entities/study-session.entity';
 import { Raid } from './entities/raid.entity';
 import { RaidContribution } from './entities/raid-contribution.entity';
 import { RaidParticipation } from './entities/raid-participation.entity';
@@ -30,7 +31,6 @@ import { RAID_CLOCK } from './raid-clock';
 import { GuildRaidsController } from './guild-raids.controller';
 import { RaidsController } from './raids.controller';
 import { RaidsService } from './raids.service';
-import { StudySession } from '../sessions/entities/study-session.entity';
 
 describe('Raid da semana against MySQL', () => {
   jest.setTimeout(30_000);
@@ -139,8 +139,60 @@ describe('Raid da semana against MySQL', () => {
       startsAt: '2026-10-05T03:00:00.000Z',
       endsAt: '2026-10-12T02:59:59.000Z',
       status: 'active',
+      weekDays: ['2026-10-05', '2026-10-06', '2026-10-07', '2026-10-08', '2026-10-09', '2026-10-10', '2026-10-11'],
+      today: '2026-10-07',
+      studyDays: [],
+      streak: 0,
       me: { participating: false, contributionXp: 0, position: null },
       lastHit: null,
+    });
+  });
+
+  describe('Dias de estudo e Sequência', () => {
+    const contribute = async (raidId: string, userId: string, at: string) => {
+      await dataSource!.getRepository(RaidContribution).insert({ raidId, userId, xpContributed: 50, createdAt: new Date(at) });
+    };
+    const activeOf = async (guildId: string) => (await (await call('GET', `/guilds/${guildId}/raids/active`)).json()) as { id: string; studyDays: string[]; streak: number; today: string };
+
+    it('counts consecutive days ending today, in São Paulo time', async () => {
+      const guildId = await createGuild('Ordem do Foco');
+      const { id } = await activeOf(guildId);
+      await contribute(id, ana, '2026-10-05T15:00:00Z'); // Mon
+      await contribute(id, bruno, '2026-10-06T02:30:00Z'); // still Mon 23:30 in São Paulo
+      await contribute(id, ana, '2026-10-06T13:00:00Z'); // Tue
+      await contribute(id, ana, '2026-10-07T13:00:00Z'); // Wed (today)
+
+      expect(await activeOf(guildId)).toMatchObject({ studyDays: ['2026-10-05', '2026-10-06', '2026-10-07'], streak: 3 });
+    });
+
+    it('ignores solo Study Sessions: only Contribuições make a Dia de estudo', async () => {
+      const guildId = await createGuild('Ordem do Foco');
+      const { id } = await activeOf(guildId);
+      await dataSource!.getRepository(StudySession).insert({
+        userId: ana, mode: 'solo', state: 'completed', xpAwarded: 300, startedAt: new Date('2026-10-06T15:00:00Z'), endedAt: new Date('2026-10-06T15:30:00Z'),
+      });
+      await contribute(id, ana, '2026-10-07T13:00:00Z');
+
+      expect(await activeOf(guildId)).toMatchObject({ studyDays: ['2026-10-07'], streak: 1 });
+    });
+
+    it('keeps the Sequência when today has no study yet', async () => {
+      const guildId = await createGuild('Ordem do Foco');
+      const { id } = await activeOf(guildId);
+      await contribute(id, ana, '2026-10-05T15:00:00Z');
+      await contribute(id, ana, '2026-10-06T15:00:00Z');
+
+      expect(await activeOf(guildId)).toMatchObject({ studyDays: ['2026-10-05', '2026-10-06'], streak: 2 });
+    });
+
+    it('turns the day at midnight in São Paulo', async () => {
+      const guildId = await createGuild('Ordem do Foco');
+      const { id } = await activeOf(guildId);
+      await contribute(id, ana, '2026-10-06T15:00:00Z'); // Tue
+      now = new Date('2026-10-08T02:59:59Z'); // Wed 23:59:59 in São Paulo: today is still Wed, yesterday studied
+      expect((await activeOf(guildId)).streak).toBe(1);
+      now = new Date('2026-10-08T03:00:00Z'); // Thu 00:00: Wed became yesterday without study
+      expect(await activeOf(guildId)).toMatchObject({ today: '2026-10-08', streak: 0 });
     });
   });
 

@@ -1,7 +1,7 @@
 import { DEFAULT_HERO_ID, cosmeticSprite } from '@/features/character/catalog';
 import type { ItemSpriteName, PixelSpriteData } from '@/features/character/sprites';
 import { heroSprites } from '@/features/character/sprites';
-import type { RaidHit, RaidRankingEntry } from './api';
+import type { ActiveRaid, RaidHit, RaidRankingEntry } from './api';
 import { raidProgressPercent } from './messages';
 import { raidWeapons, sentinelaSprite } from './raid-scene-sprites';
 
@@ -120,4 +120,32 @@ export function weeklyStrikes(entries: readonly RaidRankingEntry[], limit: numbe
   const rows = me && !top.includes(me) && top.length === limit ? [...top.slice(0, limit - 1), me] : top;
   const best = Math.max(0, ...entries.map((entry) => entry.contributionXp));
   return rows.map((entry) => ({ entry, fraction: best > 0 ? entry.contributionXp / best : 0 }));
+}
+
+const WEEKDAY_INITIALS = ['S', 'T', 'Q', 'Q', 'S', 'S', 'D'] as const;
+
+export type WeekDay = { key: string; initial: (typeof WEEKDAY_INITIALS)[number]; name: string; state: 'studied' | 'missed' | 'today' | 'upcoming' };
+
+const WEEKDAY_NAMES = ['segunda', 'terça', 'quarta', 'quinta', 'sexta', 'sábado', 'domingo'] as const;
+
+/**
+ * The seven days of the Raid week, Monday first. The backend owns the calendar (`weekDays`, `today`, `studyDays`,
+ * all São Paulo days), so this only compares the `YYYY-MM-DD` keys: `today` without study is `today`, earlier days
+ * without study are `missed`.
+ */
+export function raidWeekGrid({ weekDays, studyDays, today }: Pick<ActiveRaid, 'weekDays' | 'studyDays' | 'today'>): WeekDay[] {
+  const studied = new Set(studyDays);
+  return weekDays.map((key, index) => ({
+    key,
+    initial: WEEKDAY_INITIALS[index] ?? 'S',
+    name: WEEKDAY_NAMES[index] ?? '',
+    state: studied.has(key) ? 'studied' : key === today ? 'today' : key < today ? 'missed' : 'upcoming',
+  }));
+}
+
+/** "4 dias sem falhar"; `compact` drops the "da guilda" label for the phone strip. */
+export function formatStreak(streak: number, { compact = false }: { compact?: boolean } = {}): string {
+  const label = compact ? 'Guilda' : 'Sequência da guilda';
+  if (streak === 0) return `${label}: nenhum dia ainda`;
+  return `${label}: ${streak} ${streak === 1 ? 'dia' : 'dias'} sem falhar`;
 }
