@@ -8,6 +8,7 @@ import { cosmeticSprite } from '@/features/character/catalog';
 import { PixelSprite } from '@/features/character/PixelSprite';
 import { itemSprites } from '@/features/character/sprites';
 import { useFocusRing } from '@/features/character/character-parts';
+import { CoinMark } from '@/features/market/coin';
 import type { ActiveRaid, MyGuild, RaidRankingEntry } from './api';
 import { RAID_GOAL_REACHED, formatPosition, formatRewardCoins, formatRewardName } from './messages';
 import { activeRaidQueryOptions, myGuildQueryOptions, raidRankingQueryOptions } from './queries';
@@ -177,7 +178,10 @@ function RewardsCard({ raid }: { raid: ActiveRaid }) {
         <View style={styles.rewardIcon}><PixelSprite scale={4} sprite={itemSprites[cosmeticSprite(reward)]} /></View>
         <Text style={styles.rewardName}>{formatRewardName(reward)}</Text>
       </View>)}
-      <Text style={styles.rewardCoins} testID="raid-reward-coins">{formatRewardCoins(raid.coins)}</Text>
+      <View style={styles.reward}>
+        <View style={styles.rewardIcon}><CoinMark scale={4} /></View>
+        <Text style={styles.rewardName} testID="raid-reward-coins">{formatRewardCoins(raid.coins)}</Text>
+      </View>
       <Text style={styles.rewardCaption}>{REWARD_RULE_CAPTION}</Text>
     </View>
     <View style={styles.fill} />
@@ -192,7 +196,10 @@ function RewardChips({ raid }: { raid: ActiveRaid }) {
       <PixelSprite scale={3} sprite={itemSprites[cosmeticSprite(reward)]} />
       <Text numberOfLines={1} style={styles.chipText}>{reward.name}</Text>
     </View>)}
-    <View style={styles.chip}><Text numberOfLines={1} style={styles.chipText} testID="raid-reward-coins">{formatRewardCoins(raid.coins)}</Text></View>
+    <View style={styles.chip}>
+      <CoinMark scale={3} />
+      <Text numberOfLines={1} style={styles.chipText} testID="raid-reward-coins">+{raid.coins}</Text>
+    </View>
   </View>;
 }
 
@@ -369,7 +376,6 @@ const styles = StyleSheet.create({
 
   rewardList: { gap: 10 },
   reward: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  rewardCoins: { fontFamily: mono, fontSize: 13, lineHeight: 16, color: theme.color.accentHighlight },
   rewardIcon: { padding: 6, borderRadius: theme.radius.detail, borderWidth: theme.border.standard, borderColor: theme.color.borderSubtle, backgroundColor: theme.color.surfaceInset },
   rewardName: { flex: 1, fontFamily: 'Inter-SemiBold', fontSize: 13, lineHeight: 16, color: theme.color.textPrimary },
   rewardCaption: { fontFamily: 'Inter-Regular', fontSize: 11, lineHeight: 13, color: theme.color.textTertiary },
