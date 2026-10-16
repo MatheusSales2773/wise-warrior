@@ -18,8 +18,20 @@ import { DropCharacterTitle1788459300000 } from './1788459300000-drop-character-
 import { SeedInitialCosmeticItems1788459240000 } from './1788459240000-seed-initial-cosmetic-items';
 import { GrantWelcomeCoins1788459720000 } from './1788459720000-grant-welcome-coins';
 import { AddMissionRewardItems1788459960000 } from './1788459960000-add-mission-reward-items';
+import { SeedCosmeticItemsForSale1788460020000 } from './1788460020000-seed-cosmetic-items-for-sale';
 import { raidWeekAt } from '../modules/raids/domain/raid-week';
 import { StudySession } from '../modules/sessions/entities/study-session.entity';
+
+const ITEMS_FOR_SALE = [
+  ['c05e71c0-0000-4000-8000-000000000101', 'Marcador de Fita', 30, 'accessory'],
+  ['c05e71c0-0000-4000-8000-000000000102', 'Guardião das Páginas', 45, 'title'],
+  ['c05e71c0-0000-4000-8000-000000000103', 'Pena do Escriba', 60, 'accessory'],
+  ['c05e71c0-0000-4000-8000-000000000104', 'Andarilho do Saber', 90, 'title'],
+  ['c05e71c0-0000-4000-8000-000000000105', 'Túnica do Viajante', 120, 'avatar'],
+  ['c05e71c0-0000-4000-8000-000000000106', 'Lanterna do Vigia', 180, 'accessory'],
+  ['c05e71c0-0000-4000-8000-000000000107', 'Arquimago dos Prazos', 240, 'title'],
+  ['c05e71c0-0000-4000-8000-000000000108', 'Manto Estelar', 300, 'avatar'],
+] as const;
 
 const MIGRATION_COUNT = (APPLICATION_MIGRATIONS as unknown[]).length;
 
@@ -404,7 +416,7 @@ describe('TypeORM migrations against an empty MySQL schema', () => {
       database!.admin,
       `SELECT name, price FROM ${database!.identifier}.cosmetic_items WHERE for_sale = 1`,
     );
-    expect(forSaleBeforeRevert).toEqual([{ name: '[TESTE] Item de teste da Loja - remover', price: 30 }]);
+    expect(forSaleBeforeRevert.map((row) => [row.name, Number(row.price)]).sort()).toEqual(ITEMS_FOR_SALE.map(([, name, price]) => [name, price]).sort());
     expect(migrationRows.map((row) => row.name)).toEqual([
       'CreateWiseSchema1788458400000',
       'AddSessionRefreshTokenHistory1788458460000',
@@ -426,18 +438,18 @@ describe('TypeORM migrations against an empty MySQL schema', () => {
       'GrantWelcomeCoins1788459720000',
       'AddMissionStore1788459780000',
       'AddCosmeticItemSale1788459840000',
-      'SeedTestCosmeticItemForSale1788459900000',
       'AddMissionRewardItems1788459960000',
+      'SeedCosmeticItemsForSale1788460020000',
     ]);
 
-    await dataSource.undoLastMigration(); // mission reward items, the newest migration
-    expect(await rows(database!.admin, `SHOW COLUMNS FROM ${database!.identifier}.missions LIKE 'reward_cosmetic_item_id'`)).toHaveLength(1);
-    await dataSource.undoLastMigration(); // temporary test item À venda, the newest migration
+    await dataSource.undoLastMigration(); // Cosmetic Items À venda seed, the newest migration
     const testItemRevertRows = await rows(
       database!.admin,
       `SELECT id FROM ${database!.identifier}.cosmetic_items WHERE for_sale = 1`,
     );
     expect(testItemRevertRows).toHaveLength(0);
+    await dataSource.undoLastMigration(); // mission reward items
+    expect(await rows(database!.admin, `SHOW COLUMNS FROM ${database!.identifier}.missions LIKE 'reward_cosmetic_item_id'`)).toHaveLength(1);
     await dataSource.undoLastMigration(); // cosmetic item sale
     const saleRevertRows = await rows(
       database!.admin,
@@ -1035,7 +1047,7 @@ await dataSource.undoLastMigration();
       ['badge', 'Marcador do Grimório', 'raid:cerco-ao-grimorio', 0],
       ['accessory', 'Lanterna do Silêncio', 'raid:marcha-do-silencio', 0],
       ['badge', 'Brasão da Forja', 'raid:forja-dos-sabios', 0],
-      ['badge', '[TESTE] Item de teste da Loja - remover', 'purchase', 0], // temporary seed, see #174
+      ...ITEMS_FOR_SALE.map(([, name, , category]) => [category, name, 'purchase', 0]),
     ]);
 
     const inventory = await rows(
@@ -1364,6 +1376,7 @@ await dataSource.undoLastMigration();
       .toEqual([{ n: 4 }]);
 
     // Back to the single-reward-item schema, where the store migration is the newest.
+    await dataSource.undoLastMigration(); // Cosmetic Items À venda seed
     await dataSource.undoLastMigration(); // mission reward items
 
     await database.admin.query(
@@ -1381,7 +1394,6 @@ await dataSource.undoLastMigration();
       `INSERT INTO ${db}.user_missions (id, user_id, mission_id) VALUES ('o2', 'u', 'p1')`,
     )).rejects.toThrow(/Duplicate entry/);
 
-    await dataSource.undoLastMigration(); // temporary test item À venda, which sits above the mission store
     await dataSource.undoLastMigration(); // cosmetic item sale
     await dataSource.undoLastMigration(); // mission store
     expect(await rows(database.admin, `SELECT COUNT(*) AS n FROM ${db}.missions`)).toEqual([{ n: 4 }]);
@@ -1446,5 +1458,54 @@ await dataSource.undoLastMigration();
     await new GrantWelcomeCoins1788459720000().up(dataSource.createQueryRunner());
     expect(await balances()).toEqual([['newcomer', 90], ['signed-up', 90], ['veteran', 102]]);
     expect(await welcomes()).toEqual([['newcomer', 90, 90], ['veteran', 90, 102]]);
+  });
+
+  it('seeds the Cosmetic Items À venda, clears the old test item, and removes only the seeded ids on revert', async () => {
+    database = await createIntegrationDatabase('wise_migrations_test');
+    initialDataSource = new DataSource(database.options(
+      (APPLICATION_MIGRATIONS as unknown[]).filter((migration) => migration !== SeedCosmeticItemsForSale1788460020000) as typeof APPLICATION_MIGRATIONS,
+    ));
+    await initialDataSource.initialize();
+    await initialDataSource.runMigrations();
+    const testItemId = 'c05e71c0-0000-4000-8000-00000000f001';
+    // A local database that already ran the temporary test item migration, with the item bought by someone.
+    await database.admin.query(
+      `INSERT INTO ${database.identifier}.cosmetic_items (id, category, name, unlock_condition, requires_premium, price, for_sale)
+       VALUES (?, 'badge', '[TESTE] Item de teste da Loja - remover', 'purchase', 0, 30, 1)`,
+      [testItemId],
+    );
+    await database.admin.query(
+      `INSERT INTO ${database.identifier}.users (id, email, password_hash, display_name, plan_tier)
+       VALUES ('buyer', 'buyer@example.com', 'hash', 'buyer', 'free')`,
+    );
+    await database.admin.query(
+      `INSERT INTO ${database.identifier}.user_cosmetic_items (id, user_id, cosmetic_item_id, equipped)
+       VALUES ('test-row', 'buyer', ?, 0)`,
+      [testItemId],
+    );
+    await initialDataSource.destroy();
+    initialDataSource = undefined;
+
+    dataSource = new DataSource(database.options(APPLICATION_MIGRATIONS));
+    await dataSource.initialize();
+    await dataSource.runMigrations();
+
+    const forSale = async () => (await rows(
+      database!.admin,
+      `SELECT id, category, name, unlock_condition, requires_premium, price FROM ${database!.identifier}.cosmetic_items
+       WHERE for_sale = 1 ORDER BY id`,
+    )).map((row) => [row.id, row.name, Number(row.price), row.category, row.unlock_condition, Number(row.requires_premium)]);
+    expect(await forSale()).toEqual(ITEMS_FOR_SALE.map(([id, name, price, category]) => [id, name, price, category, 'purchase', 0]));
+    expect(await rows(database.admin, `SELECT id FROM ${database.identifier}.cosmetic_items WHERE id = ?`, [testItemId])).toHaveLength(0);
+    expect(await rows(database.admin, `SELECT id FROM ${database.identifier}.user_cosmetic_items WHERE id = 'test-row'`)).toHaveLength(0);
+
+    // Items outside the seeded ids survive the revert; the test item does not come back.
+    await dataSource.undoLastMigration();
+    expect(await forSale()).toEqual([]);
+    expect(await rows(database.admin, `SELECT id FROM ${database.identifier}.cosmetic_items WHERE id = ?`, [testItemId])).toHaveLength(0);
+    expect(await rows(database.admin, `SELECT id FROM ${database.identifier}.cosmetic_items WHERE name = 'Capuz do Erudito'`)).toHaveLength(1);
+
+    await dataSource.runMigrations();
+    expect(await forSale()).toHaveLength(ITEMS_FOR_SALE.length);
   });
 });

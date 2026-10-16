@@ -136,8 +136,16 @@ describe('Loja: Compra de Cosmetic Items À venda over HTTP against MySQL, with 
       ['Capa de Estrelas', 120, 'insufficient', 20],
       ['Coroa de Louros', 300, 'insufficient', 200],
       ['Lanterna do Estudo', 30, 'purchasable', 0],
-      ['[TESTE] Item de teste da Loja - remover', 30, 'purchasable', 0], // temporary seed, see #174
-    ]);
+      // The seeded catalog (#174).
+      ['Marcador de Fita', 30, 'purchasable', 0],
+      ['Guardião das Páginas', 45, 'purchasable', 0],
+      ['Pena do Escriba', 60, 'purchasable', 0],
+      ['Andarilho do Saber', 90, 'purchasable', 0],
+      ['Túnica do Viajante', 120, 'insufficient', 20],
+      ['Lanterna do Vigia', 180, 'insufficient', 80],
+      ['Arquimago dos Prazos', 240, 'insufficient', 140],
+      ['Manto Estelar', 300, 'insufficient', 200],
+    ].sort());
     expect(items.find((item) => item.id === CAPA)).toMatchObject({ category: 'avatar' });
   });
 

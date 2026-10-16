@@ -22,8 +22,8 @@ import { AddCoinEconomy1788459660000 } from '../migrations/1788459660000-add-coi
 import { GrantWelcomeCoins1788459720000 } from '../migrations/1788459720000-grant-welcome-coins';
 import { AddMissionStore1788459780000 } from '../migrations/1788459780000-add-mission-store';
 import { AddCosmeticItemSale1788459840000 } from '../migrations/1788459840000-add-cosmetic-item-sale';
-import { SeedTestCosmeticItemForSale1788459900000 } from '../migrations/1788459900000-seed-test-cosmetic-item-for-sale';
 import { AddMissionRewardItems1788459960000 } from '../migrations/1788459960000-add-mission-reward-items';
+import { SeedCosmeticItemsForSale1788460020000 } from '../migrations/1788460020000-seed-cosmetic-items-for-sale';
 
 export const APPLICATION_MIGRATIONS: NonNullable<DataSourceOptions['migrations']> = [
   CreateWiseSchema1788458400000,
@@ -46,8 +46,8 @@ export const APPLICATION_MIGRATIONS: NonNullable<DataSourceOptions['migrations']
   GrantWelcomeCoins1788459720000,
   AddMissionStore1788459780000,
   AddCosmeticItemSale1788459840000,
-  SeedTestCosmeticItemForSale1788459900000,
   AddMissionRewardItems1788459960000,
+  SeedCosmeticItemsForSale1788460020000,
 ];
 
 export interface IntegrationDatabase {
