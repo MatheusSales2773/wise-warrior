@@ -20,6 +20,7 @@ import { GuildMembership, type GuildRole } from './entities/guild-membership.ent
 import { CreateGuildDto } from './dto/create-guild.dto';
 import { GUILD_MEMBERS_PAGE_SIZE_DEFAULT, type ListGuildMembersQueryDto } from './dto/list-guild-members-query.dto';
 import { GUILDS_PAGE_SIZE_DEFAULT, type ListGuildsQueryDto } from './dto/list-guilds-query.dto';
+import { decodeDatetimeCursor, encodeDatetimeCursor } from '../../shared/pagination/datetime-cursor';
 
 export interface GuildSummary {
   id: string;
@@ -75,32 +76,6 @@ function decodeCursor(cursor: string): { name: string; id: string } {
     const parsed: unknown = JSON.parse(Buffer.from(cursor, 'base64url').toString('utf8'));
     if (Array.isArray(parsed) && typeof parsed[0] === 'string' && typeof parsed[1] === 'string') {
       return { name: parsed[0], id: parsed[1] };
-    }
-  } catch {
-    // Falls through to the validation error below.
-  }
-  throw new BadRequestException('Cursor inválido');
-}
-
-/**
- * `joinedAt` travels as the exact text MySQL produced (microseconds included): a round trip through a JavaScript
- * Date keeps only milliseconds, so the cursor would sort just before the row it points at and repeat that row.
- */
-const MYSQL_DATETIME_TEXT = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(\.\d{1,6})?$/;
-
-function encodeMemberCursor(joinedAtText: string, id: string): string {
-  return Buffer.from(JSON.stringify([joinedAtText, id]), 'utf8').toString('base64url');
-}
-
-function decodeMemberCursor(cursor: string): { joinedAt: string; id: string } {
-  try {
-    const parsed: unknown = JSON.parse(Buffer.from(cursor, 'base64url').toString('utf8'));
-    if (
-      Array.isArray(parsed)
-      && typeof parsed[0] === 'string' && MYSQL_DATETIME_TEXT.test(parsed[0])
-      && typeof parsed[1] === 'string'
-    ) {
-      return { joinedAt: parsed[0], id: parsed[1] };
     }
   } catch {
     // Falls through to the validation error below.
@@ -218,10 +193,10 @@ export class GuildsService {
       .limit(limit + 1);
 
     if (query.cursor) {
-      const after = decodeMemberCursor(query.cursor);
+      const after = decodeDatetimeCursor(query.cursor);
       qb.andWhere(
         '(membership.joinedAt > :afterJoinedAt OR (membership.joinedAt = :afterJoinedAt AND membership.id > :afterId))',
-        { afterJoinedAt: after.joinedAt, afterId: after.id },
+        { afterJoinedAt: after.datetime, afterId: after.id },
       );
     }
 
@@ -246,7 +221,7 @@ export class GuildsService {
         role: row.role,
         joinedAt: row.joinedAt,
       })),
-      nextCursor: rows.length > limit && last ? encodeMemberCursor(last.joinedAtText, last.membershipId) : null,
+      nextCursor: rows.length > limit && last ? encodeDatetimeCursor(last.joinedAtText, last.membershipId) : null,
     };
   }
 

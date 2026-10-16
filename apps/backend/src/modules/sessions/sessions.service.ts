@@ -18,6 +18,7 @@ import { RecentSubjectsResponseDto } from './dto/recent-subjects-response.dto';
 import { SessionMetricsResponseDto } from './dto/session-metrics-response.dto';
 import { buildCadence, calculateStreaks, type SessionActivityDay } from './domain/session-metrics';
 import { FOCUS_CYCLE_LENGTH, focusCycle, type FocusCycle } from './domain/focus-cycle';
+import { decodeDatetimeCursor, encodeDatetimeCursor } from '../../shared/pagination/datetime-cursor';
 
 const RECENT_SUBJECTS_LIMIT = 6;
 
@@ -63,7 +64,7 @@ export class SessionsService {
       throw new BadRequestException('Data inválida');
     }
     const limit = query.limit ?? SESSION_HISTORY_PAGE_SIZE_DEFAULT;
-    const after = query.cursor ? decodeHistoryCursor(query.cursor) : null;
+    const after = query.cursor ? decodeDatetimeCursor(query.cursor) : null;
 
     const rows = await this.studySessions.manager.query<Array<{
       id: string;
@@ -95,7 +96,7 @@ export class SessionsService {
        LIMIT ?`,
       [
         userId, userId, utcDayStart(date), utcDayStart(nextDay(date)),
-        ...(after ? [after.endedAt, after.endedAt, after.id] : []),
+        ...(after ? [after.datetime, after.datetime, after.id] : []),
         limit + 1,
       ],
     );
@@ -116,7 +117,7 @@ export class SessionsService {
         cappedReason: row.capped_reason ?? null,
         cyclePosition: row.cycle_number === null ? null : ((Number(row.cycle_number) - 1) % FOCUS_CYCLE_LENGTH) + 1,
       })),
-      nextCursor: rows.length > limit && last ? encodeHistoryCursor(last.ended_at_text, last.id) : null,
+      nextCursor: rows.length > limit && last ? encodeDatetimeCursor(last.ended_at_text, last.id) : null,
     };
   }
 
@@ -311,25 +312,6 @@ export class SessionsService {
 
     return Number(row?.total ?? 0);
   }
-}
-
-/** The cursor carries `ended_at` as the exact text MySQL produced: a JavaScript Date would round it. */
-const MYSQL_DATETIME_TEXT = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(\.\d{1,6})?$/;
-
-function encodeHistoryCursor(endedAtText: string, id: string): string {
-  return Buffer.from(JSON.stringify([endedAtText, id]), 'utf8').toString('base64url');
-}
-
-function decodeHistoryCursor(cursor: string): { endedAt: string; id: string } {
-  try {
-    const parsed: unknown = JSON.parse(Buffer.from(cursor, 'base64url').toString('utf8'));
-    if (Array.isArray(parsed) && typeof parsed[0] === 'string' && MYSQL_DATETIME_TEXT.test(parsed[0]) && typeof parsed[1] === 'string') {
-      return { endedAt: parsed[0], id: parsed[1] };
-    }
-  } catch {
-    // Falls through to the validation error below.
-  }
-  throw new BadRequestException('Cursor inválido');
 }
 
 function previousDay(date: string, days: number): string {
