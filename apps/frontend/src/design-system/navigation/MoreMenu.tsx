@@ -4,18 +4,20 @@ import { useRuntimeMotionDuration } from '../components/motion-runtime';
 import { WiseText } from '../components/WiseText';
 import { controlStyles } from '../components/control-styles';
 import { theme } from '../tokens/theme';
-import { futureDestinations } from './destinations';
+import { futureDestinations, isDestinationActive, moreMenuDestinations } from './destinations';
 import { FutureDestinationRow } from './FutureDestinationRow';
 import { LogoutAction } from './LogoutAction';
+import { NavigationLink } from './NavigationLink';
 
 type MoreMenuProps = {
   bottomInset: number;
+  pathname?: string;
   onClose: () => void;
   onLogout: () => Promise<void>;
   visible: boolean;
 };
 
-export function MoreMenu({ bottomInset, onClose, onLogout, visible }: MoreMenuProps) {
+export function MoreMenu({ bottomInset, onClose, onLogout, pathname = '', visible }: MoreMenuProps) {
   const motionDuration = useRuntimeMotionDuration();
   const [closeFocused, setCloseFocused] = useState(false);
   const [closeHovered, setCloseHovered] = useState(false);
@@ -77,6 +79,11 @@ export function MoreMenu({ bottomInset, onClose, onLogout, visible }: MoreMenuPr
               </WiseText>
             </Pressable>
           </View>
+          <View style={styles.destinations}>
+            {moreMenuDestinations.map((destination) => (
+              <NavigationLink active={isDestinationActive(destination, pathname)} destination={destination} key={destination.href} />
+            ))}
+          </View>
           {futureDestinations.map((destination) => (
             <FutureDestinationRow destination={destination} key={destination.label} />
           ))}
@@ -116,6 +123,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: theme.space.controlInset,
     borderRadius: theme.radius.control,
   },
+  destinations: { gap: theme.space.inlineTight, marginBottom: theme.space.stackTight },
   closeInteracting: { backgroundColor: theme.color.surfaceCardActive },
 });
 
