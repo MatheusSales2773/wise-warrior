@@ -1,8 +1,9 @@
 import { ConflictException, Inject, Injectable, NotFoundException, forwardRef } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { type EntityManager, IsNull, Not, QueryFailedError, Repository } from 'typeorm';
+import { type EntityManager, In, IsNull, Not, QueryFailedError, Repository } from 'typeorm';
 import { UsersService } from '../users/users.service';
 import { Mission } from './entities/mission.entity';
+import { MissionRewardItem } from './entities/mission-reward-item.entity';
 import { UserMission } from './entities/user-mission.entity';
 
 export interface MissionReward {
@@ -31,6 +32,7 @@ export class MissionsService {
   constructor(
     @InjectRepository(Mission) private readonly missions: Repository<Mission>,
     @InjectRepository(UserMission) private readonly ownerships: Repository<UserMission>,
+    @InjectRepository(MissionRewardItem) private readonly rewardItems: Repository<MissionRewardItem>,
     @Inject(forwardRef(() => UsersService)) private readonly users: UsersService,
   ) {}
 
@@ -38,14 +40,21 @@ export class MissionsService {
   async listPriced(userId: string): Promise<PricedMission[]> {
     const missions = await this.missions.find({ where: { price: Not(IsNull()) }, order: { price: 'ASC', slug: 'ASC' } });
     if (missions.length === 0) return [];
+    // A Loja mostra o primeiro item da Missão, como a Raid ativa; o fechamento concede todos.
+    const rewardRows = await this.rewardItems.find({
+      where: { missionId: In(missions.map((mission) => mission.id)) },
+      order: { cosmeticItemId: 'ASC' },
+    });
+    const firstRewardId = new Map<string, string>();
+    for (const row of rewardRows) if (!firstRewardId.has(row.missionId)) firstRewardId.set(row.missionId, row.cosmeticItemId);
     const [owned, rewards] = await Promise.all([
       this.ownerships.find({ where: { userId } }),
-      this.users.findCosmeticItems(missions.map((mission) => mission.rewardCosmeticItemId)),
+      this.users.findCosmeticItems([...firstRewardId.values()]),
     ]);
     const ownedIds = new Set(owned.map((row) => row.missionId));
     const rewardById = new Map(rewards.map((reward) => [reward.id, reward]));
     return missions.map((mission) => {
-      const reward = rewardById.get(mission.rewardCosmeticItemId);
+      const reward = rewardById.get(firstRewardId.get(mission.id) ?? '');
       if (!reward) throw new Error(`Recompensa da Missão ${mission.slug} não encontrada`);
       return {
         id: mission.id,

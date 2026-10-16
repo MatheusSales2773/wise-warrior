@@ -19,6 +19,10 @@ import { UsersService } from '../users/users.service';
 import { ProgressionService } from '../progression/progression.service';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
 import { Mission } from './entities/mission.entity';
+import { MissionRewardItem } from './entities/mission-reward-item.entity';
+import { CoinBalance } from '../economy/entities/coin-balance.entity';
+import { CoinLedgerEntry } from '../economy/entities/coin-ledger-entry.entity';
+import { EconomyService } from '../economy/economy.service';
 import { Raid } from './entities/raid.entity';
 import { RaidContribution } from './entities/raid-contribution.entity';
 import { RaidParticipation } from './entities/raid-participation.entity';
@@ -74,7 +78,7 @@ describe('Raid da semana against MySQL', () => {
         GuildsService,
         RaidsService,
         UsersService,
-        repo(Guild), repo(GuildMembership), repo(Raid), repo(RaidContribution), repo(RaidParticipation), repo(Mission),
+        repo(Guild), repo(GuildMembership), repo(Raid), repo(RaidContribution), repo(RaidParticipation), repo(Mission), repo(MissionRewardItem), repo(CoinBalance), repo(CoinLedgerEntry), EconomyService,
         repo(User), repo(CosmeticItem), repo(UserCosmeticItem),
         { provide: RAID_CLOCK, useValue: () => now },
         { provide: ProgressionService, useValue: {} },

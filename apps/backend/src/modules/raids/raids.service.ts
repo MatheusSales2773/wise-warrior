@@ -10,10 +10,14 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { EntityManager, IsNull, Repository } from 'typeorm';
 import { Mission } from './entities/mission.entity';
+import { MissionRewardItem } from './entities/mission-reward-item.entity';
 import { Raid } from './entities/raid.entity';
 import { RAID_CLOCK, type RaidClock } from './raid-clock';
 import { missionIndexForWeek, proportionalGoalXp, raidWeekAt } from './domain/raid-week';
 import { UsersService } from '../users/users.service';
+import { EconomyService } from '../economy/economy.service';
+import { getRaidWinCoins } from '../economy/domain/coin-config';
+import type { CoinMovementResult } from '../economy/domain/coin-origin';
 import { RaidContribution } from './entities/raid-contribution.entity';
 import { RaidParticipation } from './entities/raid-participation.entity';
 import { GuildsService } from '../guilds/guilds.service';
@@ -85,6 +89,20 @@ export interface RaidClosing {
   rewardedUserIds: string[];
   /** The Cosmetic Items granted to each of them. */
   rewardItemIds: string[];
+  /** The Moedas credited to each of them, to be announced once the closing committed. */
+  coinMovements: RaidCoinMovement[];
+}
+
+export interface RaidCoinMovement {
+  userId: string;
+  result: CoinMovementResult;
+}
+
+/** What granting the Recompensa de Raid did: who got it, which Cosmetic Items, and the Moedas credited. */
+interface RaidRewardGrant {
+  rewardedUserIds: string[];
+  rewardItemIds: string[];
+  coinMovements: RaidCoinMovement[];
 }
 
 export interface RaidRankingPage {
@@ -202,6 +220,8 @@ export class RaidsService {
     @Inject(forwardRef(() => RealtimeGateway))
     private readonly realtime: RealtimeGateway,
     @Inject(RAID_CLOCK) private readonly clock: RaidClock,
+    @InjectRepository(MissionRewardItem) private readonly missionRewardItems: Repository<MissionRewardItem>,
+    private readonly economy: EconomyService,
   ) {}
 
   /**
@@ -247,7 +267,8 @@ export class RaidsService {
     if (!raid) {
       throw new NotFoundException('A guilda não tem Raid ativa');
     }
-    const [item] = await this.users.findCosmeticItems([raid.mission.rewardCosmeticItemId]);
+    const [rewardItemId] = await this.rewardItemIdsOf(this.missionRewardItems.manager, raid.missionId);
+    const [item] = rewardItemId ? await this.users.findCosmeticItems([rewardItemId]) : [];
     if (!item) {
       throw new Error(`Recompensa da Missão ${raid.mission.slug} não encontrada`);
     }
@@ -460,14 +481,15 @@ export class RaidsService {
     await manager.update(Raid, { id: raid.id }, { status });
     let rewardedUserIds: string[] = [];
     let rewardItemIds: string[] = [];
+    let coinMovements: RaidCoinMovement[] = [];
     if (status === 'completed') {
       await manager.increment(Guild, { id: raid.guildId }, 'level', 1);
-      ({ rewardedUserIds, rewardItemIds } = await this.grantRaidReward(manager, raid));
+      ({ rewardedUserIds, rewardItemIds, coinMovements } = await this.grantRaidReward(manager, raid));
     }
     await this.openWeekRaid(manager, raid.guildId, now);
     const participations = await manager.find(RaidParticipation, { where: { raidId: raid.id }, select: { userId: true } });
     const participantUserIds = participations.map(({ userId }) => userId);
-    return { raidId: raid.id, guildId: raid.guildId, status, participantUserIds, rewardedUserIds, rewardItemIds };
+    return { raidId: raid.id, guildId: raid.guildId, status, participantUserIds, rewardedUserIds, rewardItemIds, coinMovements };
   }
 
   /**
@@ -475,6 +497,9 @@ export class RaidsService {
    * that runs again finds the Raid already closed and returns nothing, so each Participant hears about it once.
    */
   private notifyRaidComplete(closing: RaidClosing): void {
+    for (const { userId, result } of closing.coinMovements) {
+      if (result.applied) this.economy.publishBalanceChanged(userId, result);
+    }
     const rewarded = new Set(closing.rewardedUserIds);
     for (const userId of closing.participantUserIds) {
       this.realtime.emitToUser(userId, 'notification:raidComplete', {
@@ -486,13 +511,23 @@ export class RaidsService {
     }
   }
 
+  /** Ids dos Cosmetic Items da Recompensa de Raid da Missão, em ordem estável. */
+  private async rewardItemIdsOf(manager: EntityManager, missionId: string): Promise<string[]> {
+    const rows = await manager.find(MissionRewardItem, { where: { missionId }, order: { cosmeticItemId: 'ASC' } });
+    return rows.map(({ cosmeticItemId }) => cosmeticItemId);
+  }
+
   /**
-   * Recompensa de Raid (#117), in the closing transaction: every Participant who is still a member of the Guild
-   * and made at least one Contribution gets the Missão's Cosmetic Item. Confirming without contributing, or
-   * having left the Guild, earns nothing.
+   * Recompensa de Raid (#117, #169), in the closing transaction: every Participant who is still a member of the Guild
+   * and made at least one Contribution gets all the Missão's Cosmetic Items (the ones they already own are skipped)
+   * and `RAID_WIN_COINS` Moedas, credited once per Raid and user. Confirming without contributing, or having left
+   * the Guild, earns nothing.
    */
-  private async grantRaidReward(manager: EntityManager, raid: Raid): Promise<{ rewardedUserIds: string[]; rewardItemIds: string[] }> {
-    const mission = await manager.findOneOrFail(Mission, { where: { id: raid.missionId } });
+  private async grantRaidReward(
+    manager: EntityManager,
+    raid: Raid,
+  ): Promise<RaidRewardGrant> {
+    const rewardItemIds = await this.rewardItemIdsOf(manager, raid.missionId);
     const rows = await manager.query<Array<{ user_id: string }>>(
       `SELECT DISTINCT contribution.user_id
        FROM raid_contributions contribution
@@ -503,8 +538,14 @@ export class RaidsService {
       [raid.guildId, raid.id],
     );
     const rewardedUserIds = rows.map((row) => row.user_id);
-    const rewardItemIds = await this.users.unlockRaidRewards(manager, rewardedUserIds, mission.slug);
-    return { rewardedUserIds: rewardItemIds.length ? rewardedUserIds : [], rewardItemIds };
+    await this.users.unlockRaidRewards(manager, rewardedUserIds, rewardItemIds);
+    // Em ordem de usuário, para que duas transações de fechamento não travem os saldos em ordens opostas.
+    const coinMovements: RaidCoinMovement[] = [];
+    for (const userId of rewardedUserIds) {
+      const result = await this.economy.credit(manager, userId, getRaidWinCoins(), { type: 'raid-win', ref: raid.id });
+      coinMovements.push({ userId, result });
+    }
+    return { rewardedUserIds, rewardItemIds, coinMovements };
   }
 
   /**

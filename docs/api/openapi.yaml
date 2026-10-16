@@ -1661,7 +1661,7 @@ components:
             imageUrl: { type: [string, "null"], description: Nulo enquanto a Missão não tem imagem }
         reward:
           type: object
-          description: Recompensa de Raid, o Cosmetic Item da Missão. Dado a quem tiver Contribuição numa Raid vencida.
+          description: Recompensa de Raid, um dos Cosmetic Items da Missão (o primeiro; a Missão pode ter vários, todos dados no fechamento, além de `RAID_WIN_COINS` Moedas). Dado a quem tiver Contribuição numa Raid vencida.
           required: [itemId, name, category]
           properties:
             itemId: { type: string, format: uuid }

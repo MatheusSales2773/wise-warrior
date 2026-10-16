@@ -21,6 +21,10 @@ import { UsersService } from '../users/users.service';
 import { ProgressionService } from '../progression/progression.service';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
 import { Mission } from './entities/mission.entity';
+import { MissionRewardItem } from './entities/mission-reward-item.entity';
+import { CoinBalance } from '../economy/entities/coin-balance.entity';
+import { CoinLedgerEntry } from '../economy/entities/coin-ledger-entry.entity';
+import { EconomyService } from '../economy/economy.service';
 import { Raid } from './entities/raid.entity';
 import { RaidContribution } from './entities/raid-contribution.entity';
 import { RaidParticipation } from './entities/raid-participation.entity';
@@ -40,11 +44,13 @@ describe('Recompensa de Raid against MySQL', () => {
   let service: RaidsService;
   let baseUrl: string;
   let now: Date;
+  let emitToUser: jest.Mock;
 
   // The Guild is created on Wednesday of week W, whose Missão is "Cerco ao Grimório".
   const WEDNESDAY_W = new Date('2026-10-07T15:00:00Z');
   const JUST_AFTER_W = new Date('2026-10-12T03:00:30Z');
   const CERCO_REWARD = 'c05e71c0-0000-4000-8000-000000000009';
+  const CERCO_EXTRA_REWARD = 'c05e71c0-0000-4000-8000-0000000000f9';
 
   const ana = '00000000-0000-4000-8000-000000000e01';
   const bruno = '00000000-0000-4000-8000-000000000e02';
@@ -64,6 +70,21 @@ describe('Recompensa de Raid against MySQL', () => {
   const currentRaid = async (guildId: string) => dataSource!.getRepository(Raid).findOneByOrFail({ guildId, status: 'active' });
   const reward = async (as: string) => ((await (await call('GET', '/users/me/cosmetics', as)).json()) as CatalogItem[])
     .find((item) => item.id === CERCO_REWARD)!;
+  const coinBalance = async (userId: string) => (await dataSource!.getRepository(CoinBalance).findOneBy({ userId }))?.balance ?? 0;
+  const raidWinEntries = (userId: string) => dataSource!.getRepository(CoinLedgerEntry).find({ where: { userId, originType: 'raid-win' } });
+  const ownedItems = async (userId: string) => (await dataSource!.getRepository(UserCosmeticItem).find({ where: { userId } }))
+    .map(({ cosmeticItemId }) => cosmeticItemId);
+  /** A Missão passa a dar dois itens: o do seed e mais este. */
+  const addSecondRewardItem = async () => {
+    await dataSource!.query(
+      "INSERT INTO cosmetic_items (id, category, name, unlock_condition, requires_premium) VALUES (?, 'badge', 'Selo do Cerco', 'raid:cerco-ao-grimorio', 0)",
+      [CERCO_EXTRA_REWARD],
+    );
+    await dataSource!.getRepository(MissionRewardItem).insert({
+      missionId: (await dataSource!.getRepository(Mission).findOneByOrFail({ slug: 'cerco-ao-grimorio' })).id,
+      cosmeticItemId: CERCO_EXTRA_REWARD,
+    });
+  };
   const owned = (userId: string) => dataSource!.getRepository(UserCosmeticItem).count({ where: { userId, cosmeticItemId: CERCO_REWARD } });
 
   async function participate(raidId: string, userId: string) {
@@ -83,6 +104,7 @@ describe('Recompensa de Raid against MySQL', () => {
 
   beforeEach(async () => {
     now = WEDNESDAY_W;
+    emitToUser = jest.fn();
     database = await createIntegrationDatabase('wise_raid_reward');
     dataSource = new DataSource(database.options(APPLICATION_MIGRATIONS));
     await dataSource.initialize();
@@ -103,12 +125,12 @@ describe('Recompensa de Raid against MySQL', () => {
         GuildsService,
         RaidsService,
         UsersService,
-        repo(Guild), repo(GuildMembership), repo(Raid), repo(RaidContribution), repo(RaidParticipation), repo(Mission),
+        repo(Guild), repo(GuildMembership), repo(Raid), repo(RaidContribution), repo(RaidParticipation), repo(Mission), repo(MissionRewardItem), repo(CoinBalance), repo(CoinLedgerEntry), EconomyService,
         repo(User), repo(CosmeticItem), repo(UserCosmeticItem),
         { provide: RAID_CLOCK, useValue: () => now },
         { provide: ProgressionService, useValue: {} },
         { provide: AuthService, useValue: {} },
-        { provide: RealtimeGateway, useValue: { emitToGuild: jest.fn(), emitToUser: jest.fn(), syncGuildRoom: jest.fn() } },
+        { provide: RealtimeGateway, useValue: { emitToGuild: jest.fn(), emitToUser, syncGuildRoom: jest.fn() } },
       ],
     })
       .overrideGuard(JwtAuthGuard)
@@ -210,5 +232,80 @@ describe('Recompensa de Raid against MySQL', () => {
     expect(closings).toEqual([expect.objectContaining({ raidId: again.id, rewardedUserIds: [ana] })]);
     expect(await owned(ana)).toBe(1);
     expect(await reward(ana)).toMatchObject({ unlocked: true, equipped: true });
+  });
+
+  it('gives every item of the Missão, skipping the ones the member already owns', async () => {
+    await addSecondRewardItem();
+    const guildId = await createGuild('Ordem do Foco');
+    await call('POST', `/guilds/${guildId}/members`, bruno);
+    const raid = await currentRaid(guildId);
+    await contribute(raid.id, ana, 300);
+    await contribute(raid.id, bruno, 100);
+    await dataSource!.getRepository(UserCosmeticItem).insert({ userId: bruno, cosmeticItemId: CERCO_EXTRA_REWARD, equipped: true });
+    await reachGoal(raid.id);
+
+    const { closings } = await service.runWeeklyClose(JUST_AFTER_W);
+
+    expect(closings[0]!.rewardItemIds.slice().sort()).toEqual([CERCO_REWARD, CERCO_EXTRA_REWARD]);
+    for (const member of [ana, bruno]) {
+      const items = await ownedItems(member);
+      expect(items).toEqual(expect.arrayContaining([CERCO_REWARD, CERCO_EXTRA_REWARD]));
+      expect(items.filter((id) => id === CERCO_EXTRA_REWARD)).toHaveLength(1);
+    }
+    // The item Bruno already had keeps its state.
+    expect(await dataSource!.getRepository(UserCosmeticItem).findOneByOrFail({ userId: bruno, cosmeticItemId: CERCO_EXTRA_REWARD }))
+      .toMatchObject({ equipped: true });
+  });
+
+  it('credits 50 Moedas to each member with Contribution, via the raid-win origin, and to nobody else', async () => {
+    const guildId = await createGuild('Ordem do Foco');
+    for (const member of [bruno, carla, dani]) await call('POST', `/guilds/${guildId}/members`, member);
+    const raid = await currentRaid(guildId);
+    await contribute(raid.id, ana, 300);
+    await participate(raid.id, bruno); // confirmed, never contributed
+    await contribute(raid.id, carla, 100);
+    await call('DELETE', `/guilds/${guildId}/members/me`, carla); // contributed, then left
+    await reachGoal(raid.id);
+    const balance = await coinBalance(ana);
+
+    await service.runWeeklyClose(JUST_AFTER_W);
+
+    expect(await coinBalance(ana)).toBe(balance + 50);
+    expect(await raidWinEntries(ana)).toEqual([expect.objectContaining({ amount: 50, originRef: raid.id })]);
+    for (const member of [bruno, carla, dani]) expect(await raidWinEntries(member)).toEqual([]);
+    expect(emitToUser).toHaveBeenCalledWith(ana, 'coins:changed', expect.objectContaining({ delta: 50 }));
+  });
+
+  it('credits no Moedas when the Raid closes expired', async () => {
+    const guildId = await createGuild('Ordem do Foco');
+    await contribute((await currentRaid(guildId)).id, ana, 100);
+
+    await service.runWeeklyClose(JUST_AFTER_W);
+
+    expect(await raidWinEntries(ana)).toEqual([]);
+  });
+
+  it('credits the Moedas once when the closing runs again, and again when the same Missão is won again', async () => {
+    const guildId = await createGuild('Ordem do Foco');
+    const first = await currentRaid(guildId);
+    await contribute(first.id, ana, 300);
+    await reachGoal(first.id);
+    await service.runWeeklyClose(JUST_AFTER_W);
+    await service.runWeeklyClose(JUST_AFTER_W);
+    expect(await raidWinEntries(ana)).toHaveLength(1);
+
+    const again = await dataSource!.getRepository(Raid).save(dataSource!.getRepository(Raid).create({
+      guildId,
+      missionId: first.missionId,
+      goalXp: 50,
+      startsAt: new Date('2026-09-28T03:00:00Z'),
+      endsAt: new Date('2026-10-05T02:59:59Z'),
+    }));
+    await contribute(again.id, ana, 100);
+    await reachGoal(again.id);
+    await service.runWeeklyClose(JUST_AFTER_W);
+
+    expect((await raidWinEntries(ana)).map(({ originRef }) => originRef).sort()).toEqual([first.id, again.id].sort());
+    expect(await owned(ana)).toBe(1);
   });
 });
