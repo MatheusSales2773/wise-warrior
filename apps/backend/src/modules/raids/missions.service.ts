@@ -5,6 +5,12 @@ import { UsersService } from '../users/users.service';
 import { Mission } from './entities/mission.entity';
 import { UserMission } from './entities/user-mission.entity';
 
+export interface MissionReward {
+  id: string;
+  name: string;
+  category: string;
+}
+
 export interface PricedMission {
   id: string;
   slug: string;
@@ -12,7 +18,7 @@ export interface PricedMission {
   description: string;
   imageUrl: string | null;
   price: number;
-  reward: { id: string; name: string; category: string };
+  reward: MissionReward;
   owned: boolean;
 }
 
@@ -59,7 +65,7 @@ export class MissionsService {
    * já possuída → 409 (a unicidade do par decide, então duas Compras simultâneas não passam as duas).
    * Devolve o preço a debitar.
    */
-  async grantPurchased(manager: EntityManager, userId: string, missionId: string): Promise<number> {
+  async claimForPurchase(manager: EntityManager, userId: string, missionId: string): Promise<number> {
     const mission = await manager.findOne(Mission, { where: { id: missionId } });
     if (!mission || mission.price === null) {
       throw new NotFoundException('Missão não está à venda');

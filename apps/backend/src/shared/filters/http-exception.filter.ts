@@ -32,6 +32,9 @@ export class HttpExceptionFilter implements ExceptionFilter {
         : (body as { message?: string | string[] } | null)?.message ??
           'Erro interno inesperado';
 
+    const extension = typeof body === 'object' && body !== null ? (body as { missing?: unknown }).missing : undefined;
+    const missing = status === HttpStatus.UNPROCESSABLE_ENTITY && typeof extension === 'number' ? extension : undefined;
+
     response.status(status).contentType('application/problem+json').json({
       type: problemType,
       title: isHttpException ? exception.name : 'InternalServerError',
@@ -39,9 +42,7 @@ export class HttpExceptionFilter implements ExceptionFilter {
       detail: Array.isArray(detail) ? detail.join('; ') : detail,
       instance: request.url,
       // Membro de extensão do RFC 7807: quanto falta de saldo numa Compra recusada (422).
-      ...(status === HttpStatus.UNPROCESSABLE_ENTITY && typeof (body as { missing?: unknown } | null)?.missing === 'number'
-        ? { missing: (body as { missing: number }).missing }
-        : {}),
+      ...(missing === undefined ? {} : { missing }),
     });
   }
 }
