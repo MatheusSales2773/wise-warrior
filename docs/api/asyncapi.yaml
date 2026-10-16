@@ -38,6 +38,8 @@ channels:
         $ref: "#/components/messages/xpUpdated"
       levelUp:
         $ref: "#/components/messages/levelUp"
+      equipmentChanged:
+        $ref: "#/components/messages/equipmentChanged"
 operations:
   receiveRaidProgress:
     action: receive
@@ -80,6 +82,16 @@ operations:
       Dashboard e o Catálogo de cosméticos, porque subir de Nível libera itens.
     messages:
       - $ref: "#/channels/userRoom/messages/levelUp"
+  receiveEquipmentChanged:
+    action: receive
+    channel:
+      $ref: "#/channels/userRoom"
+    summary: O usuário equipou ou desequipou um Cosmetic Item
+    description: >
+      Emitido para todos os dispositivos do usuário depois do commit de Equipar ou desequipar. O app
+      invalida o perfil (itens equipados e Título) e o Catálogo de cosméticos.
+    messages:
+      - $ref: "#/channels/userRoom/messages/equipmentChanged"
 components:
   securitySchemes:
     accessToken:
@@ -112,7 +124,25 @@ components:
       contentType: application/json
       payload:
         $ref: "#/components/schemas/LevelUp"
+    equipmentChanged:
+      name: character:equipmentChanged
+      title: Equipagem alterada
+      contentType: application/json
+      payload:
+        $ref: "#/components/schemas/EquipmentChanged"
   schemas:
+    EquipmentChanged:
+      type: object
+      required: [category, cosmeticItemId]
+      properties:
+        category:
+          type: string
+          enum: [avatar, badge, title, accessory]
+          description: Categoria cuja equipagem mudou
+        cosmeticItemId:
+          type: [string, "null"]
+          format: uuid
+          description: Item agora equipado na categoria, ou null quando ela ficou vazia
     XpUpdated:
       type: object
       required: [xpGained, xpTotal, level]

@@ -296,3 +296,29 @@ describe('connection status', () => {
     expect(listener).not.toHaveBeenCalled();
   });
 });
+
+describe('character:equipmentChanged', () => {
+  const invalidated = (queryClient: QueryClient, key: readonly unknown[]) => queryClient.getQueryState(key)?.isInvalidated;
+
+  it('refreshes the profile and the cosmetics catalog when another device changes the equipment', () => {
+    const { socket, queryClient } = setup();
+    [dashboardKeys.profile(), dashboardKeys.metrics(), profileKeys.cosmeticsCatalog(), profileKeys.devices()]
+      .forEach((key) => queryClient.setQueryData(key, {}));
+
+    socket.emit('character:equipmentChanged', { category: 'title', cosmeticItemId: 'item-9' });
+
+    expect(invalidated(queryClient, dashboardKeys.profile())).toBe(true);
+    expect(invalidated(queryClient, profileKeys.cosmeticsCatalog())).toBe(true);
+    expect(invalidated(queryClient, dashboardKeys.metrics())).toBe(false);
+    expect(invalidated(queryClient, profileKeys.devices())).toBe(false);
+  });
+
+  it('registers the listener once and removes it on dispose', () => {
+    const { socket, client } = setup();
+    expect(socket.count('character:equipmentChanged')).toBe(1);
+
+    client.dispose();
+
+    expect(socket.count('character:equipmentChanged')).toBe(0);
+  });
+});
