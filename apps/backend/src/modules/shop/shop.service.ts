@@ -3,11 +3,12 @@ import { DataSource } from 'typeorm';
 import { InsufficientCoinsError } from '../economy/domain/insufficient-coins-error';
 import { EconomyService } from '../economy/economy.service';
 import { MissionsService, type PricedMission } from '../raids/missions.service';
+import { UsersService, type ShopCosmeticItem } from '../users/users.service';
 
-export type StoreMissionState = 'owned' | 'purchasable' | 'insufficient';
+export type StoreState = 'owned' | 'purchasable' | 'insufficient';
 
 export interface StoreMission extends Omit<PricedMission, 'owned'> {
-  state: StoreMissionState;
+  state: StoreState;
   /** Moedas que faltam para comprar; 0 quando já possui ou o saldo basta. */
   missing: number;
 }
@@ -18,7 +19,20 @@ export interface MissionPurchase {
   balance: number;
 }
 
-function missionState(owned: boolean, missing: number): StoreMissionState {
+/** Loja, seção Itens: um Cosmetic Item À venda, com o estado para o usuário. */
+export interface StoreItem extends Omit<ShopCosmeticItem, 'owned'> {
+  state: StoreState;
+  /** Moedas que faltam para comprar; 0 quando já possui ou o saldo basta. */
+  missing: number;
+}
+
+export interface ItemPurchase {
+  itemId: string;
+  price: number;
+  balance: number;
+}
+
+function missionState(owned: boolean, missing: number): StoreState {
   if (owned) return 'owned';
   return missing > 0 ? 'insufficient' : 'purchasable';
 }
@@ -30,6 +44,7 @@ export class ShopService {
     private readonly dataSource: DataSource,
     private readonly missions: MissionsService,
     private readonly economy: EconomyService,
+    private readonly users: UsersService,
   ) {}
 
   async listMissions(userId: string): Promise<StoreMission[]> {
@@ -50,6 +65,37 @@ export class ShopService {
       });
       if (movement.applied) this.economy.publishBalanceChanged(userId, movement);
       return { missionId, price, balance: movement.balance };
+    } catch (error) {
+      if (error instanceof InsufficientCoinsError) {
+        throw new UnprocessableEntityException({ message: error.message, missing: error.missing });
+      }
+      throw error;
+    }
+  }
+
+  async listItems(userId: string): Promise<StoreItem[]> {
+    const [items, balance] = await Promise.all([this.users.listItemsForSale(userId), this.economy.getBalance(userId)]);
+    return items.map(({ owned, ...item }) => {
+      const missing = owned ? 0 : Math.max(0, item.price - balance);
+      return { ...item, state: missionState(owned, missing), missing };
+    });
+  }
+
+  /**
+   * Compra de um Cosmetic Item (a Condição de desbloqueio `purchase`): desbloqueia e debita na mesma transação. A
+   * linha do usuário é travada antes, para Compras simultâneas se enfileirarem. Não está À venda: 404; já possui: 409;
+   * sem saldo: 422, e nada muda.
+   */
+  async purchaseItem(userId: string, itemId: string): Promise<ItemPurchase> {
+    try {
+      const { price, movement } = await this.dataSource.transaction(async (manager) => {
+        await this.users.lockForUpdate(userId, manager);
+        const { price: itemPrice } = await this.users.unlockPurchasedItem(manager, userId, itemId);
+        const result = await this.economy.debit(manager, userId, itemPrice, { type: 'purchase', ref: `cosmetic:${itemId}` });
+        return { price: itemPrice, movement: result };
+      });
+      if (movement.applied) this.economy.publishBalanceChanged(userId, movement);
+      return { itemId, price, balance: movement.balance };
     } catch (error) {
       if (error instanceof InsufficientCoinsError) {
         throw new UnprocessableEntityException({ message: error.message, missing: error.missing });

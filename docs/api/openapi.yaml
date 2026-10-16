@@ -336,6 +336,53 @@ paths:
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
 
+  /shop/items:
+    get:
+      summary: Loja, seção Itens
+      description: >
+        Os Cosmetic Items À venda (ADR-012), com o preço e o estado para o usuário autenticado. `state` é `owned` (já
+        está no Inventário), `purchasable` (o saldo basta) ou `insufficient` (faltam `missing` Moedas, "Faltam 60").
+        Recompensas de Raid, itens de nível e Itens premium nunca aparecem. A interface define a ordem.
+      operationId: listShopItems
+      tags: [Shop]
+      responses:
+        "200":
+          description: Itens À venda
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/ShopItem" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /shop/items/{itemId}/purchase:
+    post:
+      summary: Comprar um Cosmetic Item À venda
+      description: >
+        Debita o preço e desbloqueia o item na mesma transação (a Compra é uma Condição de desbloqueio, pelo
+        Desbloqueio idempotente). O item aparece no Inventário, pronto para Equipar, e o Extrato registra a origem
+        `purchase`. Item que não está À venda (ou não existe) responde 404; item já possuído, 409; saldo insuficiente,
+        422 com `missing`, e o saldo não muda. Limite de 30 Compras por minuto por usuário.
+      operationId: purchaseShopItem
+      tags: [Shop]
+      parameters:
+        - { name: itemId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "201":
+          description: Compra feita
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ShopPurchase" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422":
+          description: Saldo de Moedas insuficiente
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/InsufficientCoinsProblem" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+
   /users/me/sessions:
     get:
       summary: Lista dispositivos com sessão ativa (ADR-009)
@@ -1182,6 +1229,30 @@ components:
           properties:
             type: { type: string, const: raid }
             slug: { type: string, description: "Slug da Raid. `*` vale para qualquer Raid." }
+        - type: object
+          required: [type]
+          description: Item da Loja, desbloqueado pela Compra (ADR-012).
+          properties:
+            type: { type: string, const: purchase }
+
+    ShopItem:
+      type: object
+      required: [id, category, name, price, state, missing]
+      properties:
+        id: { type: string, format: uuid }
+        category: { type: string, enum: [avatar, badge, title, accessory] }
+        name: { type: string }
+        price: { type: integer, minimum: 30, maximum: 300, description: Preço em Moedas }
+        state: { type: string, enum: [owned, purchasable, insufficient] }
+        missing: { type: integer, minimum: 0, description: "Moedas que faltam; 0 quando já possui ou o saldo basta" }
+
+    ShopPurchase:
+      type: object
+      required: [itemId, price, balance]
+      properties:
+        itemId: { type: string, format: uuid }
+        price: { type: integer, minimum: 30, maximum: 300 }
+        balance: { type: integer, minimum: 0, description: Saldo depois da Compra }
 
     StoreMission:
       type: object
@@ -1655,6 +1726,15 @@ components:
         status: { type: integer }
         detail: { type: string }
         instance: { type: string }
+
+    InsufficientCoinsProblem:
+      description: Problema de uma Compra recusada por saldo, com as Moedas que faltam.
+      allOf:
+        - $ref: "#/components/schemas/Problem"
+        - type: object
+          required: [missing]
+          properties:
+            missing: { type: integer, minimum: 1 }
 
   responses:
     TooManyRequests:
