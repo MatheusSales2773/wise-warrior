@@ -22,8 +22,8 @@ describe('character catalog', () => {
     expect(heroCaption(heroById.arcanista, 'unlocked')).toBe('Liberada no nível 20');
   });
 
-  const item = (name: string, category: CatalogCosmeticItem['category'], unlockCondition: CatalogCosmeticItem['unlockCondition'], state: Partial<Pick<CatalogCosmeticItem, 'unlocked' | 'equipped' | 'requiresPremium'>> = {}): CatalogCosmeticItem => ({
-    id: `item-${name}`, category, name, unlockCondition, requiresPremium: false, unlocked: false, equipped: false, ...state,
+  const item = (name: string, category: CatalogCosmeticItem['category'], unlockCondition: CatalogCosmeticItem['unlockCondition'], state: Partial<Pick<CatalogCosmeticItem, 'unlocked' | 'equipped' | 'requiresPremium' | 'forSale'>> = {}): CatalogCosmeticItem => ({
+    id: `item-${name}`, category, name, unlockCondition, requiresPremium: false, unlocked: false, equipped: false, forSale: false, ...state,
   });
   const titles = [
     item('Guardião', 'title', { type: 'raid', slug: '*' }),
@@ -41,6 +41,28 @@ describe('character catalog', () => {
       ['Sábio', 'locked', 'Alcance o nível 30'],
       ['Guardião', 'locked', 'Conclua uma Raid com sua Guilda'],
     ]);
+  });
+
+  it('captions the three Purchase states without falling into the Raid case', () => {
+    const shop = [
+      item('Brasão', 'badge', { type: 'purchase' }, { unlocked: true }),
+      item('Lanterna', 'badge', { type: 'purchase' }, { forSale: true }),
+      item('Marcador', 'badge', { type: 'purchase' }),
+      item('Selo', 'badge', { type: 'raid', slug: '*' }),
+    ];
+
+    expect(optionsFor(shop, 'badge', 'free').map((option) => [option.item.name, option.availability.kind, option.caption])).toEqual([
+      ['Brasão', 'owned', 'Comprado na Loja'],
+      ['Lanterna', 'locked', 'À venda na Loja'],
+      ['Selo', 'locked', 'Conclua uma Raid com sua Guilda'],
+      ['Marcador', 'locked', 'Fora de venda'],
+    ]);
+  });
+
+  it('keeps a Purchase item owned and captioned the same once it leaves the shelf', () => {
+    const [owned] = optionsFor([item('Brasão', 'badge', { type: 'purchase' }, { unlocked: true, forSale: false })], 'badge', 'free');
+
+    expect(owned?.caption).toBe('Comprado na Loja');
   });
 
   it('lets a premium plan own an unlocked premium item', () => {
@@ -76,8 +98,8 @@ describe('character formatters', () => {
 });
 
 describe('profile formatters', () => {
-  const item = (name: string, unlockCondition: CatalogCosmeticItem['unlockCondition'], state: Partial<Pick<CatalogCosmeticItem, 'unlocked' | 'equipped'>> = {}): CatalogCosmeticItem => ({
-    id: `item-${name}`, category: 'badge', name, unlockCondition, requiresPremium: false, unlocked: false, equipped: false, ...state,
+  const item = (name: string, unlockCondition: CatalogCosmeticItem['unlockCondition'], state: Partial<Pick<CatalogCosmeticItem, 'unlocked' | 'equipped' | 'forSale'>> = {}): CatalogCosmeticItem => ({
+    id: `item-${name}`, category: 'badge', name, unlockCondition, requiresPremium: false, unlocked: false, equipped: false, forSale: false, ...state,
   });
 
   it('describes devices', () => {
@@ -91,6 +113,21 @@ describe('profile formatters', () => {
     expect(cosmeticItemState(item('B', { type: 'level', level: 1 }, { unlocked: true }))).toBe('unlocked');
     expect(cosmeticItemState(item('C', { type: 'level', level: 5 }))).toBe('lockedByLevel');
     expect(cosmeticItemState(item('D', { type: 'raid', slug: '*' }))).toBe('lockedByRaid');
+    expect(cosmeticItemState(item('E', { type: 'purchase' }, { forSale: true }))).toBe('lockedByPurchase');
+    expect(cosmeticItemState(item('F', { type: 'purchase' }))).toBe('offSale');
+    expect(cosmeticItemState(item('G', { type: 'purchase' }, { unlocked: true }))).toBe('unlocked');
+  });
+
+  it('names where the remaining locked items come from', () => {
+    const forSale = item('Lanterna', { type: 'purchase' }, { forSale: true });
+    const offSale = item('Marcador', { type: 'purchase' });
+    const raid = item('Selo', { type: 'raid', slug: '*' });
+
+    expect(describeNextUnlock([forSale], 1)).toBe('Os itens desta categoria são comprados na Loja.');
+    expect(describeNextUnlock([offSale], 1)).toBe('Os itens desta categoria estão fora de venda.');
+    expect(describeNextUnlock([raid], 1)).toBe('Os itens desta categoria são conquistados em Raids com sua Guilda.');
+    expect(describeNextUnlock([raid, forSale], 1)).toBe('Os itens desta categoria são conquistados em Raids com sua Guilda ou comprados na Loja.');
+    expect(describeNextUnlock([forSale, offSale], 1)).toBe('Os itens desta categoria são comprados na Loja.');
   });
 
   it('does not send the student to Raids when a level item is already within reach but not yet granted', () => {

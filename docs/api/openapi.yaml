@@ -1283,7 +1283,7 @@ components:
       description: >
         `unlocked` indica que o item está no Inventário. `equipped` só é true
         para itens desbloqueados, com no máximo um por categoria.
-      required: [id, category, name, requiresPremium, unlocked, equipped, unlockCondition]
+      required: [id, category, name, requiresPremium, unlocked, equipped, forSale, unlockCondition]
       properties:
         id: { type: string, format: uuid }
         category: { type: string, enum: [avatar, badge, title, accessory] }
@@ -1291,6 +1291,7 @@ components:
         requiresPremium: { type: boolean, description: "Item premium (✦), ADR-007." }
         unlocked: { type: boolean }
         equipped: { type: boolean }
+        forSale: { type: boolean, description: "Item de Compra à venda na Loja. Um item de Compra com false está Fora de venda." }
         unlockCondition: { $ref: "#/components/schemas/UnlockCondition" }
 
     UnlockCondition:
