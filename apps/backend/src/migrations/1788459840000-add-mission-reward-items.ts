@@ -4,8 +4,8 @@ import { MigrationInterface, QueryRunner, Table } from 'typeorm';
  * #169: a Missão passa a ter vários Cosmetic Items de recompensa. A coluna única `missions.reward_cosmetic_item_id`
  * vira a tabela `mission_reward_items`, e cada Missão existente mantém o item que já tinha.
  */
-export class AddMissionRewardItems1788459780000 implements MigrationInterface {
-  name = 'AddMissionRewardItems1788459780000';
+export class AddMissionRewardItems1788459840000 implements MigrationInterface {
+  name = 'AddMissionRewardItems1788459840000';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.createTable(new Table({

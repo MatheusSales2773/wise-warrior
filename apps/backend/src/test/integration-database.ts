@@ -20,7 +20,8 @@ import { AddGuildChatMessageSequence1788459540000 } from '../migrations/17884595
 import { AddStudySessionCappedReason1788459600000 } from '../migrations/1788459600000-add-study-session-capped-reason';
 import { AddCoinEconomy1788459660000 } from '../migrations/1788459660000-add-coin-economy';
 import { GrantWelcomeCoins1788459720000 } from '../migrations/1788459720000-grant-welcome-coins';
-import { AddMissionRewardItems1788459780000 } from '../migrations/1788459780000-add-mission-reward-items';
+import { AddMissionStore1788459780000 } from '../migrations/1788459780000-add-mission-store';
+import { AddMissionRewardItems1788459840000 } from '../migrations/1788459840000-add-mission-reward-items';
 
 export const APPLICATION_MIGRATIONS: NonNullable<DataSourceOptions['migrations']> = [
   CreateWiseSchema1788458400000,
@@ -41,7 +42,8 @@ export const APPLICATION_MIGRATIONS: NonNullable<DataSourceOptions['migrations']
   AddStudySessionCappedReason1788459600000,
   AddCoinEconomy1788459660000,
   GrantWelcomeCoins1788459720000,
-  AddMissionRewardItems1788459780000,
+  AddMissionStore1788459780000,
+  AddMissionRewardItems1788459840000,
 ];
 
 export interface IntegrationDatabase {
