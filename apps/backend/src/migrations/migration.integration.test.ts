@@ -19,7 +19,6 @@ import { DropCharacterTitle1788459300000 } from './1788459300000-drop-character-
 import { SeedInitialCosmeticItems1788459240000 } from './1788459240000-seed-initial-cosmetic-items';
 import { GrantWelcomeCoins1788459720000 } from './1788459720000-grant-welcome-coins';
 import { AddMissionRewardItems1788459960000 } from './1788459960000-add-mission-reward-items';
-import { KeepBadgesOffSale1788460080000 } from './1788460080000-keep-badges-off-sale';
 import { raidWeekAt } from '../modules/raids/domain/raid-week';
 import { StudySession } from '../modules/sessions/entities/study-session.entity';
 
