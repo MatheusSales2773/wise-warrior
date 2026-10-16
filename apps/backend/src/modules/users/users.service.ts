@@ -18,7 +18,6 @@ import { UserCosmeticItem } from './entities/user-cosmetic-item.entity';
 import {
   isStarterItem,
   isUnlockedAtLevel,
-  isUnlockedByRaid,
   parseUnlockCondition,
   UnlockCondition,
 } from './domain/unlock-condition';
@@ -101,25 +100,20 @@ export class UsersService {
   }
 
   /**
-   * Recompensa de Raid (#117): concede a cada usuário os Cosmetic Items com Condição de desbloqueio da Missão
-   * vencida (`raid:<slug>`, ou `raid:*`). Mesma regra do Desbloqueio por nível: roda na transação de quem chama,
-   * é idempotente pelo índice único (usuário + item) e nunca equipa. Devolve os ids dos itens concedidos.
+   * Desbloqueio por Recompensa de Raid (#117, #169): cada usuário recebe os Cosmetic Items da Missão (`itemIds`, do
+   * `RaidsService`). Roda na transação de quem chama, é idempotente pelo índice único (usuário + item), pula o que
+   * o usuário já tem e nunca equipa.
    */
-  async unlockRaidRewards(manager: EntityManager, userIds: string[], missionSlug: string): Promise<string[]> {
-    if (userIds.length === 0) return [];
-    const items = (await this.readCatalog(manager.getRepository(CosmeticItem)))
-      .filter(({ condition }) => isUnlockedByRaid(condition, missionSlug))
-      .map(({ item }) => item.id);
-    if (items.length === 0) return [];
+  async unlockRaidRewards(manager: EntityManager, userIds: string[], itemIds: string[]): Promise<void> {
+    if (userIds.length === 0 || itemIds.length === 0) return;
     await manager
       .createQueryBuilder()
       .insert()
       .into(UserCosmeticItem)
-      .values(userIds.flatMap((userId) => items.map((cosmeticItemId) => ({ userId, cosmeticItemId, equipped: false }))))
+      .values(userIds.flatMap((userId) => itemIds.map((cosmeticItemId) => ({ userId, cosmeticItemId, equipped: false }))))
       // Vencer de novo a mesma Missão, ou reprocessar o fechamento, não duplica nem reequipa nada.
       .orUpdate(['cosmetic_item_id'], ['user_id', 'cosmetic_item_id'])
       .execute();
-    return items;
   }
 
   /** Inventário de um Character recém-criado: os Itens iniciais, já equipados. */

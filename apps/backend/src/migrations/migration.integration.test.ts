@@ -16,6 +16,7 @@ import { AddRaidGoalReachedAt1788459480000 } from './1788459480000-add-raid-goal
 import { DropCharacterTitle1788459300000 } from './1788459300000-drop-character-title';
 import { SeedInitialCosmeticItems1788459240000 } from './1788459240000-seed-initial-cosmetic-items';
 import { GrantWelcomeCoins1788459720000 } from './1788459720000-grant-welcome-coins';
+import { AddMissionRewardItems1788459780000 } from './1788459780000-add-mission-reward-items';
 import { raidWeekAt } from '../modules/raids/domain/raid-week';
 import { StudySession } from '../modules/sessions/entities/study-session.entity';
 
@@ -41,11 +42,12 @@ const expectedTables = [
   'raid_participations',
   'coin_balances',
   'coin_ledger_entries',
+  'mission_reward_items',
 ];
 
 /** The tables that exist before the coin economy migration; the revert steps after it check these. */
 const tablesBeforeCoinEconomy = expectedTables.filter(
-  (tableName) => tableName !== 'coin_balances' && tableName !== 'coin_ledger_entries',
+  (tableName) => !['coin_balances', 'coin_ledger_entries', 'mission_reward_items'].includes(tableName),
 );
 
 const expectedColumns: Record<string, string[]> = {
@@ -110,6 +112,7 @@ const expectedColumns: Record<string, string[]> = {
   ],
   guild_chat_messages: ['id', 'guild_id', 'user_id', 'body', 'sent_at', 'seq'],
   raid_participations: ['id', 'raid_id', 'user_id', 'created_at'],
+  mission_reward_items: ['mission_id', 'cosmetic_item_id'],
   coin_balances: ['user_id', 'balance', 'updated_at'],
   coin_ledger_entries: ['id', 'user_id', 'amount', 'balance_after', 'origin_type', 'origin_ref', 'created_at'],
 };
@@ -177,6 +180,8 @@ describe('TypeORM migrations against an empty MySQL schema', () => {
       expect(primaryKeyRows.map((row) => row.COLUMN_NAME)).toEqual(
         tableName === 'session_refresh_token_history'
           ? ['session_id', 'token_hash']
+          : tableName === 'mission_reward_items'
+            ? ['mission_id', 'cosmetic_item_id']
           : tableName === 'study_session_start_receipts'
             ? ['user_id', 'idempotency_key']
           : tableName === 'study_session_transition_receipts'
@@ -339,7 +344,8 @@ describe('TypeORM migrations against an empty MySQL schema', () => {
       ['FK_guild_memberships_user_id_users', 'guild_memberships', 'user_id', 'users', 'id', 'CASCADE'],
       ['FK_raids_guild_id_guilds', 'raids', 'guild_id', 'guilds', 'id', 'CASCADE'],
       ['FK_raids_mission_id_missions', 'raids', 'mission_id', 'missions', 'id', 'RESTRICT'],
-      ['FK_missions_reward_cosmetic_item_id_cosmetic_items', 'missions', 'reward_cosmetic_item_id', 'cosmetic_items', 'id', 'RESTRICT'],
+      ['FK_mission_reward_items_mission_id_missions', 'mission_reward_items', 'mission_id', 'missions', 'id', 'CASCADE'],
+      ['FK_mission_reward_items_cosmetic_item_id_cosmetic_items', 'mission_reward_items', 'cosmetic_item_id', 'cosmetic_items', 'id', 'RESTRICT'],
       ['FK_study_sessions_user_id_users', 'study_sessions', 'user_id', 'users', 'id', 'CASCADE'],
       ['FK_study_sessions_raid_id_raids', 'study_sessions', 'raid_id', 'raids', 'id', 'SET NULL'],
       ['FK_raid_contributions_raid_id_raids', 'raid_contributions', 'raid_id', 'raids', 'id', 'CASCADE'],
@@ -407,9 +413,12 @@ describe('TypeORM migrations against an empty MySQL schema', () => {
       'AddStudySessionCappedReason1788459600000',
       'AddCoinEconomy1788459660000',
       'GrantWelcomeCoins1788459720000',
+      'AddMissionRewardItems1788459780000',
     ]);
 
-    await dataSource.undoLastMigration(); // welcome coins, the newest migration
+    await dataSource.undoLastMigration(); // mission reward items, the newest migration
+    expect(await rows(database!.admin, `SHOW COLUMNS FROM ${database!.identifier}.missions LIKE 'reward_cosmetic_item_id'`)).toHaveLength(1);
+    await dataSource.undoLastMigration(); // welcome coins
     await dataSource.undoLastMigration(); // coin economy, which sits below the welcome coins
     const coinRevertRows = await rows(
       database!.admin,
@@ -792,7 +801,8 @@ await dataSource.undoLastMigration();
     expect(receiptsWithSubject).toEqual([{ idempotency_key: 'solo-start-key', subject: 'Cálculo II' }]);
 
     // M6 revert: only the receipt column goes away; every persisted Matéria (including legacy Guild rows) stays.
-    await dataSource.undoLastMigration(); // welcome coins, the newest migration
+    await dataSource.undoLastMigration(); // mission reward items, the newest migration
+    await dataSource.undoLastMigration(); // welcome coins
     await dataSource.undoLastMigration(); // coin economy
     await dataSource.undoLastMigration(); // study session capped reason
     await dataSource.undoLastMigration(); // guild chat sequence
@@ -941,7 +951,7 @@ await dataSource.undoLastMigration();
   it('seeds the Catalog, backfills existing Characters without re-equipping, and reverts the seed', async () => {
     database = await createIntegrationDatabase('wise_migrations_test');
     initialDataSource = new DataSource(database.options(
-      (APPLICATION_MIGRATIONS as unknown[]).filter((migration) => migration !== SeedInitialCosmeticItems1788459240000 && migration !== AddRaidMissions1788459360000 && migration !== AddRaidParticipations1788459420000) as typeof APPLICATION_MIGRATIONS,
+      (APPLICATION_MIGRATIONS as unknown[]).filter((migration) => migration !== SeedInitialCosmeticItems1788459240000 && migration !== AddRaidMissions1788459360000 && migration !== AddMissionRewardItems1788459780000 && migration !== AddRaidParticipations1788459420000) as typeof APPLICATION_MIGRATIONS,
     ));
     await initialDataSource.initialize();
     await initialDataSource.runMigrations();
@@ -1015,6 +1025,7 @@ await dataSource.undoLastMigration();
     expect(owned('newcomer')).toEqual([['Capuz do Erudito', 1], ['Aprendiz', 1]]);
     expect(owned('collector')).toEqual([['Capuz do Erudito', 1], ['Aprendiz', 1], ['Madrugador', 0]]);
 
+    await dataSource.undoLastMigration(); // mission reward items, the newest migration
     await dataSource.undoLastMigration(); // study session capped reason
     await dataSource.undoLastMigration(); // raid goal reached at
     await dataSource.undoLastMigration(); // raid participations, which sit above the raid missions
@@ -1071,6 +1082,7 @@ await dataSource.undoLastMigration();
     );
     expect(columns.map((row) => row.COLUMN_NAME)).not.toContain('title');
 
+    await dataSource.undoLastMigration(); // mission reward items, the newest migration
     await dataSource.undoLastMigration(); // study session capped reason
     await dataSource.undoLastMigration(); // raid goal reached at
     await dataSource.undoLastMigration(); // raid participations, which sit above the raid missions
@@ -1089,7 +1101,7 @@ await dataSource.undoLastMigration();
   it('seeds the Missões, links reward items, gives Raids a Missão and the current week to existing Guilds, and reverts', async () => {
     database = await createIntegrationDatabase('wise_migrations_test');
     initialDataSource = new DataSource(database.options(
-      (APPLICATION_MIGRATIONS as unknown[]).filter((migration) => migration !== AddRaidMissions1788459360000 && migration !== AddRaidParticipations1788459420000) as typeof APPLICATION_MIGRATIONS,
+      (APPLICATION_MIGRATIONS as unknown[]).filter((migration) => migration !== AddRaidMissions1788459360000 && migration !== AddMissionRewardItems1788459780000 && migration !== AddRaidParticipations1788459420000) as typeof APPLICATION_MIGRATIONS,
     ));
     await initialDataSource.initialize();
     await initialDataSource.runMigrations();
@@ -1123,7 +1135,8 @@ await dataSource.undoLastMigration();
       database.admin,
       `SELECT m.slug, m.name, m.image_url, ci.name AS reward, ci.unlock_condition
        FROM ${database.identifier}.missions m
-       JOIN ${database.identifier}.cosmetic_items ci ON ci.id = m.reward_cosmetic_item_id
+       JOIN ${database.identifier}.mission_reward_items mri ON mri.mission_id = m.id
+       JOIN ${database.identifier}.cosmetic_items ci ON ci.id = mri.cosmetic_item_id
        ORDER BY m.rotation_order`,
     );
     expect(missions.map((row) => [row.slug, row.name, row.image_url, row.reward, row.unlock_condition])).toEqual([
@@ -1152,6 +1165,7 @@ await dataSource.undoLastMigration();
     expect(Number(current.goal_xp)).toBeGreaterThan(0);
     expect(Number(current.goal_xp)).toBeLessThanOrEqual(3000);
 
+    await dataSource.undoLastMigration(); // mission reward items, the newest migration
     await dataSource.undoLastMigration(); // study session capped reason
     await dataSource.undoLastMigration(); // raid goal reached at
     await dataSource.undoLastMigration(); // raid participations
@@ -1230,6 +1244,7 @@ await dataSource.undoLastMigration();
       [raidId],
     )).rejects.toThrow(/Duplicate entry/);
 
+    await dataSource.undoLastMigration(); // mission reward items, the newest migration
     await dataSource.undoLastMigration(); // study session capped reason
     await dataSource.undoLastMigration(); // raid goal reached at
     await dataSource.undoLastMigration();

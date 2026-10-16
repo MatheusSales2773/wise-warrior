@@ -13,11 +13,6 @@ export function parseUnlockCondition(raw: string): UnlockCondition | null {
   return null;
 }
 
-/** Regra de Desbloqueio por Raid (#117): a Raid vencida da Missão `missionSlug`, ou qualquer Raid com `raid:*`. */
-export function isUnlockedByRaid(condition: UnlockCondition, missionSlug: string): boolean {
-  return condition.type === 'raid' && (condition.slug === missionSlug || condition.slug === '*');
-}
-
 /** Regra de Desbloqueio por nível. Condições de Raid só são cumpridas pelas Raids (#117). */
 export function isUnlockedAtLevel(condition: UnlockCondition, level: number): boolean {
   return condition.type === 'level' && condition.level <= level;

@@ -9,3 +9,13 @@ export function getCoinsPerFocusMinutesDivisor(): number {
 
 /** Moedas de boas-vindas (ADR-012): o cadastro credita este valor, e a migration o credita uma vez às contas existentes. */
 export const SIGNUP_COINS = 90;
+
+/**
+ * Moedas da Recompensa de Raid por Participante com Contribuição (ADR-012, padrão 50), lido do ambiente a cada
+ * chamada como o divisor. Ausente, inválido ou negativo cai no padrão.
+ */
+export function getRaidWinCoins(): number {
+  const raw = process.env.RAID_WIN_COINS?.trim();
+  const coins = raw ? Number(raw) : Number.NaN;
+  return Number.isSafeInteger(coins) && coins >= 0 ? coins : 50;
+}
