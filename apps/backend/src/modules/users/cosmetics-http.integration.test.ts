@@ -157,6 +157,7 @@ describe('Cosmetics Catalog HTTP contract against MySQL', () => {
       requiresPremium: true,
       unlocked: false,
       equipped: false,
+      forSale: false,
       unlockCondition: { type: 'level', level: 15 },
     });
     expect(catalog).toContainEqual(expect.objectContaining({
@@ -164,6 +165,16 @@ describe('Cosmetics Catalog HTTP contract against MySQL', () => {
       category: 'accessory',
       unlockCondition: { type: 'raid', slug: 'vigilia-da-aurora' },
     }));
+  });
+
+  it('exposes forSale: true for the item on sale and false for a level item', async () => {
+    await auth.register({ email: 'vitrine@example.com', password: 'senha-forte-123', displayName: 'Vitrine' }, {});
+    const { id } = await dataSource!.getRepository(User).findOneByOrFail({ email: 'vitrine@example.com' });
+
+    const catalog = await (await getCatalog(id)).json() as CatalogCosmeticItem[];
+
+    expect(catalog.find((item) => item.name === 'Marcador de Fita')).toMatchObject({ unlockCondition: { type: 'purchase' }, forSale: true });
+    expect(catalog.find((item) => item.name === 'Aprendiz')).toMatchObject({ unlockCondition: { type: 'level', level: 1 }, forSale: false });
   });
 
   it('derives the profile Título and equipment from the equipped Cosmetic Items', async () => {

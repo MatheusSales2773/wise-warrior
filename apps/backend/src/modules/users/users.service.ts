@@ -58,6 +58,8 @@ export interface CatalogCosmeticItem {
   requiresPremium: boolean;
   unlocked: boolean;
   equipped: boolean;
+  /** Item de Compra à venda; false para os demais e para os Fora de venda. */
+  forSale: boolean;
   unlockCondition: UnlockCondition;
 }
 
@@ -211,6 +213,7 @@ export class UsersService {
       requiresPremium: item.requiresPremium,
       unlocked: owned.has(item.id),
       equipped: owned.get(item.id)?.equipped ?? false,
+      forSale: item.forSale,
       unlockCondition: condition,
     }));
   }
