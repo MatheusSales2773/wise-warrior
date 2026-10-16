@@ -12,7 +12,7 @@ import { CoinMark } from '@/features/market/coin';
 import type { ActiveRaid, MyGuild, RaidRankingEntry } from './api';
 import { RAID_GOAL_REACHED, formatPosition, formatRewardCoins, formatRewardName } from './messages';
 import { activeRaidQueryOptions, myGuildQueryOptions, raidRankingQueryOptions } from './queries';
-import { bossLifePercent, formatBattleTimeLeft, formatFocusHours, heroOf, partyHeroSprites, raidParty, weeklyStrikes, type Strike } from './raid-battle';
+import { bossLifePercent, formatBattleTimeLeft, formatFocusHours, formatStreak, heroOf, partyHeroSprites, raidParty, raidWeekGrid, weeklyStrikes, type Strike, type WeekDay } from './raid-battle';
 import { raidSceneArt } from './raid-scene-art';
 import { RaidScene, raidSceneScale } from './raid-scene';
 
@@ -151,6 +151,60 @@ function StrikesCard({ compact, entries, failed, loading }: { compact: boolean; 
   </Card>;
 }
 
+const FURIA_COPY = 'Cada dia em que a guilda não estuda, o dragão recupera 5% de vida. Mantenham a chama acesa.';
+
+type DayLook = {
+  label: string;
+  glyph: string;
+  cell?: 'weekDayStudied' | 'weekDayToday';
+  initial?: 'weekDayInitialToday';
+  glyphStyle?: 'weekDayMarkStudied' | 'weekDayMarkToday';
+};
+
+/** One entry per day state: spoken label, glyph and the style keys that draw it (Figma 06b, card "Fúria do dragão"). */
+const DAY_LOOKS: Record<WeekDay['state'], DayLook> = {
+  studied: { label: 'com estudo', glyph: '✓', cell: 'weekDayStudied', glyphStyle: 'weekDayMarkStudied' },
+  today: { label: 'hoje, ainda sem estudo', glyph: '•', cell: 'weekDayToday', initial: 'weekDayInitialToday', glyphStyle: 'weekDayMarkToday' },
+  missed: { label: 'sem estudo', glyph: '·' },
+  upcoming: { label: 'ainda não chegou', glyph: '·' },
+};
+
+function WeekGrid({ raid }: { raid: ActiveRaid }) {
+  return <View style={styles.weekGrid} testID="raid-week-grid">
+    {raidWeekGrid(raid).map((day) => {
+      const look = DAY_LOOKS[day.state];
+      return <View
+        accessible
+        accessibilityLabel={`${day.name}: ${look.label}`}
+        key={day.key}
+        style={[styles.weekDay, look.cell && styles[look.cell]]}
+        testID={`raid-week-day-${day.state}`}
+      >
+        <Text style={[styles.weekDayInitial, look.initial && styles[look.initial]]}>{day.initial}</Text>
+        <Text aria-hidden accessibilityElementsHidden importantForAccessibility="no" style={[styles.weekDayMark, look.glyphStyle && styles[look.glyphStyle]]}>{look.glyph}</Text>
+      </View>;
+    })}
+  </View>;
+}
+
+function FuriaCard({ raid }: { raid: ActiveRaid }) {
+  return <Card label="Fúria do dragão" testID="raid-furia">
+    <CardHeader aside="Regra da raid">Fúria do dragão</CardHeader>
+    <Text style={styles.furiaCopy}>{FURIA_COPY}</Text>
+    <WeekGrid raid={raid} />
+    <Text style={styles.streak} testID="raid-streak">{formatStreak(raid.streak)}</Text>
+  </Card>;
+}
+
+function FuriaStrip({ raid }: { raid: ActiveRaid }) {
+  return <View accessibilityLabel="Fúria do dragão" role="region" style={styles.furiaStrip} testID="raid-furia">
+    <WiseIcon color="feedbackDanger" name="flame" size="small" />
+    <Text style={styles.furiaStripText}>
+      Dias sem estudo devolvem 5% de vida ao dragão. <Text testID="raid-streak">{formatStreak(raid.streak, { compact: true })}</Text>
+    </Text>
+  </View>;
+}
+
 /** What the Raid gives, for the screen readers: every item, then the Moedas. */
 function rewardsLabel(raid: ActiveRaid): string {
   return [...raid.rewards.map(formatRewardName), formatRewardCoins(raid.coins)].join(', ');
@@ -228,6 +282,7 @@ function Battle({ desktop, mine, raid, viewport }: { desktop: boolean; mine: MyG
       <View style={styles.sceneBlock}>{scene}<GoalReached raid={raid} /></View>
       <View style={styles.detailsRow} testID="raid-details">
         <View style={styles.detailsColumn}>{strikes}</View>
+        <View style={styles.detailsColumn}><FuriaCard raid={raid} /></View>
         <View style={styles.detailsColumn}><RewardsCard raid={raid} /></View>
       </View>
     </View>;
@@ -236,6 +291,7 @@ function Battle({ desktop, mine, raid, viewport }: { desktop: boolean; mine: MyG
     {scene}
     <BossLifeRow raid={raid} />
     <GoalReached raid={raid} />
+    <FuriaStrip raid={raid} />
     {strikes}
     <RewardChips raid={raid} />
   </View>;
@@ -365,6 +421,20 @@ const styles = StyleSheet.create({
   cardTitleLabel: { letterSpacing: 2.6, textTransform: 'uppercase' },
   cardAside: { fontFamily: mono, fontSize: 10, lineHeight: 13, letterSpacing: 1, color: theme.color.textTertiary },
   cardNote: { fontFamily: 'Inter-Regular', fontSize: 13, lineHeight: 18, color: theme.color.textSecondary },
+
+  furiaCopy: { fontFamily: 'Inter-Regular', fontSize: 13, lineHeight: 20, color: theme.color.textSecondary },
+  weekGrid: { flexDirection: 'row', gap: 6 },
+  weekDay: { flex: 1, alignItems: 'center', gap: 4, paddingVertical: 8, borderRadius: theme.radius.control, borderWidth: theme.border.standard, borderColor: theme.color.borderGhost, backgroundColor: theme.color.surfaceInset },
+  weekDayStudied: { borderColor: theme.color.feedbackSuccess, backgroundColor: theme.color.surfaceElevated },
+  weekDayToday: { borderColor: theme.color.accentPrimary },
+  weekDayInitial: { fontFamily: mono, fontSize: 10, color: theme.color.textTertiary },
+  weekDayInitialToday: { color: theme.color.accentHighlight },
+  weekDayMark: { fontFamily: 'Inter-SemiBold', fontSize: 13, color: theme.color.textTertiary },
+  weekDayMarkStudied: { color: theme.color.feedbackSuccess },
+  weekDayMarkToday: { color: theme.color.accentHighlight },
+  streak: { fontFamily: mono, fontSize: 10, lineHeight: 13, color: theme.color.feedbackSuccess },
+  furiaStrip: { flexDirection: 'row', alignItems: 'center', gap: 6, padding: 12, borderRadius: theme.radius.card, borderWidth: theme.border.standard, borderColor: theme.color.borderSubtle, backgroundColor: theme.color.surfaceCard },
+  furiaStripText: { flex: 1, fontFamily: 'Inter-Regular', fontSize: 12, lineHeight: 17, color: theme.color.textSecondary },
 
   strike: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   avatar: { width: 32, height: 32, overflow: 'hidden', borderRadius: 4, borderWidth: theme.border.standard, borderColor: theme.color.borderSubtle, backgroundColor: theme.color.surfaceInset },

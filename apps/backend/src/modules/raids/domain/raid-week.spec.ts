@@ -1,4 +1,4 @@
-import { missionIndexForWeek, proportionalGoalXp, raidWeekAt } from './raid-week';
+import { missionIndexForWeek, proportionalGoalXp, raidWeekAt, raidWeekDayKeys, studyDaysOf, studyStreak } from './raid-week';
 
 describe('raidWeekAt', () => {
   it('runs from Monday 00:00 to Sunday 23:59:59 in America/Sao_Paulo, stored in UTC', () => {
@@ -48,5 +48,65 @@ describe('proportionalGoalXp', () => {
     expect(proportionalGoalXp(1, week, new Date('2026-10-08T15:00:00Z'))).toBe(750);
     // 1500 * 1/7 ≈ 214.3 -> 250
     expect(proportionalGoalXp(1, week, new Date('2026-10-11T03:00:00Z'))).toBe(250);
+  });
+});
+
+describe('studyDaysOf', () => {
+  it('maps contribution instants to distinct São Paulo calendar days', () => {
+    // 2026-10-08T02:30Z is still Wednesday 23:30 in São Paulo
+    const days = studyDaysOf([
+      new Date('2026-10-07T15:00:00Z'),
+      new Date('2026-10-08T02:30:00Z'),
+      new Date('2026-10-08T03:00:00Z'),
+    ]);
+    expect(days).toEqual(['2026-10-07', '2026-10-08']);
+  });
+
+  it('returns the days in order', () => {
+    expect(studyDaysOf([new Date('2026-10-08T15:00:00Z'), new Date('2026-10-06T15:00:00Z')]))
+      .toEqual(['2026-10-06', '2026-10-08']);
+  });
+});
+
+describe('studyStreak', () => {
+  const week = raidWeekAt(new Date('2026-10-07T15:00:00Z')); // Mon 2026-10-05
+
+  it('is zero without Dias de estudo', () => {
+    expect(studyStreak([], week, new Date('2026-10-07T15:00:00Z'))).toBe(0);
+  });
+
+  it('counts consecutive days ending today', () => {
+    expect(studyStreak(['2026-10-05', '2026-10-06', '2026-10-07'], week, new Date('2026-10-07T15:00:00Z'))).toBe(3);
+  });
+
+  it('does not break when today has no study yet: counts up to yesterday', () => {
+    expect(studyStreak(['2026-10-05', '2026-10-06'], week, new Date('2026-10-07T15:00:00Z'))).toBe(2);
+  });
+
+  it('breaks on a missed day', () => {
+    expect(studyStreak(['2026-10-05', '2026-10-07'], week, new Date('2026-10-07T15:00:00Z'))).toBe(1);
+  });
+
+  it('is zero when yesterday and today had no study', () => {
+    expect(studyStreak(['2026-10-05'], week, new Date('2026-10-07T15:00:00Z'))).toBe(0);
+  });
+
+  it('resets on Monday: Sunday of the previous week does not count', () => {
+    const monday = new Date('2026-10-12T12:00:00Z');
+    expect(studyStreak(['2026-10-10', '2026-10-11'], raidWeekAt(monday), monday)).toBe(0);
+  });
+
+  it('turns the day at midnight in São Paulo, not UTC', () => {
+    // 2026-10-07T02:00Z is Tuesday 23:00 in São Paulo: today is still the 6th
+    const now = new Date('2026-10-07T02:00:00Z');
+    expect(studyStreak(['2026-10-05', '2026-10-06'], raidWeekAt(now), now)).toBe(2);
+  });
+});
+
+describe('raidWeekDayKeys', () => {
+  it('lists Monday to Sunday in São Paulo days', () => {
+    expect(raidWeekDayKeys(raidWeekAt(new Date('2026-10-07T15:00:00Z')))).toEqual([
+      '2026-10-05', '2026-10-06', '2026-10-07', '2026-10-08', '2026-10-09', '2026-10-10', '2026-10-11',
+    ]);
   });
 });
