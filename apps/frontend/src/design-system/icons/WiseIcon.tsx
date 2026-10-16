@@ -23,6 +23,11 @@ export const wiseIconNames = [
   'people-outline',
   'time-outline',
   'play',
+  'storefront-outline',
+  'storefront',
+  'bag-handle-outline',
+  'checkmark',
+  'arrow-forward',
 ] as const;
 
 export type WiseIconName = (typeof wiseIconNames)[number];

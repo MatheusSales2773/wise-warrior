@@ -4,6 +4,8 @@ import type { AuthenticationRecoveryResult } from '@/core/api/api-client';
 import type { ActiveRaid } from '@/features/guild/api';
 import { dashboardKeys } from '@/features/dashboard/queries';
 import { guildKeys } from '@/features/guild/queries';
+import type { CoinOrigin } from '@/features/market/api';
+import { marketKeys } from '@/features/market/queries';
 import { profileKeys } from '@/features/profile/queries';
 
 /** Payload of the `raid:progress` event (docs/api/asyncapi.yaml). */
@@ -22,6 +24,15 @@ export type EquipmentChangedEvent = {
   category: 'avatar' | 'badge' | 'title' | 'accessory';
   /** The item now equipped in the category, or `null` when it was emptied. */
   cosmeticItemId: string | null;
+};
+
+/** Payload of the `coins:changed` event (docs/api/asyncapi.yaml). */
+export type CoinsChangedEvent = {
+  /** The balance after the movement. */
+  balance: number;
+  /** Positive for a credit, negative for a debit. */
+  delta: number;
+  origin: CoinOrigin;
 };
 
 /** Where the connection stands, for the visible indicator. */
@@ -93,6 +104,20 @@ export function applyEquipmentChanged(queryClient: QueryClient): void {
   void queryClient.invalidateQueries({ queryKey: profileKeys.cosmeticsCatalog() });
 }
 
+/**
+ * Any Moeda movement (a Study Session, a Raid won, a Compra on any device) carries the new balance, which is applied
+ * at once. The Extrato gains a line and the Loja's "Faltam N" depend on the balance, so both refetch; a Compra of an
+ * item also changes the Inventário.
+ */
+export function applyCoinsChanged(queryClient: QueryClient, event: CoinsChangedEvent): void {
+  queryClient.setQueryData(marketKeys.balance(), event.balance);
+  void queryClient.invalidateQueries({ queryKey: marketKeys.statement() });
+  void queryClient.invalidateQueries({ queryKey: marketKeys.shop() });
+  if (event.origin.type === 'purchase' && event.origin.ref.startsWith('cosmetic:')) {
+    void queryClient.invalidateQueries({ queryKey: profileKeys.cosmeticsCatalog() });
+  }
+}
+
 /** Active Raid queries are `['guild', 'raid', guildId]`; the ranking and past Raids nest deeper under that key. */
 function isActiveRaidKey(key: readonly unknown[]): boolean {
   return key.length === 3 && key[1] === 'raid';
@@ -160,6 +185,7 @@ export function createRealtimeClient({
   const onXpUpdated = () => applyXpUpdated(queryClient);
   const onLevelUp = () => applyLevelUp(queryClient);
   const onEquipmentChanged = () => applyEquipmentChanged(queryClient);
+  const onCoinsChanged = (event: CoinsChangedEvent) => applyCoinsChanged(queryClient, event);
   const handleConnectionLoss = () => {
     failPending();
     if (disposed) return;
@@ -189,6 +215,7 @@ export function createRealtimeClient({
   socket.on('progress:xpUpdated', onXpUpdated);
   socket.on('notification:levelup', onLevelUp);
   socket.on('character:equipmentChanged', onEquipmentChanged);
+  socket.on('coins:changed', onCoinsChanged);
   socket.on('connect', onConnect);
   socket.on('connect_error', handleConnectionLoss);
   socket.on('disconnect', handleConnectionLoss);
@@ -232,6 +259,7 @@ export function createRealtimeClient({
       socket.off('progress:xpUpdated', onXpUpdated);
       socket.off('notification:levelup', onLevelUp);
       socket.off('character:equipmentChanged', onEquipmentChanged);
+      socket.off('coins:changed', onCoinsChanged);
       socket.off('connect', onConnect);
       socket.off('connect_error', handleConnectionLoss);
       socket.off('disconnect', handleConnectionLoss);

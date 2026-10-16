@@ -4,7 +4,7 @@ import { WiseIcon } from '../icons/WiseIcon';
 import { theme } from '../tokens/theme';
 import { controlStyles } from '../components/control-styles';
 import { WiseText } from '../components/WiseText';
-import { isDestinationActive, primaryDestinations } from './destinations';
+import { bottomBarDestinations, isDestinationActive, moreMenuDestinations } from './destinations';
 import { NavigationLink } from './NavigationLink';
 
 type MobileNavigationProps = {
@@ -22,6 +22,8 @@ export const MobileNavigation = forwardRef<ViewType, MobileNavigationProps>(func
   const [moreFocused, setMoreFocused] = useState(false);
   const [moreHovered, setMoreHovered] = useState(false);
   const [morePressed, setMorePressed] = useState(false);
+  // "Mais" stays lit while a destination that lives inside it is open, so the bar always shows where you are.
+  const moreLit = moreActive || moreMenuDestinations.some((destination) => isDestinationActive(destination, pathname));
 
   return (
     <View
@@ -32,12 +34,13 @@ export const MobileNavigation = forwardRef<ViewType, MobileNavigationProps>(func
       style={[styles.navigation, { height: theme.layout.bottomNavigationHeight + bottomInset, paddingBottom: bottomInset }]}
       testID="mobile-navigation"
     >
-      {primaryDestinations.map((destination) => (
+      {bottomBarDestinations.map((destination) => (
         <NavigationLink active={isDestinationActive(destination, pathname)} compact destination={destination} key={destination.href} />
       ))}
       <Pressable
         accessibilityLabel="Mais"
         accessibilityRole="button"
+        accessibilityState={{ selected: moreLit }}
         onBlur={() => setMoreFocused(false)}
         onFocus={() => setMoreFocused(true)}
         onHoverIn={() => setMoreHovered(true)}
@@ -53,11 +56,11 @@ export const MobileNavigation = forwardRef<ViewType, MobileNavigationProps>(func
         ]}
       >
         <WiseIcon
-          color={moreActive ? 'accentHighlight' : 'textTertiary'}
-          name={moreActive ? 'ellipsis-horizontal-circle' : 'ellipsis-horizontal-circle-outline'}
+          color={moreLit ? 'accentHighlight' : 'textTertiary'}
+          name={moreLit ? 'ellipsis-horizontal-circle' : 'ellipsis-horizontal-circle-outline'}
           testID="more-navigation-icon"
         />
-        <WiseText color={moreActive ? 'accentHighlight' : 'textSecondary'} style={styles.label} variant="label">
+        <WiseText color={moreLit ? 'accentHighlight' : 'textSecondary'} style={styles.label} variant="label">
           Mais
         </WiseText>
       </Pressable>
