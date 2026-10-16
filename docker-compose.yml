@@ -50,6 +50,7 @@ services:
       RATE_LIMIT_STUDY_SESSION_TTL_SECONDS: ${RATE_LIMIT_STUDY_SESSION_TTL_SECONDS:-}
       # Optional (ADR-012): empty keeps the default documented in apps/backend/.env.example.
       COINS_PER_FOCUS_MINUTES_DIVISOR: ${COINS_PER_FOCUS_MINUTES_DIVISOR:-}
+      RAID_WIN_COINS: ${RAID_WIN_COINS:-}
       PORT: 3000
     ports:
       - "${BACKEND_PORT:?BACKEND_PORT is required}:3000"
