@@ -1,3 +1,4 @@
+import { SIGNUP_COINS } from '../economy/domain/coin-config';
 import { ConflictException, UnauthorizedException } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { Session } from './entities/session.entity';
@@ -59,6 +60,7 @@ function serviceWithTransaction(
       jwt as never,
       config as never,
       dataSource as never,
+      {} as never,
       {} as never,
       {} as never,
     ),
@@ -299,6 +301,7 @@ describe('AuthService.issueSession', () => {
       dataSource as never,
       {} as never,
       {} as never,
+      {} as never,
     );
     return { dataSource, manager, service, users, jwt };
   }
@@ -411,6 +414,7 @@ describe('AuthService.register', () => {
       }),
     };
     const usersService = { grantStarterInventory: jest.fn() };
+    const economy = { credit: jest.fn() };
     const service = new AuthService(
       users as never,
       characters as never,
@@ -419,14 +423,15 @@ describe('AuthService.register', () => {
       config as never,
       dataSource as never,
       usersService as never,
+      economy as never,
       {} as never,
     );
 
-    return { service, users, characters, sessions, dataSource, jwt, manager, usersService };
+    return { service, users, characters, sessions, dataSource, jwt, manager, usersService, economy };
   }
 
   it('persists User, Character and Session atomically with only a password hash', async () => {
-    const { service, users, characters, sessions, dataSource, jwt, manager, usersService } = registrationService();
+    const { service, users, characters, sessions, dataSource, jwt, manager, usersService, economy } = registrationService();
 
     const tokens = await service.register({
       email: 'hero@wise.app',
@@ -440,6 +445,7 @@ describe('AuthService.register', () => {
     expect(JSON.stringify(persisted)).not.toContain('super-secret');
     expect(characters.save).toHaveBeenCalledWith({ userId: 'user-1', level: 1, xpTotal: 0 });
     expect(usersService.grantStarterInventory).toHaveBeenCalledWith(manager, 'user-1');
+    expect(economy.credit).toHaveBeenCalledWith(manager, 'user-1', SIGNUP_COINS, { type: 'signup', ref: 'user-1' });
     expect(sessions.save).toHaveBeenCalledWith(
       expect.objectContaining({ userId: 'user-1', deviceLabel: 'Wise Web' }),
     );
@@ -498,6 +504,7 @@ describe('AuthService realtime disconnection', () => {
       sessions as never,
       {} as never,
       { get: jest.fn() } as never,
+      {} as never,
       {} as never,
       {} as never,
       realtime as never,

@@ -6,8 +6,8 @@ import { MigrationInterface, QueryRunner } from 'typeorm';
  */
 const TEST_ITEM_ID = 'c05e71c0-0000-4000-8000-00000000f001';
 
-export class SeedTestCosmeticItemForSale1788459780000 implements MigrationInterface {
-  name = 'SeedTestCosmeticItemForSale1788459780000';
+export class SeedTestCosmeticItemForSale1788459900000 implements MigrationInterface {
+  name = 'SeedTestCosmeticItemForSale1788459900000';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(

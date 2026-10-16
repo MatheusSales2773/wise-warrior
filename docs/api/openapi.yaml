@@ -340,9 +340,9 @@ paths:
     get:
       summary: Loja, seção Itens
       description: >
-        Os Cosmetic Items À venda (ADR-012), com o preço e o estado para o usuário autenticado: `owned` para o que já
-        está no Inventário e `missing` para quantas Moedas faltam ("Faltam 60"). Recompensas de Raid, itens de nível e
-        Itens premium nunca aparecem. A interface define a ordem.
+        Os Cosmetic Items À venda (ADR-012), com o preço e o estado para o usuário autenticado. `state` é `owned` (já
+        está no Inventário), `purchasable` (o saldo basta) ou `insufficient` (faltam `missing` Moedas, "Faltam 60").
+        Recompensas de Raid, itens de nível e Itens premium nunca aparecem. A interface define a ordem.
       operationId: listShopItems
       tags: [Shop]
       responses:
@@ -350,7 +350,9 @@ paths:
           description: Itens À venda
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/ShopItemList" }
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/ShopItem" }
         "401": { $ref: "#/components/responses/Unauthorized" }
 
   /shop/items/{itemId}/purchase:
@@ -360,7 +362,7 @@ paths:
         Debita o preço e desbloqueia o item na mesma transação (a Compra é uma Condição de desbloqueio, pelo
         Desbloqueio idempotente). O item aparece no Inventário, pronto para Equipar, e o Extrato registra a origem
         `purchase`. Item que não está À venda (ou não existe) responde 404; item já possuído, 409; saldo insuficiente,
-        422 com `missing`, e o saldo não muda.
+        422 com `missing`, e o saldo não muda. Limite de 30 Compras por minuto por usuário.
       operationId: purchaseShopItem
       tags: [Shop]
       parameters:
@@ -373,11 +375,7 @@ paths:
               schema: { $ref: "#/components/schemas/ShopPurchase" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
-        "409":
-          description: O usuário já possui o item
-          content:
-            application/problem+json:
-              schema: { $ref: "#/components/schemas/Problem" }
+        "409": { $ref: "#/components/responses/Conflict" }
         "422":
           description: Saldo de Moedas insuficiente
           content:
@@ -1008,6 +1006,59 @@ paths:
         "404": { $ref: "#/components/responses/NotFound" }
         "409": { $ref: "#/components/responses/Conflict" }
 
+  /shop/missions:
+    get:
+      summary: Loja, seção Missões, com preço e estado para o usuário
+      description: >
+        Missões à venda (preço de 90 a 480), das mais baratas às mais caras (ADR-012). As Missões do rodízio são
+        grátis, todo usuário as possui e elas não aparecem aqui. `state` é `owned` (já possui), `purchasable`
+        (o saldo basta) ou `insufficient` (faltam `missing` Moedas).
+      operationId: listShopMissions
+      tags: [Shop]
+      responses:
+        "200":
+          description: Missões à venda
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/StoreMission" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /shop/missions/{id}/purchase:
+    post:
+      summary: Compra uma Missão
+      description: >
+        Debita o preço e registra a posse numa única transação; a Missão fica com o usuário para sempre. `404` para
+        Missão inexistente ou do rodízio (não está à venda). `409` quando o usuário já possui a Missão.
+        `422` quando o saldo não basta: o corpo traz `missing` (Moedas que faltam) e nada muda. Duas Compras
+        simultâneas nunca deixam o saldo negativo. Limite de 30 Compras por minuto por usuário.
+      operationId: purchaseShopMission
+      tags: [Shop]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "201":
+          description: Missão comprada
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MissionPurchase" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422":
+          description: Saldo insuficiente
+          content:
+            application/problem+json:
+              schema:
+                allOf:
+                  - { $ref: "#/components/schemas/Problem" }
+                  - type: object
+                    required: [missing]
+                    properties:
+                      missing: { type: integer, minimum: 1, description: "Moedas que faltam para a Compra" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+
 components:
   securitySchemes:
     BearerAuth:
@@ -1186,29 +1237,50 @@ components:
 
     ShopItem:
       type: object
-      required: [id, category, name, price, owned, missing]
+      required: [id, category, name, price, state, missing]
       properties:
         id: { type: string, format: uuid }
         category: { type: string, enum: [avatar, badge, title, accessory] }
         name: { type: string }
         price: { type: integer, minimum: 30, maximum: 300, description: Preço em Moedas }
-        owned: { type: boolean, description: O item já está no Inventário }
-        missing: { type: integer, minimum: 0, description: Moedas que faltam para comprar; zero se o saldo basta ou o item já é do usuário }
-
-    ShopItemList:
-      type: object
-      required: [items]
-      properties:
-        items:
-          type: array
-          items: { $ref: "#/components/schemas/ShopItem" }
+        state: { type: string, enum: [owned, purchasable, insufficient] }
+        missing: { type: integer, minimum: 0, description: "Moedas que faltam; 0 quando já possui ou o saldo basta" }
 
     ShopPurchase:
       type: object
-      required: [itemId, balance]
+      required: [itemId, price, balance]
       properties:
         itemId: { type: string, format: uuid }
+        price: { type: integer, minimum: 30, maximum: 300 }
         balance: { type: integer, minimum: 0, description: Saldo depois da Compra }
+
+    StoreMission:
+      type: object
+      required: [id, slug, name, description, imageUrl, price, reward, state, missing]
+      properties:
+        id: { type: string, format: uuid }
+        slug: { type: string }
+        name: { type: string }
+        description: { type: string, maxLength: 140 }
+        imageUrl: { type: [string, "null"] }
+        price: { type: integer, minimum: 1, description: "Preço em Moedas" }
+        reward:
+          type: object
+          required: [id, name, category]
+          properties:
+            id: { type: string, format: uuid }
+            name: { type: string }
+            category: { type: string, enum: [avatar, badge, title, accessory] }
+        state: { type: string, enum: [owned, purchasable, insufficient] }
+        missing: { type: integer, minimum: 0, description: "Moedas que faltam; 0 quando já possui ou o saldo basta" }
+
+    MissionPurchase:
+      type: object
+      required: [missionId, price, balance]
+      properties:
+        missionId: { type: string, format: uuid }
+        price: { type: integer, minimum: 1 }
+        balance: { type: integer, minimum: 0, description: "Saldo depois da Compra" }
 
     CoinBalance:
       type: object
@@ -1669,7 +1741,7 @@ components:
       description: >
         Limite de requisições excedido (#13). Login e cadastro: 10 por minuto por IP e por rota;
         renovação de Session: 30 por minuto por IP; mutações de Study Session: 60 por minuto por
-        usuário; Compras da Loja: 10 por minuto por usuário. Os valores são configuráveis por `RATE_LIMIT_*`.
+        usuário; Compras na Loja: 30 por minuto por usuário. Os valores são configuráveis por `RATE_LIMIT_*`.
       headers:
         Retry-After:
           description: Segundos até o limite liberar a próxima requisição.

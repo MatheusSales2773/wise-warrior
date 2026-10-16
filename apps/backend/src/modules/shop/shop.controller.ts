@@ -1,24 +1,37 @@
-import { Controller, Get, Param, Post, UseGuards } from '@nestjs/common';
-import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { CurrentUser } from '../auth/decorators/current-user.decorator';
-import type { JwtPayload } from '../auth/strategies/jwt.strategy';
+import { Controller, Get, HttpCode, HttpStatus, Param, Post, UseGuards } from '@nestjs/common';
 import { RateLimit } from '../../shared/security/rate-limit';
-import { ShopService, type ShopItemsResponse, type ShopPurchaseResponse } from './shop.service';
+import { CurrentUser } from '../auth/decorators/current-user.decorator';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import type { JwtPayload } from '../auth/strategies/jwt.strategy';
+import { ShopService, type ItemPurchase, type MissionPurchase, type StoreItem, type StoreMission } from './shop.service';
 
+/** Loja, seções Missões e Itens (ADR-012). Só dados do próprio usuário. */
 @Controller('shop')
 @UseGuards(JwtAuthGuard)
 export class ShopController {
   constructor(private readonly shop: ShopService) {}
 
-  /** Seção Itens: os Cosmetic Items À venda, com o preço e o estado para o usuário. */
+  @Get('missions')
+  listMissions(@CurrentUser() user: JwtPayload): Promise<StoreMission[]> {
+    return this.shop.listMissions(user.sub);
+  }
+
+  @Post('missions/:id/purchase')
+  @RateLimit('shop')
+  @HttpCode(HttpStatus.CREATED)
+  purchaseMission(@CurrentUser() user: JwtPayload, @Param('id') id: string): Promise<MissionPurchase> {
+    return this.shop.purchaseMission(user.sub, id);
+  }
+
   @Get('items')
-  listItems(@CurrentUser() user: JwtPayload): Promise<ShopItemsResponse> {
+  listItems(@CurrentUser() user: JwtPayload): Promise<StoreItem[]> {
     return this.shop.listItems(user.sub);
   }
 
   @Post('items/:itemId/purchase')
-  @RateLimit('purchase')
-  purchaseItem(@CurrentUser() user: JwtPayload, @Param('itemId') itemId: string): Promise<ShopPurchaseResponse> {
+  @RateLimit('shop')
+  @HttpCode(HttpStatus.CREATED)
+  purchaseItem(@CurrentUser() user: JwtPayload, @Param('itemId') itemId: string): Promise<ItemPurchase> {
     return this.shop.purchaseItem(user.sub, itemId);
   }
 }

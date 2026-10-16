@@ -7,6 +7,7 @@ import { Character } from '../progression/entities/character.entity';
 import { User } from '../users/entities/user.entity';
 import type { RealtimeGateway } from '../realtime/realtime.gateway';
 import type { UsersService } from '../users/users.service';
+import type { EconomyService } from '../economy/economy.service';
 import { AuthService } from './auth.service';
 import { Session } from './entities/session.entity';
 import { RefreshTokenHistory } from './entities/refresh-token-history.entity';
@@ -71,6 +72,7 @@ describe('AuthService refresh rotation against independent MySQL connections', (
       config,
       dataSource,
       {} as UsersService,
+      {} as EconomyService,
       { disconnectSessions: jest.fn() } as unknown as RealtimeGateway,
     );
   }

@@ -24,20 +24,20 @@ import type { Request, Response } from 'express';
  * - `refresh`: renovação de Session, Web e nativo. Por IP, padrão 30 a cada 60 s.
  * - `study-session`: iniciar, pausar, retomar, encerrar, heartbeat e concluir. Por usuário, padrão 60 a
  *   cada 60 s, para colegas na mesma rede não se bloquearem.
- *
- * - `purchase`: Compras da Loja. Por usuário, padrão 10 a cada 60 s.
+ * - `shop`: Compras na Loja (#166). Por usuário, padrão 30 a cada 60 s.
  *
  * Os valores vêm de `RATE_LIMIT_<LIMITE>_LIMIT` e `RATE_LIMIT_<LIMITE>_TTL_SECONDS`.
  */
-export type RateLimitName = 'credentials' | 'refresh' | 'study-session' | 'purchase';
+export type RateLimitName = 'credentials' | 'refresh' | 'study-session' | 'shop';
 
 const RATE_LIMIT_KEY = 'wise:rate-limit';
 
-const DEFAULTS: Record<RateLimitName, { limit: number; ttlSeconds: number; envPrefix: string }> = {
+/** `perUser`: o contador é por usuário autenticado (IP só como reserva); sem ele, é por IP. */
+const DEFAULTS: Record<RateLimitName, { limit: number; ttlSeconds: number; envPrefix: string; perUser?: boolean }> = {
   credentials: { limit: 10, ttlSeconds: 60, envPrefix: 'RATE_LIMIT_CREDENTIALS' },
   refresh: { limit: 30, ttlSeconds: 60, envPrefix: 'RATE_LIMIT_REFRESH' },
-  'study-session': { limit: 60, ttlSeconds: 60, envPrefix: 'RATE_LIMIT_STUDY_SESSION' },
-  purchase: { limit: 10, ttlSeconds: 60, envPrefix: 'RATE_LIMIT_PURCHASE' },
+  'study-session': { limit: 60, ttlSeconds: 60, envPrefix: 'RATE_LIMIT_STUDY_SESSION', perUser: true },
+  shop: { limit: 30, ttlSeconds: 60, envPrefix: 'RATE_LIMIT_SHOP', perUser: true },
 };
 
 export const RATE_LIMIT_MESSAGE = 'Muitas requisições. Aguarde um instante e tente novamente.';
@@ -68,13 +68,13 @@ function readPositiveInteger(config: ConfigService, key: string, fallback: numbe
 
 export function createRateLimitOptions(config: ConfigService): ThrottlerOptions[] {
   return (Object.keys(DEFAULTS) as RateLimitName[]).map((name) => {
-    const { limit, ttlSeconds, envPrefix } = DEFAULTS[name];
+    const { limit, ttlSeconds, envPrefix, perUser } = DEFAULTS[name];
     return {
       name,
       limit: readPositiveInteger(config, `${envPrefix}_LIMIT`, limit),
       ttl: readPositiveInteger(config, `${envPrefix}_TTL_SECONDS`, ttlSeconds) * 1000,
       skipIf: (context: ExecutionContext) => routeRateLimit(context) !== name,
-      getTracker: name === 'study-session' || name === 'purchase' ? userOrIp : clientIp,
+      getTracker: perUser ? userOrIp : clientIp,
     };
   });
 }

@@ -32,9 +32,8 @@ export class HttpExceptionFilter implements ExceptionFilter {
         : (body as { message?: string | string[] } | null)?.message ??
           'Erro interno inesperado';
 
-    // Extensão do problema (RFC 7807): quantas Moedas faltam numa Compra recusada por saldo.
-    const missing = typeof body === 'object' && body !== null && 'missing' in body && typeof body.missing === 'number'
-      ? { missing: body.missing } : {};
+    const extension = typeof body === 'object' && body !== null ? (body as { missing?: unknown }).missing : undefined;
+    const missing = status === HttpStatus.UNPROCESSABLE_ENTITY && typeof extension === 'number' ? extension : undefined;
 
     response.status(status).contentType('application/problem+json').json({
       type: problemType,
@@ -42,7 +41,8 @@ export class HttpExceptionFilter implements ExceptionFilter {
       status,
       detail: Array.isArray(detail) ? detail.join('; ') : detail,
       instance: request.url,
-      ...missing,
+      // Membro de extensão do RFC 7807: quanto falta de saldo numa Compra recusada (422).
+      ...(missing === undefined ? {} : { missing }),
     });
   }
 }

@@ -9,8 +9,8 @@ import { ProgressionModule } from './modules/progression/progression.module';
 import { SessionsModule } from './modules/sessions/sessions.module';
 import { GuildsModule } from './modules/guilds/guilds.module';
 import { RaidsModule } from './modules/raids/raids.module';
-import { ChatModule } from './modules/chat/chat.module';
 import { ShopModule } from './modules/shop/shop.module';
+import { ChatModule } from './modules/chat/chat.module';
 import { RealtimeModule } from './modules/realtime/realtime.module';
 import { createDatabaseOptions } from './config/database.config';
 import { RateLimitModule } from './shared/security/rate-limit';
@@ -40,9 +40,9 @@ import { RateLimitModule } from './shared/security/rate-limit';
     SessionsModule,
     GuildsModule,
     RaidsModule,
+    ShopModule,
     RealtimeModule,
     ChatModule,
-    ShopModule,
   ],
   controllers: [HealthController],
 })
