@@ -48,7 +48,7 @@ const tablesBeforeCoinEconomy = expectedTables.filter(
 const expectedColumns: Record<string, string[]> = {
   users: ['id', 'email', 'password_hash', 'display_name', 'plan_tier', 'created_at'],
   characters: ['id', 'user_id', 'level', 'xp_total', 'companion_id'],
-  cosmetic_items: ['id', 'category', 'name', 'unlock_condition', 'requires_premium'],
+  cosmetic_items: ['id', 'category', 'name', 'unlock_condition', 'requires_premium', 'price', 'for_sale'],
   user_cosmetic_items: ['id', 'user_id', 'cosmetic_item_id', 'equipped', 'unlocked_at'],
   sessions: [
     'id',
@@ -403,9 +403,19 @@ describe('TypeORM migrations against an empty MySQL schema', () => {
       'AddGuildChatMessageSequence1788459540000',
       'AddStudySessionCappedReason1788459600000',
       'AddCoinEconomy1788459660000',
+      'AddCosmeticItemSale1788459720000',
     ]);
 
-    await dataSource.undoLastMigration(); // coin economy, the newest migration
+    await dataSource.undoLastMigration(); // cosmetic item sale, the newest migration
+    const saleRevertRows = await rows(
+      database!.admin,
+      `SELECT COLUMN_NAME FROM information_schema.COLUMNS
+       WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'cosmetic_items' ORDER BY ORDINAL_POSITION`,
+      [database!.name],
+    );
+    expect(saleRevertRows.map((row) => row.COLUMN_NAME)).toEqual(['id', 'category', 'name', 'unlock_condition', 'requires_premium']);
+
+    await dataSource.undoLastMigration(); // coin economy
     const coinRevertRows = await rows(
       database!.admin,
       `SELECT TABLE_NAME FROM information_schema.TABLES
@@ -661,8 +671,8 @@ await dataSource.undoLastMigration();
       { idempotency_key: 'rolling-transition-key', command_kind: 'resume' },
     ]);
 
-    // Twelve steps: the coin economy migration now sits above the 16 earlier ones.
-    for (let step = 0; step < 12; step += 1) await dataSource.undoLastMigration();
+    // Thirteen steps: the cosmetic item sale and coin economy migrations now sit above the 16 earlier ones.
+    for (let step = 0; step < 13; step += 1) await dataSource.undoLastMigration();
     const leftoverTriggers = await rows(
       database.admin,
       `SELECT TRIGGER_NAME FROM information_schema.TRIGGERS
@@ -787,7 +797,8 @@ await dataSource.undoLastMigration();
     expect(receiptsWithSubject).toEqual([{ idempotency_key: 'solo-start-key', subject: 'Cálculo II' }]);
 
     // M6 revert: only the receipt column goes away; every persisted Matéria (including legacy Guild rows) stays.
-    await dataSource.undoLastMigration(); // coin economy, the newest migration
+    await dataSource.undoLastMigration(); // cosmetic item sale, the newest migration
+    await dataSource.undoLastMigration(); // coin economy
     await dataSource.undoLastMigration(); // study session capped reason
     await dataSource.undoLastMigration(); // guild chat sequence
     await dataSource.undoLastMigration(); // raid goal reached at
@@ -825,8 +836,8 @@ await dataSource.undoLastMigration();
     );
     expect(receiptsAfterReapply).toEqual([{ idempotency_key: 'solo-start-key', subject: null }]);
 
-    // Fourteen steps: the coin economy migration now sits above the 13 earlier ones that this downgrade undid.
-    for (let step = 0; step < 14; step += 1) await dataSource.undoLastMigration();
+    // Fifteen steps: the cosmetic item sale and coin economy migrations now sit above the 13 earlier ones that this downgrade undid.
+    for (let step = 0; step < 15; step += 1) await dataSource.undoLastMigration();
     const downgradedHistory = await rows(
       database.admin,
       `SELECT id, subject, mode, raid_id FROM ${database.identifier}.study_sessions ORDER BY id`,
@@ -917,8 +928,8 @@ await dataSource.undoLastMigration();
     );
     expect(leftoverArchives).toHaveLength(0);
 
-    // Seventeen steps: every migration, the coin economy one included, down to the archives.
-    for (let step = 0; step < 17; step += 1) await dataSource.undoLastMigration();
+    // Eighteen steps: every migration, the coin economy and cosmetic item sale ones included, down to the archives.
+    for (let step = 0; step < 18; step += 1) await dataSource.undoLastMigration();
     const remainingSchemaTables = await rows(
       database.admin,
       `SELECT TABLE_NAME FROM information_schema.TABLES

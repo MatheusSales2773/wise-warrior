@@ -1,5 +1,6 @@
 import {
   forwardRef,
+  ConflictException,
   ForbiddenException,
   Inject,
   Injectable,
@@ -41,6 +42,14 @@ export interface EquippedCosmeticItem {
   category: CosmeticCategory;
   itemId: string;
   name: string;
+}
+
+export interface ShopCosmeticItem {
+  id: string;
+  category: CosmeticCategory;
+  name: string;
+  price: number;
+  owned: boolean;
 }
 
 export interface CatalogCosmeticItem {
@@ -120,6 +129,43 @@ export class UsersService {
       .orUpdate(['cosmetic_item_id'], ['user_id', 'cosmetic_item_id'])
       .execute();
     return items;
+  }
+
+  /** Os Cosmetic Items À venda (ADR-012), com o preço e se o usuário já os possui. */
+  async listItemsForSale(userId: string): Promise<ShopCosmeticItem[]> {
+    const [items, inventory] = await Promise.all([
+      this.cosmeticItems.find({ where: { forSale: true } }),
+      this.userCosmetics.find({ where: { userId } }),
+    ]);
+    const owned = new Set(inventory.map((row) => row.cosmeticItemId));
+    return items.flatMap((item) => (item.price === null ? [] : [{
+      id: item.id,
+      category: item.category,
+      name: item.name,
+      price: item.price,
+      owned: owned.has(item.id),
+    }]));
+  }
+
+  /**
+   * Compra de um Cosmetic Item (ADR-012): a Condição de desbloqueio `purchase`. Concede o item ao Inventário na
+   * transação de quem chama, que debita o preço na mesma transação. 404 para item que não está À venda, 409 para
+   * item que o usuário já tem. Devolve o preço a debitar. Nunca equipa.
+   */
+  async unlockPurchasedItem(manager: EntityManager, userId: string, cosmeticItemId: string): Promise<{ price: number }> {
+    const item = await manager.getRepository(CosmeticItem).findOne({ where: { id: cosmeticItemId, forSale: true } });
+    if (!item || item.price === null) {
+      throw new NotFoundException('Item não está À venda');
+    }
+    try {
+      await manager.getRepository(UserCosmeticItem).insert({ userId, cosmeticItemId, equipped: false });
+    } catch (error) {
+      if ((error as { code?: string }).code === 'ER_DUP_ENTRY') {
+        throw new ConflictException('Você já possui este item');
+      }
+      throw error;
+    }
+    return { price: item.price };
   }
 
   /** Inventário de um Character recém-criado: os Itens iniciais, já equipados. */

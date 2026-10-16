@@ -32,12 +32,17 @@ export class HttpExceptionFilter implements ExceptionFilter {
         : (body as { message?: string | string[] } | null)?.message ??
           'Erro interno inesperado';
 
+    // Extensão do problema (RFC 7807): quantas Moedas faltam numa Compra recusada por saldo.
+    const missing = typeof body === 'object' && body !== null && 'missing' in body && typeof body.missing === 'number'
+      ? { missing: body.missing } : {};
+
     response.status(status).contentType('application/problem+json').json({
       type: problemType,
       title: isHttpException ? exception.name : 'InternalServerError',
       status,
       detail: Array.isArray(detail) ? detail.join('; ') : detail,
       instance: request.url,
+      ...missing,
     });
   }
 }

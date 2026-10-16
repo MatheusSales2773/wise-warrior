@@ -25,9 +25,11 @@ import type { Request, Response } from 'express';
  * - `study-session`: iniciar, pausar, retomar, encerrar, heartbeat e concluir. Por usuário, padrão 60 a
  *   cada 60 s, para colegas na mesma rede não se bloquearem.
  *
+ * - `purchase`: Compras da Loja. Por usuário, padrão 10 a cada 60 s.
+ *
  * Os valores vêm de `RATE_LIMIT_<LIMITE>_LIMIT` e `RATE_LIMIT_<LIMITE>_TTL_SECONDS`.
  */
-export type RateLimitName = 'credentials' | 'refresh' | 'study-session';
+export type RateLimitName = 'credentials' | 'refresh' | 'study-session' | 'purchase';
 
 const RATE_LIMIT_KEY = 'wise:rate-limit';
 
@@ -35,6 +37,7 @@ const DEFAULTS: Record<RateLimitName, { limit: number; ttlSeconds: number; envPr
   credentials: { limit: 10, ttlSeconds: 60, envPrefix: 'RATE_LIMIT_CREDENTIALS' },
   refresh: { limit: 30, ttlSeconds: 60, envPrefix: 'RATE_LIMIT_REFRESH' },
   'study-session': { limit: 60, ttlSeconds: 60, envPrefix: 'RATE_LIMIT_STUDY_SESSION' },
+  purchase: { limit: 10, ttlSeconds: 60, envPrefix: 'RATE_LIMIT_PURCHASE' },
 };
 
 export const RATE_LIMIT_MESSAGE = 'Muitas requisições. Aguarde um instante e tente novamente.';
@@ -71,7 +74,7 @@ export function createRateLimitOptions(config: ConfigService): ThrottlerOptions[
       limit: readPositiveInteger(config, `${envPrefix}_LIMIT`, limit),
       ttl: readPositiveInteger(config, `${envPrefix}_TTL_SECONDS`, ttlSeconds) * 1000,
       skipIf: (context: ExecutionContext) => routeRateLimit(context) !== name,
-      getTracker: name === 'study-session' ? userOrIp : clientIp,
+      getTracker: name === 'study-session' || name === 'purchase' ? userOrIp : clientIp,
     };
   });
 }
