@@ -31,6 +31,7 @@ const raid = (overrides: Partial<ActiveRaid> = {}): ActiveRaid => ({
   status: 'active',
   goalReachedAt: null,
   me: { participating: true, contributionXp: 6_780, position: 4 },
+  lastHit: null,
   ...overrides,
 });
 const entry = (position: number, name: string, xp: number, isMe = false): RaidRankingEntry => ({
@@ -79,6 +80,33 @@ describe('RaidBattleScreen on desktop', () => {
     expect(strikes.getByTestId('raid-strike-u-Astaroth').props.accessibilityLabel).toBe('1º: Astaroth, 24,2h de foco');
     expect(strikes.getByTestId('raid-strike-u-Guilherme').props.accessibilityLabel).toBe('4º: você, 11,3h de foco');
     expect(strikes.queryByTestId('raid-strike-u-Brisa')).toBeNull();
+  });
+
+  it('shows the most recent Golpe over the scene, with its damage, author and focus minutes', async () => {
+    mockedRaid.mockResolvedValue(raid({
+      lastHit: { userId: 'u-Eldoria', displayName: 'Eldoria', xp: 75, focusMinutes: 25, at: new Date().toISOString() },
+    }));
+    await renderRaid();
+
+    const hit = await screen.findByTestId('raid-last-hit');
+    expect(within(hit).getByText('−75 Eldoria · 25 min')).toBeTruthy();
+    expect(hit.props.accessibilityLabel).toBe('Último golpe: Eldoria causou 75 de dano em 25 min de foco');
+  });
+
+  it('leaves the minutes out of a Golpe whose Study Session is gone', async () => {
+    mockedRaid.mockResolvedValue(raid({
+      lastHit: { userId: 'u-Eldoria', displayName: 'Eldoria', xp: 75, focusMinutes: null, at: new Date().toISOString() },
+    }));
+    await renderRaid();
+
+    expect(within(await screen.findByTestId('raid-last-hit')).getByText('−75 Eldoria')).toBeTruthy();
+  });
+
+  it('shows no Golpe before the first Contribution', async () => {
+    await renderRaid();
+    await screen.findByTestId('raid-mission-name');
+
+    expect(screen.queryByTestId('raid-last-hit')).toBeNull();
   });
 
   it('keeps the scene out of the accessibility tree', async () => {

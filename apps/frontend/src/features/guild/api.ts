@@ -53,6 +53,18 @@ export type ActiveRaid = {
   status: 'active' | 'completed' | 'expired';
   /** `position` is the user's place in the Ranking interno, `null` while they are not a Participant. */
   me: { participating: boolean; contributionXp: number; position: number | null };
+  /** The most recent Golpe, `null` before the first Contribution. */
+  lastHit: RaidHit | null;
+};
+
+/** Golpe: one Contribution seen as damage to the boss (the XP), with its author and the focus minutes of the session. */
+export type RaidHit = {
+  userId: string;
+  displayName: string;
+  xp: number;
+  /** Whole minutes of validated focus; `null` when the Study Session no longer exists. */
+  focusMinutes: number | null;
+  at: string;
 };
 
 export type RaidRankingEntry = {

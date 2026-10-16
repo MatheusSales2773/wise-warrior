@@ -900,7 +900,7 @@ paths:
         A Raid ativa da guilda (segunda 00:00 a domingo 23:59:59 em
         `America/Sao_Paulo`, datas em UTC), com a Missão do rodízio semanal e a
         Recompensa de Raid prevista, `goalReachedAt` com a Meta batida, e em `me`
-        a participação e a Contribuição de quem consulta. Só membros da guilda a veem. `404` quando a guilda não
+        a participação e a Contribuição de quem consulta, e em `lastHit` o Golpe mais recente. Só membros da guilda a veem. `404` quando a guilda não
         tem Raid ativa.
       operationId: getActiveGuildRaid
       tags: [Raids]
@@ -1772,7 +1772,7 @@ components:
 
     ActiveRaid:
       type: object
-      required: [id, mission, reward, goalXp, progressXp, goalReachedAt, startsAt, endsAt, status, me]
+      required: [id, mission, reward, goalXp, progressXp, goalReachedAt, startsAt, endsAt, status, me, lastHit]
       properties:
         id: { type: string, format: uuid }
         mission:
@@ -1807,6 +1807,18 @@ components:
             participating: { type: boolean, description: "Se quem consulta já confirmou participação nesta Raid" }
             contributionXp: { type: integer, minimum: 0, description: "A Contribuição de quem consulta nesta Raid" }
             position: { type: [integer, "null"], minimum: 1, description: "A posição de quem consulta no Ranking interno; null enquanto não participa" }
+        lastHit:
+          description: O Golpe mais recente (a última Contribuição), o mesmo do evento `raid:hit`; null antes da primeira Contribuição
+          oneOf:
+            - type: "null"
+            - type: object
+              required: [userId, displayName, xp, focusMinutes, at]
+              properties:
+                userId: { type: string, format: uuid }
+                displayName: { type: string }
+                xp: { type: integer, minimum: 1, description: "Dano do Golpe, o XP da Contribuição" }
+                focusMinutes: { type: [integer, "null"], minimum: 0, description: "Minutos inteiros de foco validado da Study Session; null quando ela não existe mais" }
+                at: { type: string, format: date-time }
 
     RaidDetail:
       type: object

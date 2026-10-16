@@ -11,7 +11,7 @@ import { useFocusRing } from '@/features/character/character-parts';
 import type { ActiveRaid, MyGuild, RaidRankingEntry } from './api';
 import { RAID_GOAL_REACHED, formatPosition } from './messages';
 import { activeRaidQueryOptions, myGuildQueryOptions, raidRankingQueryOptions } from './queries';
-import { assignHeroes, bossLifePercent, formatBattleTimeLeft, formatFocusHours, partyHeroSprites, raidParty, weeklyStrikes, type PartyHero, type Strike } from './raid-battle';
+import { assignHeroes, bossLifePercent, formatBattleTimeLeft, formatFocusHours, formatRaidHit, partyHeroSprites, raidParty, weeklyStrikes, type PartyHero, type Strike } from './raid-battle';
 import { RaidScene, raidSceneScale } from './raid-scene';
 
 /* Tela da Raid, Figma "06b · Guilda — Raid · O Devorador de Horas" (desktop e mobile). */
@@ -90,6 +90,21 @@ function BossLifeRow({ raid }: { raid: ActiveRaid }) {
       <Text style={styles.lifeMeta} testID="raid-boss-life-percent">{percent}% · {formatFocusHours(raid.progressXp)}/{formatFocusHours(raid.goalXp)}</Text>
     </View>
     <LifeBar label={label} percent={percent} />
+  </View>;
+}
+
+/** O Golpe mais recente, sobre o chefe. Anunciado aos leitores de tela quando chega ao vivo (`raid:hit`). */
+function LastHit({ compact, raid }: { compact: boolean; raid: ActiveRaid }) {
+  if (!raid.lastHit) return null;
+  const { text, label } = formatRaidHit(raid.lastHit);
+  return <View
+    accessible
+    accessibilityLabel={label}
+    accessibilityLiveRegion="polite"
+    style={[styles.glass, styles.hit, compact && styles.hitCompact]}
+    testID="raid-last-hit"
+  >
+    <Text numberOfLines={1} style={[styles.hitText, compact && styles.hitTextCompact]}>{text}</Text>
   </View>;
 }
 
@@ -204,6 +219,7 @@ function Battle({ desktop, mine, raid, viewport }: { desktop: boolean; mine: MyG
     overlay={<>
       <View style={[styles.overlayTopLeft, !desktop && styles.overlayTopLeftCompact]}><TimePill compact={!desktop} raid={raid} /></View>
       {desktop ? <View style={styles.overlayTopRight}><BossLifePanel raid={raid} /></View> : null}
+      <View style={[styles.overlayBottomRight, !desktop && styles.overlayBottomRightCompact]}><LastHit compact={!desktop} raid={raid} /></View>
     </>}
     party={party}
     scale={scale}
@@ -330,6 +346,12 @@ const styles = StyleSheet.create({
   overlayTopLeft: { position: 'absolute', top: 20, left: 20 },
   overlayTopLeftCompact: { top: 10, left: 10 },
   overlayTopRight: { position: 'absolute', top: 20, right: 20, width: 300 },
+  overlayBottomRight: { position: 'absolute', bottom: 20, right: 20, maxWidth: '60%' },
+  overlayBottomRightCompact: { bottom: 10, right: 10 },
+  hit: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: theme.radius.pill, borderColor: theme.color.feedbackDanger },
+  hitCompact: { paddingHorizontal: 9, paddingVertical: 4 },
+  hitText: { fontFamily: mono, fontSize: 13, lineHeight: 17, color: theme.color.feedbackDanger },
+  hitTextCompact: { fontSize: 11, lineHeight: 15 },
   timePill: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 12, paddingVertical: 7, borderRadius: theme.radius.pill },
   timePillCompact: { gap: 6, paddingHorizontal: 9, paddingVertical: 4 },
   timeText: { fontFamily: mono, fontSize: 11, lineHeight: 15, letterSpacing: 0.4, color: theme.color.textPrimary },

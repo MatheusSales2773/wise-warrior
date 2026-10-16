@@ -83,10 +83,12 @@ describe('raid:progress over Socket.IO against MySQL', () => {
     const raid = await dataSource!.getRepository(Raid).findOneByOrFail({ guildId, status: 'active' });
     await dataSource!.getRepository(RaidParticipation).createQueryBuilder().insert().values({ raidId: raid.id, userId }).orIgnore().execute();
     const studySessionId = randomUUID();
-    await dataSource!.getRepository(StudySession).insert({ id: studySessionId, userId, mode: 'guild', raidId: raid.id, state: 'completed', xpAwarded: xp });
+    await dataSource!.getRepository(StudySession).insert({
+      id: studySessionId, userId, mode: 'guild', raidId: raid.id, state: 'completed', xpAwarded: xp, durationValidSeconds: 25 * 60, endedAt: NOW,
+    });
     await raids.recordContribution(raid.id, userId, studySessionId, xp);
     await settle();
-    return raid;
+    return { ...raid, studySessionId };
   }
 
   beforeEach(async () => {
@@ -229,5 +231,28 @@ describe('raid:progress over Socket.IO against MySQL', () => {
     await contribute(guildId, ana, 10);
 
     expect(anaClient.events).toHaveLength(1);
+  });
+
+  it('delivers the Golpe of a new Contribution to the Guild room once, even when the completion repeats', async () => {
+    type RaidHitEvent = { raidId: string; userId: string; displayName: string; xp: number; focusMinutes: number | null; at: string };
+    const hits = (socket: Socket) => {
+      const received: RaidHitEvent[] = [];
+      socket.on('raid:hit', (event: RaidHitEvent) => received.push(event));
+      return received;
+    };
+    const guildId = await createGuild();
+    await call('POST', `/guilds/${guildId}/members`, bruno);
+    const anaHits = hits((await connect(ana)).socket);
+    const brunoHits = hits((await connect(bruno)).socket);
+    const outsiderHits = hits((await connect(outsider)).socket);
+
+    const { id: raidId, studySessionId } = await contribute(guildId, ana, 250);
+    await raids.recordContribution(raidId, ana, studySessionId, 250);
+    await settle();
+
+    const expected = { raidId, userId: ana, displayName: 'Ana', xp: 250, focusMinutes: 25, at: expect.any(String) };
+    expect(anaHits).toEqual([expected]);
+    expect(brunoHits).toEqual([expected]);
+    expect(outsiderHits).toEqual([]);
   });
 });

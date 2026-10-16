@@ -25,6 +25,8 @@ channels:
     messages:
       raidProgress:
         $ref: "#/components/messages/raidProgress"
+      raidHit:
+        $ref: "#/components/messages/raidHit"
   userRoom:
     address: "user:{userId}"
     description: Room Socket.IO de um usuário. Todos os sockets dele, em qualquer dispositivo, entram nela.
@@ -53,6 +55,17 @@ operations:
       ativa e invalida o Ranking interno.
     messages:
       - $ref: "#/channels/guildRoom/messages/raidProgress"
+  receiveRaidHit:
+    action: receive
+    channel:
+      $ref: "#/channels/guildRoom"
+    summary: Um membro causou um Golpe no chefe
+    description: >
+      Emitido para a room da Guild logo depois do `raid:progress` da mesma Contribuição, só quando ela é nova:
+      repetir a conclusão da mesma Study Session não emite outro Golpe. O app mostra o Golpe sobre a cena
+      ("−75 Eldoria · 25 min") e atualiza a Raid ativa e o Ranking interno.
+    messages:
+      - $ref: "#/channels/guildRoom/messages/raidHit"
   receiveRaidComplete:
     action: receive
     channel:
@@ -119,6 +132,12 @@ components:
       contentType: application/json
       payload:
         $ref: "#/components/schemas/RaidProgress"
+    raidHit:
+      name: raid:hit
+      title: Golpe
+      contentType: application/json
+      payload:
+        $ref: "#/components/schemas/RaidHit"
     raidComplete:
       name: notification:raidComplete
       title: Raid encerrada
@@ -217,6 +236,31 @@ components:
           type: [string, "null"]
           format: date-time
           description: A primeira vez que o progresso alcançou a meta (Meta batida), ou null
+    RaidHit:
+      type: object
+      required: [raidId, userId, displayName, xp, focusMinutes, at]
+      properties:
+        raidId:
+          type: string
+          format: uuid
+        userId:
+          type: string
+          format: uuid
+          description: Autor do Golpe
+        displayName:
+          type: string
+        xp:
+          type: integer
+          minimum: 1
+          description: Dano do Golpe, o XP da Contribuição
+        focusMinutes:
+          type: [integer, "null"]
+          minimum: 0
+          description: Minutos inteiros de foco validado da Study Session, ou null quando ela não existe mais
+        at:
+          type: string
+          format: date-time
+          description: Quando a Contribuição foi gravada
     RaidComplete:
       type: object
       required: [raidId, guildId, status, rewardItemId]
