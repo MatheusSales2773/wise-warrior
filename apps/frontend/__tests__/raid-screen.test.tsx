@@ -89,7 +89,8 @@ describe('RaidBattleScreen on desktop', () => {
     await renderRaid();
 
     const hit = await screen.findByTestId('raid-last-hit');
-    expect(within(hit).getByText('−75 Eldoria · 25 min')).toBeTruthy();
+    expect(within(hit).getByText('−75')).toBeTruthy();
+    expect(within(hit).getByText('Eldoria · 25 min')).toBeTruthy();
     expect(hit.props.accessibilityLabel).toBe('Último golpe: Eldoria causou 75 de dano em 25 min de foco');
   });
 
@@ -99,7 +100,9 @@ describe('RaidBattleScreen on desktop', () => {
     }));
     await renderRaid();
 
-    expect(within(await screen.findByTestId('raid-last-hit')).getByText('−75 Eldoria')).toBeTruthy();
+    const hit = within(await screen.findByTestId('raid-last-hit'));
+    expect(hit.getByText('−75')).toBeTruthy();
+    expect(hit.getByText('Eldoria')).toBeTruthy();
   });
 
   it('shows no Golpe before the first Contribution', async () => {

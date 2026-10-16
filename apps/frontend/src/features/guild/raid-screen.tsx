@@ -8,7 +8,7 @@ import { cosmeticSprite } from '@/features/character/catalog';
 import { PixelSprite } from '@/features/character/PixelSprite';
 import { itemSprites } from '@/features/character/sprites';
 import { useFocusRing } from '@/features/character/character-parts';
-import type { ActiveRaid, MyGuild, RaidRankingEntry } from './api';
+import type { ActiveRaid, MyGuild, RaidHit, RaidRankingEntry } from './api';
 import { RAID_GOAL_REACHED, formatPosition } from './messages';
 import { activeRaidQueryOptions, myGuildQueryOptions, raidRankingQueryOptions } from './queries';
 import { assignHeroes, bossLifePercent, formatBattleTimeLeft, formatFocusHours, formatRaidHit, partyHeroSprites, raidParty, weeklyStrikes, type PartyHero, type Strike } from './raid-battle';
@@ -93,18 +93,12 @@ function BossLifeRow({ raid }: { raid: ActiveRaid }) {
   </View>;
 }
 
-/** O Golpe mais recente, sobre o chefe. Anunciado aos leitores de tela quando chega ao vivo (`raid:hit`). */
-function LastHit({ compact, raid }: { compact: boolean; raid: ActiveRaid }) {
-  if (!raid.lastHit) return null;
-  const { text, label } = formatRaidHit(raid.lastHit);
-  return <View
-    accessible
-    accessibilityLabel={label}
-    accessibilityLiveRegion="polite"
-    style={[styles.glass, styles.hit, compact && styles.hitCompact]}
-    testID="raid-last-hit"
-  >
-    <Text numberOfLines={1} style={[styles.hitText, compact && styles.hitTextCompact]}>{text}</Text>
+/** O Golpe mais recente diante do chefe: o dano grande e, abaixo, autor e minutos. Anunciado ao chegar ao vivo (`raid:hit`). */
+function LastHit({ compact, hit }: { compact: boolean; hit: RaidHit }) {
+  const { damage, detail, label } = formatRaidHit(hit);
+  return <View accessible accessibilityLabel={label} accessibilityLiveRegion="polite" style={styles.hit} testID="raid-last-hit">
+    <Text style={[styles.hitDamage, compact && styles.hitDamageCompact]}>{damage}</Text>
+    <Text numberOfLines={1} style={[styles.hitDetail, compact && styles.hitDetailCompact]}>{detail}</Text>
   </View>;
 }
 
@@ -219,8 +213,8 @@ function Battle({ desktop, mine, raid, viewport }: { desktop: boolean; mine: MyG
     overlay={<>
       <View style={[styles.overlayTopLeft, !desktop && styles.overlayTopLeftCompact]}><TimePill compact={!desktop} raid={raid} /></View>
       {desktop ? <View style={styles.overlayTopRight}><BossLifePanel raid={raid} /></View> : null}
-      <View style={[styles.overlayBottomRight, !desktop && styles.overlayBottomRightCompact]}><LastHit compact={!desktop} raid={raid} /></View>
     </>}
+    hit={raid.lastHit ? <LastHit compact={!desktop} hit={raid.lastHit} /> : null}
     party={party}
     scale={scale}
     showTags={desktop}
@@ -318,6 +312,8 @@ const glassBackground = 'rgba(7, 7, 12, 0.72)';
 // The Figma panels blur the scene behind them. React Native Web supports it; native keeps the translucent fill.
 const webGlassBlur = (Platform.OS === 'web' ? { backdropFilter: 'blur(3px)' } : {}) as ViewStyle;
 
+const hitShadow = { textShadowColor: 'rgba(0, 0, 0, 0.8)', textShadowOffset: { width: 0, height: 2 }, textShadowRadius: 4 } as const;
+
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: theme.color.backgroundCanvas },
   fill: { flex: 1 },
@@ -346,12 +342,12 @@ const styles = StyleSheet.create({
   overlayTopLeft: { position: 'absolute', top: 20, left: 20 },
   overlayTopLeftCompact: { top: 10, left: 10 },
   overlayTopRight: { position: 'absolute', top: 20, right: 20, width: 300 },
-  overlayBottomRight: { position: 'absolute', bottom: 20, right: 20, maxWidth: '60%' },
-  overlayBottomRightCompact: { bottom: 10, right: 10 },
-  hit: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: theme.radius.pill, borderColor: theme.color.feedbackDanger },
-  hitCompact: { paddingHorizontal: 9, paddingVertical: 4 },
-  hitText: { fontFamily: mono, fontSize: 13, lineHeight: 17, color: theme.color.feedbackDanger },
-  hitTextCompact: { fontSize: 11, lineHeight: 15 },
+  // Figma 06b: texto solto sobre a cena, com sombra para ler sobre o céu.
+  hit: { alignItems: 'center', maxWidth: '100%' },
+  hitDamage: { fontFamily: cinzel, fontSize: 26, lineHeight: 35, color: theme.color.accentHighlight, ...hitShadow },
+  hitDamageCompact: { fontSize: 16, lineHeight: 20 },
+  hitDetail: { fontFamily: mono, fontSize: 10, lineHeight: 13, color: theme.color.textPrimary, ...hitShadow },
+  hitDetailCompact: { fontSize: 8, lineHeight: 10 },
   timePill: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 12, paddingVertical: 7, borderRadius: theme.radius.pill },
   timePillCompact: { gap: 6, paddingHorizontal: 9, paddingVertical: 4 },
   timeText: { fontFamily: mono, fontSize: 11, lineHeight: 15, letterSpacing: 0.4, color: theme.color.textPrimary },

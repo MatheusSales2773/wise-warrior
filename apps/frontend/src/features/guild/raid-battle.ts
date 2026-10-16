@@ -26,14 +26,17 @@ export function formatFocusHours(xp: number, { precise = false }: { precise?: bo
 }
 
 /**
- * Rótulo do Golpe sobre a cena: "−75 Eldoria · 25 min". O dano fica em XP e a duração substitui os "ciclos" do Figma,
- * porque cada Golpe é um Ciclo. Sem a Study Session, sai só o dano e o autor.
+ * Golpe sobre a cena: o dano ("−75") e, abaixo, "Eldoria · 25 min". O dano fica em XP e a duração substitui os
+ * "ciclos" do Figma, porque cada Golpe é um Ciclo. Sem a Study Session, a segunda linha traz só o autor.
  */
-export function formatRaidHit({ displayName, xp, focusMinutes }: Pick<RaidHit, 'displayName' | 'xp' | 'focusMinutes'>): { text: string; label: string } {
-  const damage = `−${WHOLE.format(xp)} ${displayName}`;
-  if (focusMinutes === null) return { text: damage, label: `Último golpe: ${displayName} causou ${WHOLE.format(xp)} de dano` };
+export function formatRaidHit({ displayName, xp, focusMinutes }: Pick<RaidHit, 'displayName' | 'xp' | 'focusMinutes'>): { damage: string; detail: string; label: string } {
+  const damage = `−${WHOLE.format(xp)}`;
+  if (focusMinutes === null) {
+    return { damage, detail: displayName, label: `Último golpe: ${displayName} causou ${WHOLE.format(xp)} de dano` };
+  }
   return {
-    text: `${damage} · ${focusMinutes} min`,
+    damage,
+    detail: `${displayName} · ${focusMinutes} min`,
     label: `Último golpe: ${displayName} causou ${WHOLE.format(xp)} de dano em ${focusMinutes} min de foco`,
   };
 }
