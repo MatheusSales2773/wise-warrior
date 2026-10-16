@@ -317,8 +317,12 @@ describe('Study Session de modo Guilda against MySQL', () => {
 
       const results = await Promise.all([contribute(), contribute(), contribute()]);
 
-      expect(results.filter((progress) => progress !== null)).toHaveLength(1);
-      expect(results.find((progress) => progress !== null)).toMatchObject({ raidId, progressXp: 150 });
+      // Every attempt reports the same counted XP, but only the one that inserted carries the progress to publish.
+      expect(results.map((outcome) => outcome.status)).toEqual(['counted', 'counted', 'counted']);
+      expect(results.filter((outcome) => outcome.status === 'counted' && outcome.progress)).toHaveLength(1);
+      expect(results.find((outcome) => outcome.status === 'counted' && outcome.progress)).toMatchObject({
+        progress: { raidId, progressXp: 150 },
+      });
       expect((await dataSource!.getRepository(Raid).findOneByOrFail({ id: raidId })).progressXp).toBe(150);
       expect(await contributions()).toHaveLength(1);
     });
