@@ -1,9 +1,12 @@
-import { fireEvent, render, screen, within } from '@testing-library/react-native';
+import { configure, fireEvent, render, screen, within } from '@testing-library/react-native';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Dimensions, Platform } from 'react-native';
 import { ApiError } from '@/core/api/api-error';
 import { getActiveRaid, getMyGuild, getRaidRanking, type ActiveRaid, type MyGuild, type RaidRankingEntry } from '@/features/guild/api';
 import { RaidBattleScreen } from '@/features/guild/raid-screen';
+
+// The Raid scene is heavy to render and the CI runner is several times slower than a laptop: the default 1s lookup is too tight.
+configure({ asyncUtilTimeout: 5000 });
 
 jest.mock('@/features/guild/api', () => ({
   getMyGuild: jest.fn(),
@@ -250,7 +253,7 @@ describe('Fúria card and Sequência', () => {
     mockedRaid.mockResolvedValue(raid({ ...week }));
     await renderRaid();
 
-    expect((await screen.findByTestId('raid-streak', {}, { timeout: 5000 })).props.children).toBe('Sequência da guilda: nenhum dia ainda');
+    expect((await screen.findByTestId('raid-streak')).props.children).toBe('Sequência da guilda: nenhum dia ainda');
   });
 
   it('follows the server day across the São Paulo midnight, not the device clock', async () => {
