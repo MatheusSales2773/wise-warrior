@@ -19,19 +19,22 @@ describe('SessionsController start and restore contract', () => {
 
   it('returns 204 when no active Study Session exists', async () => {
     const studySessionStart = { active: jest.fn().mockResolvedValue(null) } as unknown as StudySessionStartService;
-    const controller = new SessionsController({} as SessionsService, studySessionStart, {} as never);
+    const transitions = { completeExpired: jest.fn().mockResolvedValue(undefined) } as unknown as StudySessionTransitionService;
+    const controller = new SessionsController({} as SessionsService, studySessionStart, transitions);
     const status = jest.fn();
     const response = { status } as unknown as Response;
 
     await expect(controller.active(user, response)).resolves.toBeUndefined();
     expect(status).toHaveBeenCalledWith(204);
     expect(studySessionStart.active).toHaveBeenCalledWith('user-1', 'device-1');
+    expect(transitions.completeExpired).toHaveBeenCalledWith('user-1');
   });
 
   it('forwards the authenticated Session and idempotency key to start', async () => {
     const snapshot = { id: 'study-1', canControl: true };
     const studySessionStart = { start: jest.fn().mockResolvedValue(snapshot) } as unknown as StudySessionStartService;
-    const controller = new SessionsController({} as SessionsService, studySessionStart, {} as never);
+    const transitions = { completeExpired: jest.fn().mockResolvedValue(undefined) } as unknown as StudySessionTransitionService;
+    const controller = new SessionsController({} as SessionsService, studySessionStart, transitions);
 
     await expect(controller.start(user, { plannedDurationSeconds: 900 }, 'request-1')).resolves.toBe(snapshot);
     expect(studySessionStart.start).toHaveBeenCalledWith('user-1', 'device-1', { plannedDurationSeconds: 900 }, 'request-1');

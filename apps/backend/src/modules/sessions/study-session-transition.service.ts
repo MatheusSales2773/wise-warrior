@@ -44,6 +44,20 @@ export type StudySessionTransitionResult = StudySessionSnapshot & {
   raidContribution: RaidContributionFeedback | null;
 };
 
+type TerminalEffects = {
+  xpGained: number;
+  progressionResult: XpApplicationResult | null;
+  coinMovement: CoinMovementResult | null;
+  raidContributionOutcome: RaidContributionOutcome | null;
+};
+
+const NO_TERMINAL_EFFECTS: TerminalEffects = {
+  xpGained: 0,
+  progressionResult: null,
+  coinMovement: null,
+  raidContributionOutcome: null,
+};
+
 type StudySessionTransitionCommand = StudySessionTransitionContext & {
   action: StudySessionCommandAction;
 };
@@ -146,10 +160,7 @@ export class StudySessionTransitionService {
         }
         return {
           snapshot: deserializeTransitionResult(receipt.response_json),
-          xpGained: 0,
-          progressionResult: null,
-          raidContributionOutcome: null,
-          coinMovement: null,
+          ...NO_TERMINAL_EFFECTS,
         };
       }
 
@@ -173,7 +184,7 @@ export class StudySessionTransitionService {
           const priorDailySeconds = session.state === 'running'
             && session.runDeadlineAt
             && now.getTime() >= session.runDeadlineAt.getTime()
-            ? await this.sumEligibleFocusSecondsToday(manager, userId, studySessionId, now)
+            ? await this.sumEligibleFocusSecondsToday(manager, userId, studySessionId, session.runDeadlineAt)
             : 0;
           completionResult = applyStudySessionComplete(session, now, priorDailySeconds);
         } else {
@@ -198,39 +209,15 @@ export class StudySessionTransitionService {
       }
 
       const saved = await sessions.save(session);
-      let progressionResult: XpApplicationResult | null = null;
-      let raidContributionOutcome: RaidContributionOutcome | null = null;
-      let raidContributionFeedback: RaidContributionFeedback | null = null;
-      let coinMovement: CoinMovementResult | null = null;
       const terminalXpAwarded = stopResult?.xpAwarded ?? completionResult?.xpAwarded ?? 0;
-      if (stopResult || completionResult) {
-        await manager.query(
-          'DELETE FROM active_study_sessions WHERE user_id = ? AND study_session_id = ?',
-          [userId, studySessionId],
-        );
-        if (terminalXpAwarded > 0) {
-          progressionResult = await this.progression.awardXpInTransaction(manager, userId, terminalXpAwarded);
-          // Mesma transação do XP: a Moeda do foco e o XP são commitados ou revertidos juntos (ADR-012).
-          coinMovement = await this.economy.credit(manager, userId, coinsForDuration(saved.durationValidSeconds), {
-            type: 'study-session',
-            ref: studySessionId,
-          });
-        }
-        if (saved.mode === 'guild' && saved.raidId) {
-          raidContributionOutcome = await this.raids.recordContributionInTransaction(manager, {
-            raidId: saved.raidId,
-            userId,
-            studySessionId,
-            xpContributed: terminalXpAwarded,
-            endedAt: now,
-          });
-          const { status, xpContributed } = raidContributionOutcome;
-          raidContributionFeedback = { status, xpContributed };
-        }
-      }
+      const effects = stopResult || completionResult
+        ? await this.applyTerminalEffects(manager, saved, terminalXpAwarded)
+        : NO_TERMINAL_EFFECTS;
       const snapshot: StudySessionTransitionResult = {
         ...studySessionSnapshot(saved, authSessionId, now),
-        raidContribution: raidContributionFeedback,
+        raidContribution: effects.raidContributionOutcome
+          ? { status: effects.raidContributionOutcome.status, xpContributed: effects.raidContributionOutcome.xpContributed }
+          : null,
       };
       await manager.query(
         'INSERT INTO study_session_command_keys (user_id, idempotency_key, command_kind) VALUES (?, ?, ?)',
@@ -242,17 +229,87 @@ export class StudySessionTransitionService {
          VALUES (?, ?, ?, ?, ?, ?)`,
         [userId, studySessionId, idempotencyKey, action, dto.expectedVersion, JSON.stringify(snapshot)],
       );
-      return { snapshot, xpGained: terminalXpAwarded, progressionResult, raidContributionOutcome, coinMovement };
+      return { snapshot, ...effects };
     });
 
-    if (result.progressionResult) {
-      this.progression.publishAwardedXp(userId, result.xpGained, result.progressionResult);
-    }
-    if (result.coinMovement?.applied) {
-      this.economy.publishBalanceChanged(userId, result.coinMovement);
-    }
-    if (result.raidContributionOutcome) this.raids.publishContribution(result.raidContributionOutcome);
+    this.publishTerminalEffects(userId, result);
     return result.snapshot;
+  }
+
+  /**
+   * ADR-011 item 6: a running focus completes at its canonical deadline even when no client calls
+   * `/complete`, so a device that died at the deadline does not hold the only active slot forever.
+   * Paused sessions never complete by age (D-014).
+   */
+  async completeExpired(userId: string): Promise<void> {
+    const now = this.clock.now();
+    const expiredWhere = 'studySession.userId = :userId AND studySession.state = :running AND studySession.runDeadlineAt <= :now';
+    const parameters = { userId, running: 'running', now };
+    const pending = await this.dataSource.getRepository(StudySession)
+      .createQueryBuilder('studySession')
+      .where(expiredWhere, parameters)
+      .getExists();
+    if (!pending) return;
+
+    const effects = await this.dataSource.transaction(async (manager) => {
+      await manager.query('SELECT id FROM users WHERE id = ? FOR UPDATE', [userId]);
+      const session = await manager.getRepository(StudySession)
+        .createQueryBuilder('studySession')
+        .where(expiredWhere, parameters)
+        .setLock('pessimistic_write')
+        .getOne();
+      // Another request completed it while this one waited for the lock.
+      if (!session) return NO_TERMINAL_EFFECTS;
+      const priorDailySeconds = await this.sumEligibleFocusSecondsToday(manager, userId, session.id, session.runDeadlineAt!);
+      const completion = applyStudySessionComplete(session, now, priorDailySeconds);
+      const saved = await manager.getRepository(StudySession).save(session);
+      return this.applyTerminalEffects(manager, saved, completion.xpAwarded);
+    });
+    this.publishTerminalEffects(userId, effects);
+  }
+
+  /** XP, Moeda and Contribuição of a terminal Study Session, in the transaction that ended it. */
+  private async applyTerminalEffects(
+    manager: EntityManager,
+    saved: StudySession,
+    xpAwarded: number,
+  ): Promise<TerminalEffects> {
+    const { userId, id: studySessionId } = saved;
+    let progressionResult: XpApplicationResult | null = null;
+    let coinMovement: CoinMovementResult | null = null;
+    let raidContributionOutcome: RaidContributionOutcome | null = null;
+    await manager.query(
+      'DELETE FROM active_study_sessions WHERE user_id = ? AND study_session_id = ?',
+      [userId, studySessionId],
+    );
+    if (xpAwarded > 0) {
+      progressionResult = await this.progression.awardXpInTransaction(manager, userId, xpAwarded);
+      // Mesma transação do XP: a Moeda do foco e o XP são commitados ou revertidos juntos (ADR-012).
+      coinMovement = await this.economy.credit(manager, userId, coinsForDuration(saved.durationValidSeconds), {
+        type: 'study-session',
+        ref: studySessionId,
+      });
+    }
+    if (saved.mode === 'guild' && saved.raidId) {
+      raidContributionOutcome = await this.raids.recordContributionInTransaction(manager, {
+        raidId: saved.raidId,
+        userId,
+        studySessionId,
+        xpContributed: xpAwarded,
+        endedAt: saved.endedAt!,
+      });
+    }
+    return { xpGained: xpAwarded, progressionResult, coinMovement, raidContributionOutcome };
+  }
+
+  private publishTerminalEffects(userId: string, effects: TerminalEffects): void {
+    if (effects.progressionResult) {
+      this.progression.publishAwardedXp(userId, effects.xpGained, effects.progressionResult);
+    }
+    if (effects.coinMovement?.applied) {
+      this.economy.publishBalanceChanged(userId, effects.coinMovement);
+    }
+    if (effects.raidContributionOutcome) this.raids.publishContribution(effects.raidContributionOutcome);
   }
 
   private async sumEligibleFocusSecondsToday(

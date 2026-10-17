@@ -477,12 +477,13 @@ describe('Study Session de modo Guilda against MySQL', () => {
       expect(await contributions()).toEqual([]);
     });
 
-    it('includes outside-raid-window feedback when completed after the raid endsAt', async () => {
-      const raid = await dataSource!.getRepository(Raid).findOneByOrFail({ id: raidId });
+    it('includes outside-raid-window feedback when the focus ends after the raid endsAt', async () => {
       const session = await joinAndStart(bruno, 'feedback-after-end');
+      // The Raid ends during the focus, so the canonical deadline falls after endsAt.
+      const endsAt = new Date(new Date(session.startedAt).getTime() + 60_000);
+      await dataSource!.getRepository(Raid).update({ id: raidId }, { endsAt });
 
-      // Complete after the Raid ends
-      completionNow = new Date(raid.endsAt.getTime() + 1000);
+      completionNow = new Date(new Date(session.startedAt).getTime() + 900_000 + 1000);
 
       const response = await call('POST', `/sessions/${session.id}/complete`, bruno, { expectedVersion: 1 }, 'feedback-after-end-done');
 

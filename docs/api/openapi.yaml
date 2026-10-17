@@ -437,7 +437,9 @@ paths:
         Guild do usuário e ele precisa ser Participante: quem não é Participante
         ou é de outra Guild recebe 403, e uma Raid encerrada recebe 409
         (`raid-ended`). Ao concluir dentro da semana da Raid, o XP da sessão vira
-        Contribuição no progresso coletivo.
+        Contribuição no progresso coletivo. Antes de iniciar, um foco `running`
+        com o prazo canônico vencido é concluído pelo servidor (ADR-011, item 6),
+        liberando a vaga; um foco `paused` nunca é concluído por idade (D-014).
       operationId: startStudySession
       tags: [Sessions]
       parameters:
@@ -469,7 +471,10 @@ paths:
       description: >
         Retorna 200 com o snapshot e canControl, ou 204 sem corpo quando não
         há sessão ativa. Qualquer Session autenticada do usuário pode consultar
-        e controlar a Study Session (D-006).
+        e controlar a Study Session (D-006). Um foco `running` com o prazo
+        canônico vencido é concluído pelo servidor antes da leitura, uma única
+        vez, com as mesmas recompensas da conclusão pelo cliente; nesse caso a
+        resposta é 204.
       operationId: getActiveStudySession
       tags: [Sessions]
       responses:
@@ -1513,7 +1518,10 @@ components:
         remainingSeconds: { type: integer, minimum: 0 }
         serverNow: { type: string, format: date-time }
         version: { type: integer, minimum: 1 }
-        endedAt: { type: [string, "null"], format: date-time }
+        endedAt:
+          type: [string, "null"]
+          format: date-time
+          description: Na conclusão automática, é o runDeadlineAt, mesmo quando a conclusão é registrada depois do prazo.
         xpAwarded: { type: integer, minimum: 0 }
         terminalReason: { type: [string, "null"], enum: [manual-stop, auto-complete, legacy-session-without-owner, null] }
         discardedReason: { type: [string, "null"] }

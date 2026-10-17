@@ -40,6 +40,7 @@ export class SessionsController {
 
   @Get('active')
   async active(@CurrentUser() user: JwtPayload, @Res({ passthrough: true }) response: Response) {
+    await this.studySessionTransitions.completeExpired(user.sub);
     const snapshot = await this.studySessionStart.active(user.sub, user.sessionId);
     if (!snapshot) {
       response.status(HttpStatus.NO_CONTENT);
@@ -82,11 +83,12 @@ export class SessionsController {
   @Post()
   @RateLimit('study-session')
   @HttpCode(HttpStatus.CREATED)
-  start(
+  async start(
     @CurrentUser() user: JwtPayload,
     @Body() dto: StartSessionDto = new StartSessionDto(),
     @Headers('idempotency-key') idempotencyKey?: string,
   ) {
+    await this.studySessionTransitions.completeExpired(user.sub);
     return this.studySessionStart.start(user.sub, user.sessionId, dto, idempotencyKey);
   }
 

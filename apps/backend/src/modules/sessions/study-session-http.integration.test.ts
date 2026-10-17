@@ -6,6 +6,9 @@ import { DataSource } from 'typeorm';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RateLimitGuard } from '../../shared/security/rate-limit';
 import type { JwtPayload } from '../auth/strategies/jwt.strategy';
+import { CoinBalance } from '../economy/entities/coin-balance.entity';
+import { CoinLedgerEntry } from '../economy/entities/coin-ledger-entry.entity';
+import { EconomyService } from '../economy/economy.service';
 import { Character } from '../progression/entities/character.entity';
 import { ProgressionService } from '../progression/progression.service';
 import type { RealtimeGateway } from '../realtime/realtime.gateway';
@@ -58,13 +61,11 @@ describe('Study Session HTTP contract against MySQL', () => {
       dataSource.getRepository(CosmeticItem),
       {} as ProgressionService, // the profile read is not exercised here
     );
-    const progression = new ProgressionService(
-      dataSource.getRepository(Character),
-      { emitToUser: jest.fn() } as unknown as RealtimeGateway,
-      users,
-    );
+    const realtime = { emitToUser: jest.fn() } as unknown as RealtimeGateway;
+    const progression = new ProgressionService(dataSource.getRepository(Character), realtime, users);
+    const economy = new EconomyService(dataSource.getRepository(CoinBalance), dataSource.getRepository(CoinLedgerEntry), realtime);
     const start = new StudySessionStartService(dataSource, users, {} as never);
-    const transitions = new StudySessionTransitionService(dataSource, { now: () => new Date(now) }, progression, {} as never, {} as never);
+    const transitions = new StudySessionTransitionService(dataSource, { now: () => new Date(now) }, progression, {} as never, economy);
     const controllerModule = await Test.createTestingModule({
       controllers: [SessionsController],
       providers: [
@@ -247,6 +248,81 @@ describe('Study Session HTTP contract against MySQL', () => {
     expect(stopped.status).toBe(200);
     expect(await stopped.json()).toMatchObject({ state: 'cancelled', version: 4 });
     expect(await send('/sessions/active', ownerSessionId).then((response) => response.status)).toBe(204);
+  });
+
+  it('completes a running focus whose deadline passed when the active session is read, at the deadline and once', async () => {
+    await dataSource!.getRepository(Character).insert({ userId, level: 1, xpTotal: 0 });
+    const get = (path: string) => fetch(`${baseUrl}/api/v1${path}`, { headers: authHeaders(otherSessionId) });
+    const started = await fetch(`${baseUrl}/api/v1/sessions`, {
+      method: 'POST',
+      headers: { ...authHeaders(ownerSessionId), 'Idempotency-Key': 'expired-read-start', 'content-type': 'application/json' },
+      body: JSON.stringify({ plannedDurationSeconds: 900 }),
+    });
+    const { id, runDeadlineAt } = await started.json() as { id: string; runDeadlineAt: string };
+
+    now = new Date(new Date(runDeadlineAt).getTime() + 2 * 24 * 60 * 60 * 1000);
+    expect((await get('/sessions/active')).status).toBe(204);
+    expect((await get('/sessions/active')).status).toBe(204);
+
+    const recent = await (await get('/sessions/recent')).json() as Array<Record<string, unknown>>;
+    expect(recent).toHaveLength(1);
+    expect(recent[0]).toMatchObject({ id, state: 'completed', endedAt: runDeadlineAt, durationValidSeconds: 900, xpAwarded: 150 });
+  });
+
+  it('frees the slot of an expired running focus on start, but never resolves a paused one by age (D-014)', async () => {
+    await dataSource!.getRepository(Character).insert({ userId, level: 1, xpTotal: 0 });
+    const start = (idempotencyKey: string) => fetch(`${baseUrl}/api/v1/sessions`, {
+      method: 'POST',
+      headers: { ...authHeaders(otherSessionId), 'Idempotency-Key': idempotencyKey, 'content-type': 'application/json' },
+      body: JSON.stringify({ plannedDurationSeconds: 900 }),
+    });
+    const expired = await (await start('expired-start-first')).json() as { id: string; runDeadlineAt: string };
+
+    now = new Date(new Date(expired.runDeadlineAt).getTime() + 60_000);
+    const next = await start('expired-start-next');
+    expect(next.status).toBe(201);
+    const nextSnapshot = await next.json() as { id: string; startedAt: string };
+    expect(nextSnapshot.id).not.toBe(expired.id);
+
+    now = new Date(new Date(nextSnapshot.startedAt).getTime() + 60_000);
+    await fetch(`${baseUrl}/api/v1/sessions/${nextSnapshot.id}/pause`, {
+      method: 'POST',
+      headers: { ...authHeaders(otherSessionId), 'Idempotency-Key': 'expired-start-pause', 'content-type': 'application/json' },
+      body: JSON.stringify({ expectedVersion: 1 }),
+    });
+    now = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+    const blocked = await start('expired-start-blocked');
+    expect(blocked.status).toBe(409);
+    expect(await blocked.json()).toMatchObject({ type: 'https://wise.app/errors/study-session-active' });
+    const active = await fetch(`${baseUrl}/api/v1/sessions/active`, { headers: authHeaders(ownerSessionId) });
+    expect(await active.json()).toMatchObject({ id: nextSnapshot.id, state: 'paused' });
+  });
+
+  it('ends a late client completion at the deadline and caps it by the focus of the deadline day', async () => {
+    await dataSource!.getRepository(Character).insert({ userId, level: 1, xpTotal: 0 });
+    const started = await fetch(`${baseUrl}/api/v1/sessions`, {
+      method: 'POST',
+      headers: { ...authHeaders(ownerSessionId), 'Idempotency-Key': 'late-complete-start', 'content-type': 'application/json' },
+      body: JSON.stringify({ plannedDurationSeconds: 900 }),
+    });
+    const { id, startedAt, runDeadlineAt } = await started.json() as { id: string; startedAt: string; runDeadlineAt: string };
+    // Earlier focus the same day leaves five minutes of the 16 h daily limit.
+    await dataSource!.getRepository(StudySession).insert({
+      userId, subject: null, mode: 'solo', raidId: null, startedAt: new Date(startedAt), endedAt: new Date(startedAt),
+      plannedDurationSeconds: null, state: 'completed', durationValidSeconds: 16 * 60 * 60 - 300, xpAwarded: 0,
+      initiatingSessionId: ownerSessionId,
+    });
+
+    now = new Date(new Date(runDeadlineAt).getTime() + 2 * 24 * 60 * 60 * 1000);
+    const completed = await fetch(`${baseUrl}/api/v1/sessions/${id}/complete`, {
+      method: 'POST',
+      headers: { ...authHeaders(otherSessionId), 'Idempotency-Key': 'late-complete', 'content-type': 'application/json' },
+      body: JSON.stringify({ expectedVersion: 1 }),
+    });
+    expect(completed.status).toBe(200);
+    expect(await completed.json()).toMatchObject({
+      state: 'completed', endedAt: runDeadlineAt, durationValidSeconds: 300, xpAwarded: 50, cappedReason: 'daily-limit',
+    });
   });
 
   it('accepts the heartbeat from any authenticated Session of the user', async () => {

@@ -215,7 +215,8 @@ export function applyStudySessionComplete(
   };
 
   session.state = result.state;
-  session.endedAt = now;
+  // The focus ended at the canonical deadline, even when the completion is recorded later.
+  session.endedAt = session.runDeadlineAt;
   session.pausedAt = null;
   session.pausedTotalMilliseconds = totalPausedMilliseconds;
   session.pausedTotalSeconds = Math.floor(totalPausedMilliseconds / MILLISECONDS_PER_SECOND);
