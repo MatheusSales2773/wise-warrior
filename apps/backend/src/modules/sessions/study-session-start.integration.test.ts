@@ -40,7 +40,7 @@ describe('canonical Study Session start against MySQL', () => {
     await database?.close();
   });
 
-  it('returns absence, defaults to 25 minutes and restores only for the initiating Session', async () => {
+  it('returns absence, defaults to 25 minutes and restores for any Session of the user', async () => {
     const service = createService();
     expect(await service.active(userId, 'device-a')).toBeNull();
     for (const invalidBody of [
@@ -61,7 +61,7 @@ describe('canonical Study Session start against MySQL', () => {
       terminalReason: null, discardedReason: null, cappedReason: null, canControl: true,
     }));
     expect(await service.active(userId, 'device-a')).toMatchObject({ id: started.id, canControl: true });
-    expect(await service.active(userId, 'device-b')).toMatchObject({ id: started.id, canControl: false });
+    expect(await service.active(userId, 'device-b')).toMatchObject({ id: started.id, canControl: true });
     const persisted = await dataSource!.getRepository(StudySession).findOneByOrFail({ id: started.id });
     expect(persisted).toMatchObject({ subject: null, raidId: null, mode: 'solo', initiatingSessionId: 'device-a' });
   });
@@ -157,7 +157,7 @@ describe('canonical Study Session start against MySQL', () => {
     expect(sameSubject).toEqual(started);
     expect(sameSubject.subject).toBe('Cálculo II');
     const decomposed = await service.start(userId, 'device-b', { plannedDurationSeconds: 900, subject: 'Ca\u0301lculo II' }, 'subject-key');
-    expect(decomposed).toEqual({ ...started, canControl: false });
+    expect(decomposed).toEqual(started);
 
     for (const other of ['Cálculo III', 'cálculo ii', null, undefined, '  ']) {
       await expectConflictType(

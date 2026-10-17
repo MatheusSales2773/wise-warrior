@@ -468,13 +468,13 @@ paths:
       summary: Consulta a Study Session ativa desta conta
       description: >
         Retorna 200 com o snapshot e canControl, ou 204 sem corpo quando não
-        há sessão ativa. Outra Session autenticada pode consultar o snapshot,
-        mas não pode controlar a Study Session.
+        há sessão ativa. Qualquer Session autenticada do usuário pode consultar
+        e controlar a Study Session (D-006).
       operationId: getActiveStudySession
       tags: [Sessions]
       responses:
         "200":
-          description: Snapshot ativo; canControl indica se esta Session autenticada pode controlá-lo
+          description: Snapshot ativo; canControl é sempre true para o dono da Study Session
           content:
             application/json:
               schema: { $ref: "#/components/schemas/StudySessionSnapshot" }
@@ -756,14 +756,6 @@ paths:
                     title: ConflictException
                     status: 409
                     detail: Não é possível concluir a Study Session no estado atual
-                    instance: /api/v1/sessions/{id}/complete
-                notControllable:
-                  summary: A Session autenticada não iniciou o foco
-                  value:
-                    type: https://wise.app/errors/study-session-not-controllable
-                    title: ConflictException
-                    status: 409
-                    detail: Esta Study Session só pode ser controlada pela Session autenticada que a iniciou
                     instance: /api/v1/sessions/{id}/complete
                 idempotencyKeyReused:
                   summary: A chave já foi usada para outro comando
@@ -1528,7 +1520,9 @@ components:
         cappedReason:
           type: [string, "null"]
           enum: [continuous-limit, daily-limit, null]
-        canControl: { type: boolean }
+        canControl:
+          type: boolean
+          description: Sempre true. Mantido por compatibilidade; qualquer Session autenticada do usuário controla a Study Session (D-006).
       example:
         id: 00000000-0000-4000-8000-000000000074
         mode: solo
@@ -2014,14 +2008,6 @@ components:
                 status: 409
                 detail: O prazo canônico da Study Session já terminou
                 instance: /api/v1/sessions/{id}/pause
-            notControllable:
-              summary: A Session autenticada não iniciou o foco
-              value:
-                type: https://wise.app/errors/study-session-not-controllable
-                title: ConflictException
-                status: 409
-                detail: Esta Study Session só pode ser controlada pela Session autenticada que a iniciou
-                instance: /api/v1/sessions/{id}/pause
             idempotencyKeyReused:
               summary: A chave já foi usada por outro comando
               value:
@@ -2051,14 +2037,6 @@ components:
                 title: ConflictException
                 status: 409
                 detail: Não é possível retomar a Study Session no estado atual
-                instance: /api/v1/sessions/{id}/resume
-            notControllable:
-              summary: A Session autenticada não iniciou o foco
-              value:
-                type: https://wise.app/errors/study-session-not-controllable
-                title: ConflictException
-                status: 409
-                detail: Esta Study Session só pode ser controlada pela Session autenticada que a iniciou
                 instance: /api/v1/sessions/{id}/resume
             idempotencyKeyReused:
               summary: A chave já foi usada por outro comando
@@ -2097,14 +2075,6 @@ components:
                 title: ConflictException
                 status: 409
                 detail: Não é possível encerrar a Study Session no estado atual
-                instance: /api/v1/sessions/{id}/stop
-            notControllable:
-              summary: A Session autenticada não iniciou o foco
-              value:
-                type: https://wise.app/errors/study-session-not-controllable
-                title: ConflictException
-                status: 409
-                detail: Esta Study Session só pode ser controlada pela Session autenticada que a iniciou
                 instance: /api/v1/sessions/{id}/stop
             idempotencyKeyReused:
               summary: A chave já foi usada por outro comando

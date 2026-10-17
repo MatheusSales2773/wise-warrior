@@ -67,7 +67,6 @@ const problemTypes = {
   idempotencyKeyReused: 'https://wise.app/errors/idempotency-key-reused',
   versionConflict: 'https://wise.app/errors/study-session-version-conflict',
   transitionNotAllowed: 'https://wise.app/errors/study-session-transition-not-allowed',
-  notControllable: 'https://wise.app/errors/study-session-not-controllable',
   deadlinePassed: 'https://wise.app/errors/study-session-deadline-passed',
   completionTooEarly: 'https://wise.app/errors/study-session-completion-too-early',
 };
@@ -126,12 +125,6 @@ export class StudySessionTransitionService {
         .getOne();
 
       if (!session) throw new NotFoundException('Study Session não encontrada');
-      if (session.initiatingSessionId !== authSessionId) {
-        throw new ConflictException({
-          type: problemTypes.notControllable,
-          message: 'Esta Study Session só pode ser controlada pela Session autenticada que a iniciou',
-        });
-      }
 
       const receiptRows = await manager.query(
         `SELECT study_session_id, action, expected_version, response_json

@@ -657,11 +657,7 @@ describe('Study Session transitions against MySQL', () => {
     );
   });
 
-  it('rejects stop from another authenticated Session and from a terminal state', async () => {
-    await expectConflictType(
-      transition('stop', 1, 'wrong-device-stop', { authSessionId: 'another-device' }),
-      'https://wise.app/errors/study-session-not-controllable',
-    );
+  it('rejects stop from a terminal state', async () => {
     await dataSource!.getRepository(StudySession).update(studySessionId, { state: 'completed' });
     await expectConflictType(
       transition('stop', 1, 'terminal-stop'),

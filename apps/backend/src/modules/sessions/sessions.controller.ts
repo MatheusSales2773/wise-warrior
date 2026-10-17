@@ -151,7 +151,7 @@ export class SessionsController {
     @CurrentUser() user: JwtPayload,
     @Param('id') id: string,
   ): Promise<void> {
-    await this.sessions.heartbeat(user.sub, id, user.sessionId);
+    await this.sessions.heartbeat(user.sub, id);
   }
 
   @Post(':id/complete')

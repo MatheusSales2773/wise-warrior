@@ -68,7 +68,7 @@ describe('Study Session HTTP contract against MySQL', () => {
     const controllerModule = await Test.createTestingModule({
       controllers: [SessionsController],
       providers: [
-        { provide: SessionsService, useValue: { usesCanonicalStudySessionState: async () => true } },
+        { provide: SessionsService, useValue: new SessionsService(dataSource.getRepository(StudySession), progression, {} as never) },
         { provide: StudySessionStartService, useValue: start },
         { provide: StudySessionTransitionService, useValue: transitions },
       ],
@@ -167,20 +167,8 @@ describe('Study Session HTTP contract against MySQL', () => {
     const otherDeviceSnapshotResponse = await send('GET', '/sessions/active', otherSessionId);
     const otherDeviceSnapshot = await otherDeviceSnapshotResponse.json() as { id: string; canControl: boolean };
     expect(otherDeviceSnapshotResponse.status).toBe(200);
-    expect(otherDeviceSnapshot).toMatchObject({ id: startedSnapshot.id, canControl: false });
+    expect(otherDeviceSnapshot).toMatchObject({ id: startedSnapshot.id, canControl: true });
     expect(otherDeviceSnapshot).not.toHaveProperty('initiatingSessionId');
-
-    const remotePause = await send('POST', `/sessions/${startedSnapshot.id}/pause`, otherSessionId, 'http-remote-pause', { expectedVersion: 1 });
-    const remotePauseProblem = await remotePause.json();
-    expect(remotePause.status).toBe(409);
-    expect(remotePause.headers.get('content-type')).toContain('application/problem+json');
-    expect(remotePauseProblem).toEqual({
-      type: 'https://wise.app/errors/study-session-not-controllable',
-      title: 'ConflictException',
-      status: 409,
-      detail: 'Esta Study Session só pode ser controlada pela Session autenticada que a iniciou',
-      instance: `/api/v1/sessions/${startedSnapshot.id}/pause`,
-    });
 
     now = new Date(startedSnapshot.startedAt);
     now.setTime(now.getTime() + 30_000);
@@ -227,6 +215,66 @@ describe('Study Session HTTP contract against MySQL', () => {
     });
     expect(JSON.stringify(foreignProblemBody)).not.toContain('Private historical subject');
     expect(JSON.stringify(foreignProblemBody)).not.toContain(otherUserId);
+  });
+
+  it('lets any authenticated Session of the user control the active Study Session (D-006)', async () => {
+    const send = (path: string, authenticatedSessionId: string, idempotencyKey?: string, body?: unknown) => fetch(`${baseUrl}/api/v1${path}`, {
+      method: body === undefined ? 'GET' : 'POST',
+      headers: {
+        ...authHeaders(authenticatedSessionId),
+        ...(idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : {}),
+        ...(body === undefined ? {} : { 'content-type': 'application/json' }),
+      },
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+    });
+
+    const started = await send('/sessions', ownerSessionId, 'any-device-start', { plannedDurationSeconds: 900 });
+    const startedSnapshot = await started.json() as { id: string; startedAt: string };
+
+    const active = await send('/sessions/active', otherSessionId);
+    expect(await active.json()).toMatchObject({ id: startedSnapshot.id, canControl: true });
+
+    now = new Date(new Date(startedSnapshot.startedAt).getTime() + 30_000);
+    const paused = await send(`/sessions/${startedSnapshot.id}/pause`, otherSessionId, 'any-device-pause', { expectedVersion: 1 });
+    expect(paused.status).toBe(200);
+    expect(await paused.json()).toMatchObject({ state: 'paused', version: 2, canControl: true });
+
+    const resumed = await send(`/sessions/${startedSnapshot.id}/resume`, otherSessionId, 'any-device-resume', { expectedVersion: 2 });
+    expect(resumed.status).toBe(200);
+    expect(await resumed.json()).toMatchObject({ state: 'running', version: 3 });
+
+    const stopped = await send(`/sessions/${startedSnapshot.id}/stop`, otherSessionId, 'any-device-stop', { expectedVersion: 3 });
+    expect(stopped.status).toBe(200);
+    expect(await stopped.json()).toMatchObject({ state: 'cancelled', version: 4 });
+    expect(await send('/sessions/active', ownerSessionId).then((response) => response.status)).toBe(204);
+  });
+
+  it('accepts the heartbeat from any authenticated Session of the user', async () => {
+    const started = await fetch(`${baseUrl}/api/v1/sessions`, {
+      method: 'POST',
+      headers: { ...authHeaders(ownerSessionId), 'Idempotency-Key': 'heartbeat-start', 'content-type': 'application/json' },
+      body: JSON.stringify({ plannedDurationSeconds: 900 }),
+    });
+    const { id } = await started.json() as { id: string };
+
+    const heartbeat = await fetch(`${baseUrl}/api/v1/sessions/${id}/heartbeat`, {
+      method: 'PATCH',
+      headers: authHeaders(otherSessionId),
+    });
+    expect(heartbeat.status).toBe(204);
+  });
+
+  it('replays a start to another Session of the user as controllable', async () => {
+    const start = (authenticatedSessionId: string) => fetch(`${baseUrl}/api/v1/sessions`, {
+      method: 'POST',
+      headers: { ...authHeaders(authenticatedSessionId), 'Idempotency-Key': 'replay-start', 'content-type': 'application/json' },
+      body: JSON.stringify({ plannedDurationSeconds: 900 }),
+    });
+    const original = await (await start(ownerSessionId)).json() as Record<string, unknown>;
+
+    const replay = await start(otherSessionId);
+    expect(replay.status).toBe(201);
+    expect(await replay.json()).toEqual({ ...original, canControl: true });
   });
 
   it('starts with a normalized Matéria, refuses invalid ones with problem+json and keeps the snapshot on transitions', async () => {

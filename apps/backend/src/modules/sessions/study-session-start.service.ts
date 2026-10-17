@@ -67,7 +67,8 @@ export function studySessionSnapshot(session: StudySession, authSessionId: strin
     terminalReason: session.terminalReason ?? null,
     discardedReason: session.discardedReason ?? null,
     cappedReason: session.cappedReason ?? null,
-    canControl: session.initiatingSessionId === authSessionId,
+    // D-006: any authenticated Session of the user controls it; the query is already scoped by userId.
+    canControl: true,
   };
 }
 
@@ -130,10 +131,7 @@ export class StudySessionStartService {
       ) as ReceiptRow[];
       const receipt = receipts[0];
       if (receipt) {
-        const replayed = deserializeStudySessionSnapshot(
-          receipt.response_json,
-          receipt.initiating_session_id === authSessionId,
-        );
+        const replayed = deserializeStudySessionSnapshot(receipt.response_json, true);
         if (
           Number(receipt.planned_duration_seconds) !== plannedDurationSeconds
           || receipt.subject !== subject
