@@ -135,6 +135,9 @@ describe('Raid da semana against MySQL', () => {
       party: [], // nobody has confirmed participation yet
       goalXp: 1000, // 1.500 × 108h left of 168h = 964.3, up to a multiple of 50
       progressXp: 0,
+      regeneratedXp: 0,
+      healthXp: 1000,
+      furyPercent: 5,
       goalReachedAt: null,
       startsAt: '2026-10-05T03:00:00.000Z',
       endsAt: '2026-10-12T02:59:59.000Z',

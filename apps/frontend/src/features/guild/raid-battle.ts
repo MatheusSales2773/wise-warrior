@@ -2,7 +2,6 @@ import { DEFAULT_HERO_ID, cosmeticSprite } from '@/features/character/catalog';
 import type { ItemSpriteName, PixelSpriteData } from '@/features/character/sprites';
 import { heroSprites } from '@/features/character/sprites';
 import type { ActiveRaid, RaidHit, RaidRankingEntry } from './api';
-import { raidProgressPercent } from './messages';
 import { raidWeapons, sentinelaSprite } from './raid-scene-sprites';
 
 /*
@@ -41,9 +40,10 @@ export function formatRaidHit({ displayName, xp, focusMinutes }: Pick<RaidHit, '
   };
 }
 
-/** Vida que resta ao chefe: o que falta para a meta. Zero depois da Meta batida. */
-export function bossLifePercent(progressXp: number, goalXp: number, goalReached: boolean): number {
-  return goalReached ? 0 : 100 - raidProgressPercent(progressXp, goalXp);
+/** Vida do chefe (com a Fúria) sobre a meta, arredondada para cima: só chega a zero com a Meta batida. */
+export function bossLifePercent(healthXp: number, goalXp: number, goalReached: boolean): number {
+  if (goalReached || goalXp <= 0) return 0;
+  return Math.min(100, Math.max(0, Math.ceil((healthXp / goalXp) * 100)));
 }
 
 /** Contagem regressiva da cena: "3d 14h", "5h 20min", "45min". A versão longa ganha "restantes". */

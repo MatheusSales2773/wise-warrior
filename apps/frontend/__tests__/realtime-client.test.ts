@@ -51,6 +51,9 @@ const raid = (overrides: Partial<ActiveRaid> = {}): ActiveRaid => ({
   goalXp: 1000,
   progressXp: 100,
   goalReachedAt: null,
+  regeneratedXp: 0,
+  healthXp: 0,
+  furyPercent: 5,
   weekDays: ['2026-10-05', '2026-10-06', '2026-10-07', '2026-10-08', '2026-10-09', '2026-10-10', '2026-10-11'],
   today: '2026-10-07',
   studyDays: [],
@@ -95,7 +98,7 @@ describe('realtime client', () => {
     queryClient.setQueryData(guildKeys.raidRanking('guild-1', 'raid-1'), { pages: [], pageParams: [] });
     queryClient.setQueryData(guildKeys.raid('guild-2'), raid({ id: 'raid-other', progressXp: 5 }));
 
-    socket.emit('raid:progress', { raidId: 'raid-1', progressXp: 450, goalXp: 1000, goalReachedAt: null });
+    socket.emit('raid:progress', { raidId: 'raid-1', progressXp: 450, goalXp: 1000, goalReachedAt: null, regeneratedXp: 0, healthXp: 550 });
 
     expect(queryClient.getQueryData<ActiveRaid>(guildKeys.raid('guild-1'))).toMatchObject({ progressXp: 450, me: { contributionXp: 100 } });
     expect(queryClient.getQueryData<ActiveRaid>(guildKeys.raid('guild-2'))?.progressXp).toBe(5);
@@ -106,9 +109,18 @@ describe('realtime client', () => {
     const { socket, queryClient } = setup();
     queryClient.setQueryData(guildKeys.raid('guild-1'), raid());
 
-    socket.emit('raid:progress', { raidId: 'raid-1', progressXp: 1000, goalXp: 1000, goalReachedAt: '2026-10-08T12:00:00.000Z' });
+    socket.emit('raid:progress', { raidId: 'raid-1', progressXp: 1000, goalXp: 1000, goalReachedAt: '2026-10-08T12:00:00.000Z', regeneratedXp: 0, healthXp: 0 });
 
     expect(queryClient.getQueryData<ActiveRaid>(guildKeys.raid('guild-1'))?.goalReachedAt).toBe('2026-10-08T12:00:00.000Z');
+  });
+
+  it('shows the Vida do chefe and the total regenerated when the Fúria gives life back', () => {
+    const { socket, queryClient } = setup();
+    queryClient.setQueryData(guildKeys.raid('guild-1'), raid({ progressXp: 450, healthXp: 550 }));
+
+    socket.emit('raid:progress', { raidId: 'raid-1', progressXp: 450, goalXp: 1000, goalReachedAt: null, regeneratedXp: 50, healthXp: 600 });
+
+    expect(queryClient.getQueryData<ActiveRaid>(guildKeys.raid('guild-1'))).toMatchObject({ regeneratedXp: 50, healthXp: 600 });
   });
 
   it('shows the Golpe on raid:hit and refreshes that Raid and its Ranking interno', () => {

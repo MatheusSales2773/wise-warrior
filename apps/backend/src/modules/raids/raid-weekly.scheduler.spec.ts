@@ -5,11 +5,13 @@ import type { RaidsService } from './raids.service';
 describe('RaidWeeklyScheduler', () => {
   const now = new Date('2026-10-12T03:00:30Z');
   let runWeeklyClose: jest.Mock;
+  let runDragonFury: jest.Mock;
   let scheduler: RaidWeeklyScheduler;
 
   beforeEach(() => {
     runWeeklyClose = jest.fn().mockResolvedValue({ closed: 0, opened: 0, closings: [] });
-    scheduler = new RaidWeeklyScheduler({ runWeeklyClose } as unknown as RaidsService, () => now);
+    runDragonFury = jest.fn().mockResolvedValue({ regenerated: 0 });
+    scheduler = new RaidWeeklyScheduler({ runWeeklyClose, runDragonFury } as unknown as RaidsService, () => now);
     jest.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined);
     jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
   });
@@ -62,5 +64,25 @@ describe('RaidWeeklyScheduler', () => {
     await scheduler.handleCron();
 
     expect(Logger.prototype.log).toHaveBeenCalledWith(expect.stringContaining('2 Raid(s) fechada(s), 3 aberta(s)'));
+  });
+
+  it('runs the Fúria do dragão after the closing, with the same injected clock', async () => {
+    const order: string[] = [];
+    runWeeklyClose.mockImplementation(async () => { order.push('close'); return { closed: 0, opened: 0, closings: [] }; });
+    runDragonFury.mockImplementation(async () => { order.push('fury'); return { regenerated: 0 }; });
+
+    await scheduler.handleCron();
+
+    expect(order).toEqual(['close', 'fury']);
+    expect(runDragonFury).toHaveBeenCalledWith(now);
+  });
+
+  it('applies the Fúria at startup too, and logs how many Raids it touched', async () => {
+    runDragonFury.mockResolvedValueOnce({ regenerated: 2 });
+
+    void scheduler.onApplicationBootstrap();
+    await scheduler.run();
+
+    expect(Logger.prototype.log).toHaveBeenCalledWith(expect.stringContaining('Fúria do dragão: 2 Raid(s)'));
   });
 });

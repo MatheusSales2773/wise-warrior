@@ -9,7 +9,7 @@ import { marketKeys } from '@/features/market/queries';
 import { profileKeys } from '@/features/profile/queries';
 
 /** Payload of the `raid:progress` event (docs/api/asyncapi.yaml). */
-export type RaidProgressEvent = Pick<ActiveRaid, 'progressXp' | 'goalXp' | 'goalReachedAt'> & { raidId: string };
+export type RaidProgressEvent = Pick<ActiveRaid, 'progressXp' | 'goalXp' | 'goalReachedAt' | 'regeneratedXp' | 'healthXp'> & { raidId: string };
 
 /** Payload of the `raid:hit` event (docs/api/asyncapi.yaml). */
 export type RaidHitEvent = RaidHit & { raidId: string };
@@ -130,7 +130,7 @@ export function applyRaidProgress(queryClient: QueryClient, event: RaidProgressE
   for (const query of queryClient.getQueryCache().findAll({ queryKey: guildKeys.all })) {
     if (!isActiveRaidKey(query.queryKey)) continue;
     queryClient.setQueryData<ActiveRaid>(query.queryKey, (raid) => (raid && raid.id === event.raidId
-      ? { ...raid, progressXp: event.progressXp, goalXp: event.goalXp, goalReachedAt: event.goalReachedAt }
+      ? { ...raid, progressXp: event.progressXp, goalXp: event.goalXp, goalReachedAt: event.goalReachedAt, regeneratedXp: event.regeneratedXp, healthXp: event.healthXp }
       : raid));
   }
   void queryClient.invalidateQueries({

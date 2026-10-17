@@ -48,6 +48,18 @@ export class Raid {
   @Column({ name: 'goal_reached_at', type: 'datetime', precision: 3, nullable: true })
   goalReachedAt: Date | null;
 
+  /** Vida que a Fúria do dragão já devolveu ao chefe. Vida do chefe = `goalXp − progressXp + regeneratedXp`, entre 0 e `goalXp`. */
+  @Column({ name: 'regenerated_xp', default: 0 })
+  regeneratedXp: number;
+
+  /** O último dia (`YYYY-MM-DD` de São Paulo) cuja Fúria já foi aplicada; cada Raid e dia regenera uma vez. */
+  @Column({ name: 'fury_through', type: 'varchar', length: 10, nullable: true })
+  furyThrough: string | null;
+
+  /** Quando a Raid abriu: o dia parcial de criação não regenera. Nulo (Raids antigas) vale `startsAt`. */
+  @Column({ name: 'opened_at', type: 'datetime', precision: 3, nullable: true })
+  openedAt: Date | null;
+
   /** `active` durante a semana; só o fechamento decide `completed` (Meta batida) ou `expired`. */
   @Column({ type: 'varchar', default: 'active' })
   status: RaidStatus;

@@ -33,6 +33,9 @@ const raid = (overrides: Partial<ActiveRaid> = {}): ActiveRaid => ({
   party: ranking.slice(0, 5),
   goalXp: 120_000,
   progressXp: 82_800,
+  regeneratedXp: 0,
+  healthXp: 37_200,
+  furyPercent: 5,
   startsAt: new Date(Date.now() - 3 * 24 * HOUR).toISOString(),
   endsAt: new Date(Date.now() + (3 * 24 + 14) * HOUR + 5 * 60_000).toISOString(),
   status: 'active',
@@ -75,6 +78,15 @@ describe('RaidBattleScreen on desktop', () => {
     expect(screen.getByTestId('raid-boss-life-percent').props.children).toEqual([31, '%']);
     expect(screen.getByTestId('raid-boss-life').props.accessibilityLabel).toBe('Vida do dragão: 31%. 138h de 200h de foco coletivo.');
     expect(screen.getByTestId('raid-focus-hours').props.children).toEqual(['138h', ' de ', '200h', ' de foco coletivo']);
+  });
+
+  it('adds the Fúria to the boss life: the bar follows the Vida do chefe and the goal grows by what was regenerated', async () => {
+    mockedRaid.mockResolvedValue(raid({ regeneratedXp: 6_000, healthXp: 43_200 }));
+    await renderRaid();
+
+    expect((await screen.findByTestId('raid-boss-life-percent')).props.children).toEqual([36, '%']);
+    expect(screen.getByTestId('raid-boss-life').props.accessibilityLabel).toBe('Vida do dragão: 36%. 138h de 210h de foco coletivo.');
+    expect(screen.getByTestId('raid-focus-hours').props.children).toEqual(['138h', ' de ', '210h', ' de foco coletivo']);
   });
 
   it('draws the first five Participants in the scene and lists four strikes with your row', async () => {
@@ -209,6 +221,22 @@ describe('Fúria card and Sequência', () => {
     expect(screen.getByTestId('raid-details')).toContainElement(screen.getByTestId('raid-furia'));
   });
 
+  it('states the rule with the percent the server uses and how much the boss already recovered', async () => {
+    mockedRaid.mockResolvedValue(raid({ ...week, furyPercent: 8, regeneratedXp: 12_000, healthXp: 49_200 }));
+    await renderRaid();
+
+    const card = within(await screen.findByTestId('raid-furia'));
+    expect(card.getByTestId('raid-furia-rule').props.children).toBe('O chefe recupera 8% por dia sem estudo.');
+    expect(card.getByTestId('raid-furia-regenerated').props.children).toBe('Já recuperou 20h de foco.');
+  });
+
+  it('says the boss has not recovered anything yet', async () => {
+    mockedRaid.mockResolvedValue(raid({ ...week }));
+    await renderRaid();
+
+    expect((await screen.findByTestId('raid-furia-regenerated')).props.children).toBe('Ainda não recuperou vida.');
+  });
+
   it('shows a missed day after a gap', async () => {
     mockedRaid.mockResolvedValue(raid({ ...week, studyDays: ['2026-10-05', '2026-10-07'], streak: 1 }));
     await renderRaid();
@@ -242,6 +270,7 @@ describe('Fúria card and Sequência', () => {
 
     const strip = within(await screen.findByTestId('raid-furia'));
     expect(strip.getByTestId('raid-streak').props.children).toBe('Guilda: 3 dias sem falhar');
+    expect(strip.getByTestId('raid-furia-rule').props.children).toBe('O chefe recupera 5% por dia sem estudo.');
     expect(screen.queryByTestId('raid-week-grid')).toBeNull();
   });
 });

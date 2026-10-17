@@ -61,9 +61,11 @@ function TimePill({ compact, raid }: { compact: boolean; raid: ActiveRaid }) {
   </View>;
 }
 
-function lifeLabel(raid: ActiveRaid): { percent: number; label: string } {
-  const percent = bossLifePercent(raid.progressXp, raid.goalXp, raid.goalReachedAt !== null);
-  return { percent, label: `Vida do dragão: ${percent}%. ${formatFocusHours(raid.progressXp)} de ${formatFocusHours(raid.goalXp)} de foco coletivo.` };
+/** The goal grows by what the Fúria gave back, so "foco coletivo" is what the Meta batida really takes. */
+function lifeLabel(raid: ActiveRaid): { percent: number; label: string; needed: string } {
+  const percent = bossLifePercent(raid.healthXp, raid.goalXp, raid.goalReachedAt !== null);
+  const needed = formatFocusHours(raid.goalXp + raid.regeneratedXp);
+  return { percent, label: `Vida do dragão: ${percent}%. ${formatFocusHours(raid.progressXp)} de ${needed} de foco coletivo.`, needed };
 }
 
 function LifeBar({ percent, label }: { percent: number; label: string }) {
@@ -72,24 +74,24 @@ function LifeBar({ percent, label }: { percent: number; label: string }) {
 
 /** Desktop: painel sobre a cena, no canto superior direito. */
 function BossLifePanel({ raid }: { raid: ActiveRaid }) {
-  const { percent, label } = lifeLabel(raid);
+  const { percent, label, needed } = lifeLabel(raid);
   return <View style={[styles.glass, styles.lifePanel]}>
     <View style={styles.spread}>
       <Text style={styles.lifeTitle}>Vida do dragão</Text>
       <Text style={styles.lifePercent} testID="raid-boss-life-percent">{percent}%</Text>
     </View>
     <LifeBar label={label} percent={percent} />
-    <Text style={styles.lifeCaption} testID="raid-focus-hours">{formatFocusHours(raid.progressXp)} de {formatFocusHours(raid.goalXp)} de foco coletivo</Text>
+    <Text style={styles.lifeCaption} testID="raid-focus-hours">{formatFocusHours(raid.progressXp)} de {needed} de foco coletivo</Text>
   </View>;
 }
 
 /** Celular: linha sob a cena. */
 function BossLifeRow({ raid }: { raid: ActiveRaid }) {
-  const { percent, label } = lifeLabel(raid);
+  const { percent, label, needed } = lifeLabel(raid);
   return <View style={styles.lifeRow}>
     <View style={styles.spread}>
       <Text style={styles.lifeTitle}>Vida do dragão</Text>
-      <Text style={styles.lifeMeta} testID="raid-boss-life-percent">{percent}% · {formatFocusHours(raid.progressXp)}/{formatFocusHours(raid.goalXp)}</Text>
+      <Text style={styles.lifeMeta} testID="raid-boss-life-percent">{percent}% · {formatFocusHours(raid.progressXp)}/{needed}</Text>
     </View>
     <LifeBar label={label} percent={percent} />
   </View>;
@@ -163,7 +165,13 @@ function StrikesCard({ compact, entries, failed, loading }: { compact: boolean; 
   </Card>;
 }
 
-const FURIA_COPY = 'Cada dia em que a guilda não estuda, o dragão recupera 5% de vida. Mantenham a chama acesa.';
+function furiaRule(raid: ActiveRaid): string {
+  return `O chefe recupera ${raid.furyPercent}% por dia sem estudo.`;
+}
+
+function furiaRegenerated(raid: ActiveRaid): string {
+  return raid.regeneratedXp > 0 ? `Já recuperou ${formatFocusHours(raid.regeneratedXp)} de foco.` : 'Ainda não recuperou vida.';
+}
 
 type DayLook = {
   label: string;
@@ -202,7 +210,10 @@ function WeekGrid({ raid }: { raid: ActiveRaid }) {
 function FuriaCard({ raid }: { raid: ActiveRaid }) {
   return <Card label="Fúria do dragão" testID="raid-furia">
     <CardHeader aside="Regra da raid">Fúria do dragão</CardHeader>
-    <Text style={styles.furiaCopy}>{FURIA_COPY}</Text>
+    <Text style={styles.furiaCopy}>
+      <Text testID="raid-furia-rule">{furiaRule(raid)}</Text> Mantenham a chama acesa.
+    </Text>
+    <Text style={styles.furiaRegenerated} testID="raid-furia-regenerated">{furiaRegenerated(raid)}</Text>
     <WeekGrid raid={raid} />
     <Text style={styles.streak} testID="raid-streak">{formatStreak(raid.streak)}</Text>
   </Card>;
@@ -212,7 +223,7 @@ function FuriaStrip({ raid }: { raid: ActiveRaid }) {
   return <View accessibilityLabel="Fúria do dragão" role="region" style={styles.furiaStrip} testID="raid-furia">
     <WiseIcon color="feedbackDanger" name="flame" size="small" />
     <Text style={styles.furiaStripText}>
-      Dias sem estudo devolvem 5% de vida ao dragão. <Text testID="raid-streak">{formatStreak(raid.streak, { compact: true })}</Text>
+      <Text testID="raid-furia-rule">{furiaRule(raid)}</Text> <Text testID="raid-furia-regenerated">{furiaRegenerated(raid)}</Text> <Text testID="raid-streak">{formatStreak(raid.streak, { compact: true })}</Text>
     </Text>
   </View>;
 }
@@ -442,6 +453,7 @@ const styles = StyleSheet.create({
   cardNote: { fontFamily: 'Inter-Regular', fontSize: 13, lineHeight: 18, color: theme.color.textSecondary },
 
   furiaCopy: { fontFamily: 'Inter-Regular', fontSize: 13, lineHeight: 20, color: theme.color.textSecondary },
+  furiaRegenerated: { fontFamily: mono, fontSize: 10, lineHeight: 13, color: theme.color.feedbackDanger },
   weekGrid: { flexDirection: 'row', gap: 6 },
   weekDay: { flex: 1, alignItems: 'center', gap: 4, paddingVertical: 8, borderRadius: theme.radius.control, borderWidth: theme.border.standard, borderColor: theme.color.borderGhost, backgroundColor: theme.color.surfaceInset },
   weekDayStudied: { borderColor: theme.color.feedbackSuccess, backgroundColor: theme.color.surfaceElevated },

@@ -50,7 +50,13 @@ export type ActiveRaid = {
   party: RaidRankingEntry[];
   goalXp: number;
   progressXp: number;
-  /** The first time the progress reached the goal (Meta batida); Contributions keep adding until `endsAt`. */
+  /** Life the Fúria do dragão already gave back to the boss. */
+  regeneratedXp: number;
+  /** Vida do chefe: `goalXp − progressXp + regeneratedXp`, between 0 and `goalXp`. */
+  healthXp: number;
+  /** The Fúria rule: the percent of the goal the boss recovers per whole day without a Dia de estudo. */
+  furyPercent: number;
+  /** The first time the Vida do chefe reached zero (Meta batida); Contributions keep adding until `endsAt`. */
   goalReachedAt: string | null;
   startsAt: string;
   endsAt: string;

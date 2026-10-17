@@ -40,13 +40,18 @@ describe('formatFocusHours', () => {
 });
 
 describe('bossLifePercent', () => {
-  it('is what is left of the goal', () => {
-    expect(bossLifePercent(82_800, 120_000, false)).toBe(31);
-    expect(bossLifePercent(0, 1_500, false)).toBe(100);
+  it('is the Vida do chefe over the goal', () => {
+    expect(bossLifePercent(37_200, 120_000, false)).toBe(31);
+    expect(bossLifePercent(1_500, 1_500, false)).toBe(100);
   });
 
-  it('drops to zero once the goal is reached', () => {
-    expect(bossLifePercent(1_600, 1_500, true)).toBe(0);
+  it('keeps a sliver of life above zero until the boss is really dead', () => {
+    expect(bossLifePercent(1, 1_500, false)).toBe(1);
+  });
+
+  it('drops to zero once the Meta is batida', () => {
+    expect(bossLifePercent(0, 1_500, true)).toBe(0);
+    expect(bossLifePercent(40, 1_500, true)).toBe(0);
   });
 });
 
