@@ -1,6 +1,7 @@
 import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { StudySessionScreen } from '@/features/study-session/study-session-screen';
+import { StudySessionHeartbeatRuntime } from '@/features/study-session/study-session-heartbeat-runtime';
 import {
   completeStudySession,
   getActiveStudySession,
@@ -243,6 +244,46 @@ it('does not auto-complete in the background and reconciles on return', async ()
   await act(async () => setShowScreen(true));
   await waitFor(() => expect(complete).toHaveBeenCalledTimes(1));
   expect(getActive).toHaveBeenCalledTimes(2);
+  view.unmount();
+});
+
+it('shows the result the server completed on read when the device returns after the deadline', async () => {
+  getActive.mockResolvedValueOnce(snapshot);
+  const { view, client, setShowScreen } = await renderStudySession();
+  await view.findByTestId('study-session-active');
+
+  appActive.mockReturnValue(false);
+  await act(async () => setShowScreen(true));
+  mockedNow = new Date(snapshot.runDeadlineAt!).getTime() + 5 * 60 * 1000;
+  getActive.mockResolvedValue(completed(snapshot));
+  appActive.mockReturnValue(true);
+  await act(async () => setShowScreen(true));
+
+  await view.findByText('Sessão concluída');
+  expect(view.getByText('XP confirmado: 250')).toBeTruthy();
+  expect(complete).not.toHaveBeenCalled();
+  expect(client.getQueryData(['study-session', 'active'])).toBeNull();
+  view.unmount();
+});
+
+it('keeps the server result read by the app-wide runtime until the screen shows it', async () => {
+  getActive.mockResolvedValueOnce(completed(atZero())).mockResolvedValue(null);
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
+  queryClients.push(client);
+  const tree = (showScreen: boolean) => (
+    <QueryClientProvider client={client}>
+      <StudySessionHeartbeatRuntime />
+      {showScreen ? <StudySessionScreen /> : null}
+    </QueryClientProvider>
+  );
+  const view = await render(tree(false));
+  await waitFor(() => expect(getActive).toHaveBeenCalledTimes(1));
+
+  await act(async () => view.rerender(tree(true)));
+
+  await view.findByText('Sessão concluída');
+  expect(view.getByText('XP confirmado: 250')).toBeTruthy();
+  expect(complete).not.toHaveBeenCalled();
   view.unmount();
 });
 

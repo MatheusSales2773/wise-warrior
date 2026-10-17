@@ -472,16 +472,26 @@ paths:
         Retorna 200 com o snapshot e canControl, ou 204 sem corpo quando não
         há sessão ativa. Qualquer Session autenticada do usuário pode consultar
         e controlar a Study Session (D-006). Um foco `running` com o prazo
-        canônico vencido continua sendo devolvido, com remainingSeconds 0, para
-        que o dispositivo que o lê confirme a conclusão e exiba o resultado.
+        canônico vencido é concluído pelo servidor nesta leitura (ADR-011, item
+        6), com `endedAt` no prazo e as mesmas recompensas da conclusão pelo
+        cliente. Essa leitura devolve, uma única vez, o snapshot terminal com
+        `raidContribution`, para que o dispositivo exiba o resultado; as leituras
+        seguintes devolvem 204. Um foco `paused` nunca é concluído por idade
+        (D-014).
       operationId: getActiveStudySession
       tags: [Sessions]
       responses:
         "200":
-          description: Snapshot ativo; canControl é sempre true para o dono da Study Session
+          description: >
+            Snapshot ativo (`running` ou `paused`), ou, uma única vez, o
+            resultado terminal do foco vencido que esta leitura concluiu.
+            canControl é sempre true para o dono da Study Session.
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/StudySessionSnapshot" }
+              schema:
+                anyOf:
+                  - { $ref: "#/components/schemas/StudySessionSnapshot" }
+                  - { $ref: "#/components/schemas/StudySessionTransitionResponse" }
         "204": { description: Nenhuma Study Session ativa }
         "401": { $ref: "#/components/responses/Unauthorized" }
 

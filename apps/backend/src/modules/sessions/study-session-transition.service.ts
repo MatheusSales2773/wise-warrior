@@ -52,6 +52,14 @@ type TerminalEffects = {
   raidContributionOutcome: RaidContributionOutcome | null;
 };
 
+/** A focus the server completed at its deadline, and the publication to run once its transaction commits. */
+export type ExpiredCompletion = {
+  result: StudySessionTransitionResult;
+  publish: () => void;
+};
+
+const EXPIRED_RUNNING_WHERE = 'studySession.userId = :userId AND studySession.state = :running AND studySession.runDeadlineAt <= :now';
+
 const NO_TERMINAL_EFFECTS: TerminalEffects = {
   xpGained: 0,
   progressionResult: null,
@@ -225,9 +233,7 @@ export class StudySessionTransitionService {
         : NO_TERMINAL_EFFECTS;
       const snapshot: StudySessionTransitionResult = {
         ...studySessionSnapshot(saved, now),
-        raidContribution: effects.raidContributionOutcome
-          ? { status: effects.raidContributionOutcome.status, xpContributed: effects.raidContributionOutcome.xpContributed }
-          : null,
+        raidContribution: raidContributionFeedback(effects.raidContributionOutcome),
       };
       await manager.query(
         'INSERT INTO study_session_command_keys (user_id, idempotency_key, command_kind) VALUES (?, ?, ?)',
@@ -249,22 +255,37 @@ export class StudySessionTransitionService {
   /**
    * ADR-011 item 6: a running focus completes at its canonical deadline even when no client calls
    * `/complete`, so a device that died at the deadline does not hold the only active slot forever.
-   * Paused sessions never complete by age (D-014). Runs in the caller's transaction, which already
-   * holds the user lock, and returns the publication to run once that transaction commits.
+   * Paused sessions never complete by age (D-014). Returns the result once: the next read finds no
+   * expired focus.
    */
-  async completeExpiredInTransaction(manager: EntityManager, userId: string): Promise<() => void> {
+  async completeExpired(userId: string): Promise<StudySessionTransitionResult | null> {
+    // An unlocked read first, so reading the active session takes no lock in the common case.
+    const pending = await this.dataSource.getRepository(StudySession)
+      .createQueryBuilder('studySession')
+      .where(EXPIRED_RUNNING_WHERE, { userId, running: 'running', now: this.clock.now() })
+      .getExists();
+    if (!pending) return null;
+
+    const completion = await this.dataSource.transaction(async (manager) => {
+      await this.users.lockForUpdate(userId, manager);
+      return this.completeExpiredInTransaction(manager, userId);
+    });
+    completion?.publish();
+    return completion?.result ?? null;
+  }
+
+  /** {@link completeExpired} inside the caller's transaction, which already holds the user lock. */
+  async completeExpiredInTransaction(manager: EntityManager, userId: string): Promise<ExpiredCompletion | null> {
     const now = this.clock.now();
     // A plain read finds the candidate and the lock goes by primary key: a locking range read here takes
     // gap locks that deadlock with the inserts of other users' concurrent starts.
     const expired = await manager.getRepository(StudySession)
       .createQueryBuilder('studySession')
       .select('studySession.id')
-      .where(
-        'studySession.userId = :userId AND studySession.state = :running AND studySession.runDeadlineAt <= :now',
-        { userId, running: 'running', now },
-      )
+      .where(EXPIRED_RUNNING_WHERE, { userId, running: 'running', now })
       .getOne();
-    if (!expired) return () => undefined;
+    // None, or another request completed it while this one waited for the user lock.
+    if (!expired) return null;
     const session = await manager.getRepository(StudySession).findOneOrFail({
       where: { id: expired.id },
       lock: { mode: 'pessimistic_write' },
@@ -272,7 +293,10 @@ export class StudySessionTransitionService {
     const completion = await this.completeAtDeadline(manager, session, now);
     const saved = await manager.getRepository(StudySession).save(session);
     const effects = await this.applyTerminalEffects(manager, saved, completion.xpAwarded);
-    return () => this.publishTerminalEffects(userId, effects);
+    return {
+      result: { ...studySessionSnapshot(saved, now), raidContribution: raidContributionFeedback(effects.raidContributionOutcome) },
+      publish: () => this.publishTerminalEffects(userId, effects),
+    };
   }
 
   /** The daily cap of a completion counts the focus of the deadline day, even when it is recorded later. */
@@ -355,6 +379,10 @@ export class StudySessionTransitionService {
 
     return Number(row?.total ?? 0);
   }
+}
+
+function raidContributionFeedback(outcome: RaidContributionOutcome | null): RaidContributionFeedback | null {
+  return outcome ? { status: outcome.status, xpContributed: outcome.xpContributed } : null;
 }
 
 function deserializeTransitionResult(value: StudySessionTransitionResult | string): StudySessionTransitionResult {

@@ -3,6 +3,7 @@ import { DataSource, In } from 'typeorm';
 import { UsersService } from '../users/users.service';
 import { RaidsService } from '../raids/raids.service';
 import { StudySessionTransitionService } from './study-session-transition.service';
+import type { ExpiredCompletion, StudySessionTransitionResult } from './study-session-transition.service';
 import { StudySession } from './entities/study-session.entity';
 import type { StartSessionDto } from './dto/start-session.dto';
 import { isStudySessionPreset } from './domain/study-session-presets';
@@ -27,7 +28,13 @@ export class StudySessionStartService {
     private readonly transitions: StudySessionTransitionService,
   ) {}
 
-  async active(userId: string): Promise<StudySessionSnapshot | null> {
+  /**
+   * The active Study Session, or, once, the result of the expired running focus that this read completed
+   * (ADR-011 item 6), so the reading device shows it.
+   */
+  async active(userId: string): Promise<StudySessionSnapshot | StudySessionTransitionResult | null> {
+    const completed = await this.transitions.completeExpired(userId);
+    if (completed) return completed;
     const session = await this.dataSource.getRepository(StudySession).findOne({
       where: { userId, state: In(['running', 'paused']) },
     });
@@ -51,7 +58,8 @@ export class StudySessionStartService {
       throw new BadRequestException('Idempotency-Key é obrigatório e deve conter de 1 a 128 caracteres ASCII visíveis');
     }
 
-    let publishExpiredCompletion = (): void => undefined;
+    // Assigned inside the transaction callback; the cast keeps TypeScript from narrowing it to null.
+    let expiredCompletion = null as ExpiredCompletion | null;
     const started = await this.dataSource.transaction(async (manager) => {
       // Lock the stable user row so first starts also serialize, before an active row exists.
       if (!await this.users.lockForUpdate(userId, manager)) throw new BadRequestException('Usuário inválido');
@@ -78,7 +86,7 @@ export class StudySessionStartService {
       }
 
       await rejectIfStudySessionCommandKeyUsed(manager, userId, idempotencyKey);
-      publishExpiredCompletion = await this.transitions.completeExpiredInTransaction(manager, userId);
+      expiredCompletion = await this.transitions.completeExpiredInTransaction(manager, userId);
 
       const active = await manager.getRepository(StudySession).findOne({
         where: { userId, state: In(['running', 'paused']) },
@@ -122,7 +130,7 @@ export class StudySessionStartService {
       );
       return snapshot;
     });
-    publishExpiredCompletion();
+    expiredCompletion?.publish();
     return started;
   }
 

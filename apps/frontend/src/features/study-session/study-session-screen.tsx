@@ -43,6 +43,7 @@ import {
   newIdempotencyKey,
   submitCompletionIntent,
   syncCompletionIntentWithSnapshot,
+  takeServerCompletion,
   type StudySessionCompletionIntent,
 } from './completion-intent';
 import { useStudySessionAppActive } from './use-study-session-app-active';
@@ -497,6 +498,12 @@ export function StudySessionScreen({ initialMode = 'solo' }: { initialMode?: Ses
     // Only now does the cycle include this focus, so the right break (short or long) can be offered.
     setCycleFresh(true);
   }, [queryClient]);
+
+  // The read itself may have completed the expired focus on the server: show that result like a local completion.
+  useEffect(() => {
+    const serverResult = takeServerCompletion();
+    if (serverResult) queueMicrotask(() => void settleTerminalResult(serverResult));
+  }, [active.dataUpdatedAt, settleTerminalResult]);
 
   const observeCompletion = useCallback((intent: StudySessionCompletionIntent) => {
     const promise = intent.promise;

@@ -250,27 +250,35 @@ describe('Study Session HTTP contract against MySQL', () => {
     expect(await send('/sessions/active', ownerSessionId).then((response) => response.status)).toBe(204);
   });
 
-  it('lets a device that returns after the deadline read its expired focus and receive the completion result', async () => {
+  it('completes an expired running focus on read and returns its result once, at the deadline', async () => {
     await dataSource!.getRepository(Character).insert({ userId, level: 1, xpTotal: 0 });
+    const get = (path: string) => fetch(`${baseUrl}/api/v1${path}`, { headers: authHeaders(otherSessionId) });
     const started = await fetch(`${baseUrl}/api/v1/sessions`, {
       method: 'POST',
-      headers: { ...authHeaders(ownerSessionId), 'Idempotency-Key': 'returning-start', 'content-type': 'application/json' },
+      headers: { ...authHeaders(ownerSessionId), 'Idempotency-Key': 'expired-read-start', 'content-type': 'application/json' },
       body: JSON.stringify({ plannedDurationSeconds: 900 }),
     });
     const { id, runDeadlineAt } = await started.json() as { id: string; runDeadlineAt: string };
 
-    now = new Date(new Date(runDeadlineAt).getTime() + 5 * 60 * 1000);
-    const active = await fetch(`${baseUrl}/api/v1/sessions/active`, { headers: authHeaders(ownerSessionId) });
-    expect(active.status).toBe(200);
-    expect(await active.json()).toMatchObject({ id, state: 'running', version: 1, runDeadlineAt });
+    now = new Date(new Date(runDeadlineAt).getTime() + 2 * 24 * 60 * 60 * 1000);
+    const read = await get('/sessions/active');
+    expect(read.status).toBe(200);
+    expect(await read.json()).toMatchObject({
+      id, state: 'completed', version: 2, endedAt: runDeadlineAt, durationValidSeconds: 900, xpAwarded: 150, raidContribution: null,
+    });
+    expect((await get('/sessions/active')).status).toBe(204);
 
-    const completed = await fetch(`${baseUrl}/api/v1/sessions/${id}/complete`, {
+    // The device that started it still completes from the version it saw and gets the same result.
+    const lateComplete = await fetch(`${baseUrl}/api/v1/sessions/${id}/complete`, {
       method: 'POST',
-      headers: { ...authHeaders(ownerSessionId), 'Idempotency-Key': 'returning-complete', 'content-type': 'application/json' },
+      headers: { ...authHeaders(ownerSessionId), 'Idempotency-Key': 'expired-read-complete', 'content-type': 'application/json' },
       body: JSON.stringify({ expectedVersion: 1 }),
     });
-    expect(completed.status).toBe(200);
-    expect(await completed.json()).toMatchObject({ id, state: 'completed', endedAt: runDeadlineAt, xpAwarded: 150 });
+    expect(lateComplete.status).toBe(200);
+    expect(await lateComplete.json()).toMatchObject({ id, state: 'completed', xpAwarded: 150 });
+
+    const recent = await (await get('/sessions/recent')).json() as Array<Record<string, unknown>>;
+    expect(recent).toEqual([expect.objectContaining({ id, state: 'completed', endedAt: runDeadlineAt, xpAwarded: 150 })]);
   });
 
   it('gives the confirmed result to a second device that completes the same focus late', async () => {

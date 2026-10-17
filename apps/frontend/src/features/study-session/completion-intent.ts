@@ -16,6 +16,7 @@ export type StudySessionCompletionIntent = {
 };
 
 let retainedIntent: StudySessionCompletionIntent | null = null;
+let serverCompletion: StudySessionTransitionResult | null = null;
 
 export function newIdempotencyKey(): string {
   return globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -119,6 +120,21 @@ export function completionIntentCanRetryAt(
     && intent.retryReady
     && intent.request.id === snapshot.id
     && intent.request.expectedVersion === snapshot.version;
+}
+
+/**
+ * The server completed an expired focus while reading the active session (ADR-011 item 6) and returns
+ * that result only once: keep it until the screen shows it, even if another reader fetched it.
+ */
+export function retainServerCompletion(result: StudySessionTransitionResult): void {
+  serverCompletion = result;
+  if (retainedIntent?.request.id === result.id) retainedIntent = null;
+}
+
+export function takeServerCompletion(): StudySessionTransitionResult | null {
+  const result = serverCompletion;
+  serverCompletion = null;
+  return result;
 }
 
 export function clearCompletionIntent(): void {
