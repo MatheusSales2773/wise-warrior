@@ -5,7 +5,7 @@ import { RAID_CLOCK, type RaidClock } from './raid-clock';
 import { RaidsService } from './raids.service';
 
 /**
- * Fechamento semanal (#116). Runs every minute and once at startup, so a week missed while the application
+ * Fechamento semanal (#116) e Fúria do dragão (#195). Runs every minute and once at startup, so a week missed while the application
  * was down is closed as soon as it comes back. Every step is idempotent in the database; this class only keeps
  * one run at a time inside the process.
  */
@@ -29,15 +29,20 @@ export class RaidWeeklyScheduler implements OnApplicationBootstrap {
     await this.run();
   }
 
+  /** The Fúria comes after the closing, so a Raid that just expired is not regenerated and the new one starts clean. */
+  private async closeWeekAndApplyFury(): Promise<void> {
+    const now = this.clock();
+    const { closed, opened } = await this.raids.runWeeklyClose(now);
+    if (closed + opened > 0) this.logger.log(`Fechamento semanal: ${closed} Raid(s) fechada(s), ${opened} aberta(s)`);
+    const { regenerated } = await this.raids.runDragonFury(now);
+    if (regenerated > 0) this.logger.log(`Fúria do dragão: ${regenerated} Raid(s) com vida devolvida ao chefe`);
+  }
+
   run(): Promise<void> {
     if (!this.inFlight) {
-      this.inFlight = this.raids
-        .runWeeklyClose(this.clock())
-        .then(({ closed, opened }) => {
-          if (closed + opened > 0) this.logger.log(`Fechamento semanal: ${closed} Raid(s) fechada(s), ${opened} aberta(s)`);
-        })
+      this.inFlight = this.closeWeekAndApplyFury()
         .catch((error: unknown) => {
-          this.logger.error('Fechamento semanal falhou; nova tentativa no próximo minuto', error instanceof Error ? error.stack : String(error));
+          this.logger.error('Fechamento semanal ou Fúria do dragão falhou; nova tentativa no próximo minuto', error instanceof Error ? error.stack : String(error));
         })
         .finally(() => {
           this.inFlight = null;

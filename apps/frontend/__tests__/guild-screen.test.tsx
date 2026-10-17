@@ -43,6 +43,9 @@ const raid = (overrides: Partial<ActiveRaid> = {}): ActiveRaid => ({
   endsAt: new Date(Date.now() + 2 * DAY + 3.5 * 60 * 60 * 1000).toISOString(),
   status: 'active',
   goalReachedAt: null,
+  regeneratedXp: 0,
+  healthXp: 0,
+  furyPercent: 5,
   weekDays: ['2026-10-05', '2026-10-06', '2026-10-07', '2026-10-08', '2026-10-09', '2026-10-10', '2026-10-11'],
   today: '2026-10-07',
   studyDays: [],
@@ -276,6 +279,15 @@ describe('GuildScreen', () => {
     beforeEach(() => {
       mockedMine.mockResolvedValue(mine);
       mockedMembers.mockResolvedValue(members(['Ana']));
+    });
+
+    it('counts what the Fúria gave back in the goal of the progress bar', async () => {
+      mockedRaid.mockResolvedValue(raid({ progressXp: 250, regeneratedXp: 100, healthXp: 850 }));
+      await renderGuild();
+
+      const bar = await screen.findByTestId('guild-raid-progress');
+      expect(bar.props.accessibilityLabel).toBe('Progresso da Raid: 250 de 1100 XP, 22%');
+      expect(screen.getByText('250 / 1100 XP')).toBeTruthy();
     });
 
     it('shows the Missão, the collective goal with an accessible progress bar, the time left and the reward', async () => {

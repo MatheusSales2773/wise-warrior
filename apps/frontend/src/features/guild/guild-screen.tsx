@@ -171,7 +171,9 @@ function RaidThumbnail() {
 
 function RaidDetails({ guildId, raid }: { guildId: string; raid: ActiveRaid }) {
   const now = useNow(30_000);
-  const percent = raidProgressPercent(raid.progressXp, raid.goalXp);
+  // The Meta batida takes the goal plus what the Fúria gave back to the boss.
+  const neededXp = raid.goalXp + raid.regeneratedXp;
+  const percent = raidProgressPercent(raid.progressXp, neededXp);
   return (
     <>
       <RaidThumbnail />
@@ -179,13 +181,13 @@ function RaidDetails({ guildId, raid }: { guildId: string; raid: ActiveRaid }) {
       <WiseText color="textSecondary" variant="body">{raid.mission.description}</WiseText>
       <View style={styles.stack}>
         <ProgressBar
-          accessibilityLabel={`Progresso da Raid: ${raid.progressXp} de ${raid.goalXp} XP, ${percent}%`}
-          maximumValue={raid.goalXp}
+          accessibilityLabel={`Progresso da Raid: ${raid.progressXp} de ${neededXp} XP, ${percent}%`}
+          maximumValue={neededXp}
           size="tall"
           testID="guild-raid-progress"
-          value={Math.min(raid.progressXp, raid.goalXp)}
+          value={Math.min(raid.progressXp, neededXp)}
         />
-        <WiseText variant="body">{raid.progressXp} / {raid.goalXp} XP</WiseText>
+        <WiseText variant="body">{raid.progressXp} / {neededXp} XP</WiseText>
         {raid.goalReachedAt ? (
           <WiseText accessibilityLiveRegion="polite" color="accentPrimary" testID="guild-raid-goal-reached" variant="label">
             {RAID_GOAL_REACHED}

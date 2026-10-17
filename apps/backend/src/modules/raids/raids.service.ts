@@ -15,6 +15,7 @@ import { MissionChoiceService } from './mission-choice.service';
 import { MissionRewardItem } from './entities/mission-reward-item.entity';
 import { Raid } from './entities/raid.entity';
 import { RAID_CLOCK, type RaidClock } from './raid-clock';
+import { bossHealthXp, furyDaysDue, furyRegenXp, getRaidFuryRegenPercent } from './domain/dragon-fury';
 import { missionIndexForWeek, proportionalGoalXp, raidWeekAt, raidWeekDayKeys, studyDaysOf, studyStreak, zonedDayKey } from './domain/raid-week';
 import { UsersService, type EquippedAppearance } from '../users/users.service';
 import { EconomyService } from '../economy/economy.service';
@@ -50,6 +51,12 @@ export interface ActiveRaid {
   party: RaidRankingEntry[];
   goalXp: number;
   progressXp: number;
+  /** Vida que a Fúria do dragão já devolveu ao chefe. */
+  regeneratedXp: number;
+  /** Vida do chefe: `goalXp − progressXp + regeneratedXp`, entre 0 e `goalXp`. */
+  healthXp: number;
+  /** A regra da Fúria: o percentual da meta que o chefe recupera por dia inteiro sem Dia de estudo. */
+  furyPercent: number;
   goalReachedAt: Date | null;
   startsAt: Date;
   endsAt: Date;
@@ -148,6 +155,10 @@ export interface RaidProgress {
   progressXp: number;
   goalXp: number;
   goalReachedAt: Date | null;
+  /** Vida que a Fúria do dragão já devolveu ao chefe. */
+  regeneratedXp: number;
+  /** Vida do chefe depois do evento. */
+  healthXp: number;
 }
 
 /** The Golpe of a new Contribution, for the `raid:hit` event. */
@@ -307,6 +318,7 @@ export class RaidsService {
         missionId: mission.id,
         goalXp: proportionalGoalXp(memberCount, week, now),
         progressXp: 0,
+        openedAt: now,
         startsAt: week.startsAt,
         endsAt: week.endsAt,
         status: 'active',
@@ -356,6 +368,9 @@ export class RaidsService {
       party,
       goalXp: raid.goalXp,
       progressXp: raid.progressXp,
+      regeneratedXp: raid.regeneratedXp,
+      healthXp: bossHealthXp(raid),
+      furyPercent: getRaidFuryRegenPercent(),
       goalReachedAt: raid.goalReachedAt,
       startsAt: raid.startsAt,
       endsAt: raid.endsAt,
@@ -465,7 +480,7 @@ export class RaidsService {
     // Atomic in the database. MySQL evaluates the assignments left to right, so the goal check runs before the increment.
     await manager.query(
       `UPDATE raids
-       SET goal_reached_at = IF(goal_reached_at IS NULL AND progress_xp + ? >= goal_xp, ?, goal_reached_at),
+       SET goal_reached_at = IF(goal_reached_at IS NULL AND progress_xp + ? >= goal_xp + regenerated_xp, ?, goal_reached_at),
            progress_xp = progress_xp + ?
        WHERE id = ?`,
       [xpContributed, endedAt, xpContributed, raidId],
@@ -478,13 +493,7 @@ export class RaidsService {
     return {
       status: 'counted',
       xpContributed,
-      progress: {
-        raidId,
-        guildId: updated.guildId,
-        progressXp: updated.progressXp,
-        goalXp: updated.goalXp,
-        goalReachedAt: updated.goalReachedAt,
-      },
+      progress: this.progressOf(updated),
       hit: hit && { raidId, guildId: updated.guildId, hit },
       notice,
     };
@@ -507,14 +516,28 @@ export class RaidsService {
     void this.chat?.trim(notice.guildId);
   }
 
-  /** Todos os membros conectados veem o progresso (UC02 RE01). */
+  /** Todos os membros conectados veem o progresso e a Vida do chefe (UC02 RE01). */
   publishProgress(progress: RaidProgress): void {
     this.realtime.emitToGuild(progress.guildId, 'raid:progress', {
       raidId: progress.raidId,
       progressXp: progress.progressXp,
       goalXp: progress.goalXp,
       goalReachedAt: progress.goalReachedAt,
+      regeneratedXp: progress.regeneratedXp,
+      healthXp: progress.healthXp,
     });
+  }
+
+  private progressOf(raid: Raid): RaidProgress {
+    return {
+      raidId: raid.id,
+      guildId: raid.guildId,
+      progressXp: raid.progressXp,
+      goalXp: raid.goalXp,
+      goalReachedAt: raid.goalReachedAt,
+      regeneratedXp: raid.regeneratedXp,
+      healthXp: bossHealthXp(raid),
+    };
   }
 
   /** A Guild vê quem causou o Golpe. */
@@ -578,6 +601,54 @@ export class RaidsService {
   }
 
   /**
+   * Fúria do dragão (#195, ADR-012 item 5): for each Raid of the current week still short of the Meta batida, the boss
+   * recovers `RAID_FURY_REGEN_PERCENT`% of the goal for every whole day already over that was not a Dia de estudo. The
+   * days missed while the application was down are applied on its return, and `fury_through` makes each Raid and day
+   * count once. Each Raid is its own transaction under a row lock, shared with the Contribuição, and the Guild hears
+   * about the new Vida do chefe through `raid:progress` after the commit.
+   */
+  async runDragonFury(now: Date): Promise<{ regenerated: number }> {
+    const candidates = await this.raids
+      .createQueryBuilder('raid')
+      .select('raid.id', 'id')
+      .where("raid.status = 'active'")
+      .andWhere('raid.goalReachedAt IS NULL')
+      .andWhere('raid.startsAt <= :now AND raid.endsAt >= :now', { now })
+      .getRawMany<{ id: string }>();
+    const notices: RaidProgress[] = [];
+    for (const { id } of candidates) {
+      const notice = await this.raids.manager.transaction((manager) => this.applyDragonFury(manager, id, now));
+      if (notice) notices.push(notice);
+    }
+    notices.forEach((notice) => this.publishProgress(notice));
+    return { regenerated: notices.length };
+  }
+
+  private async applyDragonFury(manager: EntityManager, raidId: string, now: Date): Promise<RaidProgress | null> {
+    const raid = await manager
+      .createQueryBuilder(Raid, 'raid')
+      .setLock('pessimistic_write')
+      .where('raid.id = :raidId', { raidId })
+      .getOne();
+    if (!raid || raid.status !== 'active' || raid.goalReachedAt !== null) return null;
+
+    const weekDays = raidWeekDayKeys(raidWeekAt(raid.startsAt));
+    const rows = await manager.find(RaidContribution, { select: { createdAt: true }, where: { raidId } });
+    const due = furyDaysDue({ weekDays, openedAt: raid.openedAt ?? raid.startsAt, studyDays: studyDaysOf(rows.map((row) => row.createdAt)), now })
+      .filter((day) => raid.furyThrough === null || day > raid.furyThrough);
+    const today = zonedDayKey(now);
+    const closedDay = weekDays.slice(0, -1).filter((day) => day < today).pop() ?? null;
+    if (closedDay === null || (raid.furyThrough !== null && raid.furyThrough >= closedDay)) return null;
+
+    // Each day gives back its share, but never more than the damage still standing: life does not pass the full bar.
+    const step = furyRegenXp(raid.goalXp, getRaidFuryRegenPercent());
+    let regeneratedXp = raid.regeneratedXp;
+    for (let day = 0; day < due.length; day += 1) regeneratedXp += Math.min(step, Math.max(0, raid.progressXp - regeneratedXp));
+    await manager.update(Raid, { id: raid.id }, { regeneratedXp, furyThrough: closedDay });
+    return regeneratedXp === raid.regeneratedXp ? null : this.progressOf({ ...raid, regeneratedXp });
+  }
+
+  /**
    * Closes one Raid under a row lock, so running the closing twice, or in two processes, changes it once:
    * Meta batida closes it `completed` and raises the Nível da Guild; otherwise it closes `expired`.
    */
@@ -589,7 +660,7 @@ export class RaidsService {
       .getOne();
     if (!raid || raid.status !== 'active' || raid.endsAt.getTime() >= now.getTime()) return null;
 
-    const status = raid.goalReachedAt !== null || raid.progressXp >= raid.goalXp ? 'completed' : 'expired';
+    const status = raid.goalReachedAt !== null || raid.progressXp >= raid.goalXp + raid.regeneratedXp ? 'completed' : 'expired';
     await manager.update(Raid, { id: raid.id }, { status });
     let rewardedUserIds: string[] = [];
     let rewardItemIds: string[] = [];

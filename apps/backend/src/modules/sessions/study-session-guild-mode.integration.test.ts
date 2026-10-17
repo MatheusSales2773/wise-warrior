@@ -231,7 +231,7 @@ describe('Study Session de modo Guilda against MySQL', () => {
       expect((await activeRaid(ana)).me.contributionXp).toBe(0);
       expect(await contributions()).toEqual([expect.objectContaining({ userId: bruno, studySessionId: session.id, xpContributed: 150 })]);
       expect(realtime.emitToGuild).toHaveBeenCalledWith(guildId, 'raid:progress', {
-        raidId, progressXp: 150, goalXp: 100_000, goalReachedAt: null,
+        raidId, progressXp: 150, goalXp: 100_000, goalReachedAt: null, regeneratedXp: 0, healthXp: 99_850,
       });
       expect(realtime.emitToGuild).toHaveBeenCalledWith(guildId, 'raid:hit', {
         raidId, userId: bruno, displayName: 'User 1', xp: 150, focusMinutes: 15, at: expect.any(Date),
@@ -439,7 +439,7 @@ describe('Study Session de modo Guilda against MySQL', () => {
       await completeAtDeadline(diego, third, 'goal-3-done');
       expect(await activeRaid()).toMatchObject({ progressXp: 450, goalReachedAt: reachedAt, status: 'active' });
       expect(realtime.emitToGuild).toHaveBeenCalledWith(guildId, 'raid:progress', {
-        raidId, progressXp: 450, goalXp: 200, goalReachedAt: new Date(reachedAt),
+        raidId, progressXp: 450, goalXp: 200, goalReachedAt: new Date(reachedAt), regeneratedXp: 0, healthXp: 0,
       });
     });
   });

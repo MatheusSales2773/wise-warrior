@@ -53,8 +53,10 @@ operations:
       $ref: "#/channels/guildRoom"
     summary: Progresso da Raid ativa mudou
     description: >
-      Emitido para a room da Guild depois do commit de uma Contribuição. O app atualiza o cache da Raid
-      ativa e invalida o Ranking interno.
+      Emitido para a room da Guild depois do commit de uma Contribuição e, também, quando a Fúria do dragão
+      devolve vida ao chefe (fechamento diário, uma vez por Raid e dia; não é emitido quando a vida já estava
+      cheia). Traz a Vida do chefe e o total regenerado. O app atualiza o cache da Raid ativa e invalida o
+      Ranking interno.
     messages:
       - $ref: "#/channels/guildRoom/messages/raidProgress"
   receiveRaidHit:
@@ -273,7 +275,7 @@ components:
           type: integer
     RaidProgress:
       type: object
-      required: [raidId, progressXp, goalXp, goalReachedAt]
+      required: [raidId, progressXp, goalXp, goalReachedAt, regeneratedXp, healthXp]
       properties:
         raidId:
           type: string
@@ -288,6 +290,14 @@ components:
           type: [string, "null"]
           format: date-time
           description: A primeira vez que o progresso alcançou a meta (Meta batida), ou null
+        regeneratedXp:
+          type: integer
+          minimum: 0
+          description: Vida que a Fúria do dragão já devolveu ao chefe
+        healthXp:
+          type: integer
+          minimum: 0
+          description: Vida do chefe, `goalXp − progressXp + regeneratedXp`, entre 0 e `goalXp`
     RaidHit:
       type: object
       required: [raidId, userId, displayName, xp, focusMinutes, at]

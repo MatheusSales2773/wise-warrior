@@ -103,3 +103,8 @@ export function raidWeekDayKeys(week: RaidWeek): string[] {
   const monday = zonedDayKey(week.startsAt);
   return Array.from({ length: 7 }, (_, index) => shiftDayKey(monday, index));
 }
+
+/** The instant at which a São Paulo calendar day (`YYYY-MM-DD`) begins. */
+export function zonedDayStart(dayKey: string): Date {
+  return new Date(instantAtWallClock(Date.parse(`${dayKey}T00:00:00Z`)));
+}

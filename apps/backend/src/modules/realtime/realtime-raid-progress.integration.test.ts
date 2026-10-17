@@ -38,7 +38,7 @@ import { ChatService } from '../chat/chat.service';
 import { GuildChatMessage } from '../guilds/entities/guild-chat-message.entity';
 import { RealtimeGateway } from './realtime.gateway';
 
-type RaidProgressEvent = { raidId: string; progressXp: number; goalXp: number; goalReachedAt: string | null };
+type RaidProgressEvent = { raidId: string; progressXp: number; goalXp: number; goalReachedAt: string | null; regeneratedXp: number; healthXp: number };
 
 describe('raid:progress over Socket.IO against MySQL', () => {
   jest.setTimeout(30_000);
@@ -171,7 +171,7 @@ describe('raid:progress over Socket.IO against MySQL', () => {
 
     const raid = await contribute(guildId, ana, 120);
 
-    const expected = { raidId: raid.id, progressXp: 120, goalXp: expect.any(Number), goalReachedAt: null };
+    const expected = { raidId: raid.id, progressXp: 120, goalXp: expect.any(Number), goalReachedAt: null, regeneratedXp: 0, healthXp: expect.any(Number) };
     expect(anaClient.events).toEqual([expected]);
     expect(brunoClient.events).toEqual([expected]);
     expect(outsiderClient.events).toEqual([]);

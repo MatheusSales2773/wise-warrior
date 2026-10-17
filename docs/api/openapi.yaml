@@ -1772,7 +1772,7 @@ components:
 
     ActiveRaid:
       type: object
-      required: [id, mission, rewards, coins, party, goalXp, progressXp, goalReachedAt, startsAt, endsAt, status, weekDays, today, studyDays, streak, me, lastHit]
+      required: [id, mission, rewards, coins, party, goalXp, progressXp, regeneratedXp, healthXp, furyPercent, goalReachedAt, startsAt, endsAt, status, weekDays, today, studyDays, streak, me, lastHit]
       properties:
         id: { type: string, format: uuid }
         mission:
@@ -1802,10 +1802,13 @@ components:
           items: { $ref: "#/components/schemas/RaidRankingEntry" }
         goalXp: { type: integer, description: "Meta coletiva, congelada na criação da Raid" }
         progressXp: { type: integer, description: "Soma das Contribuições; continua subindo depois da Meta batida até endsAt" }
+        regeneratedXp: { type: integer, minimum: 0, description: "Vida que a Fúria do dragão já devolveu ao chefe" }
+        healthXp: { type: integer, minimum: 0, description: "Vida do chefe: `goalXp − progressXp + regeneratedXp`, entre 0 e `goalXp`" }
+        furyPercent: { type: integer, minimum: 0, maximum: 100, description: "Fúria do dragão: % da meta que o chefe recupera por dia inteiro da Raid sem Dia de estudo (`RAID_FURY_REGEN_PERCENT`)" }
         goalReachedAt:
           type: [string, "null"]
           format: date-time
-          description: A primeira vez que o progresso alcançou a meta (Meta batida). Não muda o status.
+          description: A primeira vez que o progresso alcançou a meta mais o regenerado, isto é, a Vida do chefe chegou a zero (Meta batida). Não muda o status.
         startsAt: { type: string, format: date-time }
         endsAt: { type: string, format: date-time }
         status: { type: string, enum: [active, completed, expired] }
