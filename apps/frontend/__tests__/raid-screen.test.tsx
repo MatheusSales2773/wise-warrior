@@ -229,7 +229,7 @@ describe('Fúria card and Sequência', () => {
     await renderRaid();
 
     const card = within(await screen.findByTestId('raid-furia'));
-    expect(card.getByTestId('raid-furia-rule').props.children).toBe('O chefe recupera 8% por dia sem estudo.');
+    expect(card.getByTestId('raid-furia-rule').props.children).toBe('Cada dia em que a guilda não estuda, o dragão recupera 16h de vida.');
     expect(card.getByTestId('raid-furia-regenerated').props.children).toBe('Já recuperou 20h de foco.');
   });
 
@@ -273,7 +273,7 @@ describe('Fúria card and Sequência', () => {
 
     const strip = within(await screen.findByTestId('raid-furia'));
     expect(strip.getByTestId('raid-streak').props.children).toBe('Guilda: 3 dias sem falhar');
-    expect(strip.getByTestId('raid-furia-rule').props.children).toBe('O chefe recupera 5% por dia sem estudo.');
+    expect(strip.getByTestId('raid-furia-rule').props.children).toBe('Dias sem estudo devolvem 10h de vida ao dragão.');
     expect(screen.queryByTestId('raid-week-grid')).toBeNull();
   });
 });

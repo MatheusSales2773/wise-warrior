@@ -165,8 +165,15 @@ function StrikesCard({ compact, entries, failed, loading }: { compact: boolean; 
   </Card>;
 }
 
-function furiaRule(raid: ActiveRaid): string {
-  return `O chefe recupera ${raid.furyPercent}% por dia sem estudo.`;
+/** What one day without study gives back, in focus hours: the Figma 06b copy ("recupera 5h de vida"), from the server's percent of the goal. */
+function furiaDailyHours(raid: ActiveRaid): string {
+  return formatFocusHours(Math.floor((raid.goalXp * raid.furyPercent) / 100));
+}
+
+/** Desktop card copy; the phone strip says the same shorter. */
+function furiaRule(raid: ActiveRaid, { compact = false }: { compact?: boolean } = {}): string {
+  const hours = furiaDailyHours(raid);
+  return compact ? `Dias sem estudo devolvem ${hours} de vida ao dragão.` : `Cada dia em que a guilda não estuda, o dragão recupera ${hours} de vida.`;
 }
 
 function furiaRegenerated(raid: ActiveRaid): string {
@@ -223,7 +230,7 @@ function FuriaStrip({ raid }: { raid: ActiveRaid }) {
   return <View accessibilityLabel="Fúria do dragão" role="region" style={styles.furiaStrip} testID="raid-furia">
     <WiseIcon color="feedbackDanger" name="flame" size="small" />
     <Text style={styles.furiaStripText}>
-      <Text testID="raid-furia-rule">{furiaRule(raid)}</Text> <Text testID="raid-furia-regenerated">{furiaRegenerated(raid)}</Text> <Text testID="raid-streak">{formatStreak(raid.streak, { compact: true })}</Text>
+      <Text testID="raid-furia-rule">{furiaRule(raid, { compact: true })}</Text> <Text testID="raid-furia-regenerated">{furiaRegenerated(raid)}</Text> <Text testID="raid-streak">{formatStreak(raid.streak, { compact: true })}</Text>
     </Text>
   </View>;
 }
