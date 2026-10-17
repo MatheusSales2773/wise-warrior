@@ -472,9 +472,8 @@ paths:
         Retorna 200 com o snapshot e canControl, ou 204 sem corpo quando não
         há sessão ativa. Qualquer Session autenticada do usuário pode consultar
         e controlar a Study Session (D-006). Um foco `running` com o prazo
-        canônico vencido é concluído pelo servidor antes da leitura, uma única
-        vez, com as mesmas recompensas da conclusão pelo cliente; nesse caso a
-        resposta é 204.
+        canônico vencido continua sendo devolvido, com remainingSeconds 0, para
+        que o dispositivo que o lê confirme a conclusão e exiba o resultado.
       operationId: getActiveStudySession
       tags: [Sessions]
       responses:
@@ -696,8 +695,11 @@ paths:
         foi alcançado. O servidor limita o foco à duração planejada, aplica a
         validação antifraude e atualiza sessão, progressão, referência ativa e
         recibo idempotente em uma única transação. Repetir a mesma chave e
-        expectedVersion devolve o snapshot original. Registros legados sem
-        estado canônico preservam o comportamento anterior.
+        expectedVersion devolve o snapshot original. Se outro dispositivo ou o
+        servidor já concluiu o foco a partir da expectedVersion enviada, a
+        resposta é 200 com esse resultado confirmado, sem recompensas em
+        dobro. Registros legados sem estado canônico preservam o comportamento
+        anterior.
       operationId: completeStudySession
       tags: [Sessions]
       parameters:
@@ -1986,8 +1988,8 @@ components:
     # Keep operation examples local: each RFC 7807 `instance` names its route.
     StudySessionPauseConflict:
       description: >
-        Versão obsoleta, transição inválida, prazo vencido, falta de controle
-        pela Session iniciadora ou chave já usada por outro comando.
+        Versão obsoleta, transição inválida, prazo vencido ou chave já usada
+        por outro comando.
       content:
         application/problem+json:
           schema: { $ref: "#/components/schemas/Problem" }

@@ -39,11 +39,10 @@ export type StudySessionSnapshot = {
 type ReceiptRow = {
   planned_duration_seconds: number;
   subject: string | null;
-  initiating_session_id: string;
   response_json: StudySessionSnapshot | string;
 };
 
-export function studySessionSnapshot(session: StudySession, authSessionId: string, now: Date): StudySessionSnapshot {
+export function studySessionSnapshot(session: StudySession, now: Date): StudySessionSnapshot {
   const deadline = session.runDeadlineAt ?? null;
   const state = session.state ?? 'running';
   const time = getStudySessionTime({ ...session, state }, now);
@@ -72,10 +71,7 @@ export function studySessionSnapshot(session: StudySession, authSessionId: strin
   };
 }
 
-export function deserializeStudySessionSnapshot(
-  value: StudySessionSnapshot | string,
-  canControl?: boolean,
-): StudySessionSnapshot {
+export function deserializeStudySessionSnapshot(value: StudySessionSnapshot | string): StudySessionSnapshot {
   const original = typeof value === 'string' ? JSON.parse(value) as StudySessionSnapshot : value;
   return {
     ...original,
@@ -85,7 +81,7 @@ export function deserializeStudySessionSnapshot(
     pausedAt: original.pausedAt ? new Date(original.pausedAt) : null,
     serverNow: new Date(original.serverNow),
     endedAt: original.endedAt ? new Date(original.endedAt) : null,
-    canControl: canControl ?? original.canControl,
+    canControl: true, // receipts written before D-006 may hold false
   };
 }
 
@@ -97,11 +93,11 @@ export class StudySessionStartService {
     private readonly raids: RaidsService,
   ) {}
 
-  async active(userId: string, authSessionId: string): Promise<StudySessionSnapshot | null> {
+  async active(userId: string): Promise<StudySessionSnapshot | null> {
     const session = await this.dataSource.getRepository(StudySession).findOne({
       where: { userId, state: In(['running', 'paused']) },
     });
-    return session ? studySessionSnapshot(session, authSessionId, new Date()) : null;
+    return session ? studySessionSnapshot(session, new Date()) : null;
   }
 
   async start(userId: string, authSessionId: string, dto: StartSessionDto, idempotencyKey: string | undefined): Promise<StudySessionSnapshot> {
@@ -126,12 +122,12 @@ export class StudySessionStartService {
       if (!await this.users.lockForUpdate(userId, manager)) throw new BadRequestException('Usuário inválido');
 
       const receipts = await manager.query(
-        'SELECT planned_duration_seconds, subject, initiating_session_id, response_json FROM study_session_start_receipts WHERE user_id = ? AND idempotency_key = ?',
+        'SELECT planned_duration_seconds, subject, response_json FROM study_session_start_receipts WHERE user_id = ? AND idempotency_key = ?',
         [userId, idempotencyKey],
       ) as ReceiptRow[];
       const receipt = receipts[0];
       if (receipt) {
-        const replayed = deserializeStudySessionSnapshot(receipt.response_json, true);
+        const replayed = deserializeStudySessionSnapshot(receipt.response_json);
         if (
           Number(receipt.planned_duration_seconds) !== plannedDurationSeconds
           || receipt.subject !== subject
@@ -178,7 +174,7 @@ export class StudySessionStartService {
         discardedReason: null,
       });
       const saved = await manager.getRepository(StudySession).save(studySession);
-      const snapshot = studySessionSnapshot(saved, authSessionId, now);
+      const snapshot = studySessionSnapshot(saved, now);
       await manager.query('INSERT INTO active_study_sessions (user_id, study_session_id) VALUES (?, ?)', [userId, saved.id]);
       await manager.query(
         'INSERT INTO study_session_command_keys (user_id, idempotency_key, command_kind) VALUES (?, ?, ?)',

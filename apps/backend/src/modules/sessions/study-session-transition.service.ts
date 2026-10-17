@@ -112,7 +112,7 @@ export class StudySessionTransitionService {
   }
 
   private async transition(
-    { userId, authSessionId, studySessionId, action, dto, idempotencyKey }: StudySessionTransitionCommand,
+    { userId, studySessionId, action, dto, idempotencyKey }: StudySessionTransitionCommand,
   ): Promise<StudySessionTransitionResult> {
     if (!isValidIdempotencyKey(idempotencyKey)) {
       throw new BadRequestException({
@@ -166,6 +166,19 @@ export class StudySessionTransitionService {
 
       await rejectIfStudySessionCommandKeyUsed(manager, userId, idempotencyKey);
 
+      // Another device (or the server) already completed this focus from the version the caller saw:
+      // that is the outcome the caller asked for, so answer with it without applying the effects again.
+      if (
+        action === 'complete'
+        && session.terminalReason === 'auto-complete'
+        && dto.expectedVersion === (session.version ?? 1) - 1
+      ) {
+        return {
+          snapshot: { ...studySessionSnapshot(session, this.clock.now()), raidContribution: null },
+          ...NO_TERMINAL_EFFECTS,
+        };
+      }
+
       if ((session.version ?? 1) !== dto.expectedVersion) {
         throw new ConflictException({
           type: problemTypes.versionConflict,
@@ -214,7 +227,7 @@ export class StudySessionTransitionService {
         ? await this.applyTerminalEffects(manager, saved, terminalXpAwarded)
         : NO_TERMINAL_EFFECTS;
       const snapshot: StudySessionTransitionResult = {
-        ...studySessionSnapshot(saved, authSessionId, now),
+        ...studySessionSnapshot(saved, now),
         raidContribution: effects.raidContributionOutcome
           ? { status: effects.raidContributionOutcome.status, xpContributed: effects.raidContributionOutcome.xpContributed }
           : null,
@@ -312,6 +325,10 @@ export class StudySessionTransitionService {
     if (effects.raidContributionOutcome) this.raids.publishContribution(effects.raidContributionOutcome);
   }
 
+  /**
+   * Focus of the day of `endedAt`. There is no upper bound: a late completion passes its deadline, and
+   * no other session can have started after it while this one was running (D-005).
+   */
   private async sumEligibleFocusSecondsToday(
     manager: EntityManager,
     userId: string,

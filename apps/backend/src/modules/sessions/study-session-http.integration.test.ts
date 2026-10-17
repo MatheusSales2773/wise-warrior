@@ -250,23 +250,52 @@ describe('Study Session HTTP contract against MySQL', () => {
     expect(await send('/sessions/active', ownerSessionId).then((response) => response.status)).toBe(204);
   });
 
-  it('completes a running focus whose deadline passed when the active session is read, at the deadline and once', async () => {
+  it('lets a device that returns after the deadline read its expired focus and receive the completion result', async () => {
     await dataSource!.getRepository(Character).insert({ userId, level: 1, xpTotal: 0 });
-    const get = (path: string) => fetch(`${baseUrl}/api/v1${path}`, { headers: authHeaders(otherSessionId) });
     const started = await fetch(`${baseUrl}/api/v1/sessions`, {
       method: 'POST',
-      headers: { ...authHeaders(ownerSessionId), 'Idempotency-Key': 'expired-read-start', 'content-type': 'application/json' },
+      headers: { ...authHeaders(ownerSessionId), 'Idempotency-Key': 'returning-start', 'content-type': 'application/json' },
       body: JSON.stringify({ plannedDurationSeconds: 900 }),
     });
     const { id, runDeadlineAt } = await started.json() as { id: string; runDeadlineAt: string };
 
-    now = new Date(new Date(runDeadlineAt).getTime() + 2 * 24 * 60 * 60 * 1000);
-    expect((await get('/sessions/active')).status).toBe(204);
-    expect((await get('/sessions/active')).status).toBe(204);
+    now = new Date(new Date(runDeadlineAt).getTime() + 5 * 60 * 1000);
+    const active = await fetch(`${baseUrl}/api/v1/sessions/active`, { headers: authHeaders(ownerSessionId) });
+    expect(active.status).toBe(200);
+    expect(await active.json()).toMatchObject({ id, state: 'running', version: 1, runDeadlineAt });
 
-    const recent = await (await get('/sessions/recent')).json() as Array<Record<string, unknown>>;
-    expect(recent).toHaveLength(1);
-    expect(recent[0]).toMatchObject({ id, state: 'completed', endedAt: runDeadlineAt, durationValidSeconds: 900, xpAwarded: 150 });
+    const completed = await fetch(`${baseUrl}/api/v1/sessions/${id}/complete`, {
+      method: 'POST',
+      headers: { ...authHeaders(ownerSessionId), 'Idempotency-Key': 'returning-complete', 'content-type': 'application/json' },
+      body: JSON.stringify({ expectedVersion: 1 }),
+    });
+    expect(completed.status).toBe(200);
+    expect(await completed.json()).toMatchObject({ id, state: 'completed', endedAt: runDeadlineAt, xpAwarded: 150 });
+  });
+
+  it('gives the confirmed result to a second device that completes the same focus late', async () => {
+    await dataSource!.getRepository(Character).insert({ userId, level: 1, xpTotal: 0 });
+    const complete = (id: string, authenticatedSessionId: string, idempotencyKey: string) => fetch(`${baseUrl}/api/v1/sessions/${id}/complete`, {
+      method: 'POST',
+      headers: { ...authHeaders(authenticatedSessionId), 'Idempotency-Key': idempotencyKey, 'content-type': 'application/json' },
+      body: JSON.stringify({ expectedVersion: 1 }),
+    });
+    const started = await fetch(`${baseUrl}/api/v1/sessions`, {
+      method: 'POST',
+      headers: { ...authHeaders(ownerSessionId), 'Idempotency-Key': 'two-devices-start', 'content-type': 'application/json' },
+      body: JSON.stringify({ plannedDurationSeconds: 900 }),
+    });
+    const { id, runDeadlineAt } = await started.json() as { id: string; runDeadlineAt: string };
+
+    now = new Date(new Date(runDeadlineAt).getTime() + 1000);
+    const first = await complete(id, ownerSessionId, 'two-devices-owner');
+    expect(first.status).toBe(200);
+    const late = await complete(id, otherSessionId, 'two-devices-other');
+    expect(late.status).toBe(200);
+    expect(await late.json()).toMatchObject({ id, state: 'completed', version: 2, endedAt: runDeadlineAt, xpAwarded: 150 });
+
+    const recent = await (await fetch(`${baseUrl}/api/v1/sessions/recent`, { headers: authHeaders(otherSessionId) })).json() as Array<Record<string, unknown>>;
+    expect(recent).toEqual([expect.objectContaining({ id, xpAwarded: 150 })]);
   });
 
   it('frees the slot of an expired running focus on start, but never resolves a paused one by age (D-014)', async () => {

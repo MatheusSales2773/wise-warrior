@@ -40,8 +40,8 @@ export class SessionsController {
 
   @Get('active')
   async active(@CurrentUser() user: JwtPayload, @Res({ passthrough: true }) response: Response) {
-    await this.studySessionTransitions.completeExpired(user.sub);
-    const snapshot = await this.studySessionStart.active(user.sub, user.sessionId);
+    // An expired running focus stays readable so the returning device completes it and shows the result.
+    const snapshot = await this.studySessionStart.active(user.sub);
     if (!snapshot) {
       response.status(HttpStatus.NO_CONTENT);
       return;

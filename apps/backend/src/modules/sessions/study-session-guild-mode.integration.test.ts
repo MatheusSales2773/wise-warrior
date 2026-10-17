@@ -311,8 +311,9 @@ describe('Study Session de modo Guilda against MySQL', () => {
         (await call('POST', `/sessions/${session.id}/complete`, bruno, { expectedVersion: 1 }, `race-done-${suffix}`)).status,
       ));
 
-      // A transição serializa as chamadas: este teste cobre o lock e a versão, não o índice único.
-      expect([...statuses].sort()).toEqual([200, 409, 409]);
+      // A transição serializa as chamadas e as atrasadas recebem o resultado confirmado: este teste
+      // cobre o lock e a versão, não o índice único.
+      expect(statuses).toEqual([200, 200, 200]);
       expect((await activeRaid(bruno)).progressXp).toBe(150);
       expect(await contributions()).toHaveLength(1);
       expect(guildEvents()).toEqual(['raid:progress', 'raid:hit']);

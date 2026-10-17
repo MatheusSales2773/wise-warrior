@@ -42,7 +42,7 @@ describe('canonical Study Session start against MySQL', () => {
 
   it('returns absence, defaults to 25 minutes and restores for any Session of the user', async () => {
     const service = createService();
-    expect(await service.active(userId, 'device-a')).toBeNull();
+    expect(await service.active(userId)).toBeNull();
     for (const invalidBody of [
       { plannedDurationSeconds: null }, 42, 'x', true, [], null,
     ]) {
@@ -60,8 +60,7 @@ describe('canonical Study Session start against MySQL', () => {
       serverNow: expect.any(Date), version: 1, endedAt: null, xpAwarded: 0,
       terminalReason: null, discardedReason: null, cappedReason: null, canControl: true,
     }));
-    expect(await service.active(userId, 'device-a')).toMatchObject({ id: started.id, canControl: true });
-    expect(await service.active(userId, 'device-b')).toMatchObject({ id: started.id, canControl: true });
+    expect(await service.active(userId)).toMatchObject({ id: started.id, canControl: true });
     const persisted = await dataSource!.getRepository(StudySession).findOneByOrFail({ id: started.id });
     expect(persisted).toMatchObject({ subject: null, raidId: null, mode: 'solo', initiatingSessionId: 'device-a' });
   });
@@ -108,8 +107,7 @@ describe('canonical Study Session start against MySQL', () => {
     const service = createService();
     const started = await service.start(userId, 'device-a', { subject: '  ÁLGEBRA\u00a0 linear\u2003II  ' }, 'subject-a');
     expect(started.subject).toBe('ÁLGEBRA linear II');
-    expect(await service.active(userId, 'device-a')).toMatchObject({ id: started.id, subject: 'ÁLGEBRA linear II' });
-    expect(await service.active(userId, 'device-b')).toMatchObject({ id: started.id, subject: 'ÁLGEBRA linear II' });
+    expect(await service.active(userId)).toMatchObject({ id: started.id, subject: 'ÁLGEBRA linear II' });
     expect(await dataSource!.getRepository(StudySession).findOneByOrFail({ id: started.id }))
       .toMatchObject({ subject: 'ÁLGEBRA linear II' });
     expect(await dataSource!.query(

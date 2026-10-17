@@ -19,15 +19,13 @@ describe('SessionsController start and restore contract', () => {
 
   it('returns 204 when no active Study Session exists', async () => {
     const studySessionStart = { active: jest.fn().mockResolvedValue(null) } as unknown as StudySessionStartService;
-    const transitions = { completeExpired: jest.fn().mockResolvedValue(undefined) } as unknown as StudySessionTransitionService;
-    const controller = new SessionsController({} as SessionsService, studySessionStart, transitions);
+    const controller = new SessionsController({} as SessionsService, studySessionStart, {} as never);
     const status = jest.fn();
     const response = { status } as unknown as Response;
 
     await expect(controller.active(user, response)).resolves.toBeUndefined();
     expect(status).toHaveBeenCalledWith(204);
-    expect(studySessionStart.active).toHaveBeenCalledWith('user-1', 'device-1');
-    expect(transitions.completeExpired).toHaveBeenCalledWith('user-1');
+    expect(studySessionStart.active).toHaveBeenCalledWith('user-1');
   });
 
   it('forwards the authenticated Session and idempotency key to start', async () => {
