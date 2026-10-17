@@ -27,6 +27,8 @@ channels:
         $ref: "#/components/messages/raidProgress"
       raidHit:
         $ref: "#/components/messages/raidHit"
+      chatMessage:
+        $ref: "#/components/messages/chatMessage"
   userRoom:
     address: "user:{userId}"
     description: Room Socket.IO de um usuário. Todos os sockets dele, em qualquer dispositivo, entram nela.
@@ -66,6 +68,23 @@ operations:
       ("−75 Eldoria · 25 min") e atualiza a Raid ativa e o Ranking interno.
     messages:
       - $ref: "#/channels/guildRoom/messages/raidHit"
+  receiveChatMessage:
+    action: receive
+    channel:
+      $ref: "#/channels/guildRoom"
+    summary: Nova mensagem no Mural
+    description: >
+      Emitido para a room da Guild a cada mensagem do Mural. Mensagem de membro tem `kind = message`.
+      Um Golpe da Raid gera um Aviso (`kind = raid_hit`), gravado pelo Service do chat na transação da
+      Contribuição e emitido depois do commit, uma vez só por Contribuição. O Aviso não tem autor humano:
+      `userId` e `displayName` são os do autor do Golpe e `body` vem vazio; o app monta o texto com o nome
+      atual e o `xp`. Avisos têm `seq` como as demais mensagens, aparecem no histórico (`chat:history`) e são
+      recuperados na reconexão (`chat:sync`). Membros não enviam Avisos: `chat:send` só cria `kind = message`
+      e ignora `kind`, `xp` e `contributionId` do payload. As respostas de `chat:history` e `chat:sync`
+      (comandos cliente → servidor, com ack) trazem a mesma forma `ChatMessage` em `messages`, Avisos incluídos.
+      O `seq` de um Aviso é sempre menor que o de qualquer mensagem de membro gravada depois do seu commit.
+    messages:
+      - $ref: "#/channels/guildRoom/messages/chatMessage"
   receiveRaidComplete:
     action: receive
     channel:
@@ -138,6 +157,12 @@ components:
       contentType: application/json
       payload:
         $ref: "#/components/schemas/RaidHit"
+    chatMessage:
+      name: chat:message
+      title: Mensagem ou Aviso do Mural
+      contentType: application/json
+      payload:
+        $ref: "#/components/schemas/ChatMessage"
     raidComplete:
       name: notification:raidComplete
       title: Raid encerrada
@@ -169,6 +194,33 @@ components:
       payload:
         $ref: "#/components/schemas/CoinsChanged"
   schemas:
+    ChatMessage:
+      type: object
+      required: [id, seq, guildId, userId, displayName, kind, xp, body, sentAt]
+      properties:
+        id: { type: string, format: uuid }
+        seq:
+          type: integer
+          description: Sequência monotônica por Guild; pagina o histórico e recupera mensagens perdidas na reconexão
+        guildId: { type: string, format: uuid }
+        userId:
+          type: string
+          format: uuid
+          description: Autor da mensagem, ou autor do Golpe quando `kind = raid_hit`
+        displayName:
+          type: string
+          description: Nome atual do autor
+        kind:
+          type: string
+          enum: [message, raid_hit]
+          description: "`raid_hit` é um Aviso do Mural, automático e sem autor humano"
+        xp:
+          type: [integer, "null"]
+          description: XP do Golpe anunciado; null em mensagens de membros
+        body:
+          type: string
+          description: Texto do membro; vazio em Avisos
+        sentAt: { type: string, format: date-time }
     CoinsChanged:
       type: object
       required: [balance, delta, origin]

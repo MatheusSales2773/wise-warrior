@@ -16,6 +16,9 @@ import { GuildChatMessage } from '../guilds/entities/guild-chat-message.entity';
 import { GuildMembership } from '../guilds/entities/guild-membership.entity';
 import { GuildsService } from '../guilds/guilds.service';
 import { User } from '../users/entities/user.entity';
+import { Mission } from '../raids/entities/mission.entity';
+import { Raid } from '../raids/entities/raid.entity';
+import { RaidContribution } from '../raids/entities/raid-contribution.entity';
 import { ChatGateway } from './chat.gateway';
 import { ChatService } from './chat.service';
 import { CHAT_RETAINED_MESSAGES } from './chat-policy';
@@ -290,5 +293,116 @@ describe('guild chat and presence against MySQL and Socket.IO', () => {
     expect(kept[0]?.body).toBe('m2');
     expect(kept.at(-1)?.body).toBe('nova');
     expect(await repository.count({ where: { guildId: GUILD_B } })).toBe(1);
+  });
+  describe('Avisos do Mural (raid_hit)', () => {
+    async function contribution(userId: string, xp: number): Promise<string> {
+      const raids = dataSource!.getRepository(Raid);
+      let raid = await raids.findOneBy({ guildId: GUILD_A });
+      if (!raid) {
+        const mission = await dataSource!.getRepository(Mission).findOneOrFail({ where: {} });
+        raid = await raids.save(raids.create({
+          guildId: GUILD_A, missionId: mission.id, goalXp: 1000,
+          startsAt: new Date('2026-10-05T03:00:00Z'), endsAt: new Date('2026-10-12T02:59:59Z'),
+        }));
+      }
+      const saved = await dataSource!.getRepository(RaidContribution).save({ raidId: raid.id, userId, xpContributed: xp });
+      return saved.id;
+    }
+    const announce = (service: ChatService, contributionId: string, userId: string, xp: number) =>
+      dataSource!.transaction((manager) => service.recordRaidHit(manager, { guildId: GUILD_A, userId, contributionId, xp }));
+
+    it('stores a structured Aviso with a sequence, in the history and in the reconnection sync', async () => {
+      const { service } = await setup();
+      const first = await service.send(GUILD_A, ANA.id, 'oi');
+      const notice = await announce(service, await contribution(BRUNO.id, 75), BRUNO.id, 75);
+
+      expect(notice).toMatchObject({ kind: 'raid_hit', guildId: GUILD_A, userId: BRUNO.id, displayName: 'u-bruno', xp: 75, body: '' });
+      expect(notice!.seq).toBeGreaterThan(first.seq);
+      expect((await service.history(GUILD_A, ANA.id)).messages.map((m) => m.kind)).toEqual(['message', 'raid_hit']);
+      expect((await service.messagesAfter(GUILD_A, ANA.id, first.seq)).messages).toEqual([notice]);
+    });
+
+    it('shows the author\'s current name, not the one at the time of the Golpe', async () => {
+      const { service } = await setup();
+      await announce(service, await contribution(BRUNO.id, 75), BRUNO.id, 75);
+      await dataSource!.getRepository(User).update({ id: BRUNO.id }, { displayName: 'Bruno Novo' });
+
+      expect((await service.history(GUILD_A, ANA.id)).messages[0]).toMatchObject({ kind: 'raid_hit', displayName: 'Bruno Novo' });
+    });
+
+    it('does not announce the same Contribution twice', async () => {
+      const { service } = await setup();
+      const id = await contribution(BRUNO.id, 75);
+      expect(await announce(service, id, BRUNO.id, 75)).not.toBeNull();
+      expect(await announce(service, id, BRUNO.id, 75)).toBeNull();
+      expect(await dataSource!.getRepository(GuildChatMessage).countBy({ kind: 'raid_hit' })).toBe(1);
+    });
+
+    it('removes the Aviso with its Contribution', async () => {
+      const { service } = await setup();
+      const id = await contribution(BRUNO.id, 75);
+      await announce(service, id, BRUNO.id, 75);
+      await dataSource!.getRepository(RaidContribution).delete({ id });
+      expect(await dataSource!.getRepository(GuildChatMessage).countBy({ kind: 'raid_hit' })).toBe(0);
+    });
+
+    it('gives a member message sent during the Golpe transaction a higher seq than the Aviso', async () => {
+      const { service } = await setup();
+      const id = await contribution(BRUNO.id, 75);
+      const runner = dataSource!.createQueryRunner();
+      await runner.connect();
+      await runner.startTransaction();
+      const notice = await service.recordRaidHit(runner.manager, { guildId: GUILD_A, userId: BRUNO.id, contributionId: id, xp: 75 });
+      let sent = false;
+      const message = service.send(GUILD_A, ANA.id, 'durante o golpe').then((view) => { sent = true; return view; });
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      expect(sent).toBe(false); // waits for the Aviso to commit
+      await runner.commitTransaction();
+      await runner.release();
+
+      expect((await message).seq).toBeGreaterThan(notice!.seq);
+    });
+
+    it('leaves no Aviso behind when the Contribution transaction rolls back', async () => {
+      const { service } = await setup();
+      const id = await contribution(BRUNO.id, 75);
+      await expect(dataSource!.transaction(async (manager) => {
+        await service.recordRaidHit(manager, { guildId: GUILD_A, userId: BRUNO.id, contributionId: id, xp: 75 });
+        throw new Error('rollback');
+      })).rejects.toThrow('rollback');
+      expect(await dataSource!.getRepository(GuildChatMessage).countBy({ kind: 'raid_hit' })).toBe(0);
+      expect(await announce(service, id, BRUNO.id, 75)).not.toBeNull();
+    });
+
+    it('removes the Avisos of an account that is deleted', async () => {
+      const { service } = await setup();
+      await announce(service, await contribution(BRUNO.id, 75), BRUNO.id, 75);
+      await dataSource!.getRepository(User).delete({ id: BRUNO.id });
+      expect(await dataSource!.getRepository(GuildChatMessage).countBy({ kind: 'raid_hit' })).toBe(0);
+    });
+
+    it('prunes Avisos together with messages, keeping only the latest', async () => {
+      const { service } = await setup();
+      for (let index = 0; index < CHAT_RETAINED_MESSAGES + 2; index += 1) {
+        await announce(service, await contribution(BRUNO.id, 1), BRUNO.id, 1);
+      }
+      await service.trim(GUILD_A);
+      expect(await dataSource!.getRepository(GuildChatMessage).countBy({ guildId: GUILD_A })).toBe(CHAT_RETAINED_MESSAGES);
+    });
+
+    it('ignores a forged kind or xp sent through chat:send', async () => {
+      await setup();
+      const ana = await connectJoined(ANA.id, GUILD_A);
+      const ack = await call(ana, 'chat:send', { guildId: GUILD_A, body: 'oi', kind: 'raid_hit', xp: 9999, contributionId: 'x' });
+      expect(ack.message).toMatchObject({ kind: 'message', xp: null, body: 'oi' });
+      expect(await dataSource!.getRepository(GuildChatMessage).countBy({ kind: 'raid_hit' })).toBe(0);
+    });
+
+    it('never lets a member send an Aviso through chat:send', async () => {
+      const { service } = await setup();
+      const sent = await service.send(GUILD_A, ANA.id, 'falso aviso');
+      expect(sent.kind).toBe('message');
+      expect(sent.xp).toBeNull();
+    });
   });
 });
