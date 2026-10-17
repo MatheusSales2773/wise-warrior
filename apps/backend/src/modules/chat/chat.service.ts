@@ -102,6 +102,10 @@ export class ChatService {
     manager: EntityManager,
     hit: { guildId: string; userId: string; contributionId: string; xp: number },
   ): Promise<ChatMessageView | null> {
+    // `seq` is assigned at INSERT but the Aviso is published after the commit. Holding the Guild row until then makes
+    // any member message wait on its foreign key check, so it always gets a higher `seq` than the Aviso it follows
+    // and `chat:sync(afterSeq)` can never skip an Aviso that commits late.
+    await manager.query('SELECT id FROM guilds WHERE id = ? FOR UPDATE', [hit.guildId]);
     const inserted = await manager
       .createQueryBuilder()
       .insert()

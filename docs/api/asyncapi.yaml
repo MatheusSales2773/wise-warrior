@@ -79,7 +79,10 @@ operations:
       Contribuição e emitido depois do commit, uma vez só por Contribuição. O Aviso não tem autor humano:
       `userId` e `displayName` são os do autor do Golpe e `body` vem vazio; o app monta o texto com o nome
       atual e o `xp`. Avisos têm `seq` como as demais mensagens, aparecem no histórico (`chat:history`) e são
-      recuperados na reconexão (`chat:sync`). Membros não enviam Avisos: `chat:send` só cria `kind = message`.
+      recuperados na reconexão (`chat:sync`). Membros não enviam Avisos: `chat:send` só cria `kind = message`
+      e ignora `kind`, `xp` e `contributionId` do payload. As respostas de `chat:history` e `chat:sync`
+      (comandos cliente → servidor, com ack) trazem a mesma forma `ChatMessage` em `messages`, Avisos incluídos.
+      O `seq` de um Aviso é sempre menor que o de qualquer mensagem de membro gravada depois do seu commit.
     messages:
       - $ref: "#/channels/guildRoom/messages/chatMessage"
   receiveRaidComplete:

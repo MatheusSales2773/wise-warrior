@@ -346,6 +346,58 @@ describe('guild chat and presence against MySQL and Socket.IO', () => {
       expect(await dataSource!.getRepository(GuildChatMessage).countBy({ kind: 'raid_hit' })).toBe(0);
     });
 
+    it('gives a member message sent during the Golpe transaction a higher seq than the Aviso', async () => {
+      const { service } = await setup();
+      const id = await contribution(BRUNO.id, 75);
+      const runner = dataSource!.createQueryRunner();
+      await runner.connect();
+      await runner.startTransaction();
+      const notice = await service.recordRaidHit(runner.manager, { guildId: GUILD_A, userId: BRUNO.id, contributionId: id, xp: 75 });
+      let sent = false;
+      const message = service.send(GUILD_A, ANA.id, 'durante o golpe').then((view) => { sent = true; return view; });
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      expect(sent).toBe(false); // waits for the Aviso to commit
+      await runner.commitTransaction();
+      await runner.release();
+
+      expect((await message).seq).toBeGreaterThan(notice!.seq);
+    });
+
+    it('leaves no Aviso behind when the Contribution transaction rolls back', async () => {
+      const { service } = await setup();
+      const id = await contribution(BRUNO.id, 75);
+      await expect(dataSource!.transaction(async (manager) => {
+        await service.recordRaidHit(manager, { guildId: GUILD_A, userId: BRUNO.id, contributionId: id, xp: 75 });
+        throw new Error('rollback');
+      })).rejects.toThrow('rollback');
+      expect(await dataSource!.getRepository(GuildChatMessage).countBy({ kind: 'raid_hit' })).toBe(0);
+      expect(await announce(service, id, BRUNO.id, 75)).not.toBeNull();
+    });
+
+    it('removes the Avisos of an account that is deleted', async () => {
+      const { service } = await setup();
+      await announce(service, await contribution(BRUNO.id, 75), BRUNO.id, 75);
+      await dataSource!.getRepository(User).delete({ id: BRUNO.id });
+      expect(await dataSource!.getRepository(GuildChatMessage).countBy({ kind: 'raid_hit' })).toBe(0);
+    });
+
+    it('prunes Avisos together with messages, keeping only the latest', async () => {
+      const { service } = await setup();
+      for (let index = 0; index < CHAT_RETAINED_MESSAGES + 2; index += 1) {
+        await announce(service, await contribution(BRUNO.id, 1), BRUNO.id, 1);
+      }
+      await service.trim(GUILD_A);
+      expect(await dataSource!.getRepository(GuildChatMessage).countBy({ guildId: GUILD_A })).toBe(CHAT_RETAINED_MESSAGES);
+    });
+
+    it('ignores a forged kind or xp sent through chat:send', async () => {
+      await setup();
+      const ana = await connectJoined(ANA.id, GUILD_A);
+      const ack = await call(ana, 'chat:send', { guildId: GUILD_A, body: 'oi', kind: 'raid_hit', xp: 9999, contributionId: 'x' });
+      expect(ack.message).toMatchObject({ kind: 'message', xp: null, body: 'oi' });
+      expect(await dataSource!.getRepository(GuildChatMessage).countBy({ kind: 'raid_hit' })).toBe(0);
+    });
+
     it('never lets a member send an Aviso through chat:send', async () => {
       const { service } = await setup();
       const sent = await service.send(GUILD_A, ANA.id, 'falso aviso');
