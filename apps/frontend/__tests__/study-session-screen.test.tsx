@@ -619,13 +619,15 @@ it('restores a controllable session and only informs about a remote session', as
   await waitFor(() => expect(heartbeat).toHaveBeenCalledTimes(4));
   view.unmount();
 
+  // D-006: a session started on another device is controlled here too, whatever canControl says.
   heartbeat.mockClear();
   getActive.mockResolvedValue({ ...snapshot, canControl: false });
   const remote = await renderStudySession();
-  await remote.view.findByTestId('study-session-remote-conflict');
-  expect(remote.view.queryByTestId('study-session-start')).toBeNull();
-  expect(remote.view.queryByTestId('study-session-timer')).toBeNull();
-  expect(heartbeat).not.toHaveBeenCalled();
+  await remote.view.findByTestId('study-session-timer');
+  expect(remote.view.getByTestId('study-session-pause')).toBeTruthy();
+  expect(remote.view.getByTestId('study-session-stop')).toBeTruthy();
+  expect(remote.view.queryByText('Foco em outro dispositivo')).toBeNull();
+  await waitFor(() => expect(heartbeat).toHaveBeenCalledWith('study-1', expect.any(AbortSignal)));
   remote.view.unmount();
 });
 

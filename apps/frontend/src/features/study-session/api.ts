@@ -27,6 +27,7 @@ export type StudySessionSnapshot = {
   discardedReason: string | null;
   /** Antifraude limit that truncated the valid focus (ADR-011); absent on responses from older servers. */
   cappedReason?: 'continuous-limit' | 'daily-limit' | null;
+  /** Always true since D-006; kept for contract compatibility and never read by the app. */
   canControl: boolean;
   receivedAtMs: number;
 };

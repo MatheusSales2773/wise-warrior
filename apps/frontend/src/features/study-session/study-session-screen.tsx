@@ -454,10 +454,11 @@ export function StudySessionScreen({ initialMode = 'solo' }: { initialMode?: Ses
     return result;
   }, [refetchActive]);
   const activeSnapshot = active.data;
-  // A session started elsewhere ends the local break: drop it once, not on every render.
+  // A session started elsewhere ends the local break and the previous result: drop them once, not on every render.
   if ((activeSnapshot != null) !== sawActiveSession) {
     setSawActiveSession(activeSnapshot != null);
     if (activeSnapshot != null && breakRun) setBreakRun(null);
+    if (activeSnapshot != null && terminalResult && terminalResult.id !== activeSnapshot.id) setTerminalResult(null);
   }
   const hasActiveSession = activeSnapshot != null;
   useEffect(() => {
@@ -670,7 +671,6 @@ export function StudySessionScreen({ initialMode = 'solo' }: { initialMode?: Ses
   useEffect(() => {
     if (
       !activeSnapshot
-      || !activeSnapshot.canControl
       || activeSnapshot.state !== 'running'
       || !applicationActive
       || active.isFetching
@@ -733,12 +733,12 @@ export function StudySessionScreen({ initialMode = 'solo' }: { initialMode?: Ses
       ? 'Sessão pausada. O contador está congelado.'
       : 'Sessão em andamento. O contador está ativo.';
   useEffect(() => {
-    if (!snapshot?.canControl || announcedStatus.current === sessionStatus) return;
+    if (!snapshot || announcedStatus.current === sessionStatus) return;
     announcedStatus.current = sessionStatus;
     if (Platform.OS === 'ios') {
       AccessibilityInfo.announceForAccessibilityWithOptions(sessionStatus, { queue: true });
     }
-  }, [sessionStatus, snapshot?.canControl]);
+  }, [sessionStatus, snapshot]);
 
   const subjectValidation = validateSubject(subjectInput);
   const subjectMessage = subjectError(subjectValidation);
@@ -769,7 +769,7 @@ export function StudySessionScreen({ initialMode = 'solo' }: { initialMode?: Ses
   };
 
   const changeSessionState = (action: TransitionAction) => {
-    if (!snapshot?.canControl || transition.isPending || retryAvailable || refreshingCanonicalSnapshot) return;
+    if (!snapshot || transition.isPending || retryAvailable || refreshingCanonicalSnapshot) return;
     const command = retryTransition?.id === snapshot.id && retryTransition.action === action
       ? retryTransition
       : { id: snapshot.id, action, expectedVersion: snapshot.version, idempotencyKey: newIdempotencyKey() };
@@ -818,13 +818,6 @@ export function StudySessionScreen({ initialMode = 'solo' }: { initialMode?: Ses
           <WiseCard style={styles.messageCard} testID="study-session-load-error">
             <WiseText variant="body">Não foi possível consultar sua sessão. Verifique a conexão.</WiseText>
             <WiseButton label="Tentar novamente" onPress={() => void refreshActive()} variant="secondary" />
-          </WiseCard>
-        ) : null}
-        {snapshot && !snapshot.canControl ? (
-          <WiseCard style={styles.messageCard} testID="study-session-remote-conflict">
-            <WiseText variant="subtitle">Foco em outro dispositivo</WiseText>
-            <WiseText variant="body">Já existe uma sessão ativa nesta conta. Volte ao dispositivo que a iniciou para acompanhá-la.</WiseText>
-            <WiseButton label="Atualizar estado" onPress={() => void refreshActive()} variant="secondary" />
           </WiseCard>
         ) : null}
         {breakRun && !activeSnapshot ? (
@@ -894,7 +887,7 @@ export function StudySessionScreen({ initialMode = 'solo' }: { initialMode?: Ses
             />
           </WiseCard>
         ) : null}
-        {snapshot?.canControl && !displayedTerminalResult ? (
+        {snapshot && !displayedTerminalResult ? (
           <View style={[styles.forgeColumns, wideLayout && styles.forgeColumnsWide]} testID="study-session-active">
           <WiseCard style={[styles.stage, wideLayout && styles.stageWide]} testID="study-session-stage">
             <ForgeStageGradient />
