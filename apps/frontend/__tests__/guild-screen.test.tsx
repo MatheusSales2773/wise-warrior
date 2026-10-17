@@ -281,6 +281,15 @@ describe('GuildScreen', () => {
       mockedMembers.mockResolvedValue(members(['Ana']));
     });
 
+    it('counts what the Fúria gave back in the goal of the progress bar', async () => {
+      mockedRaid.mockResolvedValue(raid({ progressXp: 250, regeneratedXp: 100, healthXp: 850 }));
+      await renderGuild();
+
+      const bar = await screen.findByTestId('guild-raid-progress');
+      expect(bar.props.accessibilityLabel).toBe('Progresso da Raid: 250 de 1100 XP, 22%');
+      expect(screen.getByText('250 / 1100 XP')).toBeTruthy();
+    });
+
     it('shows the Missão, the collective goal with an accessible progress bar, the time left and the reward', async () => {
       await renderGuild();
 
