@@ -514,7 +514,7 @@ describe('Study Session de modo Guilda against MySQL', () => {
         raidId, userId: bruno, studySessionId: session.id, xpContributed: 999, endedAt: completionNow,
       }));
 
-      expect(outcome).toEqual({ status: 'counted', xpContributed: 150, progress: null, hit: null });
+      expect(outcome).toEqual({ status: 'counted', xpContributed: 150, progress: null, hit: null, notice: null });
       expect((await activeRaid()).progressXp).toBe(150);
       expect(await contributions()).toHaveLength(1);
       expect(realtime.emitToGuild).not.toHaveBeenCalled();
