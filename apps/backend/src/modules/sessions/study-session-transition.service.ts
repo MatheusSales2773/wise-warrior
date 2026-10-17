@@ -9,10 +9,11 @@ import { DataSource, type EntityManager } from 'typeorm';
 import { ProgressionService } from '../progression/progression.service';
 import { RaidsService, type RaidContributionOutcome } from '../raids/raids.service';
 import { EconomyService } from '../economy/economy.service';
+import { UsersService } from '../users/users.service';
 import type { CoinMovementResult } from '../economy/domain/coin-origin';
 import { StudySession } from './entities/study-session.entity';
-import type { StudySessionSnapshot } from './study-session-start.service';
-import { deserializeStudySessionSnapshot, studySessionSnapshot } from './study-session-start.service';
+import type { StudySessionSnapshot } from './study-session-snapshot';
+import { deserializeStudySessionSnapshot, studySessionSnapshot } from './study-session-snapshot';
 import { StudySessionTransitionDto } from './dto/study-session-transition.dto';
 import { coinsForDuration } from './domain/coin-rate';
 import { isValidIdempotencyKey } from './domain/idempotency-key';
@@ -93,6 +94,7 @@ export class StudySessionTransitionService {
     private readonly progression: ProgressionService,
     private readonly raids: RaidsService,
     private readonly economy: EconomyService,
+    private readonly users: UsersService,
   ) {}
 
   pause(command: StudySessionTransitionContext): Promise<StudySessionTransitionResult> {
@@ -129,7 +131,7 @@ export class StudySessionTransitionService {
 
     const result = await this.dataSource.transaction(async (manager) => {
       // Match the user-first lock order used by start, serializing the per-user idempotency key scope.
-      await manager.query('SELECT id FROM users WHERE id = ? FOR UPDATE', [userId]);
+      await this.users.lockForUpdate(userId, manager);
 
       const sessions = manager.getRepository(StudySession);
       const session = await sessions
@@ -194,12 +196,7 @@ export class StudySessionTransitionService {
           const priorDailySeconds = await this.sumEligibleFocusSecondsToday(manager, userId, studySessionId, now);
           stopResult = applyStudySessionStop(session, now, priorDailySeconds);
         } else if (action === 'complete') {
-          const priorDailySeconds = session.state === 'running'
-            && session.runDeadlineAt
-            && now.getTime() >= session.runDeadlineAt.getTime()
-            ? await this.sumEligibleFocusSecondsToday(manager, userId, studySessionId, session.runDeadlineAt)
-            : 0;
-          completionResult = applyStudySessionComplete(session, now, priorDailySeconds);
+          completionResult = await this.completeAtDeadline(manager, session, now);
         } else {
           applyStudySessionTransition(session, action, now);
         }
@@ -252,33 +249,40 @@ export class StudySessionTransitionService {
   /**
    * ADR-011 item 6: a running focus completes at its canonical deadline even when no client calls
    * `/complete`, so a device that died at the deadline does not hold the only active slot forever.
-   * Paused sessions never complete by age (D-014).
+   * Paused sessions never complete by age (D-014). Runs in the caller's transaction, which already
+   * holds the user lock, and returns the publication to run once that transaction commits.
    */
-  async completeExpired(userId: string): Promise<void> {
+  async completeExpiredInTransaction(manager: EntityManager, userId: string): Promise<() => void> {
     const now = this.clock.now();
-    const expiredWhere = 'studySession.userId = :userId AND studySession.state = :running AND studySession.runDeadlineAt <= :now';
-    const parameters = { userId, running: 'running', now };
-    const pending = await this.dataSource.getRepository(StudySession)
+    // A plain read finds the candidate and the lock goes by primary key: a locking range read here takes
+    // gap locks that deadlock with the inserts of other users' concurrent starts.
+    const expired = await manager.getRepository(StudySession)
       .createQueryBuilder('studySession')
-      .where(expiredWhere, parameters)
-      .getExists();
-    if (!pending) return;
-
-    const effects = await this.dataSource.transaction(async (manager) => {
-      await manager.query('SELECT id FROM users WHERE id = ? FOR UPDATE', [userId]);
-      const session = await manager.getRepository(StudySession)
-        .createQueryBuilder('studySession')
-        .where(expiredWhere, parameters)
-        .setLock('pessimistic_write')
-        .getOne();
-      // Another request completed it while this one waited for the lock.
-      if (!session) return NO_TERMINAL_EFFECTS;
-      const priorDailySeconds = await this.sumEligibleFocusSecondsToday(manager, userId, session.id, session.runDeadlineAt!);
-      const completion = applyStudySessionComplete(session, now, priorDailySeconds);
-      const saved = await manager.getRepository(StudySession).save(session);
-      return this.applyTerminalEffects(manager, saved, completion.xpAwarded);
+      .select('studySession.id')
+      .where(
+        'studySession.userId = :userId AND studySession.state = :running AND studySession.runDeadlineAt <= :now',
+        { userId, running: 'running', now },
+      )
+      .getOne();
+    if (!expired) return () => undefined;
+    const session = await manager.getRepository(StudySession).findOneOrFail({
+      where: { id: expired.id },
+      lock: { mode: 'pessimistic_write' },
     });
-    this.publishTerminalEffects(userId, effects);
+    const completion = await this.completeAtDeadline(manager, session, now);
+    const saved = await manager.getRepository(StudySession).save(session);
+    const effects = await this.applyTerminalEffects(manager, saved, completion.xpAwarded);
+    return () => this.publishTerminalEffects(userId, effects);
+  }
+
+  /** The daily cap of a completion counts the focus of the deadline day, even when it is recorded later. */
+  private async completeAtDeadline(manager: EntityManager, session: StudySession, now: Date) {
+    const priorDailySeconds = session.state === 'running'
+      && session.runDeadlineAt
+      && now.getTime() >= session.runDeadlineAt.getTime()
+      ? await this.sumEligibleFocusSecondsToday(manager, session.userId, session.id, session.runDeadlineAt)
+      : 0;
+    return applyStudySessionComplete(session, now, priorDailySeconds);
   }
 
   /** XP, Moeda and Contribuição of a terminal Study Session, in the transaction that ended it. */

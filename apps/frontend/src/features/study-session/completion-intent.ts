@@ -127,8 +127,7 @@ export function clearCompletionIntent(): void {
 
 function isCompletionStateConflict(error: unknown): boolean {
   return isProblemType(error, 'https://wise.app/errors/study-session-version-conflict')
-    || isProblemType(error, 'https://wise.app/errors/study-session-transition-not-allowed')
-    || isProblemType(error, 'https://wise.app/errors/study-session-not-controllable');
+    || isProblemType(error, 'https://wise.app/errors/study-session-transition-not-allowed');
 }
 
 function isProblemType(error: unknown, expectedType: string): boolean {

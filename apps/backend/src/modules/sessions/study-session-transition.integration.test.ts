@@ -97,7 +97,7 @@ describe('Study Session transitions against MySQL', () => {
       dataSource.getRepository(CoinLedgerEntry),
       realtime as unknown as RealtimeGateway,
     );
-    service = new StudySessionTransitionService(dataSource, { now: () => new Date(now) }, progression, {} as never, economy);
+    service = new StudySessionTransitionService(dataSource, { now: () => new Date(now) }, progression, {} as never, economy, users);
   });
 
   afterEach(async () => {
@@ -520,7 +520,7 @@ describe('Study Session transitions against MySQL', () => {
     expect(await dataSource!.query('SELECT * FROM coin_ledger_entries WHERE user_id = ?', [userId])).toHaveLength(1);
 
     const startService = new StudySessionStartService(
-      dataSource!, new UsersService({} as never, {} as never, {} as never, {} as never), {} as never,
+      dataSource!, new UsersService({} as never, {} as never, {} as never, {} as never), {} as never, service,
     );
     const nextSession = await startService.start(userId, authSessionId, { plannedDurationSeconds: 900 }, 'start-after-stop');
     expect(nextSession).toMatchObject({ state: 'running', mode: 'solo', subject: null, canControl: true });

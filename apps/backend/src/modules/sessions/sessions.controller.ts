@@ -83,12 +83,11 @@ export class SessionsController {
   @Post()
   @RateLimit('study-session')
   @HttpCode(HttpStatus.CREATED)
-  async start(
+  start(
     @CurrentUser() user: JwtPayload,
     @Body() dto: StartSessionDto = new StartSessionDto(),
     @Headers('idempotency-key') idempotencyKey?: string,
   ) {
-    await this.studySessionTransitions.completeExpired(user.sub);
     return this.studySessionStart.start(user.sub, user.sessionId, dto, idempotencyKey);
   }
 

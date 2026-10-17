@@ -494,6 +494,34 @@ describe('Study Session de modo Guilda against MySQL', () => {
       expect(await contributions()).toEqual([]);
     });
 
+    it('counts a late completion whose deadline fell inside the raid, even after endsAt', async () => {
+      const session = await joinAndStart(bruno, 'feedback-late-inside');
+      const endsAt = new Date(new Date(session.startedAt).getTime() + 900_000 + 60_000);
+      await dataSource!.getRepository(Raid).update({ id: raidId }, { endsAt });
+      completionNow = new Date(endsAt.getTime() + 60_000);
+
+      const response = await call('POST', `/sessions/${session.id}/complete`, bruno, { expectedVersion: 1 }, 'feedback-late-inside-done');
+
+      expect(response.status).toBe(200);
+      const result = await response.json() as Snapshot & { raidContribution: unknown };
+      expect(result.raidContribution).toEqual({ status: 'counted', xpContributed: 150 });
+      expect(await contributions()).toHaveLength(1);
+    });
+
+    it('refuses a late completion once the weekly close expired the raid, even with the deadline inside it', async () => {
+      const session = await joinAndStart(bruno, 'feedback-late-expired');
+      const endsAt = new Date(new Date(session.startedAt).getTime() + 900_000 + 60_000);
+      await dataSource!.getRepository(Raid).update({ id: raidId }, { endsAt, status: 'expired' });
+      completionNow = new Date(endsAt.getTime() + 60_000);
+
+      const response = await call('POST', `/sessions/${session.id}/complete`, bruno, { expectedVersion: 1 }, 'feedback-late-expired-done');
+
+      expect(response.status).toBe(200);
+      const result = await response.json() as Snapshot & { raidContribution: unknown };
+      expect(result.raidContribution).toEqual({ status: 'outside-raid-window', xpContributed: 0 });
+      expect(await contributions()).toEqual([]);
+    });
+
     it('includes no-validated-xp feedback when early stop with 0 XP', async () => {
       const session = await joinAndStart(bruno, 'feedback-no-xp');
       completionNow = new Date(new Date(session.startedAt).getTime() + 120_000);

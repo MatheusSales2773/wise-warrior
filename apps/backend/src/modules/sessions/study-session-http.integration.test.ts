@@ -64,8 +64,8 @@ describe('Study Session HTTP contract against MySQL', () => {
     const realtime = { emitToUser: jest.fn() } as unknown as RealtimeGateway;
     const progression = new ProgressionService(dataSource.getRepository(Character), realtime, users);
     const economy = new EconomyService(dataSource.getRepository(CoinBalance), dataSource.getRepository(CoinLedgerEntry), realtime);
-    const start = new StudySessionStartService(dataSource, users, {} as never);
-    const transitions = new StudySessionTransitionService(dataSource, { now: () => new Date(now) }, progression, {} as never, economy);
+    const transitions = new StudySessionTransitionService(dataSource, { now: () => new Date(now) }, progression, {} as never, economy, users);
+    const start = new StudySessionStartService(dataSource, users, {} as never, transitions);
     const controllerModule = await Test.createTestingModule({
       controllers: [SessionsController],
       providers: [

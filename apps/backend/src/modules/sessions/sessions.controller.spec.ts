@@ -31,8 +31,7 @@ describe('SessionsController start and restore contract', () => {
   it('forwards the authenticated Session and idempotency key to start', async () => {
     const snapshot = { id: 'study-1', canControl: true };
     const studySessionStart = { start: jest.fn().mockResolvedValue(snapshot) } as unknown as StudySessionStartService;
-    const transitions = { completeExpired: jest.fn().mockResolvedValue(undefined) } as unknown as StudySessionTransitionService;
-    const controller = new SessionsController({} as SessionsService, studySessionStart, transitions);
+    const controller = new SessionsController({} as SessionsService, studySessionStart, {} as never);
 
     await expect(controller.start(user, { plannedDurationSeconds: 900 }, 'request-1')).resolves.toBe(snapshot);
     expect(studySessionStart.start).toHaveBeenCalledWith('user-1', 'device-1', { plannedDurationSeconds: 900 }, 'request-1');
