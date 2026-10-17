@@ -1,8 +1,8 @@
-import { ForbiddenException, Injectable, Logger } from '@nestjs/common';
+import { ForbiddenException, Inject, Injectable, Logger, forwardRef } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
-import { LessThan, LessThanOrEqual, MoreThan, Repository } from 'typeorm';
-import { GuildChatMessage } from '../guilds/entities/guild-chat-message.entity';
+import { EntityManager, LessThan, LessThanOrEqual, MoreThan, Repository } from 'typeorm';
+import { GuildChatMessage, type GuildChatMessageKind } from '../guilds/entities/guild-chat-message.entity';
 import { GuildsService } from '../guilds/guilds.service';
 import {
   CHAT_PAGE_SIZE_DEFAULT,
@@ -20,6 +20,10 @@ export interface ChatMessageView {
   guildId: string;
   userId: string;
   displayName: string;
+  /** `raid_hit` is an Aviso do Mural: `userId`/`displayName` are the Golpe's author and `body` is empty. */
+  kind: GuildChatMessageKind;
+  /** XP of the Golpe an Aviso announces; `null` for member messages. */
+  xp: number | null;
   body: string;
   sentAt: string;
 }
@@ -54,7 +58,7 @@ export class ChatService {
   constructor(
     @InjectRepository(GuildChatMessage)
     private readonly messages: Repository<GuildChatMessage>,
-    private readonly guilds: GuildsService,
+    @Inject(forwardRef(() => GuildsService)) private readonly guilds: GuildsService,
     config: ConfigService,
   ) {
     this.blockedTerms = parseBlockedTerms(config.get<string>('CHAT_BLOCKED_TERMS'));
@@ -86,7 +90,32 @@ export class ChatService {
       relations: { user: true },
     });
     // A mensagem já está salva: a poda é best-effort para não falhar o envio depois da persistência.
-    await this.prune(guildId).catch((error) => this.logger.warn(`Falha ao podar o chat: ${String(error)}`));
+    await this.trim(guildId);
+    return toView(stored);
+  }
+
+  /**
+   * Grava o Aviso de um Golpe na transação da Contribuição (ADR-001: o Mural é gravado só por este Service).
+   * Devolve `null` quando a Contribuição já tinha Aviso. Depois do commit, quem chama publica a mensagem e chama `trim`.
+   */
+  async recordRaidHit(
+    manager: EntityManager,
+    hit: { guildId: string; userId: string; contributionId: string; xp: number },
+  ): Promise<ChatMessageView | null> {
+    const inserted = await manager
+      .createQueryBuilder()
+      .insert()
+      .into(GuildChatMessage)
+      .values({ ...hit, kind: 'raid_hit', body: '' })
+      .orIgnore() // `contribution_id` único: um Golpe nunca ganha dois Avisos
+      .execute();
+    if ((inserted.raw as { affectedRows: number }).affectedRows === 0) {
+      return null;
+    }
+    const stored = await manager.findOneOrFail(GuildChatMessage, {
+      where: { contributionId: hit.contributionId },
+      relations: { user: true },
+    });
     return toView(stored);
   }
 
@@ -121,6 +150,11 @@ export class ChatService {
     return { messages: rows.map(toView), truncated: rows.length === CHAT_RETAINED_MESSAGES };
   }
 
+  /** Poda best-effort, depois que a mensagem já foi salva. */
+  async trim(guildId: string): Promise<void> {
+    await this.prune(guildId).catch((error) => this.logger.warn(`Falha ao podar o chat: ${String(error)}`));
+  }
+
   /** Mantém só as últimas N mensagens da Guilda (Documento de Arquitetura). */
   private async prune(guildId: string): Promise<void> {
     const boundary = await this.messages.find({
@@ -148,6 +182,8 @@ function toView(row: GuildChatMessage): ChatMessageView {
     guildId: row.guildId,
     userId: row.userId,
     displayName: row.user.displayName,
+    kind: row.kind,
+    xp: row.xp ?? null,
     body: row.body,
     sentAt: row.sentAt.toISOString(),
   };

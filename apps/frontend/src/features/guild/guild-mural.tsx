@@ -2,7 +2,7 @@ import { useRef, useState } from 'react';
 import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, View, type NativeScrollEvent, type NativeSyntheticEvent } from 'react-native';
 import { controlStyles } from '@/design-system/components/control-styles';
 import { FeedbackMessage, WiseButton, WiseCard, WiseField, WiseText, theme } from '@/design-system';
-import type { ChatMessage, GuildChat } from './guild-chat';
+import { raidHitText, type ChatMessage, type GuildChat } from './guild-chat';
 
 export type GuildTab = 'raid' | 'mural';
 
@@ -74,7 +74,21 @@ export function PresenceDot({ online, testID }: { online: boolean; testID?: stri
   return <View style={[styles.dot, online ? styles.dotOnline : styles.dotOffline]} testID={testID} />;
 }
 
+/** An Aviso do Mural: one centered line with a mark, no avatar and no author line. */
+function NoticeItem({ message }: { message: ChatMessage }) {
+  const time = formatMessageTime(message.sentAt);
+  const text = raidHitText(message);
+  return (
+    <View accessibilityLabel={`Aviso, ${time}: ${text}`} accessible style={styles.notice} testID={`guild-mural-notice-${message.id}`}>
+      <WiseText color="accentHighlight" variant="label">◈</WiseText>
+      <WiseText color="textSecondary" variant="body">{text}</WiseText>
+      <WiseText color="textTertiary" variant="body">{time}</WiseText>
+    </View>
+  );
+}
+
 function MessageItem({ message }: { message: ChatMessage }) {
+  if (message.kind === 'raid_hit') return <NoticeItem message={message} />;
   const time = formatMessageTime(message.sentAt);
   return (
     <View accessibilityLabel={`${message.displayName}, ${time}: ${message.body}`} accessible style={styles.message} testID={`guild-mural-message-${message.id}`}>
@@ -95,7 +109,9 @@ export function MuralAnnouncer({ arrival }: { arrival: ChatMessage | null }) {
   // Keyed by message: a repeat of the same text is a new node, so screen readers read it again.
   return (
     <WiseText accessibilityLiveRegion="polite" aria-live="polite" key={arrival?.id} style={styles.announcement} testID="guild-mural-announcer" variant="body">
-      {arrival ? `Nova mensagem no Mural de ${arrival.displayName}, ${formatMessageTime(arrival.sentAt)}: ${arrival.body}` : ''}
+      {!arrival ? '' : arrival.kind === 'raid_hit'
+        ? `Aviso no Mural, ${formatMessageTime(arrival.sentAt)}: ${raidHitText(arrival)}`
+        : `Nova mensagem no Mural de ${arrival.displayName}, ${formatMessageTime(arrival.sentAt)}: ${arrival.body}`}
     </WiseText>
   );
 }
@@ -262,6 +278,11 @@ const styles = StyleSheet.create({
   messages: { padding: theme.space.stackTight, gap: theme.space.inlineTight },
   start: { textAlign: 'center' },
   message: { gap: theme.space.inlineHairline, paddingTop: theme.space.inlineTight, paddingLeft: theme.space.stackTight, borderLeftWidth: 2, borderLeftColor: theme.color.borderEmphasis },
+  notice: {
+    flexDirection: 'row', flexWrap: 'wrap', alignItems: 'baseline', justifyContent: 'center', gap: theme.space.inlineTight,
+    paddingVertical: theme.space.inlineTight, paddingHorizontal: theme.space.stackTight,
+    borderRadius: theme.radius.control, borderWidth: theme.border.standard, borderColor: theme.color.borderSubtle,
+  },
   messageMeta: { flexDirection: 'row', alignItems: 'baseline', gap: theme.space.inlineTight },
   composer: { gap: theme.space.inlineTight, alignItems: 'stretch' },
   announcement: { position: 'absolute', width: 1, height: 1, overflow: 'hidden', opacity: 0 },

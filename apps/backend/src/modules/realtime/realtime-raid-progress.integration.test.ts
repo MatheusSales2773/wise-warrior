@@ -34,6 +34,8 @@ import { UserCosmeticItem } from '../users/entities/user-cosmetic-item.entity';
 import { User } from '../users/entities/user.entity';
 import { StudySession } from '../sessions/entities/study-session.entity';
 import { UsersService } from '../users/users.service';
+import { ChatService } from '../chat/chat.service';
+import { GuildChatMessage } from '../guilds/entities/guild-chat-message.entity';
 import { RealtimeGateway } from './realtime.gateway';
 
 type RaidProgressEvent = { raidId: string; progressXp: number; goalXp: number; goalReachedAt: string | null };
@@ -114,6 +116,8 @@ describe('raid:progress over Socket.IO against MySQL', () => {
         RealtimeGateway,
         GuildsService,
         RaidsService,
+        ChatService,
+        repo(GuildChatMessage),
         UsersService,
         repo(Guild), repo(GuildMembership), repo(Raid), repo(RaidContribution), repo(RaidParticipation), repo(Mission), repo(MissionRewardItem), repo(CoinBalance), repo(CoinLedgerEntry), EconomyService,
         repo(User), repo(CosmeticItem), repo(UserCosmeticItem),
@@ -178,6 +182,24 @@ describe('raid:progress over Socket.IO against MySQL', () => {
 
     expect(anaClient.events).toHaveLength(2);
     expect(brunoClient.events).toHaveLength(1);
+  });
+
+  it('publishes each Golpe as an Aviso do Mural to the Guild, once, and recovers it from the history', async () => {
+    const guildId = await createGuild();
+    await call('POST', `/guilds/${guildId}/members`, bruno);
+    const anaClient = await connect(ana);
+    const outsiderClient = await connect(outsider);
+    const notices: Array<Record<string, unknown>> = [];
+    const outsiderNotices: unknown[] = [];
+    anaClient.socket.on('chat:message', (message: Record<string, unknown>) => notices.push(message));
+    outsiderClient.socket.on('chat:message', (message: unknown) => outsiderNotices.push(message));
+
+    const raid = await contribute(guildId, bruno, 75);
+    await raids.recordContribution(raid.id, bruno, raid.studySessionId, 75); // the same Study Session again
+
+    expect(notices).toEqual([expect.objectContaining({ kind: 'raid_hit', guildId, userId: bruno, displayName: 'Bruno', xp: 75, body: '' })]);
+    expect(outsiderNotices).toEqual([]);
+    expect(await dataSource!.getRepository(GuildChatMessage).countBy({ guildId, kind: 'raid_hit' })).toBe(1);
   });
 
   it('puts the sockets of a user in the Guild room when they create or join, without reconnecting', async () => {

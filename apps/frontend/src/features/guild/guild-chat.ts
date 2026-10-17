@@ -3,8 +3,19 @@ import { REALTIME_DISCONNECTED, type RealtimeAck, type RealtimeChannel, type Rea
 import { useActiveRealtime } from '@/core/realtime/realtime-store';
 import { chatErrorMessage } from './messages';
 
-/** A Mural message as the chat gateway sends it (`ChatMessageView`). */
-export type ChatMessage = { id: string; seq: number; guildId: string; userId: string; displayName: string; body: string; sentAt: string };
+/**
+ * A Mural message as the chat gateway sends it (`ChatMessageView`). `raid_hit` is an Aviso do Mural: no human wrote
+ * it, `userId`/`displayName` are the Golpe's author, `xp` its damage and `body` is empty.
+ */
+export type ChatMessage = {
+  id: string; seq: number; guildId: string; userId: string; displayName: string;
+  kind: 'message' | 'raid_hit'; xp: number | null; body: string; sentAt: string;
+};
+
+/** "Ravenstone causou 75 de dano": the text of an Aviso, built with the author's current name. */
+export function raidHitText(message: Pick<ChatMessage, 'displayName' | 'xp'>): string {
+  return `${message.displayName} causou ${message.xp ?? 0} de dano`;
+}
 type ChatPage = { messages: ChatMessage[]; nextBefore: number | null };
 /** `chat:send` refusals for sending too fast say when to try again. */
 type ChatErrorFields = { retryAfterMs?: number };
@@ -107,7 +118,8 @@ export function useGuildChat(guildId: string, myUserId?: string): GuildChat {
     const offMessage = listenChat(channel, 'chat:message', (message) => {
       if (message.guildId !== guildId) return;
       receive([message]);
-      if (message.userId !== myUserIdRef.current) setArrival(message);
+      // Nobody typed an Aviso, so the member's own Golpe is announced too.
+      if (message.kind === 'raid_hit' || message.userId !== myUserIdRef.current) setArrival(message);
     });
     const offOnline = listenChat(channel, 'member:online', (event) => {
       if (event.guildId !== guildId) return;

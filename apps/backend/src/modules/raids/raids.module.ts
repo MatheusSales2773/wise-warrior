@@ -18,6 +18,7 @@ import { RaidWeeklyScheduler } from './raid-weekly.scheduler';
 import { GuildsModule } from '../guilds/guilds.module';
 import { UsersModule } from '../users/users.module';
 import { EconomyModule } from '../economy/economy.module';
+import { ChatModule } from '../chat/chat.module';
 import { RealtimeModule } from '../realtime/realtime.module';
 
 @Module({
@@ -27,6 +28,7 @@ import { RealtimeModule } from '../realtime/realtime.module';
     forwardRef(() => UsersModule),
     forwardRef(() => RealtimeModule),
     forwardRef(() => EconomyModule),
+    forwardRef(() => ChatModule),
   ],
   controllers: [RaidsController, GuildRaidsController, GuildMissionChoiceController],
   providers: [RaidsService, MissionsService, MissionChoiceService, RaidWeeklyScheduler, { provide: RAID_CLOCK, useValue: systemRaidClock }],

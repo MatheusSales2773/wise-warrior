@@ -27,7 +27,7 @@ const mine: MyGuild = {
 };
 
 const message = (seq: number, overrides: Partial<ChatMessage> = {}): ChatMessage => ({
-  id: `m${seq}`, seq, guildId: 'g1', userId: 'u1', displayName: 'Ana', body: `Mensagem ${seq}`,
+  id: `m${seq}`, seq, guildId: 'g1', userId: 'u1', displayName: 'Ana', kind: 'message', xp: null, body: `Mensagem ${seq}`,
   sentAt: new Date(2026, 9, 16, 14, seq).toISOString(), ...overrides,
 });
 
@@ -175,6 +175,22 @@ describe('Mural', () => {
     await waitFor(() => expect(screen.getByTestId('guild-online-count')).toBeOnTheScreen());
     await gateway.emit('chat:message', message(4, { body: 'Minha' }));
     expect(announcer()).toHaveTextContent(/Bruno, .*: Cheguei$/);
+  });
+
+  it('shows an Aviso with the author\'s name and the XP, with no author line, and announces it', async () => {
+    await openMural();
+    await gateway.emit('chat:message', message(3, { kind: 'raid_hit', userId: 'u2', displayName: 'Ravenstone', xp: 75, body: '' }));
+    const notice = screen.getByTestId('guild-mural-notice-m3');
+    expect(within(notice).getByText('Ravenstone causou 75 de dano')).toBeOnTheScreen();
+    expect(notice).toHaveProp('accessibilityLabel', 'Aviso, 14:03: Ravenstone causou 75 de dano');
+    expect(screen.queryByTestId('guild-mural-message-m3')).toBeNull();
+    expect(screen.getByTestId('guild-mural-announcer')).toHaveTextContent(/^Aviso no Mural, .*14:03: Ravenstone causou 75 de dano$/);
+  });
+
+  it('shows the Avisos of the history and of the recovery after a reconnection', async () => {
+    gateway.handlers['chat:history'] = () => ({ ok: true, messages: [message(1, { kind: 'raid_hit', xp: 40, body: '' })], nextBefore: null });
+    await openMural();
+    expect(screen.getByText('Ana causou 40 de dano')).toBeOnTheScreen();
   });
 
   it('announces a repeated message again', async () => {
