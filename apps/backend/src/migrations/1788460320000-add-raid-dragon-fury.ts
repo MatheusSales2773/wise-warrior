@@ -5,8 +5,8 @@ import { MigrationInterface, QueryRunner, TableColumn } from 'typeorm';
  * da Fúria já aplicado (`fury_through`, `YYYY-MM-DD` de São Paulo, o que faz cada Raid e dia regenerar uma vez) e o
  * instante em que abriu (`opened_at`, o dia parcial de criação não regenera; nulo vale `starts_at`).
  */
-export class AddRaidDragonFury1788460260000 implements MigrationInterface {
-  name = 'AddRaidDragonFury1788460260000';
+export class AddRaidDragonFury1788460320000 implements MigrationInterface {
+  name = 'AddRaidDragonFury1788460320000';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.addColumns('raids', [

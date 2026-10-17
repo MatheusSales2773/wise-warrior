@@ -24,6 +24,7 @@ import type { CoinMovementResult } from '../economy/domain/coin-origin';
 import { RaidContribution } from './entities/raid-contribution.entity';
 import { RaidParticipation } from './entities/raid-participation.entity';
 import { GuildsService } from '../guilds/guilds.service';
+import { ChatService, type ChatMessageView } from '../chat/chat.service';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
 import { RAID_RANKING_PAGE_SIZE_DEFAULT, type ListRaidRankingQueryDto } from './dto/list-raid-ranking-query.dto';
 import { PAST_RAIDS_PAGE_SIZE_DEFAULT, type ListPastRaidsQueryDto } from './dto/list-past-raids-query.dto';
@@ -169,7 +170,7 @@ export interface RaidHitNotice {
 
 /** `progress` and `hit` are set only when this call recorded the Contribution, so a repeated completion publishes nothing. */
 export type RaidContributionOutcome =
-  | { status: 'counted'; xpContributed: number; progress: RaidProgress | null; hit: RaidHitNotice | null }
+  | { status: 'counted'; xpContributed: number; progress: RaidProgress | null; hit: RaidHitNotice | null; notice: ChatMessageView | null }
   | { status: 'outside-raid-window'; xpContributed: 0 }
   | { status: 'no-validated-xp'; xpContributed: 0 };
 
@@ -295,6 +296,7 @@ export class RaidsService {
     // Optional and last so the services built by hand in integration tests keep their positional arguments;
     // without it, the Raid always uses the rotation.
     @Optional() private readonly missionChoice?: MissionChoiceService,
+    @Optional() @Inject(forwardRef(() => ChatService)) private readonly chat?: ChatService,
   ) {}
 
   /**
@@ -472,7 +474,7 @@ export class RaidsService {
     if ((inserted.raw as { affectedRows: number }).affectedRows === 0) {
       // Já contou antes: informa o XP gravado na primeira vez, sem somar nem publicar de novo.
       const existing = await manager.findOneByOrFail(RaidContribution, { studySessionId });
-      return { status: 'counted', xpContributed: existing.xpContributed, progress: null, hit: null };
+      return { status: 'counted', xpContributed: existing.xpContributed, progress: null, hit: null, notice: null };
     }
 
     // Atomic in the database. MySQL evaluates the assignments left to right, so the goal check runs before the increment.
@@ -485,11 +487,15 @@ export class RaidsService {
     );
     const updated = await manager.findOneOrFail(Raid, { where: { id: raidId } });
     const hit = await this.findHit(manager, raidId, studySessionId);
+    // The Aviso do Mural is written in the same transaction, by the chat's Service (ADR-001).
+    const stored = await manager.findOneByOrFail(RaidContribution, { studySessionId });
+    const notice = (await this.chat?.recordRaidHit(manager, { guildId: updated.guildId, userId, contributionId: stored.id, xp: xpContributed })) ?? null;
     return {
       status: 'counted',
       xpContributed,
       progress: this.progressOf(updated),
       hit: hit && { raidId, guildId: updated.guildId, hit },
+      notice,
     };
   }
 
@@ -501,6 +507,13 @@ export class RaidsService {
     if (outcome.status !== 'counted') return;
     if (outcome.progress) this.publishProgress(outcome.progress);
     if (outcome.hit) this.publishHit(outcome.hit);
+    if (outcome.notice) this.publishNotice(outcome.notice);
+  }
+
+  /** O Aviso chega pelo canal do Mural; quem perdeu a conexão o recupera pelo `chat:sync`. */
+  private publishNotice(notice: ChatMessageView): void {
+    this.realtime.emitToGuild(notice.guildId, 'chat:message', notice);
+    void this.chat?.trim(notice.guildId);
   }
 
   /** Todos os membros conectados veem o progresso e a Vida do chefe (UC02 RE01). */

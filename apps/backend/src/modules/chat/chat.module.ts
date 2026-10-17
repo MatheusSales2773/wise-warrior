@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { GuildChatMessage } from '../guilds/entities/guild-chat-message.entity';
 import { GuildsModule } from '../guilds/guilds.module';
@@ -8,7 +8,8 @@ import { ChatService } from './chat.service';
 import { PresenceRegistry } from './presence.registry';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([GuildChatMessage]), GuildsModule, RealtimeModule],
+  imports: [TypeOrmModule.forFeature([GuildChatMessage]), forwardRef(() => GuildsModule), forwardRef(() => RealtimeModule)],
   providers: [ChatService, ChatGateway, PresenceRegistry],
+  exports: [ChatService],
 })
 export class ChatModule {}

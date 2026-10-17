@@ -27,7 +27,8 @@ import { AddGuildMissionChoice1788460020000 } from '../migrations/1788460020000-
 import { KeepBadgesOffSale1788460080000 } from '../migrations/1788460080000-keep-badges-off-sale';
 import { SeedCosmeticItemsForSale1788460140000 } from '../migrations/1788460140000-seed-cosmetic-items-for-sale';
 import { SeedMissionsForSale1788460200000 } from '../migrations/1788460200000-seed-missions-for-sale';
-import { AddRaidDragonFury1788460260000 } from '../migrations/1788460260000-add-raid-dragon-fury';
+import { AddGuildChatNotices1788460260000 } from '../migrations/1788460260000-add-guild-chat-notices';
+import { AddRaidDragonFury1788460320000 } from '../migrations/1788460320000-add-raid-dragon-fury';
 
 export type MigrationClass = new () => MigrationInterface;
 
@@ -57,7 +58,8 @@ export const APPLICATION_MIGRATIONS: MigrationClass[] = [
   KeepBadgesOffSale1788460080000,
   SeedCosmeticItemsForSale1788460140000,
   SeedMissionsForSale1788460200000,
-  AddRaidDragonFury1788460260000,
+  AddGuildChatNotices1788460260000,
+  AddRaidDragonFury1788460320000,
 ];
 
 function positionOf(migration: MigrationClass): number {
