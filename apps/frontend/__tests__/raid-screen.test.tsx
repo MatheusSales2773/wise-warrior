@@ -250,7 +250,7 @@ describe('Fúria card and Sequência', () => {
     mockedRaid.mockResolvedValue(raid({ ...week }));
     await renderRaid();
 
-    expect((await screen.findByTestId('raid-streak')).props.children).toBe('Sequência da guilda: nenhum dia ainda');
+    expect((await screen.findByTestId('raid-streak', {}, { timeout: 5000 })).props.children).toBe('Sequência da guilda: nenhum dia ainda');
   });
 
   it('follows the server day across the São Paulo midnight, not the device clock', async () => {

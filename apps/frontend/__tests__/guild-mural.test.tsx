@@ -28,7 +28,7 @@ const mine: MyGuild = {
 
 const message = (seq: number, overrides: Partial<ChatMessage> = {}): ChatMessage => ({
   id: `m${seq}`, seq, guildId: 'g1', userId: 'u1', displayName: 'Ana', body: `Mensagem ${seq}`,
-  sentAt: new Date(2026, 9, 16, 14, seq).toISOString(), ...overrides,
+  sentAt: new Date(new Date().getFullYear(), new Date().getMonth(), new Date().getDate(), 14, seq).toISOString(), ...overrides,
 });
 
 type Handler = (payload: any) => RealtimeAck<object, { retryAfterMs?: number }>;
