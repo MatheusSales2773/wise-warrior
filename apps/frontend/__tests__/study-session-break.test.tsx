@@ -206,10 +206,12 @@ it('drops the break when a session is started on another device', async () => {
 
   const client = queryClients[0];
   if (!client) throw new Error('Expected a query client');
-  getActive.mockResolvedValue({ ...running, canControl: false });
+  getActive.mockResolvedValue({ ...running, id: 'study-2', canControl: false });
   await act(async () => { await client.invalidateQueries({ queryKey: ['study-session', 'active'] }); });
 
-  await view.findByTestId('study-session-remote-conflict');
+  await view.findByTestId('study-session-timer');
+  expect(view.queryByText('Sessão concluída')).toBeNull();
+  expect(view.getByTestId('study-session-pause')).toBeTruthy();
   expect(view.queryByTestId('study-session-break')).toBeNull();
   expect(client.getQueryData(['study-session', 'break'])).toBeUndefined();
 });

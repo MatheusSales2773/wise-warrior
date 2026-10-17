@@ -9,7 +9,6 @@ export function useStudySessionHeartbeat(snapshot: StudySessionSnapshot | undefi
     typeof AppState.currentState === 'string' ? AppState.currentState as AppStateStatus : 'active',
   );
   const studySessionId = snapshot?.id;
-  const canControl = snapshot?.canControl;
   const state = snapshot?.state;
 
   useEffect(() => {
@@ -18,7 +17,7 @@ export function useStudySessionHeartbeat(snapshot: StudySessionSnapshot | undefi
   }, []);
 
   useEffect(() => {
-    if (!studySessionId || !canControl || state !== 'running' || appState !== 'active') return;
+    if (!studySessionId || state !== 'running' || appState !== 'active') return;
 
     const controller = new AbortController();
     let requestInFlight = false;
@@ -40,5 +39,5 @@ export function useStudySessionHeartbeat(snapshot: StudySessionSnapshot | undefi
       clearInterval(interval);
       controller.abort();
     };
-  }, [appState, canControl, state, studySessionId]);
+  }, [appState, state, studySessionId]);
 }

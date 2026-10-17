@@ -16,6 +16,7 @@ export type StudySessionCompletionIntent = {
 };
 
 let retainedIntent: StudySessionCompletionIntent | null = null;
+let serverCompletion: StudySessionTransitionResult | null = null;
 
 export function newIdempotencyKey(): string {
   return globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -27,7 +28,7 @@ export function getRetainedCompletionIntent(): StudySessionCompletionIntent | nu
 
 export function syncCompletionIntentWithSnapshot(snapshot: StudySessionSnapshot | null | undefined): void {
   if (!retainedIntent || !snapshot) return;
-  if (!matchesActiveControllableSession(retainedIntent, snapshot)) retainedIntent = null;
+  if (!matchesActiveRunningSession(retainedIntent, snapshot)) retainedIntent = null;
 }
 
 export function getOrCreateCompletionIntent(
@@ -55,7 +56,7 @@ export function getOrCreateCompletionIntent(
 export function getCompletionIntentForSnapshot(
   snapshot: StudySessionSnapshot | null | undefined,
 ): StudySessionCompletionIntent | null {
-  return snapshot && retainedIntent && matchesActiveControllableSession(retainedIntent, snapshot)
+  return snapshot && retainedIntent && matchesActiveRunningSession(retainedIntent, snapshot)
     ? retainedIntent
     : null;
 }
@@ -121,14 +122,28 @@ export function completionIntentCanRetryAt(
     && intent.request.expectedVersion === snapshot.version;
 }
 
+/**
+ * The server completed an expired focus while reading the active session (ADR-011 item 6) and returns
+ * that result only once: keep it until the screen shows it, even if another reader fetched it.
+ */
+export function retainServerCompletion(result: StudySessionTransitionResult): void {
+  serverCompletion = result;
+  if (retainedIntent?.request.id === result.id) retainedIntent = null;
+}
+
+export function takeServerCompletion(): StudySessionTransitionResult | null {
+  const result = serverCompletion;
+  serverCompletion = null;
+  return result;
+}
+
 export function clearCompletionIntent(): void {
   retainedIntent = null;
 }
 
 function isCompletionStateConflict(error: unknown): boolean {
   return isProblemType(error, 'https://wise.app/errors/study-session-version-conflict')
-    || isProblemType(error, 'https://wise.app/errors/study-session-transition-not-allowed')
-    || isProblemType(error, 'https://wise.app/errors/study-session-not-controllable');
+    || isProblemType(error, 'https://wise.app/errors/study-session-transition-not-allowed');
 }
 
 function isProblemType(error: unknown, expectedType: string): boolean {
@@ -139,12 +154,11 @@ function isProblemType(error: unknown, expectedType: string): boolean {
     && (responseData as { type?: unknown }).type === expectedType;
 }
 
-function matchesActiveControllableSession(
+function matchesActiveRunningSession(
   intent: StudySessionCompletionIntent,
   snapshot: StudySessionSnapshot,
 ): boolean {
   return intent.request.id === snapshot.id
     && intent.request.expectedVersion === snapshot.version
-    && snapshot.state === 'running'
-    && snapshot.canControl;
+    && snapshot.state === 'running';
 }

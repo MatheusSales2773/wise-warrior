@@ -311,8 +311,9 @@ describe('Study Session de modo Guilda against MySQL', () => {
         (await call('POST', `/sessions/${session.id}/complete`, bruno, { expectedVersion: 1 }, `race-done-${suffix}`)).status,
       ));
 
-      // A transição serializa as chamadas: este teste cobre o lock e a versão, não o índice único.
-      expect([...statuses].sort()).toEqual([200, 409, 409]);
+      // A transição serializa as chamadas e as atrasadas recebem o resultado confirmado: este teste
+      // cobre o lock e a versão, não o índice único.
+      expect(statuses).toEqual([200, 200, 200]);
       expect((await activeRaid(bruno)).progressXp).toBe(150);
       expect(await contributions()).toHaveLength(1);
       expect(guildEvents()).toEqual(['raid:progress', 'raid:hit']);
@@ -477,14 +478,43 @@ describe('Study Session de modo Guilda against MySQL', () => {
       expect(await contributions()).toEqual([]);
     });
 
-    it('includes outside-raid-window feedback when completed after the raid endsAt', async () => {
-      const raid = await dataSource!.getRepository(Raid).findOneByOrFail({ id: raidId });
+    it('includes outside-raid-window feedback when the focus ends after the raid endsAt', async () => {
       const session = await joinAndStart(bruno, 'feedback-after-end');
+      // The Raid ends during the focus, so the canonical deadline falls after endsAt.
+      const endsAt = new Date(new Date(session.startedAt).getTime() + 60_000);
+      await dataSource!.getRepository(Raid).update({ id: raidId }, { endsAt });
 
-      // Complete after the Raid ends
-      completionNow = new Date(raid.endsAt.getTime() + 1000);
+      completionNow = new Date(new Date(session.startedAt).getTime() + 900_000 + 1000);
 
       const response = await call('POST', `/sessions/${session.id}/complete`, bruno, { expectedVersion: 1 }, 'feedback-after-end-done');
+
+      expect(response.status).toBe(200);
+      const result = await response.json() as Snapshot & { raidContribution: unknown };
+      expect(result.raidContribution).toEqual({ status: 'outside-raid-window', xpContributed: 0 });
+      expect(await contributions()).toEqual([]);
+    });
+
+    it('counts a late completion whose deadline fell inside the raid, even after endsAt', async () => {
+      const session = await joinAndStart(bruno, 'feedback-late-inside');
+      const endsAt = new Date(new Date(session.startedAt).getTime() + 900_000 + 60_000);
+      await dataSource!.getRepository(Raid).update({ id: raidId }, { endsAt });
+      completionNow = new Date(endsAt.getTime() + 60_000);
+
+      const response = await call('POST', `/sessions/${session.id}/complete`, bruno, { expectedVersion: 1 }, 'feedback-late-inside-done');
+
+      expect(response.status).toBe(200);
+      const result = await response.json() as Snapshot & { raidContribution: unknown };
+      expect(result.raidContribution).toEqual({ status: 'counted', xpContributed: 150 });
+      expect(await contributions()).toHaveLength(1);
+    });
+
+    it('refuses a late completion once the weekly close expired the raid, even with the deadline inside it', async () => {
+      const session = await joinAndStart(bruno, 'feedback-late-expired');
+      const endsAt = new Date(new Date(session.startedAt).getTime() + 900_000 + 60_000);
+      await dataSource!.getRepository(Raid).update({ id: raidId }, { endsAt, status: 'expired' });
+      completionNow = new Date(endsAt.getTime() + 60_000);
+
+      const response = await call('POST', `/sessions/${session.id}/complete`, bruno, { expectedVersion: 1 }, 'feedback-late-expired-done');
 
       expect(response.status).toBe(200);
       const result = await response.json() as Snapshot & { raidContribution: unknown };

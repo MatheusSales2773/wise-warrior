@@ -25,7 +25,7 @@ describe('SessionsController start and restore contract', () => {
 
     await expect(controller.active(user, response)).resolves.toBeUndefined();
     expect(status).toHaveBeenCalledWith(204);
-    expect(studySessionStart.active).toHaveBeenCalledWith('user-1', 'device-1');
+    expect(studySessionStart.active).toHaveBeenCalledWith('user-1');
   });
 
   it('forwards the authenticated Session and idempotency key to start', async () => {

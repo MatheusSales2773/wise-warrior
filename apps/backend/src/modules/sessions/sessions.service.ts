@@ -227,11 +227,8 @@ export class SessionsService {
    * Heartbeat periódico (UC03/S01) — o servidor, nunca o cliente, é quem
    * carimba o tempo. Isso é o que torna a validação antifraude possível.
    */
-  async heartbeat(userId: string, sessionId: string, authSessionId?: string): Promise<void> {
+  async heartbeat(userId: string, sessionId: string): Promise<void> {
     const session = await this.loadOwnedActiveSession(userId, sessionId);
-    if (session.state && session.initiatingSessionId !== authSessionId) {
-      throw new ConflictException('Study Session iniciada em outra Session autenticada');
-    }
     session.lastHeartbeatAt = new Date();
     await this.studySessions.save(session);
   }

@@ -97,7 +97,7 @@ describe('Study Session transitions against MySQL', () => {
       dataSource.getRepository(CoinLedgerEntry),
       realtime as unknown as RealtimeGateway,
     );
-    service = new StudySessionTransitionService(dataSource, { now: () => new Date(now) }, progression, {} as never, economy);
+    service = new StudySessionTransitionService(dataSource, { now: () => new Date(now) }, progression, {} as never, economy, users);
   });
 
   afterEach(async () => {
@@ -272,18 +272,16 @@ describe('Study Session transitions against MySQL', () => {
       transition('complete', 2, 'complete-exactly-once'),
       'https://wise.app/errors/idempotency-key-reused',
     );
-    // A new key on the terminal session cannot credit the same focus a second time.
-    await expectConflictType(
-      transition('complete', 1, 'complete-with-new-key'),
-      'https://wise.app/errors/study-session-version-conflict',
-    );
+    // A new key from another device gets the confirmed result, without crediting the same focus a second time.
+    await expect(transition('complete', 1, 'complete-with-new-key'))
+      .resolves.toMatchObject({ id: studySessionId, state: 'completed', version: 2, xpAwarded: completed.xpAwarded });
     expect(await dataSource!.getRepository(Character).findOneByOrFail({ id: characterId })).toMatchObject({ xpTotal: 250 });
     expect(await dataSource!.query('SELECT balance FROM coin_balances WHERE user_id = ?', [userId])).toEqual([{ balance: 12 }]);
     expect(await dataSource!.query('SELECT * FROM coin_ledger_entries WHERE user_id = ?', [userId])).toHaveLength(1);
     expect(realtime.emitToUser).toHaveBeenCalledTimes(2);
   });
 
-  it('serializes concurrent automatic completions to one reward and one stale-version conflict', async () => {
+  it('serializes concurrent automatic completions to one reward and the same confirmed result', async () => {
     const deadline = new Date(now.getTime() + 900_000);
     await dataSource!.getRepository(StudySession).update(studySessionId, {
       plannedDurationSeconds: 900,
@@ -296,15 +294,10 @@ describe('Study Session transitions against MySQL', () => {
       transition('complete', 1, 'complete-concurrent-b'),
     ]);
 
-    expect(results.filter((result) => result.status === 'fulfilled')).toHaveLength(1);
-    const rejected = results.find((result) => result.status === 'rejected');
-    expect(rejected?.status).toBe('rejected');
-    if (rejected?.status === 'rejected') {
-      expect(rejected.reason).toBeInstanceOf(ConflictException);
-      expect((rejected.reason as ConflictException).getResponse()).toMatchObject({
-        type: 'https://wise.app/errors/study-session-version-conflict',
-      });
-    }
+    expect(results).toEqual([
+      { status: 'fulfilled', value: expect.objectContaining({ state: 'completed', version: 2, xpAwarded: 150 }) },
+      { status: 'fulfilled', value: expect.objectContaining({ state: 'completed', version: 2, xpAwarded: 150 }) },
+    ]);
     expect(await dataSource!.getRepository(StudySession).findOneByOrFail({ id: studySessionId }))
       .toMatchObject({ state: 'completed', durationValidSeconds: 900, xpAwarded: 150, version: 2 });
     expect(await dataSource!.getRepository(Character).findOneByOrFail({ id: characterId })).toMatchObject({ xpTotal: 150 });
@@ -527,11 +520,11 @@ describe('Study Session transitions against MySQL', () => {
     expect(await dataSource!.query('SELECT * FROM coin_ledger_entries WHERE user_id = ?', [userId])).toHaveLength(1);
 
     const startService = new StudySessionStartService(
-      dataSource!, new UsersService({} as never, {} as never, {} as never, {} as never), {} as never,
+      dataSource!, new UsersService({} as never, {} as never, {} as never, {} as never), {} as never, service,
     );
     const nextSession = await startService.start(userId, authSessionId, { plannedDurationSeconds: 900 }, 'start-after-stop');
     expect(nextSession).toMatchObject({ state: 'running', mode: 'solo', subject: null, canControl: true });
-    expect(await startService.active(userId, authSessionId)).toMatchObject({ id: nextSession.id, state: 'running' });
+    expect(await startService.active(userId)).toMatchObject({ id: nextSession.id, state: 'running' });
     expect(await dataSource!.getRepository(StudySession).findOneByOrFail({ id: studySessionId }))
       .toMatchObject({ state: 'stopped_early', endedAt: stoppedAt, xpAwarded: 50 });
   });
@@ -657,11 +650,7 @@ describe('Study Session transitions against MySQL', () => {
     );
   });
 
-  it('rejects stop from another authenticated Session and from a terminal state', async () => {
-    await expectConflictType(
-      transition('stop', 1, 'wrong-device-stop', { authSessionId: 'another-device' }),
-      'https://wise.app/errors/study-session-not-controllable',
-    );
+  it('rejects stop from a terminal state', async () => {
     await dataSource!.getRepository(StudySession).update(studySessionId, { state: 'completed' });
     await expectConflictType(
       transition('stop', 1, 'terminal-stop'),

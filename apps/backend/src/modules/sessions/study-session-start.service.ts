@@ -2,91 +2,22 @@ import { BadRequestException, ConflictException, Injectable } from '@nestjs/comm
 import { DataSource, In } from 'typeorm';
 import { UsersService } from '../users/users.service';
 import { RaidsService } from '../raids/raids.service';
+import { StudySessionTransitionService } from './study-session-transition.service';
+import type { ExpiredCompletion, StudySessionTransitionResult } from './study-session-transition.service';
 import { StudySession } from './entities/study-session.entity';
-import type { StudySessionState, StudySessionTerminalReason } from './entities/study-session.entity';
 import type { StartSessionDto } from './dto/start-session.dto';
 import { isStudySessionPreset } from './domain/study-session-presets';
-import type { CappedReason } from './domain/session-validator';
-import { getStudySessionTime } from './domain/study-session-time';
 import { isValidIdempotencyKey } from './domain/idempotency-key';
 import { InvalidStudySessionSubjectError, normalizeStudySessionSubject } from './domain/study-session-subject';
 import { rejectIfStudySessionCommandKeyUsed } from './study-session-command-keys';
-
-export type StudySessionSnapshot = {
-  id: string;
-  mode: 'solo' | 'guild';
-  /** A Raid que recebe a Contribuição quando `mode` é `guild`. */
-  raidId: string | null;
-  subject: string | null;
-  state: StudySessionState;
-  plannedDurationSeconds: number;
-  startedAt: Date;
-  runDeadlineAt: Date | null;
-  pausedAt: Date | null;
-  pausedTotalSeconds: number;
-  durationValidSeconds: number;
-  remainingSeconds: number;
-  serverNow: Date;
-  version: number;
-  endedAt: Date | null;
-  xpAwarded: number;
-  terminalReason: StudySessionTerminalReason | null;
-  discardedReason: string | null;
-  cappedReason: CappedReason | null;
-  canControl: boolean;
-};
+import { deserializeStudySessionSnapshot, studySessionSnapshot } from './study-session-snapshot';
+import type { StudySessionSnapshot } from './study-session-snapshot';
 
 type ReceiptRow = {
   planned_duration_seconds: number;
   subject: string | null;
-  initiating_session_id: string;
   response_json: StudySessionSnapshot | string;
 };
-
-export function studySessionSnapshot(session: StudySession, authSessionId: string, now: Date): StudySessionSnapshot {
-  const deadline = session.runDeadlineAt ?? null;
-  const state = session.state ?? 'running';
-  const time = getStudySessionTime({ ...session, state }, now);
-  return {
-    id: session.id,
-    mode: session.mode,
-    raidId: session.raidId ?? null,
-    subject: session.subject,
-    state,
-    plannedDurationSeconds: session.plannedDurationSeconds ?? 1500,
-    startedAt: session.startedAt,
-    runDeadlineAt: deadline,
-    pausedAt: session.pausedAt ?? null,
-    pausedTotalSeconds: time.pausedTotalSeconds,
-    durationValidSeconds: time.durationValidSeconds,
-    remainingSeconds: deadline ? time.remainingSeconds : 0,
-    serverNow: now,
-    version: session.version ?? 1,
-    endedAt: session.endedAt ?? null,
-    xpAwarded: session.xpAwarded ?? 0,
-    terminalReason: session.terminalReason ?? null,
-    discardedReason: session.discardedReason ?? null,
-    cappedReason: session.cappedReason ?? null,
-    canControl: session.initiatingSessionId === authSessionId,
-  };
-}
-
-export function deserializeStudySessionSnapshot(
-  value: StudySessionSnapshot | string,
-  canControl?: boolean,
-): StudySessionSnapshot {
-  const original = typeof value === 'string' ? JSON.parse(value) as StudySessionSnapshot : value;
-  return {
-    ...original,
-    raidId: original.raidId ?? null, // receipts written before the guild mode have no raidId
-    startedAt: new Date(original.startedAt),
-    runDeadlineAt: original.runDeadlineAt ? new Date(original.runDeadlineAt) : null,
-    pausedAt: original.pausedAt ? new Date(original.pausedAt) : null,
-    serverNow: new Date(original.serverNow),
-    endedAt: original.endedAt ? new Date(original.endedAt) : null,
-    canControl: canControl ?? original.canControl,
-  };
-}
 
 @Injectable()
 export class StudySessionStartService {
@@ -94,13 +25,20 @@ export class StudySessionStartService {
     private readonly dataSource: DataSource,
     private readonly users: UsersService,
     private readonly raids: RaidsService,
+    private readonly transitions: StudySessionTransitionService,
   ) {}
 
-  async active(userId: string, authSessionId: string): Promise<StudySessionSnapshot | null> {
+  /**
+   * The active Study Session, or, once, the result of the expired running focus that this read completed
+   * (ADR-011 item 6), so the reading device shows it.
+   */
+  async active(userId: string): Promise<StudySessionSnapshot | StudySessionTransitionResult | null> {
+    const completed = await this.transitions.completeExpired(userId);
+    if (completed) return completed;
     const session = await this.dataSource.getRepository(StudySession).findOne({
       where: { userId, state: In(['running', 'paused']) },
     });
-    return session ? studySessionSnapshot(session, authSessionId, new Date()) : null;
+    return session ? studySessionSnapshot(session, new Date()) : null;
   }
 
   async start(userId: string, authSessionId: string, dto: StartSessionDto, idempotencyKey: string | undefined): Promise<StudySessionSnapshot> {
@@ -120,20 +58,19 @@ export class StudySessionStartService {
       throw new BadRequestException('Idempotency-Key é obrigatório e deve conter de 1 a 128 caracteres ASCII visíveis');
     }
 
-    return this.dataSource.transaction(async (manager) => {
+    // Assigned inside the transaction callback; the cast keeps TypeScript from narrowing it to null.
+    let expiredCompletion = null as ExpiredCompletion | null;
+    const started = await this.dataSource.transaction(async (manager) => {
       // Lock the stable user row so first starts also serialize, before an active row exists.
       if (!await this.users.lockForUpdate(userId, manager)) throw new BadRequestException('Usuário inválido');
 
       const receipts = await manager.query(
-        'SELECT planned_duration_seconds, subject, initiating_session_id, response_json FROM study_session_start_receipts WHERE user_id = ? AND idempotency_key = ?',
+        'SELECT planned_duration_seconds, subject, response_json FROM study_session_start_receipts WHERE user_id = ? AND idempotency_key = ?',
         [userId, idempotencyKey],
       ) as ReceiptRow[];
       const receipt = receipts[0];
       if (receipt) {
-        const replayed = deserializeStudySessionSnapshot(
-          receipt.response_json,
-          receipt.initiating_session_id === authSessionId,
-        );
+        const replayed = deserializeStudySessionSnapshot(receipt.response_json);
         if (
           Number(receipt.planned_duration_seconds) !== plannedDurationSeconds
           || receipt.subject !== subject
@@ -149,6 +86,7 @@ export class StudySessionStartService {
       }
 
       await rejectIfStudySessionCommandKeyUsed(manager, userId, idempotencyKey);
+      expiredCompletion = await this.transitions.completeExpiredInTransaction(manager, userId);
 
       const active = await manager.getRepository(StudySession).findOne({
         where: { userId, state: In(['running', 'paused']) },
@@ -180,7 +118,7 @@ export class StudySessionStartService {
         discardedReason: null,
       });
       const saved = await manager.getRepository(StudySession).save(studySession);
-      const snapshot = studySessionSnapshot(saved, authSessionId, now);
+      const snapshot = studySessionSnapshot(saved, now);
       await manager.query('INSERT INTO active_study_sessions (user_id, study_session_id) VALUES (?, ?)', [userId, saved.id]);
       await manager.query(
         'INSERT INTO study_session_command_keys (user_id, idempotency_key, command_kind) VALUES (?, ?, ?)',
@@ -192,6 +130,8 @@ export class StudySessionStartService {
       );
       return snapshot;
     });
+    expiredCompletion?.publish();
+    return started;
   }
 
   private normalizeSubject(value: unknown): string | null {
