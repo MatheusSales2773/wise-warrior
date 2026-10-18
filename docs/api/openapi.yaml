@@ -437,7 +437,9 @@ paths:
         Guild do usuário e ele precisa ser Participante: quem não é Participante
         ou é de outra Guild recebe 403, e uma Raid encerrada recebe 409
         (`raid-ended`). Ao concluir dentro da semana da Raid, o XP da sessão vira
-        Contribuição no progresso coletivo.
+        Contribuição no progresso coletivo. Antes de iniciar, um foco `running`
+        com o prazo canônico vencido é concluído pelo servidor (ADR-011, item 6),
+        liberando a vaga; um foco `paused` nunca é concluído por idade (D-014).
       operationId: startStudySession
       tags: [Sessions]
       parameters:
@@ -468,16 +470,28 @@ paths:
       summary: Consulta a Study Session ativa desta conta
       description: >
         Retorna 200 com o snapshot e canControl, ou 204 sem corpo quando não
-        há sessão ativa. Outra Session autenticada pode consultar o snapshot,
-        mas não pode controlar a Study Session.
+        há sessão ativa. Qualquer Session autenticada do usuário pode consultar
+        e controlar a Study Session (D-006). Um foco `running` com o prazo
+        canônico vencido é concluído pelo servidor nesta leitura (ADR-011, item
+        6), com `endedAt` no prazo e as mesmas recompensas da conclusão pelo
+        cliente. Essa leitura devolve, uma única vez, o snapshot terminal com
+        `raidContribution`, para que o dispositivo exiba o resultado; as leituras
+        seguintes devolvem 204. Um foco `paused` nunca é concluído por idade
+        (D-014).
       operationId: getActiveStudySession
       tags: [Sessions]
       responses:
         "200":
-          description: Snapshot ativo; canControl indica se esta Session autenticada pode controlá-lo
+          description: >
+            Snapshot ativo (`running` ou `paused`), ou, uma única vez, o
+            resultado terminal do foco vencido que esta leitura concluiu.
+            canControl é sempre true para o dono da Study Session.
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/StudySessionSnapshot" }
+              schema:
+                anyOf:
+                  - { $ref: "#/components/schemas/StudySessionSnapshot" }
+                  - { $ref: "#/components/schemas/StudySessionTransitionResponse" }
         "204": { description: Nenhuma Study Session ativa }
         "401": { $ref: "#/components/responses/Unauthorized" }
 
@@ -691,8 +705,11 @@ paths:
         foi alcançado. O servidor limita o foco à duração planejada, aplica a
         validação antifraude e atualiza sessão, progressão, referência ativa e
         recibo idempotente em uma única transação. Repetir a mesma chave e
-        expectedVersion devolve o snapshot original. Registros legados sem
-        estado canônico preservam o comportamento anterior.
+        expectedVersion devolve o snapshot original. Se outro dispositivo ou o
+        servidor já concluiu o foco a partir da expectedVersion enviada, a
+        resposta é 200 com esse resultado confirmado, sem recompensas em
+        dobro. Registros legados sem estado canônico preservam o comportamento
+        anterior.
       operationId: completeStudySession
       tags: [Sessions]
       parameters:
@@ -758,7 +775,11 @@ paths:
                     detail: Não é possível concluir a Study Session no estado atual
                     instance: /api/v1/sessions/{id}/complete
                 notControllable:
-                  summary: A Session autenticada não iniciou o foco
+                  summary: "Obsoleto: a Session autenticada não iniciou o foco"
+                  description: >
+                    Não é mais enviado desde a D-006, porque qualquer Session do usuário
+                    controla a Study Session. Fica documentado por um ciclo para clientes
+                    antigos já instalados.
                   value:
                     type: https://wise.app/errors/study-session-not-controllable
                     title: ConflictException
@@ -1521,14 +1542,19 @@ components:
         remainingSeconds: { type: integer, minimum: 0 }
         serverNow: { type: string, format: date-time }
         version: { type: integer, minimum: 1 }
-        endedAt: { type: [string, "null"], format: date-time }
+        endedAt:
+          type: [string, "null"]
+          format: date-time
+          description: Na conclusão automática, é o runDeadlineAt, mesmo quando a conclusão é registrada depois do prazo.
         xpAwarded: { type: integer, minimum: 0 }
         terminalReason: { type: [string, "null"], enum: [manual-stop, auto-complete, legacy-session-without-owner, null] }
         discardedReason: { type: [string, "null"] }
         cappedReason:
           type: [string, "null"]
           enum: [continuous-limit, daily-limit, null]
-        canControl: { type: boolean }
+        canControl:
+          type: boolean
+          description: Sempre true. Mantido por compatibilidade; qualquer Session autenticada do usuário controla a Study Session (D-006).
       example:
         id: 00000000-0000-4000-8000-000000000074
         mode: solo
@@ -1987,8 +2013,8 @@ components:
     # Keep operation examples local: each RFC 7807 `instance` names its route.
     StudySessionPauseConflict:
       description: >
-        Versão obsoleta, transição inválida, prazo vencido, falta de controle
-        pela Session iniciadora ou chave já usada por outro comando.
+        Versão obsoleta, transição inválida, prazo vencido ou chave já usada
+        por outro comando.
       content:
         application/problem+json:
           schema: { $ref: "#/components/schemas/Problem" }
@@ -2018,7 +2044,11 @@ components:
                 detail: O prazo canônico da Study Session já terminou
                 instance: /api/v1/sessions/{id}/pause
             notControllable:
-              summary: A Session autenticada não iniciou o foco
+              summary: "Obsoleto: a Session autenticada não iniciou o foco"
+              description: >
+                Não é mais enviado desde a D-006, porque qualquer Session do usuário
+                controla a Study Session. Fica documentado por um ciclo para clientes
+                antigos já instalados.
               value:
                 type: https://wise.app/errors/study-session-not-controllable
                 title: ConflictException
@@ -2056,7 +2086,11 @@ components:
                 detail: Não é possível retomar a Study Session no estado atual
                 instance: /api/v1/sessions/{id}/resume
             notControllable:
-              summary: A Session autenticada não iniciou o foco
+              summary: "Obsoleto: a Session autenticada não iniciou o foco"
+              description: >
+                Não é mais enviado desde a D-006, porque qualquer Session do usuário
+                controla a Study Session. Fica documentado por um ciclo para clientes
+                antigos já instalados.
               value:
                 type: https://wise.app/errors/study-session-not-controllable
                 title: ConflictException
@@ -2102,7 +2136,11 @@ components:
                 detail: Não é possível encerrar a Study Session no estado atual
                 instance: /api/v1/sessions/{id}/stop
             notControllable:
-              summary: A Session autenticada não iniciou o foco
+              summary: "Obsoleto: a Session autenticada não iniciou o foco"
+              description: >
+                Não é mais enviado desde a D-006, porque qualquer Session do usuário
+                controla a Study Session. Fica documentado por um ciclo para clientes
+                antigos já instalados.
               value:
                 type: https://wise.app/errors/study-session-not-controllable
                 title: ConflictException

@@ -833,6 +833,49 @@ describe('Universal authentication security contract', () => {
     expect(revokedRefresh.status).toBe(401);
   });
 
+  it('lets another Session control the Study Session after the Session that started it is revoked (D-006)', async () => {
+    const origin = 'http://localhost:8081';
+    const account = {
+      email: `revoked-focus-${process.pid}@wise.app`,
+      password: 'revoked-focus-password',
+      displayName: 'Revoked Focus',
+    };
+    const registration = await post('/auth/register', account, { origin });
+    expect(registration.status).toBe(201);
+    const sessionA = (await registration.json()) as { accessToken: string; sessionId: string };
+    const login = await post('/auth/login', { email: account.email, password: account.password }, { origin });
+    expect(login.status).toBe(200);
+    const sessionB = (await login.json()) as { accessToken: string };
+    const asA = { authorization: `Bearer ${sessionA.accessToken}`, origin };
+    const asB = { authorization: `Bearer ${sessionB.accessToken}`, origin };
+    const command = (id: string, action: string, expectedVersion: number) => post(
+      `/sessions/${id}/${action}`,
+      { expectedVersion },
+      { ...asB, 'idempotency-key': `revoked-focus-${action}-${expectedVersion}` },
+    );
+
+    const started = await post('/sessions', { plannedDurationSeconds: 900 }, { ...asA, 'idempotency-key': 'revoked-focus-start' });
+    expect(started.status).toBe(201);
+    const { id } = (await started.json()) as { id: string };
+    expect((await remove(`/users/me/sessions/${sessionA.sessionId}`, asB)).status).toBe(204);
+    expect((await get('/sessions/active', asA)).status).toBe(401);
+
+    const active = await get('/sessions/active', asB);
+    expect(active.status).toBe(200);
+    expect(await active.json()).toMatchObject({ id, state: 'running', canControl: true });
+    const paused = await command(id, 'pause', 1);
+    expect(paused.status).toBe(200);
+    expect(await paused.json()).toMatchObject({ state: 'paused', version: 2 });
+    const resumed = await command(id, 'resume', 2);
+    expect(resumed.status).toBe(200);
+    const heartbeat = await fetch(`${baseUrl}/sessions/${id}/heartbeat`, { method: 'PATCH', headers: asB });
+    expect(heartbeat.status).toBe(204);
+    const stopped = await command(id, 'stop', 3);
+    expect(stopped.status).toBe(200);
+    expect(await stopped.json()).toMatchObject({ id, version: 4, state: 'cancelled' });
+    expect((await get('/sessions/active', asB)).status).toBe(204);
+  });
+
   it('enforces the five-session limit across concurrent Web and native logins', async () => {
     const email = `session-limit-${process.pid}@wise.app`;
     const password = 'session-limit-password';

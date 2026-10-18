@@ -112,21 +112,20 @@ describe('Cosmetic Item unlock on level-up through the Study Session API', () =>
     await auth.register({ email: 'veterana@example.com', password: 'senha-forte-123', displayName: 'Veterana' }, {});
     userId = (await dataSource.getRepository(User).findOneByOrFail({ email: 'veterana@example.com' })).id;
 
+    const transitions = new StudySessionTransitionService(
+      dataSource,
+      { now: () => new Date(now) },
+      progression,
+      {} as never,
+      new EconomyService(dataSource.getRepository(CoinBalance), dataSource.getRepository(CoinLedgerEntry), realtime),
+      users,
+    );
     const moduleRef = await Test.createTestingModule({
       controllers: [SessionsController, UsersController],
       providers: [
         { provide: SessionsService, useValue: { usesCanonicalStudySessionState: async () => true } },
-        { provide: StudySessionStartService, useValue: new StudySessionStartService(dataSource, users, {} as never) },
-        {
-          provide: StudySessionTransitionService,
-          useValue: new StudySessionTransitionService(
-            dataSource,
-            { now: () => new Date(now) },
-            progression,
-            {} as never,
-            new EconomyService(dataSource.getRepository(CoinBalance), dataSource.getRepository(CoinLedgerEntry), realtime),
-          ),
-        },
+        { provide: StudySessionStartService, useValue: new StudySessionStartService(dataSource, users, {} as never, transitions) },
+        { provide: StudySessionTransitionService, useValue: transitions },
         { provide: UsersService, useValue: users },
         { provide: AuthService, useValue: auth },
       ],

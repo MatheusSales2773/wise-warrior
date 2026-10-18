@@ -27,6 +27,7 @@ export type StudySessionSnapshot = {
   discardedReason: string | null;
   /** Antifraude limit that truncated the valid focus (ADR-011); absent on responses from older servers. */
   cappedReason?: 'continuous-limit' | 'daily-limit' | null;
+  /** Always true since D-006; kept for contract compatibility and never read by the app. */
   canControl: boolean;
   receivedAtMs: number;
 };
@@ -46,6 +47,7 @@ export type StudySessionTransitionRequest = {
   idempotencyKey: string;
 };
 
+/** Once, after the server completes an expired running focus on this read, the snapshot is that terminal result. */
 export async function getActiveStudySession(signal?: AbortSignal): Promise<StudySessionSnapshot | null> {
   const response = await getAuthenticatedHttpClient().get<StudySessionSnapshot>('/sessions/active', { signal });
   return response.status === 204 ? null : { ...response.data, receivedAtMs: Date.now() };

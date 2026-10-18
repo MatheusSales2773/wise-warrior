@@ -40,7 +40,8 @@ export class SessionsController {
 
   @Get('active')
   async active(@CurrentUser() user: JwtPayload, @Res({ passthrough: true }) response: Response) {
-    const snapshot = await this.studySessionStart.active(user.sub, user.sessionId);
+    // An expired running focus stays readable so the returning device completes it and shows the result.
+    const snapshot = await this.studySessionStart.active(user.sub);
     if (!snapshot) {
       response.status(HttpStatus.NO_CONTENT);
       return;
@@ -151,7 +152,7 @@ export class SessionsController {
     @CurrentUser() user: JwtPayload,
     @Param('id') id: string,
   ): Promise<void> {
-    await this.sessions.heartbeat(user.sub, id, user.sessionId);
+    await this.sessions.heartbeat(user.sub, id);
   }
 
   @Post(':id/complete')

@@ -202,12 +202,12 @@ describe('Study Session automatic completion timing', () => {
 
   it('completes one millisecond after the canonical deadline without exceeding planned focus or XP', () => {
     const studySession = plannedSession(900);
-    const endedAt = new Date(studySession.runDeadlineAt!.getTime() + 1);
+    const deadline = studySession.runDeadlineAt!;
 
-    expect(applyStudySessionComplete(studySession, endedAt, 0)).toEqual({
+    expect(applyStudySessionComplete(studySession, new Date(deadline.getTime() + 1), 0)).toEqual({
       state: 'completed', durationValidSeconds: 900, xpAwarded: 150, cappedReason: null,
     });
-    expect(studySession.endedAt).toEqual(endedAt);
+    expect(studySession.endedAt).toEqual(deadline);
   });
 
   it('keeps terminal sessions immutable under later stop and completion commands', () => {
@@ -224,14 +224,14 @@ describe('Study Session automatic completion timing', () => {
     expect(studySession).toEqual(completed);
   });
 
-  it('caps delayed confirmation at the planned focus duration', () => {
+  it('caps delayed confirmation at the planned focus duration and ends it at the deadline', () => {
     const studySession = plannedSession(1500);
-    const endedAt = new Date(studySession.runDeadlineAt!.getTime() + 7_200_000);
+    const deadline = studySession.runDeadlineAt!;
 
-    const result = applyStudySessionComplete(studySession, endedAt, 0);
+    const result = applyStudySessionComplete(studySession, new Date(deadline.getTime() + 7_200_000), 0);
 
     expect(result).toMatchObject({ state: 'completed', durationValidSeconds: 1500, xpAwarded: 250 });
-    expect(studySession.endedAt).toEqual(endedAt);
+    expect(studySession.endedAt).toEqual(deadline);
   });
 
   it('does not complete paused focus after a long pause and preserves fractional pause milliseconds', () => {

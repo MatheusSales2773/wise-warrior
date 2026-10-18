@@ -23,8 +23,13 @@ describe('canonical Study Session start against MySQL', () => {
   let database: IntegrationDatabase | undefined;
   let dataSource: DataSource | undefined;
   const userId = '00000000-0000-4000-8000-000000000070';
+  // Only the user lock of UsersService runs here; it goes through the transaction's manager.
+  const lockingUsers = () => new UsersService({} as never, {} as never, {} as never, {} as never);
   const createService = () => new StudySessionStartService(
-    dataSource!, new UsersService({} as never, {} as never, {} as never, {} as never), {} as never,
+    dataSource!,
+    lockingUsers(),
+    {} as never,
+    new StudySessionTransitionService(dataSource!, { now: () => new Date() }, {} as never, {} as never, {} as never, lockingUsers()),
   );
 
   beforeEach(async () => {
@@ -40,9 +45,9 @@ describe('canonical Study Session start against MySQL', () => {
     await database?.close();
   });
 
-  it('returns absence, defaults to 25 minutes and restores only for the initiating Session', async () => {
+  it('returns absence, defaults to 25 minutes and restores for any Session of the user', async () => {
     const service = createService();
-    expect(await service.active(userId, 'device-a')).toBeNull();
+    expect(await service.active(userId)).toBeNull();
     for (const invalidBody of [
       { plannedDurationSeconds: null }, 42, 'x', true, [], null,
     ]) {
@@ -60,8 +65,7 @@ describe('canonical Study Session start against MySQL', () => {
       serverNow: expect.any(Date), version: 1, endedAt: null, xpAwarded: 0,
       terminalReason: null, discardedReason: null, cappedReason: null, canControl: true,
     }));
-    expect(await service.active(userId, 'device-a')).toMatchObject({ id: started.id, canControl: true });
-    expect(await service.active(userId, 'device-b')).toMatchObject({ id: started.id, canControl: false });
+    expect(await service.active(userId)).toMatchObject({ id: started.id, canControl: true });
     const persisted = await dataSource!.getRepository(StudySession).findOneByOrFail({ id: started.id });
     expect(persisted).toMatchObject({ subject: null, raidId: null, mode: 'solo', initiatingSessionId: 'device-a' });
   });
@@ -108,8 +112,7 @@ describe('canonical Study Session start against MySQL', () => {
     const service = createService();
     const started = await service.start(userId, 'device-a', { subject: '  ÁLGEBRA\u00a0 linear\u2003II  ' }, 'subject-a');
     expect(started.subject).toBe('ÁLGEBRA linear II');
-    expect(await service.active(userId, 'device-a')).toMatchObject({ id: started.id, subject: 'ÁLGEBRA linear II' });
-    expect(await service.active(userId, 'device-b')).toMatchObject({ id: started.id, subject: 'ÁLGEBRA linear II' });
+    expect(await service.active(userId)).toMatchObject({ id: started.id, subject: 'ÁLGEBRA linear II' });
     expect(await dataSource!.getRepository(StudySession).findOneByOrFail({ id: started.id }))
       .toMatchObject({ subject: 'ÁLGEBRA linear II' });
     expect(await dataSource!.query(
@@ -118,7 +121,7 @@ describe('canonical Study Session start against MySQL', () => {
     )).toEqual([{ subject: 'ÁLGEBRA linear II' }]);
 
     const transitions = new StudySessionTransitionService(
-      dataSource!, { now: () => new Date(started.startedAt.getTime() + 10_000) }, {} as never, {} as never, {} as never,
+      dataSource!, { now: () => new Date(started.startedAt.getTime() + 10_000) }, {} as never, {} as never, {} as never, lockingUsers(),
     );
     const paused = await transitions.pause({
       userId, authSessionId: 'device-a', studySessionId: started.id, dto: { expectedVersion: 1 }, idempotencyKey: 'subject-pause',
@@ -157,7 +160,7 @@ describe('canonical Study Session start against MySQL', () => {
     expect(sameSubject).toEqual(started);
     expect(sameSubject.subject).toBe('Cálculo II');
     const decomposed = await service.start(userId, 'device-b', { plannedDurationSeconds: 900, subject: 'Ca\u0301lculo II' }, 'subject-key');
-    expect(decomposed).toEqual({ ...started, canControl: false });
+    expect(decomposed).toEqual(started);
 
     for (const other of ['Cálculo III', 'cálculo ii', null, undefined, '  ']) {
       await expectConflictType(
@@ -189,6 +192,7 @@ describe('canonical Study Session start against MySQL', () => {
       {} as never,
       {} as never,
       {} as never,
+      lockingUsers(),
     );
     const pause = (idempotencyKey: string) => transitionService.pause({
       userId,
