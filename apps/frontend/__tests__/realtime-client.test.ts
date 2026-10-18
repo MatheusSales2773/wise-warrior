@@ -1,10 +1,12 @@
 import { QueryClient } from '@tanstack/react-query';
-import { createRealtimeClient, type RealtimeSocket, type RealtimeSocketFactory } from '@/core/realtime/realtime-client';
+import { applyStudySessionChanged, createRealtimeClient, type RealtimeSocket, type RealtimeSocketFactory } from '@/core/realtime/realtime-client';
 import type { ActiveRaid } from '@/features/guild/api';
 import { dashboardKeys } from '@/features/dashboard/queries';
 import { guildKeys } from '@/features/guild/queries';
 import { profileKeys } from '@/features/profile/queries';
 import { marketKeys } from '@/features/market/queries';
+import type { StudySessionSnapshot } from '@/features/study-session/api';
+import { activeStudySessionQueryKey, focusCycleQueryKey } from '@/features/study-session/queries';
 
 class FakeSocket implements RealtimeSocket {
   active = true;
@@ -329,7 +331,7 @@ describe('connection status', () => {
       socket.emit('connect');
     }
 
-    ['raid:progress', 'notification:raidComplete', 'progress:xpUpdated', 'notification:levelup', 'connect', 'connect_error', 'disconnect']
+    ['raid:progress', 'notification:raidComplete', 'progress:xpUpdated', 'notification:levelup', 'studySession:changed', 'connect', 'connect_error', 'disconnect']
       .forEach((event) => expect(socket.count(event)).toBe(1));
   });
 
@@ -403,6 +405,118 @@ describe('coins:changed', () => {
     client.dispose();
 
     expect(socket.count('coins:changed')).toBe(0);
+  });
+});
+
+describe('studySession:changed', () => {
+  const invalidated = (queryClient: QueryClient, key: readonly unknown[]) => queryClient.getQueryState(key)?.isInvalidated;
+  const activeSession = (overrides: Partial<StudySessionSnapshot> = {}): StudySessionSnapshot => ({
+    id: 'study-1', mode: 'solo', raidId: null, subject: null, state: 'running', plannedDurationSeconds: 1500,
+    startedAt: '2026-09-22T12:00:00.000Z', runDeadlineAt: '2026-09-22T12:25:00.000Z',
+    pausedAt: null, pausedTotalSeconds: 0, durationValidSeconds: 0, remainingSeconds: 1500,
+    serverNow: '2026-09-22T12:00:00.000Z', version: 1, endedAt: null, xpAwarded: 0,
+    terminalReason: null, discardedReason: null, canControl: true,
+    receivedAtMs: new Date('2026-09-22T12:00:00.000Z').getTime(),
+    ...overrides,
+  });
+
+  it('ignores the echo of the version this device already applied', () => {
+    const { socket, queryClient } = setup();
+    queryClient.setQueryData(activeStudySessionQueryKey, activeSession({ state: 'paused', version: 2 }));
+
+    socket.emit('studySession:changed', { studySessionId: 'study-1', version: 2, state: 'paused' });
+
+    expect(invalidated(queryClient, activeStudySessionQueryKey)).toBe(false);
+  });
+
+  it('ignores a terminal event when this device has no active session to clear', () => {
+    const { socket, queryClient } = setup();
+    queryClient.setQueryData(activeStudySessionQueryKey, null);
+
+    socket.emit('studySession:changed', { studySessionId: 'study-1', version: 2, state: 'stopped_early' });
+
+    expect(invalidated(queryClient, activeStudySessionQueryKey)).toBe(false);
+  });
+
+  it('refetches the active session when another device pauses or resumes it', () => {
+    const { socket, queryClient } = setup();
+    queryClient.setQueryData(activeStudySessionQueryKey, activeSession({ version: 2 }));
+
+    socket.emit('studySession:changed', { studySessionId: 'study-1', version: 3, state: 'paused' });
+
+    expect(invalidated(queryClient, activeStudySessionQueryKey)).toBe(true);
+  });
+
+  it('refetches the active session when another device starts one', () => {
+    const { socket, queryClient } = setup();
+    queryClient.setQueryData(activeStudySessionQueryKey, null);
+
+    socket.emit('studySession:changed', { studySessionId: 'study-2', version: 1, state: 'running' });
+
+    expect(invalidated(queryClient, activeStudySessionQueryKey)).toBe(true);
+  });
+
+  it('settles the history, metrics and cycle when the active session ends elsewhere', () => {
+    const { socket, queryClient } = setup();
+    queryClient.setQueryData(activeStudySessionQueryKey, activeSession({ version: 2 }));
+    [
+      dashboardKeys.profile(),
+      dashboardKeys.recentActivity(),
+      dashboardKeys.metrics(),
+      [...dashboardKeys.all, 'history'],
+      focusCycleQueryKey,
+      [...guildKeys.all, 'raid'],
+      profileKeys.devices(),
+    ].forEach((key) => queryClient.setQueryData(key, {}));
+
+    socket.emit('studySession:changed', { studySessionId: 'study-1', version: 3, state: 'completed' });
+
+    expect(invalidated(queryClient, activeStudySessionQueryKey)).toBe(true);
+    expect(invalidated(queryClient, dashboardKeys.profile())).toBe(true);
+    expect(invalidated(queryClient, dashboardKeys.recentActivity())).toBe(true);
+    expect(invalidated(queryClient, dashboardKeys.metrics())).toBe(true);
+    expect(invalidated(queryClient, [...dashboardKeys.all, 'history'])).toBe(true);
+    expect(invalidated(queryClient, focusCycleQueryKey)).toBe(true);
+    // A solo session never contributed to a Raid.
+    expect(invalidated(queryClient, [...guildKeys.all, 'raid'])).toBe(false);
+    expect(invalidated(queryClient, profileKeys.devices())).toBe(false);
+  });
+
+  it('also refreshes the Raid when the guild session that ended elsewhere had counted for it', () => {
+    const { socket, queryClient } = setup();
+    queryClient.setQueryData(activeStudySessionQueryKey, activeSession({ mode: 'guild', raidId: 'raid-1' }));
+    queryClient.setQueryData([...guildKeys.all, 'raid'], {});
+
+    socket.emit('studySession:changed', { studySessionId: 'study-1', version: 2, state: 'stopped_early' });
+
+    expect(invalidated(queryClient, [...guildKeys.all, 'raid'])).toBe(true);
+  });
+
+  it('registers the listener once and removes it on dispose', () => {
+    const { socket, client } = setup();
+    expect(socket.count('studySession:changed')).toBe(1);
+
+    client.dispose();
+
+    expect(socket.count('studySession:changed')).toBe(0);
+  });
+
+  it('refetches the active session after a reconnection, where events may have been missed', () => {
+    const { socket, queryClient } = setup();
+    queryClient.setQueryData(activeStudySessionQueryKey, activeSession());
+
+    socket.emit('connect');
+    expect(invalidated(queryClient, activeStudySessionQueryKey)).toBe(false);
+
+    socket.emit('connect');
+    expect(invalidated(queryClient, activeStudySessionQueryKey)).toBe(true);
+  });
+
+  it('keeps the pure invalidation rule usable outside the socket', () => {
+    const queryClient = new QueryClient();
+    queryClient.setQueryData(activeStudySessionQueryKey, activeSession());
+    applyStudySessionChanged(queryClient, { studySessionId: 'study-1', version: 2, state: 'paused' });
+    expect(invalidated(queryClient, activeStudySessionQueryKey)).toBe(true);
   });
 });
 

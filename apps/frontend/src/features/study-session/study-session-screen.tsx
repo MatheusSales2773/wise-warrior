@@ -430,6 +430,7 @@ export function StudySessionScreen({ initialMode = 'solo' }: { initialMode?: Ses
   const [breakNow, setBreakNow] = useState(() => Date.now());
   const [retryTransition, setRetryTransition] = useState<TransitionCommand | null>(null);
   const [terminalResult, setTerminalResult] = useState<StudySessionTransitionResult | null>(null);
+  const [remoteEndNotice, setRemoteEndNotice] = useState(false);
   const [completionIntentState, setCompletionIntentState] = useState<StudySessionCompletionIntent | null>(
     () => getRetainedCompletionIntent(),
   );
@@ -438,6 +439,9 @@ export function StudySessionScreen({ initialMode = 'solo' }: { initialMode?: Ses
   const pendingKey = useRef<string | null>(null);
   const announcedStatus = useRef<string | null>(null);
   const observedCompletionPromise = useRef<Promise<StudySessionTransitionResult> | null>(null);
+  // The last session this screen saw active, to tell "ended elsewhere" from a Forja that never had one.
+  const previousActiveSessionId = useRef<string | null>(null);
+  const serverCompletionTaken = useRef(false);
   const requiresForegroundRefresh = useRef(false);
   const applicationActive = useStudySessionAppActive();
   const wasApplicationActive = useRef(applicationActive);
@@ -502,8 +506,27 @@ export function StudySessionScreen({ initialMode = 'solo' }: { initialMode?: Ses
   // The read itself may have completed the expired focus on the server: show that result like a local completion.
   useEffect(() => {
     const serverResult = takeServerCompletion();
+    serverCompletionTaken.current = serverResult !== null;
     if (serverResult) queueMicrotask(() => void settleTerminalResult(serverResult));
   }, [active.dataUpdatedAt, settleTerminalResult]);
+
+  // D-005/D-006: a session that vanishes without a result from this device ended on another device. There is no
+  // route for the result, so only warn — XP and Moedas arrive through their own events.
+  useEffect(() => {
+    if (activeSnapshot) {
+      previousActiveSessionId.current = activeSnapshot.id;
+      serverCompletionTaken.current = false;
+      queueMicrotask(() => setRemoteEndNotice(false));
+      return;
+    }
+    if (!active.isSuccess || active.isFetching) return;
+    const endedId = previousActiveSessionId.current;
+    if (!endedId) return;
+    previousActiveSessionId.current = null;
+    // The read itself completed the expired focus, or this device stopped/completed it: it has a result to show.
+    if (serverCompletionTaken.current || terminalResult?.id === endedId || completionResult?.id === endedId) return;
+    queueMicrotask(() => setRemoteEndNotice(true));
+  }, [active.isFetching, active.isSuccess, activeSnapshot, completionResult, terminalResult]);
 
   const observeCompletion = useCallback((intent: StudySessionCompletionIntent) => {
     const promise = intent.promise;
@@ -820,6 +843,11 @@ export function StudySessionScreen({ initialMode = 'solo' }: { initialMode?: Ses
       <View style={styles.layout}>
         <TodayPill />
         {showSync ? <ForgeSyncIndicator onRetry={() => void refreshActive()} status={syncStatus} /> : null}
+        {remoteEndNotice ? (
+          <WiseText accessibilityLiveRegion="polite" aria-live="polite" color="textSecondary" testID="study-session-remote-end" variant="body">
+            Sessão encerrada em outro dispositivo
+          </WiseText>
+        ) : null}
         {active.isPending && !snapshot ? <WiseText variant="body">Buscando sua sessão ativa…</WiseText> : null}
         {active.isError && !snapshot ? (
           <WiseCard style={styles.messageCard} testID="study-session-load-error">

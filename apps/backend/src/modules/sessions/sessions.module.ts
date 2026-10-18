@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { forwardRef, Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { StudySession } from './entities/study-session.entity';
 import { SessionsService } from './sessions.service';
@@ -8,10 +8,18 @@ import { RaidsModule } from '../raids/raids.module';
 import { StudySessionStartService } from './study-session-start.service';
 import { UsersModule } from '../users/users.module';
 import { EconomyModule } from '../economy/economy.module';
+import { RealtimeModule } from '../realtime/realtime.module';
 import { StudySessionTransitionService, STUDY_SESSION_CLOCK } from './study-session-transition.service';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([StudySession]), ProgressionModule, RaidsModule, UsersModule, EconomyModule],
+  imports: [
+    TypeOrmModule.forFeature([StudySession]),
+    ProgressionModule,
+    RaidsModule,
+    UsersModule,
+    EconomyModule,
+    forwardRef(() => RealtimeModule),
+  ],
   controllers: [SessionsController],
   providers: [
     SessionsService,

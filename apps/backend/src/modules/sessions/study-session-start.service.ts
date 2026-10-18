@@ -82,7 +82,7 @@ export class StudySessionStartService {
             message: 'Idempotency-Key já foi usada com outra duração, Matéria ou modo',
           });
         }
-        return replayed;
+        return { snapshot: replayed, created: false };
       }
 
       await rejectIfStudySessionCommandKeyUsed(manager, userId, idempotencyKey);
@@ -128,10 +128,12 @@ export class StudySessionStartService {
         'INSERT INTO study_session_start_receipts (user_id, idempotency_key, planned_duration_seconds, subject, initiating_session_id, response_json) VALUES (?, ?, ?, ?, ?, ?)',
         [userId, idempotencyKey, plannedDurationSeconds, subject, authSessionId, JSON.stringify(snapshot)],
       );
-      return snapshot;
+      return { snapshot, created: true };
     });
+    // A focus the server completed at its deadline goes first, then the session that took its slot.
     expiredCompletion?.publish();
-    return started;
+    if (started.created) this.transitions.publishStudySessionChanged(userId, started.snapshot);
+    return started.snapshot;
   }
 
   private normalizeSubject(value: unknown): string | null {

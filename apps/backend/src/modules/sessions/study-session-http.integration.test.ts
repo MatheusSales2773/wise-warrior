@@ -32,6 +32,7 @@ describe('Study Session HTTP contract against MySQL', () => {
   let app: INestApplication | undefined;
   let baseUrl: string;
   let now: Date;
+  let realtime: { emitToUser: jest.Mock };
 
   const userId = '00000000-0000-4000-8000-000000000076';
   const otherUserId = '00000000-0000-4000-8000-000000000077';
@@ -61,10 +62,11 @@ describe('Study Session HTTP contract against MySQL', () => {
       dataSource.getRepository(CosmeticItem),
       {} as ProgressionService, // the profile read is not exercised here
     );
-    const realtime = { emitToUser: jest.fn() } as unknown as RealtimeGateway;
-    const progression = new ProgressionService(dataSource.getRepository(Character), realtime, users);
-    const economy = new EconomyService(dataSource.getRepository(CoinBalance), dataSource.getRepository(CoinLedgerEntry), realtime);
-    const transitions = new StudySessionTransitionService(dataSource, { now: () => new Date(now) }, progression, {} as never, economy, users);
+    realtime = { emitToUser: jest.fn() };
+    const gateway = realtime as unknown as RealtimeGateway;
+    const progression = new ProgressionService(dataSource.getRepository(Character), gateway, users);
+    const economy = new EconomyService(dataSource.getRepository(CoinBalance), dataSource.getRepository(CoinLedgerEntry), gateway);
+    const transitions = new StudySessionTransitionService(dataSource, { now: () => new Date(now) }, progression, {} as never, economy, users, gateway);
     const start = new StudySessionStartService(dataSource, users, {} as never, transitions);
     const controllerModule = await Test.createTestingModule({
       controllers: [SessionsController],
@@ -370,11 +372,14 @@ describe('Study Session HTTP contract against MySQL', () => {
     });
     const { id } = await started.json() as { id: string };
 
+    const emittedBefore = realtime.emitToUser.mock.calls.length;
     const heartbeat = await fetch(`${baseUrl}/api/v1/sessions/${id}/heartbeat`, {
       method: 'PATCH',
       headers: authHeaders(otherSessionId),
     });
     expect(heartbeat.status).toBe(204);
+    // No per-second synchronization: the heartbeat only records liveness.
+    expect(realtime.emitToUser.mock.calls).toHaveLength(emittedBefore);
   });
 
   it('replays a start to another Session of the user as controllable', async () => {

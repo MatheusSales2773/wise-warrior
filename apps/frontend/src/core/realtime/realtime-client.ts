@@ -7,6 +7,8 @@ import { guildKeys } from '@/features/guild/queries';
 import type { CoinOrigin } from '@/features/market/api';
 import { marketKeys } from '@/features/market/queries';
 import { profileKeys } from '@/features/profile/queries';
+import { activeStudySessionQueryKey, focusCycleQueryKey } from '@/features/study-session/queries';
+import type { StudySessionSnapshot } from '@/features/study-session/api';
 
 /** Payload of the `raid:progress` event (docs/api/asyncapi.yaml). */
 export type RaidProgressEvent = Pick<ActiveRaid, 'progressXp' | 'goalXp' | 'goalReachedAt' | 'regeneratedXp' | 'healthXp'> & { raidId: string };
@@ -37,6 +39,16 @@ export type CoinsChangedEvent = {
   delta: number;
   origin: CoinOrigin;
 };
+
+/** Payload of the `studySession:changed` event (docs/api/asyncapi.yaml). */
+export type StudySessionChangedEvent = {
+  studySessionId: string;
+  version: number;
+  /** Terminal states mean the session left the active slot; the REST snapshot has the details. */
+  state: 'running' | 'paused' | 'completed' | 'stopped_early';
+};
+
+const TERMINAL_STUDY_SESSION_STATES: ReadonlySet<StudySessionChangedEvent['state']> = new Set(['completed', 'stopped_early']);
 
 /** Where the connection stands, for the visible indicator. */
 export type RealtimeStatus = 'connecting' | 'connected' | 'reconnecting' | 'offline';
@@ -167,6 +179,33 @@ export function applyRaidComplete(queryClient: QueryClient): void {
 }
 
 /**
+ * D-005/D-006: another device started, paused, resumed or ended the active Study Session. REST stays canonical,
+ * so the event only carries the version that changed; anything but the echo of a command this device already
+ * applied refetches `GET /sessions/active`. A terminal state also settles the data the result screen would have
+ * refreshed, so the device that did not issue the command does not keep stale history, metrics or cycle.
+ */
+export function applyStudySessionChanged(queryClient: QueryClient, event: StudySessionChangedEvent): void {
+  const local = queryClient.getQueryData<StudySessionSnapshot | null>(activeStudySessionQueryKey);
+  const sameSession = local != null && local.id === event.studySessionId;
+  // The echo of this device's own command: its response already wrote the very same version.
+  if (sameSession && local.version >= event.version) return;
+  const terminal = TERMINAL_STUDY_SESSION_STATES.has(event.state);
+  // A device without a session has nothing to clear; the device that ended it already shows its result.
+  if (!local && terminal) return;
+
+  void queryClient.invalidateQueries({ queryKey: activeStudySessionQueryKey });
+  if (!sameSession || !terminal) return;
+  void queryClient.invalidateQueries({ queryKey: dashboardKeys.profile() });
+  void queryClient.invalidateQueries({ queryKey: dashboardKeys.recentActivity() });
+  void queryClient.invalidateQueries({ queryKey: dashboardKeys.metrics() });
+  // Every day of the history: the session lands in its UTC day, whatever day the screen shows.
+  void queryClient.invalidateQueries({ queryKey: [...dashboardKeys.all, 'history'] });
+  void queryClient.invalidateQueries({ queryKey: focusCycleQueryKey });
+  // A guild-mode session may have become a Contribution: the Raid card shows the new progress.
+  if (local.mode === 'guild') void queryClient.invalidateQueries({ queryKey: [...guildKeys.all, 'raid'] });
+}
+
+/**
  * Socket.IO client authenticated with the in-memory access token (ADR-009). One socket carries every listener,
  * registered once: automatic reconnections reuse it, and the `auth` callback runs on each attempt, so they carry
  * whatever token the HTTP layer holds by then. When the server turns the handshake down (an expired token), the
@@ -208,6 +247,7 @@ export function createRealtimeClient({
   const onLevelUp = () => applyLevelUp(queryClient);
   const onEquipmentChanged = () => applyEquipmentChanged(queryClient);
   const onCoinsChanged = (event: CoinsChangedEvent) => applyCoinsChanged(queryClient, event);
+  const onStudySessionChanged = (event: StudySessionChangedEvent) => applyStudySessionChanged(queryClient, event);
   const handleConnectionLoss = () => {
     failPending();
     if (disposed) return;
@@ -225,10 +265,14 @@ export function createRealtimeClient({
       else setStatus('offline');
     }).catch(() => { if (!disposed) setStatus('offline'); }).finally(() => { recovering = false; });
   };
-  // Events missed while the socket was down are not replayed, so a reconnection refetches the Raid and its ranking.
+  // Events missed while the socket was down are not replayed, so a reconnection refetches the Raid, its ranking
+  // and the active Study Session.
   const onConnect = () => {
     setStatus('connected');
-    if (connectedBefore) void queryClient.invalidateQueries({ queryKey: guildKeys.all, predicate: ({ queryKey }) => queryKey[1] === 'raid' });
+    if (connectedBefore) {
+      void queryClient.invalidateQueries({ queryKey: guildKeys.all, predicate: ({ queryKey }) => queryKey[1] === 'raid' });
+      void queryClient.invalidateQueries({ queryKey: activeStudySessionQueryKey });
+    }
     connectedBefore = true;
   };
 
@@ -239,6 +283,7 @@ export function createRealtimeClient({
   socket.on('notification:levelup', onLevelUp);
   socket.on('character:equipmentChanged', onEquipmentChanged);
   socket.on('coins:changed', onCoinsChanged);
+  socket.on('studySession:changed', onStudySessionChanged);
   socket.on('connect', onConnect);
   socket.on('connect_error', handleConnectionLoss);
   socket.on('disconnect', handleConnectionLoss);
@@ -284,6 +329,7 @@ export function createRealtimeClient({
       socket.off('notification:levelup', onLevelUp);
       socket.off('character:equipmentChanged', onEquipmentChanged);
       socket.off('coins:changed', onCoinsChanged);
+      socket.off('studySession:changed', onStudySessionChanged);
       socket.off('connect', onConnect);
       socket.off('connect_error', handleConnectionLoss);
       socket.off('disconnect', handleConnectionLoss);
