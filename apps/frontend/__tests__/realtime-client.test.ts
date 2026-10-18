@@ -1,4 +1,4 @@
-import { QueryClient } from '@tanstack/react-query';
+import { QueryClient, QueryObserver } from '@tanstack/react-query';
 import { applyStudySessionChanged, createRealtimeClient, type RealtimeSocket, type RealtimeSocketFactory } from '@/core/realtime/realtime-client';
 import type { ActiveRaid } from '@/features/guild/api';
 import { dashboardKeys } from '@/features/dashboard/queries';
@@ -7,6 +7,7 @@ import { profileKeys } from '@/features/profile/queries';
 import { marketKeys } from '@/features/market/queries';
 import type { StudySessionSnapshot } from '@/features/study-session/api';
 import { activeStudySessionQueryKey, focusCycleQueryKey } from '@/features/study-session/queries';
+import { beginStudySessionCommand, endStudySessionCommand } from '@/features/study-session/pending-command';
 
 class FakeSocket implements RealtimeSocket {
   active = true;
@@ -429,13 +430,43 @@ describe('studySession:changed', () => {
     expect(invalidated(queryClient, activeStudySessionQueryKey)).toBe(false);
   });
 
-  it('ignores a terminal event when this device has no active session to clear', () => {
+  it('does not refetch the active session it does not have, but settles the data a terminal session changed', () => {
     const { socket, queryClient } = setup();
     queryClient.setQueryData(activeStudySessionQueryKey, null);
+    [dashboardKeys.metrics(), [...dashboardKeys.all, 'history'], focusCycleQueryKey].forEach((key) => queryClient.setQueryData(key, {}));
 
-    socket.emit('studySession:changed', { studySessionId: 'study-1', version: 2, state: 'stopped_early' });
+    socket.emit('studySession:changed', { studySessionId: 'study-1', version: 2, state: 'ended' });
 
     expect(invalidated(queryClient, activeStudySessionQueryKey)).toBe(false);
+    expect(invalidated(queryClient, dashboardKeys.metrics())).toBe(true);
+    expect(invalidated(queryClient, [...dashboardKeys.all, 'history'])).toBe(true);
+    expect(invalidated(queryClient, focusCycleQueryKey)).toBe(true);
+  });
+
+  it('ignores the event its own start command is about to answer', () => {
+    const { socket, queryClient } = setup();
+    queryClient.setQueryData(activeStudySessionQueryKey, null);
+    const command = { kind: 'start' as const };
+    beginStudySessionCommand(command);
+
+    socket.emit('studySession:changed', { studySessionId: 'study-1', version: 1, state: 'running' });
+    expect(invalidated(queryClient, activeStudySessionQueryKey)).toBe(false);
+
+    endStudySessionCommand(command);
+  });
+
+  it('ignores the event its own transition command is about to answer', () => {
+    const { socket, queryClient } = setup();
+    queryClient.setQueryData(activeStudySessionQueryKey, activeSession({ version: 2 }));
+    const command = { kind: 'transition' as const, studySessionId: 'study-1', version: 3 };
+    beginStudySessionCommand(command);
+
+    socket.emit('studySession:changed', { studySessionId: 'study-1', version: 3, state: 'paused' });
+    expect(invalidated(queryClient, activeStudySessionQueryKey)).toBe(false);
+
+    endStudySessionCommand(command);
+    socket.emit('studySession:changed', { studySessionId: 'study-1', version: 3, state: 'paused' });
+    expect(invalidated(queryClient, activeStudySessionQueryKey)).toBe(true);
   });
 
   it('refetches the active session when another device pauses or resumes it', () => {
@@ -469,7 +500,7 @@ describe('studySession:changed', () => {
       profileKeys.devices(),
     ].forEach((key) => queryClient.setQueryData(key, {}));
 
-    socket.emit('studySession:changed', { studySessionId: 'study-1', version: 3, state: 'completed' });
+    socket.emit('studySession:changed', { studySessionId: 'study-1', version: 3, state: 'ended' });
 
     expect(invalidated(queryClient, activeStudySessionQueryKey)).toBe(true);
     expect(invalidated(queryClient, dashboardKeys.profile())).toBe(true);
@@ -487,9 +518,34 @@ describe('studySession:changed', () => {
     queryClient.setQueryData(activeStudySessionQueryKey, activeSession({ mode: 'guild', raidId: 'raid-1' }));
     queryClient.setQueryData([...guildKeys.all, 'raid'], {});
 
-    socket.emit('studySession:changed', { studySessionId: 'study-1', version: 2, state: 'stopped_early' });
+    socket.emit('studySession:changed', { studySessionId: 'study-1', version: 2, state: 'ended' });
 
     expect(invalidated(queryClient, [...guildKeys.all, 'raid'])).toBe(true);
+  });
+
+  it('does not cancel a read already in flight, which may be bringing the canonical result', async () => {
+    const { socket, queryClient } = setup();
+    queryClient.setQueryData(activeStudySessionQueryKey, activeSession({ version: 2 }));
+    let settle!: (snapshot: StudySessionSnapshot) => void;
+    let aborted = false;
+    const queryFn = jest.fn(({ signal }: { signal?: AbortSignal }) => new Promise<StudySessionSnapshot>((resolve) => {
+      settle = resolve;
+      signal?.addEventListener('abort', () => { aborted = true; });
+    }));
+    const observer = new QueryObserver(queryClient, { queryKey: activeStudySessionQueryKey, queryFn: queryFn as never });
+    const unsubscribe = observer.subscribe(() => {});
+    await flush();
+    expect(queryClient.getQueryState(activeStudySessionQueryKey)?.fetchStatus).toBe('fetching');
+
+    socket.emit('studySession:changed', { studySessionId: 'study-1', version: 3, state: 'ended' });
+    await flush();
+    expect(aborted).toBe(false);
+
+    settle(activeSession({ version: 3, state: 'completed' }));
+    await flush();
+    expect(queryClient.getQueryData<StudySessionSnapshot>(activeStudySessionQueryKey))
+      .toMatchObject({ version: 3, state: 'completed' });
+    unsubscribe();
   });
 
   it('registers the listener once and removes it on dispose', () => {

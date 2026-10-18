@@ -10,6 +10,7 @@ import { UsersModule } from '../users/users.module';
 import { EconomyModule } from '../economy/economy.module';
 import { RealtimeModule } from '../realtime/realtime.module';
 import { StudySessionTransitionService, STUDY_SESSION_CLOCK } from './study-session-transition.service';
+import { StudySessionEventsService } from './study-session-events.service';
 
 @Module({
   imports: [
@@ -25,6 +26,7 @@ import { StudySessionTransitionService, STUDY_SESSION_CLOCK } from './study-sess
     SessionsService,
     StudySessionStartService,
     StudySessionTransitionService,
+    StudySessionEventsService,
     { provide: STUDY_SESSION_CLOCK, useValue: { now: () => new Date() } },
   ],
   exports: [SessionsService],

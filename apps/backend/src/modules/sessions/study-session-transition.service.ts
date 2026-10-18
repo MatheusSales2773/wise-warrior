@@ -4,19 +4,18 @@ import {
   Inject,
   Injectable,
   NotFoundException,
-  forwardRef,
 } from '@nestjs/common';
 import { DataSource, type EntityManager } from 'typeorm';
 import { ProgressionService } from '../progression/progression.service';
 import { RaidsService, type RaidContributionOutcome } from '../raids/raids.service';
 import { EconomyService } from '../economy/economy.service';
-import { RealtimeGateway } from '../realtime/realtime.gateway';
 import { UsersService } from '../users/users.service';
 import type { CoinMovementResult } from '../economy/domain/coin-origin';
 import { StudySession } from './entities/study-session.entity';
 import type { StudySessionSnapshot } from './study-session-snapshot';
 import { deserializeStudySessionSnapshot, studySessionSnapshot } from './study-session-snapshot';
 import { StudySessionTransitionDto } from './dto/study-session-transition.dto';
+import { StudySessionEventsService } from './study-session-events.service';
 import { coinsForDuration } from './domain/coin-rate';
 import { isValidIdempotencyKey } from './domain/idempotency-key';
 import { rejectIfStudySessionCommandKeyUsed } from './study-session-command-keys';
@@ -47,17 +46,6 @@ export type StudySessionTransitionResult = StudySessionSnapshot & {
   raidContribution: RaidContributionFeedback | null;
 };
 
-/**
- * Sinal de `studySession:changed` (docs/api/asyncapi.yaml): o mínimo para o outro dispositivo
- * invalidar `GET /sessions/active`. `cancelled` e `discarded` são terminais e chegam como
- * `stopped_early`, porque o cliente só precisa saber que a sessão terminou.
- */
-export type StudySessionChangedEvent = {
-  studySessionId: string;
-  version: number;
-  state: 'running' | 'paused' | 'completed' | 'stopped_early';
-};
-
 type TerminalEffects = {
   xpGained: number;
   progressionResult: XpApplicationResult | null;
@@ -84,10 +72,10 @@ type StudySessionTransitionCommand = StudySessionTransitionContext & {
   action: StudySessionCommandAction;
 };
 
-/** `changed` separates a transition applied by this request from a replay that only returned a receipt. */
+/** `applied` separates a transition this request applied from a replay that only returned a receipt. */
 type TransitionOutcome = TerminalEffects & {
   snapshot: StudySessionTransitionResult;
-  changed: boolean;
+  applied: boolean;
 };
 
 const TRANSITION_VERBS: Record<StudySessionCommandAction, string> = {
@@ -122,7 +110,7 @@ export class StudySessionTransitionService {
     private readonly raids: RaidsService,
     private readonly economy: EconomyService,
     private readonly users: UsersService,
-    @Inject(forwardRef(() => RealtimeGateway)) private readonly realtime: RealtimeGateway,
+    private readonly events: StudySessionEventsService,
   ) {}
 
   pause(command: StudySessionTransitionContext): Promise<StudySessionTransitionResult> {
@@ -191,7 +179,7 @@ export class StudySessionTransitionService {
         return {
           snapshot: deserializeTransitionResult(receipt.response_json),
           ...NO_TERMINAL_EFFECTS,
-          changed: false,
+          applied: false,
         };
       }
 
@@ -207,7 +195,7 @@ export class StudySessionTransitionService {
         return {
           snapshot: { ...studySessionSnapshot(session, this.clock.now()), raidContribution: null },
           ...NO_TERMINAL_EFFECTS,
-          changed: false,
+          applied: false,
         };
       }
 
@@ -267,12 +255,12 @@ export class StudySessionTransitionService {
          VALUES (?, ?, ?, ?, ?, ?)`,
         [userId, studySessionId, idempotencyKey, action, dto.expectedVersion, JSON.stringify(snapshot)],
       );
-      return { snapshot, ...effects, changed: true };
+      return { snapshot, ...effects, applied: true };
     });
 
     // Both publications run after the commit, so no device sees a state that could still roll back.
     this.publishTerminalEffects(userId, result);
-    if (result.changed) this.publishStudySessionChanged(userId, result.snapshot);
+    if (result.applied) this.events.publishChanged(userId, result.snapshot);
     return result.snapshot;
   }
 
@@ -325,7 +313,7 @@ export class StudySessionTransitionService {
       result,
       publish: () => {
         this.publishTerminalEffects(userId, effects);
-        this.publishStudySessionChanged(userId, result);
+        this.events.publishChanged(userId, result);
       },
     };
   }
@@ -374,14 +362,6 @@ export class StudySessionTransitionService {
     return { xpGained: xpAwarded, progressionResult, coinMovement, raidContributionOutcome };
   }
 
-  /**
-   * D-005/D-006: every authenticated device of the user learns that the active Study Session changed and
-   * refetches the canonical `GET /sessions/active`. Only a state that this request applied is published.
-   */
-  publishStudySessionChanged(userId: string, snapshot: StudySessionSnapshot): void {
-    this.realtime.emitToUser(userId, 'studySession:changed', studySessionChangedEvent(snapshot));
-  }
-
   private publishTerminalEffects(userId: string, effects: TerminalEffects): void {
     if (effects.progressionResult) {
       this.progression.publishAwardedXp(userId, effects.xpGained, effects.progressionResult);
@@ -422,17 +402,6 @@ export class StudySessionTransitionService {
 
 function raidContributionFeedback(outcome: RaidContributionOutcome | null): RaidContributionFeedback | null {
   return outcome ? { status: outcome.status, xpContributed: outcome.xpContributed } : null;
-}
-
-function studySessionChangedEvent(snapshot: StudySessionSnapshot): StudySessionChangedEvent {
-  return {
-    studySessionId: snapshot.id,
-    version: snapshot.version,
-    // The client only needs to know whether the session is still active; a cancel or a discard ended it.
-    state: snapshot.state === 'running' || snapshot.state === 'paused' || snapshot.state === 'completed'
-      ? snapshot.state
-      : 'stopped_early',
-  };
 }
 
 function deserializeTransitionResult(value: StudySessionTransitionResult | string): StudySessionTransitionResult {

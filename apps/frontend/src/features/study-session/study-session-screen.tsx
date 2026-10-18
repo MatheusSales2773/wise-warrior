@@ -18,12 +18,12 @@ import {
   type StudySessionTransitionAction,
   type StudySessionTransitionRequest,
 } from './api';
-import { activeStudySessionQueryKey, focusCycleQueryKey, recentStudySessionSubjectsQueryKey, useActiveStudySession, useFocusCycle, useRecentStudySessionSubjects } from './queries';
+import { activeStudySessionQueryKey, invalidateStudySessionResult, recentStudySessionSubjectsQueryKey, useActiveStudySession, useFocusCycle, useRecentStudySessionSubjects } from './queries';
 import { BREAK_SECONDS, breakRemainingSeconds, clearBreak, currentBreak, startBreak, type BreakKind, type BreakRun } from './pomodoro-break';
 import { formatRemainingTime, remainingStudySeconds } from './timer';
 import { MAX_SUBJECT_LENGTH, validateSubject, type SubjectValidation } from './subject';
 import { FeedbackMessage } from '@/design-system/components/FeedbackMessage';
-import { dashboardKeys, sessionMetricsQueryOptions } from '@/features/dashboard/queries';
+import { sessionMetricsQueryOptions } from '@/features/dashboard/queries';
 import { useIsOnline } from '@/core/query/online-manager';
 import { ForgeHistory } from './forge-history';
 import { ForgeSyncIndicator } from './sync-indicator';
@@ -489,16 +489,7 @@ export function StudySessionScreen({ initialMode = 'solo' }: { initialMode?: Ses
     setCycleFresh(false);
     await queryClient.cancelQueries({ queryKey: activeStudySessionQueryKey });
     queryClient.setQueryData(activeStudySessionQueryKey, null);
-    await Promise.allSettled([
-      queryClient.invalidateQueries({ queryKey: dashboardKeys.profile() }),
-      queryClient.invalidateQueries({ queryKey: dashboardKeys.recentActivity() }),
-      queryClient.invalidateQueries({ queryKey: dashboardKeys.metrics() }),
-      // Every day of the history: the session lands in its UTC day, whatever day the screen shows.
-      queryClient.invalidateQueries({ queryKey: [...dashboardKeys.all, 'history'] }),
-      queryClient.invalidateQueries({ queryKey: focusCycleQueryKey }),
-      // A guild-mode session may have become a Contribution: the Raid card shows the new progress.
-      ...(result.mode === 'guild' ? [queryClient.invalidateQueries({ queryKey: [...guildKeys.all, 'raid'] })] : []),
-    ]);
+    await invalidateStudySessionResult(queryClient, result.mode);
     // Only now does the cycle include this focus, so the right break (short or long) can be offered.
     setCycleFresh(true);
   }, [queryClient]);
@@ -519,12 +510,18 @@ export function StudySessionScreen({ initialMode = 'solo' }: { initialMode?: Ses
       queueMicrotask(() => setRemoteEndNotice(false));
       return;
     }
+    // A result from this device always wins: hide a warning that a racing event may have raised.
+    if (terminalResult || completionResult) {
+      previousActiveSessionId.current = null;
+      queueMicrotask(() => setRemoteEndNotice(false));
+      return;
+    }
     if (!active.isSuccess || active.isFetching) return;
     const endedId = previousActiveSessionId.current;
     if (!endedId) return;
     previousActiveSessionId.current = null;
-    // The read itself completed the expired focus, or this device stopped/completed it: it has a result to show.
-    if (serverCompletionTaken.current || terminalResult?.id === endedId || completionResult?.id === endedId) return;
+    // The read itself completed the expired focus: it has a result to show instead of the warning.
+    if (serverCompletionTaken.current) return;
     queueMicrotask(() => setRemoteEndNotice(true));
   }, [active.isFetching, active.isSuccess, activeSnapshot, completionResult, terminalResult]);
 

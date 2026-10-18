@@ -1,4 +1,5 @@
 import { getAuthenticatedHttpClient } from '@/core/api/api-client';
+import { beginStudySessionCommand, endStudySessionCommand } from './pending-command';
 
 export const STUDY_SESSION_PRESETS = [900, 1500, 3000] as const;
 export type PlannedDurationSeconds = (typeof STUDY_SESSION_PRESETS)[number];
@@ -73,16 +74,22 @@ export async function startStudySession(
   subject: string | null = null,
   raidId?: string,
 ): Promise<StudySessionSnapshot> {
-  const response = await getAuthenticatedHttpClient().post<StudySessionSnapshot>(
-    '/sessions',
-    {
-      plannedDurationSeconds,
-      ...(subject === null ? {} : { subject }),
-      ...(raidId === undefined ? {} : { mode: 'guild', raidId }),
-    },
-    { headers: { 'Idempotency-Key': idempotencyKey } },
-  );
-  return { ...response.data, receivedAtMs: Date.now() };
+  const command = { kind: 'start' as const };
+  beginStudySessionCommand(command);
+  try {
+    const response = await getAuthenticatedHttpClient().post<StudySessionSnapshot>(
+      '/sessions',
+      {
+        plannedDurationSeconds,
+        ...(subject === null ? {} : { subject }),
+        ...(raidId === undefined ? {} : { mode: 'guild', raidId }),
+      },
+      { headers: { 'Idempotency-Key': idempotencyKey } },
+    );
+    return { ...response.data, receivedAtMs: Date.now() };
+  } finally {
+    endStudySessionCommand(command);
+  }
 }
 
 export function pauseStudySession(command: StudySessionTransitionRequest): Promise<StudySessionTransitionResult> {
@@ -104,12 +111,19 @@ export function completeStudySession(command: StudySessionTransitionRequest): Pr
 async function transitionStudySession(
   { id, action, expectedVersion, idempotencyKey }: StudySessionTransitionRequest & { action: StudySessionTransitionAction },
 ): Promise<StudySessionTransitionResult> {
-  const response = await getAuthenticatedHttpClient().post<StudySessionTransitionResult>(
-    `/sessions/${id}/${action}`,
-    { expectedVersion },
-    { headers: { 'Idempotency-Key': idempotencyKey } },
-  );
-  return { ...response.data, receivedAtMs: Date.now() };
+  // An applied transition writes the next version; a replay keeps the receipt's version and emits no event.
+  const command = { kind: 'transition' as const, studySessionId: id, version: expectedVersion + 1 };
+  beginStudySessionCommand(command);
+  try {
+    const response = await getAuthenticatedHttpClient().post<StudySessionTransitionResult>(
+      `/sessions/${id}/${action}`,
+      { expectedVersion },
+      { headers: { 'Idempotency-Key': idempotencyKey } },
+    );
+    return { ...response.data, receivedAtMs: Date.now() };
+  } finally {
+    endStudySessionCommand(command);
+  }
 }
 
 export async function heartbeatStudySession(id: string, signal?: AbortSignal): Promise<void> {

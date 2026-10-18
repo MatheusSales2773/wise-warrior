@@ -7,7 +7,8 @@ import { guildKeys } from '@/features/guild/queries';
 import type { CoinOrigin } from '@/features/market/api';
 import { marketKeys } from '@/features/market/queries';
 import { profileKeys } from '@/features/profile/queries';
-import { activeStudySessionQueryKey, focusCycleQueryKey } from '@/features/study-session/queries';
+import { activeStudySessionQueryKey, invalidateStudySessionResult } from '@/features/study-session/queries';
+import { isOwnStudySessionCommand } from '@/features/study-session/pending-command';
 import type { StudySessionSnapshot } from '@/features/study-session/api';
 
 /** Payload of the `raid:progress` event (docs/api/asyncapi.yaml). */
@@ -44,11 +45,9 @@ export type CoinsChangedEvent = {
 export type StudySessionChangedEvent = {
   studySessionId: string;
   version: number;
-  /** Terminal states mean the session left the active slot; the REST snapshot has the details. */
-  state: 'running' | 'paused' | 'completed' | 'stopped_early';
+  /** `ended` means the session left the active slot; the REST snapshot has the details. */
+  state: 'running' | 'paused' | 'ended';
 };
-
-const TERMINAL_STUDY_SESSION_STATES: ReadonlySet<StudySessionChangedEvent['state']> = new Set(['completed', 'stopped_early']);
 
 /** Where the connection stands, for the visible indicator. */
 export type RealtimeStatus = 'connecting' | 'connected' | 'reconnecting' | 'offline';
@@ -185,24 +184,23 @@ export function applyRaidComplete(queryClient: QueryClient): void {
  * refreshed, so the device that did not issue the command does not keep stale history, metrics or cycle.
  */
 export function applyStudySessionChanged(queryClient: QueryClient, event: StudySessionChangedEvent): void {
+  // The server emits before answering the HTTP request: this is this device's own echo, already on its way.
+  if (isOwnStudySessionCommand(event)) return;
   const local = queryClient.getQueryData<StudySessionSnapshot | null>(activeStudySessionQueryKey);
   const sameSession = local != null && local.id === event.studySessionId;
-  // The echo of this device's own command: its response already wrote the very same version.
+  // A command that already landed wrote the very same version; refetching would only repeat the response.
   if (sameSession && local.version >= event.version) return;
-  const terminal = TERMINAL_STUDY_SESSION_STATES.has(event.state);
-  // A device without a session has nothing to clear; the device that ended it already shows its result.
-  if (!local && terminal) return;
+  const ended = event.state === 'ended';
+  if (!local && ended) {
+    // An empty cache says nothing about the history, the metrics or the cycle: they may still be stale here.
+    void invalidateStudySessionResult(queryClient, null);
+    return;
+  }
 
-  void queryClient.invalidateQueries({ queryKey: activeStudySessionQueryKey });
-  if (!sameSession || !terminal) return;
-  void queryClient.invalidateQueries({ queryKey: dashboardKeys.profile() });
-  void queryClient.invalidateQueries({ queryKey: dashboardKeys.recentActivity() });
-  void queryClient.invalidateQueries({ queryKey: dashboardKeys.metrics() });
-  // Every day of the history: the session lands in its UTC day, whatever day the screen shows.
-  void queryClient.invalidateQueries({ queryKey: [...dashboardKeys.all, 'history'] });
-  void queryClient.invalidateQueries({ queryKey: focusCycleQueryKey });
-  // A guild-mode session may have become a Contribution: the Raid card shows the new progress.
-  if (local.mode === 'guild') void queryClient.invalidateQueries({ queryKey: [...guildKeys.all, 'raid'] });
+  // `cancelRefetch: false` keeps a read that is already in flight — it may be the one returning the result of
+  // an expired focus completed by the server (ADR-011 item 6).
+  void queryClient.invalidateQueries({ queryKey: activeStudySessionQueryKey }, { cancelRefetch: false });
+  if (ended) void invalidateStudySessionResult(queryClient, sameSession ? local.mode : null);
 }
 
 /**
@@ -271,7 +269,7 @@ export function createRealtimeClient({
     setStatus('connected');
     if (connectedBefore) {
       void queryClient.invalidateQueries({ queryKey: guildKeys.all, predicate: ({ queryKey }) => queryKey[1] === 'raid' });
-      void queryClient.invalidateQueries({ queryKey: activeStudySessionQueryKey });
+      void queryClient.invalidateQueries({ queryKey: activeStudySessionQueryKey }, { cancelRefetch: false });
     }
     connectedBefore = true;
   };

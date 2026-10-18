@@ -13,6 +13,7 @@ import { UserCosmeticItem } from '../users/entities/user-cosmetic-item.entity';
 import { UsersService } from '../users/users.service';
 import { StudySession } from './entities/study-session.entity';
 import { StudySessionStartService } from './study-session-start.service';
+import { StudySessionEventsService } from './study-session-events.service';
 import { StudySessionTransitionService, type StudySessionTransitionContext } from './study-session-transition.service';
 import type { StudySessionCommandAction } from './domain/study-session-time';
 import { APPLICATION_MIGRATIONS, createIntegrationDatabase, type IntegrationDatabase } from '../../test/integration-database';
@@ -108,7 +109,7 @@ describe('Study Session transitions against MySQL', () => {
       {} as never,
       economy,
       users,
-      realtime as unknown as RealtimeGateway,
+      new StudySessionEventsService(realtime as unknown as RealtimeGateway),
     );
   });
 
@@ -154,7 +155,7 @@ describe('Study Session transitions against MySQL', () => {
 
     await transition('stop', 1, 'signal-stop');
 
-    expect(sessionEvents()).toEqual([{ studySessionId, version: 2, state: 'stopped_early' }]);
+    expect(sessionEvents()).toEqual([{ studySessionId, version: 2, state: 'ended' }]);
     expect(rewardEvents()).toHaveLength(2);
   });
 
@@ -163,7 +164,7 @@ describe('Study Session transitions against MySQL', () => {
 
     await transition('stop', 1, 'signal-cancel');
 
-    expect(sessionEvents()).toEqual([{ studySessionId, version: 2, state: 'stopped_early' }]);
+    expect(sessionEvents()).toEqual([{ studySessionId, version: 2, state: 'ended' }]);
     expect(rewardEvents()).toHaveLength(0);
   });
 
@@ -176,7 +177,7 @@ describe('Study Session transitions against MySQL', () => {
     now = deadline;
 
     expect(await service.completeExpired(userId)).toMatchObject({ id: studySessionId, state: 'completed', version: 2 });
-    expect(sessionEvents()).toEqual([{ studySessionId, version: 2, state: 'completed' }]);
+    expect(sessionEvents()).toEqual([{ studySessionId, version: 2, state: 'ended' }]);
 
     expect(await service.completeExpired(userId)).toBeNull();
     expect(sessionEvents()).toHaveLength(1);
@@ -316,7 +317,7 @@ describe('Study Session transitions against MySQL', () => {
       .toEqual([{ action: 'complete' }]);
     // 25 minutes of valid focus: one XP event and one coins event, both after the commit.
     expect(rewardEvents()).toHaveLength(2);
-    expect(sessionEvents()).toEqual([{ studySessionId, version: 2, state: 'completed' }]);
+    expect(sessionEvents()).toEqual([{ studySessionId, version: 2, state: 'ended' }]);
     expect(realtime.emitToUser).toHaveBeenCalledWith(userId, 'progress:xpUpdated', {
       xpGained: 250, xpTotal: 250, level: 1,
     });
@@ -369,7 +370,7 @@ describe('Study Session transitions against MySQL', () => {
     expect(await dataSource!.query('SELECT * FROM study_session_transition_receipts WHERE user_id = ?', [userId])).toHaveLength(1);
     // Only the winner saved the transition, so only the winner signals the new state.
     expect(rewardEvents()).toHaveLength(2);
-    expect(sessionEvents()).toEqual([{ studySessionId, version: 2, state: 'completed' }]);
+    expect(sessionEvents()).toEqual([{ studySessionId, version: 2, state: 'ended' }]);
   });
 
   it('serializes stop against automatic completion at the canonical deadline', async () => {
@@ -442,7 +443,7 @@ describe('Study Session transitions against MySQL', () => {
     expect(await dataSource!.getRepository(Character).findOneByOrFail({ id: characterId })).toMatchObject({ xpTotal: 100 });
     expect(await dataSource!.query('SELECT * FROM active_study_sessions WHERE user_id = ?', [userId])).toHaveLength(0);
     expect(rewardEvents()).toHaveLength(2);
-    expect(sessionEvents()).toEqual([{ studySessionId, version: 2, state: 'completed' }]);
+    expect(sessionEvents()).toEqual([{ studySessionId, version: 2, state: 'ended' }]);
   });
 
   const insertEarlierFocus = (id: string, endedAt: Date, durationValidSeconds: number) => dataSource!.getRepository(StudySession).insert({
@@ -539,7 +540,7 @@ describe('Study Session transitions against MySQL', () => {
     expect(await dataSource!.getRepository(Character).findOneByOrFail({ id: characterId })).toMatchObject({ xpTotal: 0 });
     expect(await dataSource!.query('SELECT * FROM coin_ledger_entries WHERE user_id = ?', [userId])).toHaveLength(0);
     expect(rewardEvents()).toHaveLength(0);
-    expect(sessionEvents()).toEqual([{ studySessionId, version: 2, state: 'stopped_early' }]);
+    expect(sessionEvents()).toEqual([{ studySessionId, version: 2, state: 'ended' }]);
   });
 
   it('awards one proportional reward at 300 seconds and returns the same receipt on retry', async () => {
@@ -590,7 +591,11 @@ describe('Study Session transitions against MySQL', () => {
     expect(await dataSource!.query('SELECT * FROM coin_ledger_entries WHERE user_id = ?', [userId])).toHaveLength(1);
 
     const startService = new StudySessionStartService(
-      dataSource!, new UsersService({} as never, {} as never, {} as never, {} as never), {} as never, service,
+      dataSource!,
+      new UsersService({} as never, {} as never, {} as never, {} as never),
+      {} as never,
+      service,
+      new StudySessionEventsService(realtime as unknown as RealtimeGateway),
     );
     const nextSession = await startService.start(userId, authSessionId, { plannedDurationSeconds: 900 }, 'start-after-stop');
     expect(nextSession).toMatchObject({ state: 'running', mode: 'solo', subject: null, canControl: true });

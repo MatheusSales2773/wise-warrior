@@ -1,5 +1,6 @@
 import { getAuthenticatedHttpClient } from '@/core/api/api-client';
 import { getActiveStudySession, getRecentStudySessionSubjects, heartbeatStudySession, pauseStudySession, resumeStudySession, startStudySession, stopStudySession } from '@/features/study-session/api';
+import { isOwnStudySessionCommand } from '@/features/study-session/pending-command';
 
 jest.mock('@/core/api/api-client', () => ({ getAuthenticatedHttpClient: jest.fn() }));
 
@@ -91,4 +92,32 @@ it('sends stop with the expected version and preserves its idempotency key', asy
   expect(post).toHaveBeenCalledWith('/sessions/study-1/stop', { expectedVersion: 6 }, {
     headers: { 'Idempotency-Key': 'stop-retry-key' },
   });
+});
+
+it('recognizes its own start event until the HTTP response arrives', async () => {
+  let resolvePost!: (value: unknown) => void;
+  const post = jest.fn(() => new Promise((resolve) => { resolvePost = resolve; }));
+  (getAuthenticatedHttpClient as jest.Mock).mockReturnValue({ post });
+
+  const request = startStudySession(1500, 'own-start');
+  expect(isOwnStudySessionCommand({ studySessionId: 'study-1', version: 1, state: 'running' })).toBe(true);
+
+  resolvePost({ status: 201, data: { id: 'study-1' } });
+  await request;
+  expect(isOwnStudySessionCommand({ studySessionId: 'study-1', version: 1, state: 'running' })).toBe(false);
+});
+
+it('recognizes its own transition event by session and resulting version', async () => {
+  let resolvePost!: (value: unknown) => void;
+  const post = jest.fn(() => new Promise((resolve) => { resolvePost = resolve; }));
+  (getAuthenticatedHttpClient as jest.Mock).mockReturnValue({ post });
+
+  const request = pauseStudySession({ id: 'study-1', expectedVersion: 4, idempotencyKey: 'own-pause' });
+  expect(isOwnStudySessionCommand({ studySessionId: 'study-1', version: 5, state: 'paused' })).toBe(true);
+  expect(isOwnStudySessionCommand({ studySessionId: 'study-1', version: 6, state: 'paused' })).toBe(false);
+  expect(isOwnStudySessionCommand({ studySessionId: 'study-2', version: 5, state: 'paused' })).toBe(false);
+
+  resolvePost({ data: { id: 'study-1', state: 'paused' } });
+  await request;
+  expect(isOwnStudySessionCommand({ studySessionId: 'study-1', version: 5, state: 'paused' })).toBe(false);
 });

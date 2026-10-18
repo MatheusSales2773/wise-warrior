@@ -106,6 +106,40 @@ it('shows the session when another device starts one', async () => {
   view.unmount();
 });
 
+it('hides the warning once a new session appears', async () => {
+  getActive.mockResolvedValue(snapshot);
+  const { view, client } = await renderStudySession();
+  await view.findByTestId('study-session-active');
+  await refetchActive(client, null);
+  await view.findByTestId('study-session-remote-end');
+
+  await refetchActive(client, { ...snapshot, id: 'study-2' });
+
+  await view.findByTestId('study-session-active');
+  expect(view.queryByTestId('study-session-remote-end')).toBeNull();
+  view.unmount();
+});
+
+it('hides a warning that a racing event raised once the local result arrives', async () => {
+  getActive.mockResolvedValue(snapshot);
+  const { view, client } = await renderStudySession();
+  await view.findByTestId('study-session-active');
+  await refetchActive(client, null);
+  await view.findByTestId('study-session-remote-end');
+
+  // The read completes the expired focus: the query keeps the result aside and returns no active session.
+  await refetchActive(client, {
+    ...snapshot, state: 'completed', version: 2, endedAt: '2026-09-22T12:25:00.000Z',
+    durationValidSeconds: 1500, remainingSeconds: 0, terminalReason: 'auto-complete',
+    xpAwarded: 250,
+    serverNow: '2026-09-22T12:25:00.000Z', receivedAtMs: new Date('2026-09-22T12:25:00.000Z').getTime(),
+  });
+
+  await view.findByText('Sessão concluída');
+  expect(view.queryByTestId('study-session-remote-end')).toBeNull();
+  view.unmount();
+});
+
 it('keeps the normal result without the remote-end warning after a local stop', async () => {
   const stopped: StudySessionTransitionResult = {
     ...snapshot, state: 'stopped_early', endedAt: '2026-09-22T12:05:00.000Z',

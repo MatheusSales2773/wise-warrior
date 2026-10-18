@@ -10,6 +10,7 @@ import { User } from '../users/entities/user.entity';
 import { UsersService } from '../users/users.service';
 import { StudySession } from './entities/study-session.entity';
 import { StudySessionStartService } from './study-session-start.service';
+import { StudySessionEventsService } from './study-session-events.service';
 import { StudySessionTransitionService } from './study-session-transition.service';
 import { APPLICATION_MIGRATIONS, createIntegrationDatabase, type IntegrationDatabase } from '../../test/integration-database';
 
@@ -40,13 +41,15 @@ describe('canonical Study Session start against MySQL', () => {
       dataSource!.getRepository(CoinLedgerEntry),
       realtime as unknown as RealtimeGateway,
     );
+    const events = new StudySessionEventsService(realtime as unknown as RealtimeGateway);
     return new StudySessionStartService(
       dataSource!,
       users,
       {} as never,
       new StudySessionTransitionService(
-        dataSource!, { now: clock }, progression, {} as never, economy, users, realtime as unknown as RealtimeGateway,
+        dataSource!, { now: clock }, progression, {} as never, economy, users, events,
       ),
+      events,
     );
   };
   const sessionEvents = () => realtime.emitToUser.mock.calls
@@ -116,7 +119,7 @@ describe('canonical Study Session start against MySQL', () => {
 
     expect(sessionEvents()).toEqual([
       { studySessionId: first.id, version: 1, state: 'running' },
-      { studySessionId: first.id, version: 2, state: 'completed' },
+      { studySessionId: first.id, version: 2, state: 'ended' },
       { studySessionId: second.id, version: 1, state: 'running' },
     ]);
     await later.start(userId, 'device-b', { plannedDurationSeconds: 900 }, 'expired-start-second');
@@ -136,7 +139,7 @@ describe('canonical Study Session start against MySQL', () => {
     expect(await later.active(userId)).toMatchObject({ id: started.id, state: 'completed', version: 2 });
     expect(sessionEvents()).toEqual([
       { studySessionId: started.id, version: 1, state: 'running' },
-      { studySessionId: started.id, version: 2, state: 'completed' },
+      { studySessionId: started.id, version: 2, state: 'ended' },
     ]);
 
     expect(await later.active(userId)).toBeNull();
@@ -200,7 +203,7 @@ describe('canonical Study Session start against MySQL', () => {
       {} as never,
       {} as never,
       lockingUsers(),
-      realtime as unknown as RealtimeGateway,
+      new StudySessionEventsService(realtime as unknown as RealtimeGateway),
     );
     const paused = await transitions.pause({
       userId, authSessionId: 'device-a', studySessionId: started.id, dto: { expectedVersion: 1 }, idempotencyKey: 'subject-pause',
@@ -272,7 +275,7 @@ describe('canonical Study Session start against MySQL', () => {
       {} as never,
       {} as never,
       lockingUsers(),
-      realtime as unknown as RealtimeGateway,
+      new StudySessionEventsService(realtime as unknown as RealtimeGateway),
     );
     const pause = (idempotencyKey: string) => transitionService.pause({
       userId,

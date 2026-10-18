@@ -22,6 +22,7 @@ import { StudySession } from './entities/study-session.entity';
 import { SessionsController } from './sessions.controller';
 import { SessionsService } from './sessions.service';
 import { StudySessionStartService } from './study-session-start.service';
+import { StudySessionEventsService } from './study-session-events.service';
 import { StudySessionTransitionService } from './study-session-transition.service';
 
 describe('Study Session HTTP contract against MySQL', () => {
@@ -66,8 +67,9 @@ describe('Study Session HTTP contract against MySQL', () => {
     const gateway = realtime as unknown as RealtimeGateway;
     const progression = new ProgressionService(dataSource.getRepository(Character), gateway, users);
     const economy = new EconomyService(dataSource.getRepository(CoinBalance), dataSource.getRepository(CoinLedgerEntry), gateway);
-    const transitions = new StudySessionTransitionService(dataSource, { now: () => new Date(now) }, progression, {} as never, economy, users, gateway);
-    const start = new StudySessionStartService(dataSource, users, {} as never, transitions);
+    const events = new StudySessionEventsService(gateway);
+    const transitions = new StudySessionTransitionService(dataSource, { now: () => new Date(now) }, progression, {} as never, economy, users, events);
+    const start = new StudySessionStartService(dataSource, users, {} as never, transitions, events);
     const controllerModule = await Test.createTestingModule({
       controllers: [SessionsController],
       providers: [
@@ -372,7 +374,11 @@ describe('Study Session HTTP contract against MySQL', () => {
     });
     const { id } = await started.json() as { id: string };
 
+    const sessionEvents = () => realtime.emitToUser.mock.calls.filter(([, event]) => event === 'studySession:changed');
     const emittedBefore = realtime.emitToUser.mock.calls.length;
+    // The start itself signalled the new session.
+    expect(sessionEvents()).toHaveLength(1);
+
     const heartbeat = await fetch(`${baseUrl}/api/v1/sessions/${id}/heartbeat`, {
       method: 'PATCH',
       headers: authHeaders(otherSessionId),
@@ -380,6 +386,7 @@ describe('Study Session HTTP contract against MySQL', () => {
     expect(heartbeat.status).toBe(204);
     // No per-second synchronization: the heartbeat only records liveness.
     expect(realtime.emitToUser.mock.calls).toHaveLength(emittedBefore);
+    expect(sessionEvents()).toHaveLength(1);
   });
 
   it('replays a start to another Session of the user as controllable', async () => {
