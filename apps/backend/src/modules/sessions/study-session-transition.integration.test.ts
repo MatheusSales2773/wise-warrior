@@ -13,6 +13,7 @@ import { UserCosmeticItem } from '../users/entities/user-cosmetic-item.entity';
 import { UsersService } from '../users/users.service';
 import { StudySession } from './entities/study-session.entity';
 import { StudySessionStartService } from './study-session-start.service';
+import { StudySessionEventsService } from './study-session-events.service';
 import { StudySessionTransitionService, type StudySessionTransitionContext } from './study-session-transition.service';
 import type { StudySessionCommandAction } from './domain/study-session-time';
 import { APPLICATION_MIGRATIONS, createIntegrationDatabase, type IntegrationDatabase } from '../../test/integration-database';
@@ -53,6 +54,10 @@ describe('Study Session transitions against MySQL', () => {
     idempotencyKey,
     ...overrides,
   });
+  const sessionEvents = () => realtime.emitToUser.mock.calls
+    .filter(([, event]) => event === 'studySession:changed')
+    .map(([, , payload]) => payload);
+  const rewardEvents = () => realtime.emitToUser.mock.calls.filter(([, event]) => event !== 'studySession:changed');
 
   beforeEach(async () => {
     database = await createIntegrationDatabase('wise_study_transition');
@@ -97,7 +102,15 @@ describe('Study Session transitions against MySQL', () => {
       dataSource.getRepository(CoinLedgerEntry),
       realtime as unknown as RealtimeGateway,
     );
-    service = new StudySessionTransitionService(dataSource, { now: () => new Date(now) }, progression, {} as never, economy, users);
+    service = new StudySessionTransitionService(
+      dataSource,
+      { now: () => new Date(now) },
+      progression,
+      {} as never,
+      economy,
+      users,
+      new StudySessionEventsService(realtime as unknown as RealtimeGateway),
+    );
   });
 
   afterEach(async () => {
@@ -119,6 +132,55 @@ describe('Study Session transitions against MySQL', () => {
     expect(resumed.runDeadlineAt).toEqual(new Date('2026-09-22T12:40:00.000Z'));
     const persisted = await dataSource!.getRepository(StudySession).findOneByOrFail({ id: studySessionId });
     expect(persisted).toMatchObject({ state: 'running', durationValidSeconds: 300, pausedTotalSeconds: 600, version: 3, xpAwarded: 0 });
+  });
+
+  it('signals pause and resume to every device of the user, once per applied transition', async () => {
+    now = new Date(now.getTime() + 300_000);
+    await transition('pause', 1, 'signal-pause');
+    now = new Date(now.getTime() + 60_000);
+    await transition('resume', 2, 'signal-resume');
+
+    expect(sessionEvents()).toEqual([
+      { studySessionId, version: 2, state: 'paused' },
+      { studySessionId, version: 3, state: 'running' },
+    ]);
+
+    // A replayed receipt is not a new state: another device already got this one.
+    await transition('pause', 1, 'signal-pause');
+    expect(sessionEvents()).toHaveLength(2);
+  });
+
+  it('signals a stop alongside the reward events, after the commit', async () => {
+    now = new Date(now.getTime() + 300_000);
+
+    await transition('stop', 1, 'signal-stop');
+
+    expect(sessionEvents()).toEqual([{ studySessionId, version: 2, state: 'ended' }]);
+    expect(rewardEvents()).toHaveLength(2);
+  });
+
+  it('signals an early cancellation as a terminal stop', async () => {
+    now = new Date(now.getTime() + 299_000);
+
+    await transition('stop', 1, 'signal-cancel');
+
+    expect(sessionEvents()).toEqual([{ studySessionId, version: 2, state: 'ended' }]);
+    expect(rewardEvents()).toHaveLength(0);
+  });
+
+  it('signals a focus the server completed at the deadline, once', async () => {
+    const deadline = new Date(now.getTime() + 900_000);
+    await dataSource!.getRepository(StudySession).update(studySessionId, {
+      plannedDurationSeconds: 900,
+      runDeadlineAt: deadline,
+    });
+    now = deadline;
+
+    expect(await service.completeExpired(userId)).toMatchObject({ id: studySessionId, state: 'completed', version: 2 });
+    expect(sessionEvents()).toEqual([{ studySessionId, version: 2, state: 'ended' }]);
+
+    expect(await service.completeExpired(userId)).toBeNull();
+    expect(sessionEvents()).toHaveLength(1);
   });
 
   it('returns the original receipt for retries and rejects stale versions and key reuse', async () => {
@@ -254,7 +316,8 @@ describe('Study Session transitions against MySQL', () => {
     expect(await dataSource!.query('SELECT action FROM study_session_transition_receipts WHERE user_id = ?', [userId]))
       .toEqual([{ action: 'complete' }]);
     // 25 minutes of valid focus: one XP event and one coins event, both after the commit.
-    expect(realtime.emitToUser).toHaveBeenCalledTimes(2);
+    expect(rewardEvents()).toHaveLength(2);
+    expect(sessionEvents()).toEqual([{ studySessionId, version: 2, state: 'ended' }]);
     expect(realtime.emitToUser).toHaveBeenCalledWith(userId, 'progress:xpUpdated', {
       xpGained: 250, xpTotal: 250, level: 1,
     });
@@ -278,7 +341,9 @@ describe('Study Session transitions against MySQL', () => {
     expect(await dataSource!.getRepository(Character).findOneByOrFail({ id: characterId })).toMatchObject({ xpTotal: 250 });
     expect(await dataSource!.query('SELECT balance FROM coin_balances WHERE user_id = ?', [userId])).toEqual([{ balance: 12 }]);
     expect(await dataSource!.query('SELECT * FROM coin_ledger_entries WHERE user_id = ?', [userId])).toHaveLength(1);
-    expect(realtime.emitToUser).toHaveBeenCalledTimes(2);
+    // The replay and the confirmed result for another device are not new states: no second event.
+    expect(rewardEvents()).toHaveLength(2);
+    expect(sessionEvents()).toHaveLength(1);
   });
 
   it('serializes concurrent automatic completions to one reward and the same confirmed result', async () => {
@@ -303,7 +368,9 @@ describe('Study Session transitions against MySQL', () => {
     expect(await dataSource!.getRepository(Character).findOneByOrFail({ id: characterId })).toMatchObject({ xpTotal: 150 });
     expect(await dataSource!.query('SELECT * FROM active_study_sessions WHERE user_id = ?', [userId])).toHaveLength(0);
     expect(await dataSource!.query('SELECT * FROM study_session_transition_receipts WHERE user_id = ?', [userId])).toHaveLength(1);
-    expect(realtime.emitToUser).toHaveBeenCalledTimes(2);
+    // Only the winner saved the transition, so only the winner signals the new state.
+    expect(rewardEvents()).toHaveLength(2);
+    expect(sessionEvents()).toEqual([{ studySessionId, version: 2, state: 'ended' }]);
   });
 
   it('serializes stop against automatic completion at the canonical deadline', async () => {
@@ -334,7 +401,8 @@ describe('Study Session transitions against MySQL', () => {
     expect(await dataSource!.getRepository(Character).findOneByOrFail({ id: characterId })).toMatchObject({ xpTotal: 150 });
     expect(await dataSource!.query('SELECT * FROM active_study_sessions WHERE user_id = ?', [userId])).toHaveLength(0);
     expect(await dataSource!.query('SELECT * FROM study_session_transition_receipts WHERE user_id = ?', [userId])).toHaveLength(1);
-    expect(realtime.emitToUser).toHaveBeenCalledTimes(2);
+    expect(rewardEvents()).toHaveLength(2);
+    expect(sessionEvents()).toHaveLength(1);
   });
 
   it('truncates completion at the daily focus limit and awards XP on the remaining balance', async () => {
@@ -374,7 +442,8 @@ describe('Study Session transitions against MySQL', () => {
     });
     expect(await dataSource!.getRepository(Character).findOneByOrFail({ id: characterId })).toMatchObject({ xpTotal: 100 });
     expect(await dataSource!.query('SELECT * FROM active_study_sessions WHERE user_id = ?', [userId])).toHaveLength(0);
-    expect(realtime.emitToUser).toHaveBeenCalledTimes(2);
+    expect(rewardEvents()).toHaveLength(2);
+    expect(sessionEvents()).toEqual([{ studySessionId, version: 2, state: 'ended' }]);
   });
 
   const insertEarlierFocus = (id: string, endedAt: Date, durationValidSeconds: number) => dataSource!.getRepository(StudySession).insert({
@@ -470,7 +539,8 @@ describe('Study Session transitions against MySQL', () => {
     expect(await dataSource!.query('SELECT * FROM raid_contributions WHERE study_session_id = ?', [studySessionId])).toHaveLength(0);
     expect(await dataSource!.getRepository(Character).findOneByOrFail({ id: characterId })).toMatchObject({ xpTotal: 0 });
     expect(await dataSource!.query('SELECT * FROM coin_ledger_entries WHERE user_id = ?', [userId])).toHaveLength(0);
-    expect(realtime.emitToUser).not.toHaveBeenCalled();
+    expect(rewardEvents()).toHaveLength(0);
+    expect(sessionEvents()).toEqual([{ studySessionId, version: 2, state: 'ended' }]);
   });
 
   it('awards one proportional reward at 300 seconds and returns the same receipt on retry', async () => {
@@ -509,7 +579,8 @@ describe('Study Session transitions against MySQL', () => {
       { action: 'stop' },
     ]);
     // Five minutes of valid focus: 2 Moedas (floor(5 / 2)), credited once with the XP.
-    expect(realtime.emitToUser).toHaveBeenCalledTimes(2);
+    expect(rewardEvents()).toHaveLength(2);
+    expect(sessionEvents()).toHaveLength(1);
     expect(realtime.emitToUser).toHaveBeenCalledWith(userId, 'progress:xpUpdated', {
       xpGained: 50, xpTotal: 50, level: 1,
     });
@@ -520,7 +591,11 @@ describe('Study Session transitions against MySQL', () => {
     expect(await dataSource!.query('SELECT * FROM coin_ledger_entries WHERE user_id = ?', [userId])).toHaveLength(1);
 
     const startService = new StudySessionStartService(
-      dataSource!, new UsersService({} as never, {} as never, {} as never, {} as never), {} as never, service,
+      dataSource!,
+      new UsersService({} as never, {} as never, {} as never, {} as never),
+      {} as never,
+      service,
+      new StudySessionEventsService(realtime as unknown as RealtimeGateway),
     );
     const nextSession = await startService.start(userId, authSessionId, { plannedDurationSeconds: 900 }, 'start-after-stop');
     expect(nextSession).toMatchObject({ state: 'running', mode: 'solo', subject: null, canControl: true });
@@ -614,7 +689,8 @@ describe('Study Session transitions against MySQL', () => {
     expect(results[1]).toEqual(results[0]);
     expect(results[0]).toMatchObject({ state: 'stopped_early', xpAwarded: 50, version: 2 });
     expect(await dataSource!.getRepository(Character).findOneByOrFail({ id: characterId })).toMatchObject({ xpTotal: 50 });
-    expect(realtime.emitToUser).toHaveBeenCalledTimes(2);
+    expect(rewardEvents()).toHaveLength(2);
+    expect(sessionEvents()).toHaveLength(1);
     expect(await dataSource!.query('SELECT * FROM study_session_transition_receipts WHERE user_id = ?', [userId])).toHaveLength(1);
   });
 
@@ -638,7 +714,8 @@ describe('Study Session transitions against MySQL', () => {
     expect(await dataSource!.query('SELECT * FROM active_study_sessions WHERE user_id = ?', [userId])).toHaveLength(0);
     expect(await dataSource!.query('SELECT * FROM study_session_transition_receipts WHERE user_id = ?', [userId])).toHaveLength(1);
     expect(await dataSource!.query('SELECT * FROM study_session_command_keys WHERE user_id = ?', [userId])).toHaveLength(1);
-    expect(realtime.emitToUser).toHaveBeenCalledTimes(2);
+    expect(rewardEvents()).toHaveLength(2);
+    expect(sessionEvents()).toHaveLength(1);
   });
 
   it('rejects a terminal session with a stable transition problem', async () => {

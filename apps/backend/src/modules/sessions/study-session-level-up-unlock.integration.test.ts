@@ -26,6 +26,7 @@ import { APPLICATION_MIGRATIONS, createIntegrationDatabase, type IntegrationData
 import { SessionsController } from './sessions.controller';
 import { SessionsService } from './sessions.service';
 import { StudySessionStartService } from './study-session-start.service';
+import { StudySessionEventsService } from './study-session-events.service';
 import { StudySessionTransitionService } from './study-session-transition.service';
 
 describe('Cosmetic Item unlock on level-up through the Study Session API', () => {
@@ -112,6 +113,7 @@ describe('Cosmetic Item unlock on level-up through the Study Session API', () =>
     await auth.register({ email: 'veterana@example.com', password: 'senha-forte-123', displayName: 'Veterana' }, {});
     userId = (await dataSource.getRepository(User).findOneByOrFail({ email: 'veterana@example.com' })).id;
 
+    const events = new StudySessionEventsService(realtime);
     const transitions = new StudySessionTransitionService(
       dataSource,
       { now: () => new Date(now) },
@@ -119,12 +121,13 @@ describe('Cosmetic Item unlock on level-up through the Study Session API', () =>
       {} as never,
       new EconomyService(dataSource.getRepository(CoinBalance), dataSource.getRepository(CoinLedgerEntry), realtime),
       users,
+      events,
     );
     const moduleRef = await Test.createTestingModule({
       controllers: [SessionsController, UsersController],
       providers: [
         { provide: SessionsService, useValue: { usesCanonicalStudySessionState: async () => true } },
-        { provide: StudySessionStartService, useValue: new StudySessionStartService(dataSource, users, {} as never, transitions) },
+        { provide: StudySessionStartService, useValue: new StudySessionStartService(dataSource, users, {} as never, transitions, events) },
         { provide: StudySessionTransitionService, useValue: transitions },
         { provide: UsersService, useValue: users },
         { provide: AuthService, useValue: auth },

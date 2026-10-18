@@ -46,6 +46,8 @@ channels:
         $ref: "#/components/messages/equipmentChanged"
       coinsChanged:
         $ref: "#/components/messages/coinsChanged"
+      studySessionChanged:
+        $ref: "#/components/messages/studySessionChanged"
 operations:
   receiveRaidProgress:
     action: receive
@@ -139,6 +141,22 @@ operations:
       saldo e o Extrato.
     messages:
       - $ref: "#/channels/userRoom/messages/coinsChanged"
+  receiveStudySessionChanged:
+    action: receive
+    channel:
+      $ref: "#/channels/userRoom"
+    summary: A Study Session ativa mudou de estado
+    description: >
+      Emitido para todos os dispositivos do usuário depois do commit de um início, pausa, retomada, encerramento ou
+      conclusão da Study Session ativa, e também quando o servidor conclui um foco vencido ao ler
+      `GET /sessions/active` ou ao iniciar a próxima sessão. Só sai quando o estado mudou de fato: replay de
+      `Idempotency-Key`, a resposta idempotente para outro dispositivo que já tinha concluído o foco e o heartbeat
+      não emitem. O payload leva só o mínimo para o cliente invalidar a consulta local; o REST continua sendo a
+      fonte canônica, e o app reconsulta `GET /sessions/active` ao receber o evento. Um dispositivo ignora o eco
+      do próprio comando: tanto quando a mesma versão já foi aplicada quanto quando o evento chega antes da
+      resposta HTTP do comando em andamento. Não há sincronização por segundo.
+    messages:
+      - $ref: "#/channels/userRoom/messages/studySessionChanged"
 components:
   securitySchemes:
     accessToken:
@@ -195,6 +213,12 @@ components:
       contentType: application/json
       payload:
         $ref: "#/components/schemas/CoinsChanged"
+    studySessionChanged:
+      name: studySession:changed
+      title: Study Session alterada
+      contentType: application/json
+      payload:
+        $ref: "#/components/schemas/StudySessionChanged"
   schemas:
     ChatMessage:
       type: object
@@ -240,6 +264,21 @@ components:
           properties:
             type: { type: string, enum: [study-session, raid-win, purchase, signup, migration] }
             ref: { type: string, maxLength: 64 }
+    StudySessionChanged:
+      type: object
+      required: [studySessionId, version, state]
+      properties:
+        studySessionId: { type: string, format: uuid }
+        version:
+          type: integer
+          minimum: 1
+          description: Versão canônica depois da mudança; o dispositivo que já aplicou essa versão ignora o evento
+        state:
+          type: string
+          enum: [running, paused, ended]
+          description: >
+            Estado grosso para o cliente saber se a sessão ainda ocupa o slot ativo. `ended` cobre conclusão,
+            encerramento antecipado, cancelamento e sessão descartada; o REST continua sendo a fonte dos detalhes.
     EquipmentChanged:
       type: object
       required: [category, cosmeticItemId]

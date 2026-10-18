@@ -4,6 +4,7 @@ import { UsersService } from '../users/users.service';
 import { RaidsService } from '../raids/raids.service';
 import { StudySessionTransitionService } from './study-session-transition.service';
 import type { ExpiredCompletion, StudySessionTransitionResult } from './study-session-transition.service';
+import { StudySessionEventsService } from './study-session-events.service';
 import { StudySession } from './entities/study-session.entity';
 import type { StartSessionDto } from './dto/start-session.dto';
 import { isStudySessionPreset } from './domain/study-session-presets';
@@ -26,6 +27,7 @@ export class StudySessionStartService {
     private readonly users: UsersService,
     private readonly raids: RaidsService,
     private readonly transitions: StudySessionTransitionService,
+    private readonly events: StudySessionEventsService,
   ) {}
 
   /**
@@ -82,7 +84,7 @@ export class StudySessionStartService {
             message: 'Idempotency-Key já foi usada com outra duração, Matéria ou modo',
           });
         }
-        return replayed;
+        return { snapshot: replayed, applied: false };
       }
 
       await rejectIfStudySessionCommandKeyUsed(manager, userId, idempotencyKey);
@@ -128,10 +130,12 @@ export class StudySessionStartService {
         'INSERT INTO study_session_start_receipts (user_id, idempotency_key, planned_duration_seconds, subject, initiating_session_id, response_json) VALUES (?, ?, ?, ?, ?, ?)',
         [userId, idempotencyKey, plannedDurationSeconds, subject, authSessionId, JSON.stringify(snapshot)],
       );
-      return snapshot;
+      return { snapshot, applied: true };
     });
+    // A focus the server completed at its deadline goes first, then the session that took its slot.
     expiredCompletion?.publish();
-    return started;
+    if (started.applied) this.events.publishChanged(userId, started.snapshot);
+    return started.snapshot;
   }
 
   private normalizeSubject(value: unknown): string | null {

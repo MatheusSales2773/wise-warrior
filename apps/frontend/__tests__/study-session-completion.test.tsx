@@ -262,6 +262,8 @@ it('shows the result the server completed on read when the device returns after 
   await view.findByText('Sessão concluída');
   expect(view.getByText('XP confirmado: 250')).toBeTruthy();
   expect(complete).not.toHaveBeenCalled();
+  // The read completed the focus here: the result takes the place of the remote-end warning.
+  expect(view.queryByTestId('study-session-remote-end')).toBeNull();
   expect(client.getQueryData(['study-session', 'active'])).toBeNull();
   view.unmount();
 });

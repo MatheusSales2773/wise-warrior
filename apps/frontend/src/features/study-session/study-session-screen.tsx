@@ -18,12 +18,12 @@ import {
   type StudySessionTransitionAction,
   type StudySessionTransitionRequest,
 } from './api';
-import { activeStudySessionQueryKey, focusCycleQueryKey, recentStudySessionSubjectsQueryKey, useActiveStudySession, useFocusCycle, useRecentStudySessionSubjects } from './queries';
+import { activeStudySessionQueryKey, invalidateStudySessionResult, recentStudySessionSubjectsQueryKey, useActiveStudySession, useFocusCycle, useRecentStudySessionSubjects } from './queries';
 import { BREAK_SECONDS, breakRemainingSeconds, clearBreak, currentBreak, startBreak, type BreakKind, type BreakRun } from './pomodoro-break';
 import { formatRemainingTime, remainingStudySeconds } from './timer';
 import { MAX_SUBJECT_LENGTH, validateSubject, type SubjectValidation } from './subject';
 import { FeedbackMessage } from '@/design-system/components/FeedbackMessage';
-import { dashboardKeys, sessionMetricsQueryOptions } from '@/features/dashboard/queries';
+import { sessionMetricsQueryOptions } from '@/features/dashboard/queries';
 import { useIsOnline } from '@/core/query/online-manager';
 import { ForgeHistory } from './forge-history';
 import { ForgeSyncIndicator } from './sync-indicator';
@@ -430,6 +430,7 @@ export function StudySessionScreen({ initialMode = 'solo' }: { initialMode?: Ses
   const [breakNow, setBreakNow] = useState(() => Date.now());
   const [retryTransition, setRetryTransition] = useState<TransitionCommand | null>(null);
   const [terminalResult, setTerminalResult] = useState<StudySessionTransitionResult | null>(null);
+  const [remoteEndNotice, setRemoteEndNotice] = useState(false);
   const [completionIntentState, setCompletionIntentState] = useState<StudySessionCompletionIntent | null>(
     () => getRetainedCompletionIntent(),
   );
@@ -438,6 +439,9 @@ export function StudySessionScreen({ initialMode = 'solo' }: { initialMode?: Ses
   const pendingKey = useRef<string | null>(null);
   const announcedStatus = useRef<string | null>(null);
   const observedCompletionPromise = useRef<Promise<StudySessionTransitionResult> | null>(null);
+  // The last session this screen saw active, to tell "ended elsewhere" from a Forja that never had one.
+  const previousActiveSessionId = useRef<string | null>(null);
+  const serverCompletionTaken = useRef(false);
   const requiresForegroundRefresh = useRef(false);
   const applicationActive = useStudySessionAppActive();
   const wasApplicationActive = useRef(applicationActive);
@@ -485,16 +489,7 @@ export function StudySessionScreen({ initialMode = 'solo' }: { initialMode?: Ses
     setCycleFresh(false);
     await queryClient.cancelQueries({ queryKey: activeStudySessionQueryKey });
     queryClient.setQueryData(activeStudySessionQueryKey, null);
-    await Promise.allSettled([
-      queryClient.invalidateQueries({ queryKey: dashboardKeys.profile() }),
-      queryClient.invalidateQueries({ queryKey: dashboardKeys.recentActivity() }),
-      queryClient.invalidateQueries({ queryKey: dashboardKeys.metrics() }),
-      // Every day of the history: the session lands in its UTC day, whatever day the screen shows.
-      queryClient.invalidateQueries({ queryKey: [...dashboardKeys.all, 'history'] }),
-      queryClient.invalidateQueries({ queryKey: focusCycleQueryKey }),
-      // A guild-mode session may have become a Contribution: the Raid card shows the new progress.
-      ...(result.mode === 'guild' ? [queryClient.invalidateQueries({ queryKey: [...guildKeys.all, 'raid'] })] : []),
-    ]);
+    await invalidateStudySessionResult(queryClient, result.mode);
     // Only now does the cycle include this focus, so the right break (short or long) can be offered.
     setCycleFresh(true);
   }, [queryClient]);
@@ -502,8 +497,33 @@ export function StudySessionScreen({ initialMode = 'solo' }: { initialMode?: Ses
   // The read itself may have completed the expired focus on the server: show that result like a local completion.
   useEffect(() => {
     const serverResult = takeServerCompletion();
+    serverCompletionTaken.current = serverResult !== null;
     if (serverResult) queueMicrotask(() => void settleTerminalResult(serverResult));
   }, [active.dataUpdatedAt, settleTerminalResult]);
+
+  // D-005/D-006: a session that vanishes without a result from this device ended on another device. There is no
+  // route for the result, so only warn — XP and Moedas arrive through their own events.
+  useEffect(() => {
+    if (activeSnapshot) {
+      previousActiveSessionId.current = activeSnapshot.id;
+      serverCompletionTaken.current = false;
+      queueMicrotask(() => setRemoteEndNotice(false));
+      return;
+    }
+    // A result from this device always wins: hide a warning that a racing event may have raised.
+    if (terminalResult || completionResult) {
+      previousActiveSessionId.current = null;
+      queueMicrotask(() => setRemoteEndNotice(false));
+      return;
+    }
+    if (!active.isSuccess || active.isFetching) return;
+    const endedId = previousActiveSessionId.current;
+    if (!endedId) return;
+    previousActiveSessionId.current = null;
+    // The read itself completed the expired focus: it has a result to show instead of the warning.
+    if (serverCompletionTaken.current) return;
+    queueMicrotask(() => setRemoteEndNotice(true));
+  }, [active.isFetching, active.isSuccess, activeSnapshot, completionResult, terminalResult]);
 
   const observeCompletion = useCallback((intent: StudySessionCompletionIntent) => {
     const promise = intent.promise;
@@ -820,6 +840,11 @@ export function StudySessionScreen({ initialMode = 'solo' }: { initialMode?: Ses
       <View style={styles.layout}>
         <TodayPill />
         {showSync ? <ForgeSyncIndicator onRetry={() => void refreshActive()} status={syncStatus} /> : null}
+        {remoteEndNotice ? (
+          <WiseText accessibilityLiveRegion="polite" aria-live="polite" color="textSecondary" testID="study-session-remote-end" variant="body">
+            Sessão encerrada em outro dispositivo
+          </WiseText>
+        ) : null}
         {active.isPending && !snapshot ? <WiseText variant="body">Buscando sua sessão ativa…</WiseText> : null}
         {active.isError && !snapshot ? (
           <WiseCard style={styles.messageCard} testID="study-session-load-error">

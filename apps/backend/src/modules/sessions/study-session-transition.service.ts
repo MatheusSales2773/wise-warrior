@@ -15,6 +15,7 @@ import { StudySession } from './entities/study-session.entity';
 import type { StudySessionSnapshot } from './study-session-snapshot';
 import { deserializeStudySessionSnapshot, studySessionSnapshot } from './study-session-snapshot';
 import { StudySessionTransitionDto } from './dto/study-session-transition.dto';
+import { StudySessionEventsService } from './study-session-events.service';
 import { coinsForDuration } from './domain/coin-rate';
 import { isValidIdempotencyKey } from './domain/idempotency-key';
 import { rejectIfStudySessionCommandKeyUsed } from './study-session-command-keys';
@@ -71,6 +72,12 @@ type StudySessionTransitionCommand = StudySessionTransitionContext & {
   action: StudySessionCommandAction;
 };
 
+/** `applied` separates a transition this request applied from a replay that only returned a receipt. */
+type TransitionOutcome = TerminalEffects & {
+  snapshot: StudySessionTransitionResult;
+  applied: boolean;
+};
+
 const TRANSITION_VERBS: Record<StudySessionCommandAction, string> = {
   pause: 'pausar',
   resume: 'retomar',
@@ -103,6 +110,7 @@ export class StudySessionTransitionService {
     private readonly raids: RaidsService,
     private readonly economy: EconomyService,
     private readonly users: UsersService,
+    private readonly events: StudySessionEventsService,
   ) {}
 
   pause(command: StudySessionTransitionContext): Promise<StudySessionTransitionResult> {
@@ -137,7 +145,7 @@ export class StudySessionTransitionService {
       });
     }
 
-    const result = await this.dataSource.transaction(async (manager) => {
+    const result: TransitionOutcome = await this.dataSource.transaction(async (manager) => {
       // Match the user-first lock order used by start, serializing the per-user idempotency key scope.
       await this.users.lockForUpdate(userId, manager);
 
@@ -171,6 +179,7 @@ export class StudySessionTransitionService {
         return {
           snapshot: deserializeTransitionResult(receipt.response_json),
           ...NO_TERMINAL_EFFECTS,
+          applied: false,
         };
       }
 
@@ -186,6 +195,7 @@ export class StudySessionTransitionService {
         return {
           snapshot: { ...studySessionSnapshot(session, this.clock.now()), raidContribution: null },
           ...NO_TERMINAL_EFFECTS,
+          applied: false,
         };
       }
 
@@ -245,10 +255,12 @@ export class StudySessionTransitionService {
          VALUES (?, ?, ?, ?, ?, ?)`,
         [userId, studySessionId, idempotencyKey, action, dto.expectedVersion, JSON.stringify(snapshot)],
       );
-      return { snapshot, ...effects };
+      return { snapshot, ...effects, applied: true };
     });
 
+    // Both publications run after the commit, so no device sees a state that could still roll back.
     this.publishTerminalEffects(userId, result);
+    if (result.applied) this.events.publishChanged(userId, result.snapshot);
     return result.snapshot;
   }
 
@@ -293,9 +305,16 @@ export class StudySessionTransitionService {
     const completion = await this.completeAtDeadline(manager, session, now);
     const saved = await manager.getRepository(StudySession).save(session);
     const effects = await this.applyTerminalEffects(manager, saved, completion.xpAwarded);
+    const result: StudySessionTransitionResult = {
+      ...studySessionSnapshot(saved, now),
+      raidContribution: raidContributionFeedback(effects.raidContributionOutcome),
+    };
     return {
-      result: { ...studySessionSnapshot(saved, now), raidContribution: raidContributionFeedback(effects.raidContributionOutcome) },
-      publish: () => this.publishTerminalEffects(userId, effects),
+      result,
+      publish: () => {
+        this.publishTerminalEffects(userId, effects);
+        this.events.publishChanged(userId, result);
+      },
     };
   }
 

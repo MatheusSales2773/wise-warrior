@@ -1,5 +1,6 @@
 import { getAuthenticatedHttpClient } from '@/core/api/api-client';
 import { getActiveStudySession, getRecentStudySessionSubjects, heartbeatStudySession, pauseStudySession, resumeStudySession, startStudySession, stopStudySession } from '@/features/study-session/api';
+import { holdOwnStudySessionEcho, isConfirmedStudySessionEcho } from '@/features/study-session/pending-command';
 
 jest.mock('@/core/api/api-client', () => ({ getAuthenticatedHttpClient: jest.fn() }));
 
@@ -91,4 +92,62 @@ it('sends stop with the expected version and preserves its idempotency key', asy
   expect(post).toHaveBeenCalledWith('/sessions/study-1/stop', { expectedVersion: 6 }, {
     headers: { 'Idempotency-Key': 'stop-retry-key' },
   });
+});
+
+it('holds its own start event until the HTTP response, then drops it as confirmed', async () => {
+  let resolvePost!: (value: unknown) => void;
+  const post = jest.fn(() => new Promise((resolve) => { resolvePost = resolve; }));
+  (getAuthenticatedHttpClient as jest.Mock).mockReturnValue({ post });
+  const apply = jest.fn();
+
+  const request = startStudySession(1500, 'own-start');
+  expect(holdOwnStudySessionEcho({ studySessionId: 'study-1', version: 1, state: 'running' }, apply)).toBe(true);
+
+  resolvePost({ status: 201, data: { id: 'study-1', version: 1 } });
+  await request;
+  expect(apply).not.toHaveBeenCalled();
+  expect(holdOwnStudySessionEcho({ studySessionId: 'study-1', version: 1, state: 'running' }, apply)).toBe(false);
+  expect(isConfirmedStudySessionEcho({ studySessionId: 'study-1', version: 1, state: 'running' })).toBe(true);
+});
+
+it('applies the held start event when the start answered another session', async () => {
+  const post = jest.fn().mockResolvedValue({ data: { id: 'study-own', version: 1 } });
+  (getAuthenticatedHttpClient as jest.Mock).mockReturnValue({ post });
+  const apply = jest.fn();
+
+  const request = startStudySession(1500, 'start-elsewhere');
+  holdOwnStudySessionEcho({ studySessionId: 'study-elsewhere', version: 1, state: 'running' }, apply);
+  await request;
+
+  expect(apply).toHaveBeenCalledTimes(1);
+});
+
+it('holds its own transition event by session and resulting version', async () => {
+  let resolvePost!: (value: unknown) => void;
+  const post = jest.fn(() => new Promise((resolve) => { resolvePost = resolve; }));
+  (getAuthenticatedHttpClient as jest.Mock).mockReturnValue({ post });
+  const apply = jest.fn();
+
+  const request = pauseStudySession({ id: 'study-1', expectedVersion: 4, idempotencyKey: 'own-pause' });
+  expect(holdOwnStudySessionEcho({ studySessionId: 'study-1', version: 5, state: 'paused' }, apply)).toBe(true);
+  expect(holdOwnStudySessionEcho({ studySessionId: 'study-1', version: 6, state: 'paused' }, apply)).toBe(false);
+  expect(holdOwnStudySessionEcho({ studySessionId: 'study-2', version: 5, state: 'paused' }, apply)).toBe(false);
+
+  resolvePost({ data: { id: 'study-1', state: 'paused', version: 5 } });
+  await request;
+  expect(apply).not.toHaveBeenCalled();
+  expect(holdOwnStudySessionEcho({ studySessionId: 'study-1', version: 5, state: 'paused' }, apply)).toBe(false);
+});
+
+it('applies the held transition event when the request fails, since the server may have committed it', async () => {
+  const post = jest.fn().mockRejectedValue(new Error('timeout'));
+  (getAuthenticatedHttpClient as jest.Mock).mockReturnValue({ post });
+  const apply = jest.fn();
+
+  const request = pauseStudySession({ id: 'study-9', expectedVersion: 2, idempotencyKey: 'lost-pause' });
+  holdOwnStudySessionEcho({ studySessionId: 'study-9', version: 3, state: 'paused' }, apply);
+  await expect(request).rejects.toThrow('timeout');
+
+  expect(apply).toHaveBeenCalledTimes(1);
+  expect(isConfirmedStudySessionEcho({ studySessionId: 'study-9', version: 3, state: 'paused' })).toBe(false);
 });
