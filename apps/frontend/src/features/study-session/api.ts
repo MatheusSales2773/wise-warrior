@@ -1,5 +1,5 @@
 import { getAuthenticatedHttpClient } from '@/core/api/api-client';
-import { beginStudySessionCommand, endStudySessionCommand } from './pending-command';
+import { beginStudySessionCommand, settleStudySessionCommand, type PendingStudySessionCommand } from './pending-command';
 
 export const STUDY_SESSION_PRESETS = [900, 1500, 3000] as const;
 export type PlannedDurationSeconds = (typeof STUDY_SESSION_PRESETS)[number];
@@ -74,9 +74,7 @@ export async function startStudySession(
   subject: string | null = null,
   raidId?: string,
 ): Promise<StudySessionSnapshot> {
-  const command = { kind: 'start' as const };
-  beginStudySessionCommand(command);
-  try {
+  return trackStudySessionCommand({ kind: 'start' }, async () => {
     const response = await getAuthenticatedHttpClient().post<StudySessionSnapshot>(
       '/sessions',
       {
@@ -87,9 +85,7 @@ export async function startStudySession(
       { headers: { 'Idempotency-Key': idempotencyKey } },
     );
     return { ...response.data, receivedAtMs: Date.now() };
-  } finally {
-    endStudySessionCommand(command);
-  }
+  });
 }
 
 export function pauseStudySession(command: StudySessionTransitionRequest): Promise<StudySessionTransitionResult> {
@@ -112,17 +108,28 @@ async function transitionStudySession(
   { id, action, expectedVersion, idempotencyKey }: StudySessionTransitionRequest & { action: StudySessionTransitionAction },
 ): Promise<StudySessionTransitionResult> {
   // An applied transition writes the next version; a replay keeps the receipt's version and emits no event.
-  const command = { kind: 'transition' as const, studySessionId: id, version: expectedVersion + 1 };
-  beginStudySessionCommand(command);
-  try {
+  return trackStudySessionCommand({ kind: 'transition', studySessionId: id, version: expectedVersion + 1 }, async () => {
     const response = await getAuthenticatedHttpClient().post<StudySessionTransitionResult>(
       `/sessions/${id}/${action}`,
       { expectedVersion },
       { headers: { 'Idempotency-Key': idempotencyKey } },
     );
     return { ...response.data, receivedAtMs: Date.now() };
+  });
+}
+
+/** The realtime echo of a command is held while it runs, then dropped or applied by what the server answered. */
+async function trackStudySessionCommand<T extends StudySessionSnapshot>(
+  command: PendingStudySessionCommand,
+  send: () => Promise<T>,
+): Promise<T> {
+  beginStudySessionCommand(command);
+  let result: T | null = null;
+  try {
+    result = await send();
+    return result;
   } finally {
-    endStudySessionCommand(command);
+    settleStudySessionCommand(command, result && { studySessionId: result.id, version: result.version });
   }
 }
 

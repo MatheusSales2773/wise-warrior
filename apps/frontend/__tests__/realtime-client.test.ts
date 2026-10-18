@@ -7,7 +7,7 @@ import { profileKeys } from '@/features/profile/queries';
 import { marketKeys } from '@/features/market/queries';
 import type { StudySessionSnapshot } from '@/features/study-session/api';
 import { activeStudySessionQueryKey, focusCycleQueryKey } from '@/features/study-session/queries';
-import { beginStudySessionCommand, endStudySessionCommand } from '@/features/study-session/pending-command';
+import { beginStudySessionCommand, settleStudySessionCommand } from '@/features/study-session/pending-command';
 
 class FakeSocket implements RealtimeSocket {
   active = true;
@@ -449,24 +449,52 @@ describe('studySession:changed', () => {
     const command = { kind: 'start' as const };
     beginStudySessionCommand(command);
 
-    socket.emit('studySession:changed', { studySessionId: 'study-1', version: 1, state: 'running' });
+    socket.emit('studySession:changed', { studySessionId: 'study-own-start', version: 1, state: 'running' });
     expect(invalidated(queryClient, activeStudySessionQueryKey)).toBe(false);
 
-    endStudySessionCommand(command);
+    settleStudySessionCommand(command, { studySessionId: 'study-own-start', version: 1 });
+    expect(invalidated(queryClient, activeStudySessionQueryKey)).toBe(false);
   });
 
   it('ignores the event its own transition command is about to answer', () => {
     const { socket, queryClient } = setup();
-    queryClient.setQueryData(activeStudySessionQueryKey, activeSession({ version: 2 }));
-    const command = { kind: 'transition' as const, studySessionId: 'study-1', version: 3 };
+    queryClient.setQueryData(activeStudySessionQueryKey, activeSession({ id: 'study-own-pause', version: 2 }));
+    const command = { kind: 'transition' as const, studySessionId: 'study-own-pause', version: 3 };
     beginStudySessionCommand(command);
 
-    socket.emit('studySession:changed', { studySessionId: 'study-1', version: 3, state: 'paused' });
+    socket.emit('studySession:changed', { studySessionId: 'study-own-pause', version: 3, state: 'paused' });
     expect(invalidated(queryClient, activeStudySessionQueryKey)).toBe(false);
 
-    endStudySessionCommand(command);
-    socket.emit('studySession:changed', { studySessionId: 'study-1', version: 3, state: 'paused' });
+    settleStudySessionCommand(command, { studySessionId: 'study-own-pause', version: 3 });
+    expect(invalidated(queryClient, activeStudySessionQueryKey)).toBe(false);
+  });
+
+  it('applies the held echo when its command fails, because the server may have committed it', () => {
+    const { socket, queryClient } = setup();
+    queryClient.setQueryData(activeStudySessionQueryKey, activeSession({ id: 'study-lost', version: 2 }));
+    const command = { kind: 'transition' as const, studySessionId: 'study-lost', version: 3 };
+    beginStudySessionCommand(command);
+
+    socket.emit('studySession:changed', { studySessionId: 'study-lost', version: 3, state: 'paused' });
+    expect(invalidated(queryClient, activeStudySessionQueryKey)).toBe(false);
+
+    settleStudySessionCommand(command, null);
     expect(invalidated(queryClient, activeStudySessionQueryKey)).toBe(true);
+  });
+
+  it('ignores the echo of a stop that arrives after its response emptied the cache', () => {
+    const { socket, queryClient } = setup();
+    const command = { kind: 'transition' as const, studySessionId: 'study-stopped', version: 4 };
+    beginStudySessionCommand(command);
+    settleStudySessionCommand(command, { studySessionId: 'study-stopped', version: 4 });
+    queryClient.setQueryData(activeStudySessionQueryKey, null);
+    [dashboardKeys.metrics(), focusCycleQueryKey, [...guildKeys.all, 'raid']].forEach((key) => queryClient.setQueryData(key, {}));
+
+    socket.emit('studySession:changed', { studySessionId: 'study-stopped', version: 4, state: 'ended' });
+
+    expect(invalidated(queryClient, dashboardKeys.metrics())).toBe(false);
+    expect(invalidated(queryClient, focusCycleQueryKey)).toBe(false);
+    expect(invalidated(queryClient, [...guildKeys.all, 'raid'])).toBe(false);
   });
 
   it('refetches the active session when another device pauses or resumes it', () => {

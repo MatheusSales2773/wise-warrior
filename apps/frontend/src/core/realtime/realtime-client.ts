@@ -8,7 +8,7 @@ import type { CoinOrigin } from '@/features/market/api';
 import { marketKeys } from '@/features/market/queries';
 import { profileKeys } from '@/features/profile/queries';
 import { activeStudySessionQueryKey, invalidateStudySessionResult } from '@/features/study-session/queries';
-import { isOwnStudySessionCommand } from '@/features/study-session/pending-command';
+import { holdOwnStudySessionEcho, isConfirmedStudySessionEcho } from '@/features/study-session/pending-command';
 import type { StudySessionSnapshot } from '@/features/study-session/api';
 
 /** Payload of the `raid:progress` event (docs/api/asyncapi.yaml). */
@@ -184,8 +184,11 @@ export function applyRaidComplete(queryClient: QueryClient): void {
  * refreshed, so the device that did not issue the command does not keep stale history, metrics or cycle.
  */
 export function applyStudySessionChanged(queryClient: QueryClient, event: StudySessionChangedEvent): void {
-  // The server emits before answering the HTTP request: this is this device's own echo, already on its way.
-  if (isOwnStudySessionCommand(event)) return;
+  // The server emits before answering the HTTP request: the echo of a command still in flight waits for its
+  // answer, and is applied only if the request failed or answered another session.
+  if (holdOwnStudySessionEcho(event, () => applyStudySessionChanged(queryClient, event))) return;
+  // The response already settled this version (a stop or completion also emptied the cache and its results).
+  if (isConfirmedStudySessionEcho(event)) return;
   const local = queryClient.getQueryData<StudySessionSnapshot | null>(activeStudySessionQueryKey);
   const sameSession = local != null && local.id === event.studySessionId;
   // A command that already landed wrote the very same version; refetching would only repeat the response.
