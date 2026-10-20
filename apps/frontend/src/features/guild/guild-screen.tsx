@@ -1,7 +1,7 @@
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { Platform, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
-import { FeedbackMessage, ProgressBar, Screen, WiseButton, WiseCard, WiseField, WiseIcon, WiseText, isDesktopLayout, theme } from '@/design-system';
+import { FeedbackMessage, ProgressBar, Screen, WiseButton, WiseCard, WiseField, WiseText, isDesktopLayout, theme } from '@/design-system';
 import { isApiError } from '@/core/api/api-error';
 import { createGuild, joinGuild, leaveGuild, type GuildMember, type GuildSummary, type MyGuild } from './api';
 import {
