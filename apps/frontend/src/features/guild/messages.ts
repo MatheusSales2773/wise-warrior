@@ -1,6 +1,6 @@
 import { isApiError } from '@/core/api/api-error';
 import type { ChatAckError } from './guild-chat';
-import { formatFocusHours } from './raid-battle';
+import { formatFocusHours } from './focus-hours';
 
 /** The UI owns the public text; the backend `detail` never reaches the screen. */
 export function createGuildErrorMessage(error: unknown): string {
@@ -33,9 +33,14 @@ export function formatGuildRoleSeal(role: 'leader' | 'member'): string {
   return role === 'leader' ? 'VOCÊ É LÍDER' : 'MEMBRO';
 }
 
+/** Raids won = Guild Level − 1: the Level starts at 1 and goes up with every Meta batida. */
+function wonRaids(level: number): number {
+  return level - 1;
+}
+
 /** The Header line: Level and size, plus the Raids already won (Level − 1) once there is any. */
 export function formatGuildStats(level: number, memberCount: number): string {
-  const won = level - 1;
+  const won = wonRaids(level);
   const parts = [`Nível ${level}`, formatMemberCount(memberCount)];
   if (won > 0) parts.push(`${won} ${won === 1 ? 'Raid vencida' : 'Raids vencidas'}`);
   return parts.join(' · ').toUpperCase();
@@ -103,24 +108,33 @@ export function formatMyPosition(position: number | null): string | null {
   return position === null ? null : `Sua posição: ${formatPosition(position)} no Ranking interno`;
 }
 
-const RAID_WEEK_DAY = new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: '2-digit', timeZone: 'America/Sao_Paulo' });
+/** The Raid week is Monday to Sunday in São Paulo. */
+const RAID_TIME_ZONE = 'America/Sao_Paulo';
+const RAID_WEEK_DAY = new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: '2-digit', timeZone: RAID_TIME_ZONE });
 
 /** The Raid week as São Paulo reads it: Monday to Sunday. */
 export function formatRaidWeek(startsAt: string, endsAt: string): string {
   return `Semana de ${RAID_WEEK_DAY.format(new Date(startsAt))} a ${RAID_WEEK_DAY.format(new Date(endsAt))}`;
 }
 
-export function formatPastRaidOutcome(status: 'completed' | 'expired'): string {
-  return status === 'completed' ? 'Meta batida · a guilda subiu de nível' : 'Meta não batida';
+type PastRaidStatus = 'completed' | 'expired';
+
+/** What each closing status says: the long outcome for the screen reader and the seal on the row, as in Figma 06c. */
+const PAST_RAID_STATUS: Record<PastRaidStatus, { outcome: string; seal: string }> = {
+  completed: { outcome: 'Meta batida · a guilda subiu de nível', seal: 'VENCIDA' },
+  expired: { outcome: 'Meta não batida', seal: 'NÃO VENCIDA' },
+};
+
+export function formatPastRaidOutcome(status: PastRaidStatus): string {
+  return PAST_RAID_STATUS[status].outcome;
 }
 
-/** The seal on a closed Raid: won or not, as in Figma 06c. */
-export function formatPastRaidSeal(status: 'completed' | 'expired'): string {
-  return status === 'completed' ? 'VENCIDA' : 'NÃO VENCIDA';
+export function formatPastRaidSeal(status: PastRaidStatus): string {
+  return PAST_RAID_STATUS[status].seal;
 }
 
 const RAID_MONTHS = ['JAN', 'FEV', 'MAR', 'ABR', 'MAI', 'JUN', 'JUL', 'AGO', 'SET', 'OUT', 'NOV', 'DEZ'];
-const RAID_DAY_PARTS = new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: 'numeric', timeZone: 'America/Sao_Paulo' });
+const RAID_DAY_PARTS = new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: 'numeric', timeZone: RAID_TIME_ZONE });
 
 function raidDay(iso: string): { day: string; month: string } {
   const parts = RAID_DAY_PARTS.formatToParts(new Date(iso));
@@ -138,15 +152,21 @@ export function formatPastRaidPeriod(startsAt: string, endsAt: string): string {
 
 /** "Raids vencidas" of the list header: Level − 1, or a plain "nenhuma vencida" while the Guild is still on Level 1. */
 export function formatWonRaids(level: number): string {
-  const won = level - 1;
+  const won = wonRaids(level);
   if (won <= 0) return 'nenhuma vencida';
   return `${won} ${won === 1 ? 'vencida' : 'vencidas'}`;
 }
 
-/** The own result in hours of focus, like the Ranking interno: "Você: 9,4h · 3º". */
+/** The goal of a won Raid ("200h"); one that fell short shows how far it got ("140h de 180h"). */
+export function formatPastRaidTotals(raid: { status: PastRaidStatus; goalXp: number; progressXp: number }): string {
+  const goal = formatFocusHours(raid.goalXp);
+  return raid.status === 'completed' ? goal : `${formatFocusHours(raid.progressXp)} de ${goal}`;
+}
+
+/** The own result in hours of focus, rounded like the Raid totals so it never reads above the goal: "Você: 9,4h · 3º". */
 export function formatPastRaidMine(me: { participated: boolean; contributionXp: number; position: number | null }): string {
   if (!me.participated) return 'Você não participou';
-  const hours = formatFocusHours(me.contributionXp, { precise: true });
+  const hours = formatFocusHours(me.contributionXp);
   return me.position === null ? `Você: ${hours}` : `Você: ${hours} · ${formatPosition(me.position)}`;
 }
 
