@@ -20,6 +20,7 @@ import {
 } from './api';
 import { activeStudySessionQueryKey, invalidateStudySessionResult, recentStudySessionSubjectsQueryKey, useActiveStudySession, useFocusCycle, useRecentStudySessionSubjects } from './queries';
 import { BREAK_SECONDS, breakRemainingSeconds, clearBreak, currentBreak, startBreak, type BreakKind, type BreakRun } from './pomodoro-break';
+import { useSessionEndSounds } from './use-session-end-sounds';
 import { formatRemainingTime, remainingStudySeconds } from './timer';
 import { MAX_SUBJECT_LENGTH, validateSubject, type SubjectValidation } from './subject';
 import { FeedbackMessage } from '@/design-system/components/FeedbackMessage';
@@ -681,6 +682,11 @@ export function StudySessionScreen({ initialMode = 'solo' }: { initialMode?: Ses
     }, 1000);
     return () => clearInterval(interval);
   }, [breakRun, applicationActive]);
+
+  useSessionEndSounds({
+    breakRemaining: breakRun ? breakRemainingSeconds(breakRun, breakNow) : null,
+    completedSessionId: displayedTerminalResult?.state === 'completed' ? displayedTerminalResult.id : null,
+  });
 
   const projectedRemaining = snapshot
     ? now === 0 ? snapshot.remainingSeconds : remainingStudySeconds(snapshot, now, clockOffset)
