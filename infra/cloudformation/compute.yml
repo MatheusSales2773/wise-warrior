@@ -142,7 +142,7 @@ Resources:
       TargetType: instance
       Protocol: HTTP
       Port: 3000
-      HealthCheckPath: /health
+      HealthCheckPath: /api/v1/health
       Matcher:
         HttpCode: "200"
       Targets:
