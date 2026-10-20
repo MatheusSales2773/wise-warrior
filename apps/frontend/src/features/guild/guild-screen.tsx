@@ -18,6 +18,7 @@ import { PastRaidsCard } from './guild-past-raids';
 import { RaidCard } from './guild-raid-card';
 import { RankingCard } from './guild-ranking';
 import { RewardsCard } from './guild-rewards';
+import { columnStyles } from './guild-card-style';
 import { JoinGuild } from './guild-join';
 
 function MemberItem({ member, online }: { member: GuildMember; online: boolean | null }) {
@@ -149,8 +150,8 @@ function MemberGuild({ mine, desktop, onLeft, onConflict }: { mine: MyGuild; des
     return <View style={styles.stack} testID="guild-layout-desktop">
       {header}
       <View style={styles.desktopGrid}>
-        <View style={[styles.columnMain, styles.stack]} testID="guild-column-main">{raid}{pastRaids}</View>
-        <View style={[styles.columnSide, styles.stack]} testID="guild-column-side">{mural}{members}{rewards}</View>
+        <View style={[columnStyles.main, styles.stack]} testID="guild-column-main">{raid}{pastRaids}</View>
+        <View style={[columnStyles.side, styles.stack]} testID="guild-column-side">{mural}{members}{rewards}</View>
       </View>
       {announcer}
     </View>;
@@ -202,7 +203,7 @@ export function GuildScreen() {
 
   const desktop = isDesktopLayout(Platform.OS, width);
   return (
-    <Screen contentContainerStyle={styles.fromTop} contentStyle={mine.data ? styles.grow : undefined} safeAreaEdges={[]} testID="guild" title="Guilda" titleHidden={!mine.data}>
+    <Screen contentContainerStyle={styles.fromTop} contentStyle={mine.data ? styles.grow : undefined} safeAreaEdges={[]} testID="guild" title="Guilda" titleHidden={mine.data === null}>
       {mine.isError ? <FeedbackMessage message="Não foi possível atualizar sua guilda." testID="guild-refresh-error" title="Dados desatualizados" variant="error" /> : null}
       {mine.data
         ? <MemberGuild key={mine.data.guild.id} desktop={desktop} mine={mine.data} onConflict={refreshOnConflict} onLeft={() => void refreshGuild()} />
@@ -216,16 +217,12 @@ const { fontFamily: sans } = theme.type.label;
 
 const styles = StyleSheet.create({
   stack: { gap: theme.space.stackDefault },
-  grid: { gap: theme.space.stackDefault },
   desktopGrid: { flexDirection: 'row', alignItems: 'flex-start', gap: theme.space.stackDefault },
   column: { flex: 1 },
   hidden: { display: 'none' },
   grow: { flexGrow: 1 },
   // The Screen centers its content; a guild screen starts at the top and its open tab runs down to the bottom.
   fromTop: { justifyContent: 'flex-start' },
-  // Figma 06c desktop: a 680 px main column and a 392 px side column.
-  columnMain: { flex: 680 },
-  columnSide: { flex: 392 },
   headerRow: { flexDirection: 'row', alignItems: 'center', gap: theme.space.stackDefault },
   leaveDesktop: { width: 199 },
   identity: { flexDirection: 'row', alignItems: 'center', gap: theme.space.stackDefault },
@@ -235,9 +232,6 @@ const styles = StyleSheet.create({
   rolePill: { paddingVertical: theme.space.inlineHairline, paddingHorizontal: theme.space.inlineTight, borderRadius: theme.radius.pill, borderWidth: theme.border.standard, borderColor: theme.color.borderSubtle, backgroundColor: theme.color.surfaceInset },
   rolePillLeader: { borderColor: theme.color.accentPrimary },
 
-  cardContent: { padding: theme.space.cardInset, gap: theme.space.stackTight },
-  directoryItem: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: theme.space.stackTight },
-  directoryMain: { flex: 1, gap: theme.space.inlineHairline },
   // Figma 06c Membros: 30 px portrait, 9 px Presença dot on its bottom-right corner, 31 px rows.
   membersBlock: { gap: theme.space.stackTight },
   membersCard: { padding: theme.space.cardInset, gap: 12 },

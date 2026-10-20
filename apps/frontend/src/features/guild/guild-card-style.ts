@@ -15,3 +15,9 @@ export const cardText = StyleSheet.create({
   meta: { fontFamily: theme.type.mono.fontFamily, fontSize: 10, lineHeight: 13, color: theme.color.textTertiary },
   note: { fontFamily: theme.type.body.fontFamily, fontSize: 11, lineHeight: 15, color: theme.color.textTertiary },
 });
+
+/** Figma 06c and 06d desktop: a 680 px main column and a 392 px side column. */
+export const columnStyles = StyleSheet.create({
+  main: { flex: 680 },
+  side: { flex: 392 },
+});

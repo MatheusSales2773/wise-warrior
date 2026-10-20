@@ -1,16 +1,16 @@
-import { useInfiniteQuery, useMutation } from '@tanstack/react-query';
+import { useInfiniteQuery, useMutation, type InfiniteData, type UseInfiniteQueryResult } from '@tanstack/react-query';
 import { useState } from 'react';
-import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
-import { FeedbackMessage, WiseButton, WiseCard, WiseField, WiseIcon, WiseText, theme, type WiseIconName } from '@/design-system';
-import { controlStyles } from '@/design-system/components/control-styles';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { FeedbackMessage, WiseButton, WiseCard, WiseField, WiseIcon, theme, type WiseIconName } from '@/design-system';
 import { CoinMark } from '@/features/market/coin';
 import { SectionHeader } from '@/features/character/character-parts';
-import { createGuild, joinGuild, type GuildSummary } from './api';
+import { createGuild, joinGuild, type GuildPage, type GuildSummary } from './api';
 import { GuildEmblem, GuildSigil } from './guild-emblem';
-import { CARD_GAP, FRAME_RADIUS, cardText } from './guild-card-style';
+import { CARD_GAP, CARD_PADDING, FRAME_RADIUS, cardText, columnStyles } from './guild-card-style';
 import { createGuildErrorMessage, formatMemberCount, joinGuildErrorMessage } from './messages';
+import { TabList } from './guild-tabs';
 import { guildDirectoryQueryOptions } from './queries';
-import { GUILD_NAME_MAX_LENGTH, normalizeGuildName, validateGuildName } from './validation';
+import { GUILD_NAME_MAX_LENGTH, GUILD_NAME_RULE, normalizeGuildName, validateGuildName } from './validation';
 
 type GuildActionCallbacks = { onConflict: (error: unknown) => void };
 
@@ -22,39 +22,12 @@ const JOIN_TABS: { id: JoinTab; label: string }[] = [
   { id: 'create', label: 'Fundar' },
 ];
 
-function JoinTabs({ selected, onSelect }: { selected: JoinTab; onSelect: (tab: JoinTab) => void }) {
-  const [focused, setFocused] = useState<JoinTab | null>(null);
-  return (
-    <View accessibilityLabel="Seções da tela sem guilda" role="tablist" style={styles.tabs} testID="guild-join-tabs">
-      {JOIN_TABS.map((tab) => {
-        const active = tab.id === selected;
-        return (
-          <Pressable
-            accessibilityRole="tab"
-            accessibilityState={{ selected: active }}
-            aria-selected={active}
-            hitSlop={{ top: 6, bottom: 6 }}
-            key={tab.id}
-            onBlur={() => setFocused(null)}
-            onFocus={() => setFocused(tab.id)}
-            onPress={() => onSelect(tab.id)}
-            style={[styles.tab, active && styles.tabActive, focused === tab.id && Platform.OS === 'web' && controlStyles.webFocus]}
-            testID={`guild-join-tab-${tab.id}`}
-          >
-            <Text style={[styles.tabLabel, active && styles.tabLabelActive]}>{tab.label}</Text>
-          </Pressable>
-        );
-      })}
-    </View>
-  );
-}
-
 function JoinHeader({ desktop }: { desktop: boolean }) {
   return (
     <View style={styles.header} testID="guild-join-header">
       <Text aria-hidden style={styles.eyebrow}>GUILDA</Text>
       <Text accessibilityRole="header" aria-level={1} style={[styles.heading, desktop && styles.headingDesktop]}>Escolha sua ordem</Text>
-      <Text style={[cardText.body, styles.lead]}>Você ainda não tem uma guilda. Entre em uma aberta ou funde a sua e chame os amigos.</Text>
+      <Text style={[styles.intro, styles.leadWidth]}>Você ainda não tem uma guilda. Entre em uma aberta ou funde a sua e chame os amigos.</Text>
     </View>
   );
 }
@@ -88,7 +61,7 @@ function CreateGuildCard({ desktop, onCreated, onConflict }: { desktop: boolean;
           autoCapitalize="words"
           editable={!create.isPending}
           error={fieldError}
-          helpText="3 a 60 caracteres"
+          helpText={GUILD_NAME_RULE}
           hint={`${name.length} / ${GUILD_NAME_MAX_LENGTH}`}
           label="Nome da guilda"
           maxLength={GUILD_NAME_MAX_LENGTH}
@@ -125,71 +98,88 @@ function DirectoryItem({ busy, first, guild, onJoin }: { busy: boolean; first: b
   );
 }
 
-function DirectoryCard({ desktop, onJoined, onConflict }: { desktop: boolean; onJoined: () => void } & GuildActionCallbacks) {
+/** The name field with its "Buscar" button; the search runs on the button or on the keyboard's own submit. */
+function DirectorySearch({ onSearch }: { onSearch: (name: string) => void }) {
   const [draft, setDraft] = useState('');
+  const run = () => onSearch(draft.trim());
+  return (
+    <View style={styles.searchRow}>
+      <View style={styles.searchField}>
+        <WiseField
+          autoCapitalize="none"
+          label="Buscar por nome"
+          maxLength={GUILD_NAME_MAX_LENGTH}
+          nativeID="guild-directory-search"
+          onChangeText={setDraft}
+          onSubmitEditing={run}
+          placeholder="Nome da guilda"
+          returnKeyType="search"
+          value={draft}
+        />
+      </View>
+      <WiseButton label="Buscar" onPress={run} testID="guild-directory-search-submit" variant="secondary" />
+    </View>
+  );
+}
+
+type DirectoryQuery = UseInfiniteQueryResult<InfiniteData<GuildPage>, Error>;
+
+/** What the directory shows below the search: loading, error, empty or the list with its "Carregar mais". */
+function DirectoryList({ directory, joiningId, loadMoreLabel, onJoin, search }: {
+  directory: DirectoryQuery; joiningId: string | null; loadMoreLabel: string; onJoin: (guildId: string) => void; search: string;
+}) {
+  const guilds = directory.data?.pages.flatMap((page) => page.items) ?? [];
+
+  if (directory.isPending) return <Text style={cardText.body} testID="guild-directory-loading">Procurando guildas…</Text>;
+  if (directory.isError && !directory.data) {
+    return <View style={styles.stack} testID="guild-directory-error">
+      <FeedbackMessage message="Não foi possível carregar as guildas." title="Guildas indisponíveis" variant="error" />
+      <WiseButton label="Tentar novamente" loading={directory.isRefetching} onPress={() => void directory.refetch()} variant="secondary" />
+    </View>;
+  }
+  if (!guilds.length) {
+    return <Text style={cardText.body} testID="guild-directory-empty">
+      {search ? 'Nenhuma guilda encontrada para essa busca.' : 'Ainda não há guildas. Funde a primeira!'}
+    </Text>;
+  }
+  return <>
+    <View>
+      {guilds.map((guild, index) => (
+        <DirectoryItem busy={joiningId === guild.id} first={index === 0} guild={guild} key={guild.id} onJoin={() => onJoin(guild.id)} />
+      ))}
+    </View>
+    {directory.isFetchNextPageError ? <FeedbackMessage message="Não foi possível carregar mais guildas." title="Lista incompleta" variant="error" /> : null}
+    {directory.hasNextPage
+      ? <Pressable accessibilityRole="button" disabled={directory.isFetchingNextPage} onPress={() => void directory.fetchNextPage()} style={styles.more} testID="guild-directory-more">
+        <Text style={styles.moreLabel}>{directory.isFetchingNextPage ? 'Carregando…' : loadMoreLabel}</Text>
+      </Pressable>
+      : null}
+  </>;
+}
+
+function DirectoryCard({ desktop, onJoined, onConflict }: { desktop: boolean; onJoined: () => void } & GuildActionCallbacks) {
   const [search, setSearch] = useState('');
   const directory = useInfiniteQuery(guildDirectoryQueryOptions(search));
   const join = useMutation({ mutationFn: joinGuild, onSuccess: onJoined, onError: onConflict });
-  const guilds = directory.data?.pages.flatMap((page) => page.items) ?? [];
-
-  const runSearch = () => setSearch(draft.trim());
-
-  const body = (() => {
-    if (directory.isPending) return <WiseText color="textSecondary" testID="guild-directory-loading" variant="body">Procurando guildas…</WiseText>;
-    if (directory.isError && !directory.data) {
-      return <View style={styles.stack} testID="guild-directory-error">
-        <FeedbackMessage message="Não foi possível carregar as guildas." title="Guildas indisponíveis" variant="error" />
-        <WiseButton label="Tentar novamente" loading={directory.isRefetching} onPress={() => void directory.refetch()} variant="secondary" />
-      </View>;
-    }
-    if (!guilds.length) {
-      return <WiseText color="textSecondary" testID="guild-directory-empty" variant="body">
-        {search ? 'Nenhuma guilda encontrada para essa busca.' : 'Ainda não há guildas. Funde a primeira!'}
-      </WiseText>;
-    }
-    return <>
-      <View>
-        {guilds.map((guild, index) => (
-          <DirectoryItem
-            busy={join.isPending && join.variables === guild.id}
-            first={index === 0}
-            guild={guild}
-            key={guild.id}
-            onJoin={() => { if (!join.isPending) { join.reset(); join.mutate(guild.id); } }}
-          />
-        ))}
-      </View>
-      {directory.isFetchNextPageError ? <FeedbackMessage message="Não foi possível carregar mais guildas." title="Lista incompleta" variant="error" /> : null}
-      {directory.hasNextPage
-        ? <Pressable accessibilityRole="button" disabled={directory.isFetchingNextPage} onPress={() => void directory.fetchNextPage()} style={styles.more} testID="guild-directory-more">
-          <Text style={styles.moreLabel}>{directory.isFetchingNextPage ? 'Carregando…' : desktop ? 'Carregar mais guildas' : 'Carregar mais'}</Text>
-        </Pressable>
-        : null}
-    </>;
-  })();
+  const joinGuildById = (guildId: string) => {
+    if (join.isPending) return;
+    join.reset();
+    join.mutate(guildId);
+  };
 
   return (
     <View accessibilityLabel="Encontrar guilda" role="region" style={styles.directoryBlock} testID="guild-directory">
       <SectionHeader aside={desktop ? <Text style={cardText.meta}>Entrada aberta</Text> : undefined}>Encontre uma guilda</SectionHeader>
       <WiseCard style={[styles.directoryCard, !desktop && styles.directoryCardPhone]}>
-        <View style={desktop ? styles.searchRow : undefined}>
-          <View style={desktop ? styles.searchField : undefined}>
-            <WiseField
-              autoCapitalize="none"
-              label="Buscar por nome"
-              maxLength={GUILD_NAME_MAX_LENGTH}
-              nativeID="guild-directory-search"
-              onChangeText={setDraft}
-              onSubmitEditing={runSearch}
-              placeholder="Nome da guilda"
-              returnKeyType="search"
-              value={draft}
-            />
-          </View>
-          {desktop ? <WiseButton label="Buscar" onPress={runSearch} testID="guild-directory-search-submit" variant="secondary" /> : null}
-        </View>
+        <DirectorySearch onSearch={setSearch} />
         {join.isError ? <FeedbackMessage message={joinGuildErrorMessage(join.error)} testID="guild-join-error" title="Não foi possível entrar" variant="error" /> : null}
-        {body}
+        <DirectoryList
+          directory={directory}
+          joiningId={join.isPending ? join.variables : null}
+          loadMoreLabel={desktop ? 'Carregar mais guildas' : 'Carregar mais'}
+          onJoin={joinGuildById}
+          search={search}
+        />
       </WiseCard>
     </View>
   );
@@ -233,16 +223,16 @@ export function JoinGuild({ desktop, onChanged, onConflict }: { desktop: boolean
     return <View style={styles.page} testID="guild-join-desktop">
       <JoinHeader desktop />
       <View style={styles.columns}>
-        <View style={styles.columnMain}>{directory}</View>
-        <View style={styles.columnSide}>{create}{how}</View>
+        <View style={columnStyles.main}>{directory}</View>
+        <View style={[columnStyles.side, styles.stack]}>{create}{how}</View>
       </View>
     </View>;
   }
   return <View style={styles.page} testID="guild-join-tabs-layout">
     <JoinHeader desktop={false} />
-    <JoinTabs onSelect={setTab} selected={tab} />
-    <View style={tab === 'search' ? undefined : styles.hidden}>{directory}</View>
-    <View style={[styles.stack, tab === 'create' ? undefined : styles.hidden]}>{create}{how}</View>
+    <TabList accessibilityLabel="Seções da tela sem guilda" onSelect={setTab} selected={tab} tabs={JOIN_TABS} tabTestIDPrefix="guild-join-tab-" testID="guild-join-tabs" variant="segmented" />
+    <View role="tabpanel" style={tab === 'search' ? undefined : styles.hidden} testID="guild-join-panel-search">{directory}</View>
+    <View role="tabpanel" style={[styles.stack, tab === 'create' ? undefined : styles.hidden]} testID="guild-join-panel-create">{create}{how}</View>
   </View>;
 }
 
@@ -250,30 +240,29 @@ const { fontFamily: mono } = theme.type.mono;
 const { fontFamily: sans } = theme.type.label;
 const { fontFamily: serif } = theme.type.title;
 
+/** Figma 06d: values the spacing scale has no step for. */
+const CREATE_PADDING_PHONE = 18;
+const HEADER_GAP = 6;
+const LEAD_MAX_WIDTH = 560;
+const HOW_ICON_BOX = 32;
+const HOW_TEXT_GAP = 2;
+
 const styles = StyleSheet.create({
   page: { gap: theme.space.cardInset },
   stack: { gap: theme.space.stackDefault },
   hidden: { display: 'none' },
-  header: { gap: 6 },
+  header: { gap: HEADER_GAP },
   eyebrow: { fontFamily: mono, fontSize: 10, letterSpacing: 2, color: theme.color.accentPrimary },
   heading: { fontFamily: serif, fontSize: 22, color: theme.color.textPrimary },
   headingDesktop: { fontSize: 28 },
   intro: { fontFamily: theme.type.body.fontFamily, fontSize: 13, lineHeight: 19, color: theme.color.textSecondary },
-  lead: { fontSize: 13, lineHeight: 19, maxWidth: 560 },
+  leadWidth: { maxWidth: LEAD_MAX_WIDTH },
 
-  // Figma 06d desktop: a 680 px column of guilds and a 392 px side column, 24 px apart.
+  // Figma 06d desktop: the 680 px and 392 px columns of `columnStyles`, 24 px apart.
   columns: { flexDirection: 'row', alignItems: 'flex-start', gap: theme.space.cardInset },
-  columnMain: { flex: 680 },
-  columnSide: { flex: 392, gap: theme.space.stackDefault },
-
-  tabs: { flexDirection: 'row', gap: 3, padding: theme.space.inlineHairline, borderRadius: theme.radius.control, borderWidth: theme.border.standard, borderColor: theme.color.borderGhost, backgroundColor: theme.color.surfaceInset },
-  tab: { flex: 1, alignItems: 'center', paddingVertical: theme.space.inlineTight, borderRadius: theme.radius.detail, borderWidth: theme.border.standard, borderColor: 'transparent' },
-  tabActive: { backgroundColor: theme.color.surfaceCard, borderColor: theme.color.accentMuted },
-  tabLabel: { fontFamily: sans, fontSize: 12, lineHeight: 16, color: theme.color.textTertiary },
-  tabLabelActive: { color: theme.color.accentHighlight },
 
   directoryBlock: { gap: theme.space.stackTight },
-  directoryCard: { padding: theme.space.stackDefault, gap: CARD_GAP, borderWidth: theme.border.standard, borderColor: theme.color.borderSubtle },
+  directoryCard: { padding: CARD_PADDING, gap: CARD_GAP, borderWidth: theme.border.standard, borderColor: theme.color.borderSubtle },
   directoryCardPhone: { padding: theme.space.controlInset },
   searchRow: { flexDirection: 'row', alignItems: 'flex-end', gap: theme.space.stackTight },
   searchField: { flex: 1 },
@@ -287,14 +276,14 @@ const styles = StyleSheet.create({
 
   createCard: { borderWidth: theme.border.standard, borderColor: theme.color.accentMuted },
   createContent: { padding: theme.space.cardInset, gap: theme.space.controlInset },
-  createContentPhone: { padding: 18 },
+  createContentPhone: { padding: CREATE_PADDING_PHONE },
   createHeader: { flexDirection: 'row', alignItems: 'center', gap: CARD_GAP },
   createTitles: { flex: 1, gap: theme.space.inlineHairline },
   createEyebrow: { fontFamily: serif, fontSize: 11, letterSpacing: 2.6, color: theme.color.accentPrimary, textTransform: 'uppercase' },
   createTitle: { fontFamily: serif, fontSize: 18, color: theme.color.textPrimary },
 
-  howCard: { padding: theme.space.stackDefault, gap: CARD_GAP, borderWidth: theme.border.standard, borderColor: theme.color.borderSubtle },
+  howCard: { padding: CARD_PADDING, gap: CARD_GAP, borderWidth: theme.border.standard, borderColor: theme.color.borderSubtle },
   howRow: { flexDirection: 'row', alignItems: 'flex-start', gap: theme.space.stackTight },
-  howIcon: { width: 32, height: 32, alignItems: 'center', justifyContent: 'center', borderRadius: FRAME_RADIUS, borderWidth: theme.border.standard, borderColor: theme.color.borderGhost, backgroundColor: theme.color.surfaceInset },
-  howText: { flex: 1, minWidth: 0, gap: 2 },
+  howIcon: { width: HOW_ICON_BOX, height: HOW_ICON_BOX, alignItems: 'center', justifyContent: 'center', borderRadius: FRAME_RADIUS, borderWidth: theme.border.standard, borderColor: theme.color.borderGhost, backgroundColor: theme.color.surfaceInset },
+  howText: { flex: 1, minWidth: 0, gap: HOW_TEXT_GAP },
 });

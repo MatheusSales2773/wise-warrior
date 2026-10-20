@@ -4,6 +4,7 @@ import { Dimensions, Platform, StyleSheet } from 'react-native';
 import { ApiError } from '@/core/api/api-error';
 import { createGuild, getActiveRaid, getMyGuild, getRaidRanking, joinGuild, joinRaid, leaveGuild, listGuildMembers, listGuilds, listPastRaids, type ActiveRaid, type PastRaid, type GuildMemberPage, type GuildPage, type MyGuild, type RaidRankingEntry, type RaidRankingPage } from '@/features/guild/api';
 import { GuildScreen } from '@/features/guild/guild-screen';
+import { GUILD_NAME_MAX_LENGTH, GUILD_NAME_MIN_LENGTH } from '@/features/guild/validation';
 
 jest.mock('@/features/dashboard/api', () => ({ getMyProfile: jest.fn(() => new Promise(() => undefined)) }));
 jest.mock('@/features/guild/api', () => ({
@@ -295,6 +296,62 @@ describe('GuildScreen', () => {
       expect(screen.getByTestId('guild-directory-search-submit')).toBeTruthy();
     });
 
+    it('searches on a phone with the "Buscar" button and with the keyboard submit', async () => {
+      mockedMine.mockResolvedValue(null);
+      mockedList.mockResolvedValue(page(['Alfa']));
+      await renderGuild();
+      await screen.findByTestId('guild-directory-item-id-Alfa');
+
+      await fireEvent.changeText(screen.getByLabelText('Buscar por nome'), ' beta ');
+      await fireEvent.press(screen.getByTestId('guild-directory-search-submit'));
+      await waitFor(() => expect(mockedList).toHaveBeenLastCalledWith(expect.objectContaining({ search: 'beta' })));
+
+      await fireEvent.changeText(screen.getByLabelText('Buscar por nome'), 'gama');
+      await fireEvent(screen.getByLabelText('Buscar por nome'), 'submitEditing');
+      await waitFor(() => expect(mockedList).toHaveBeenLastCalledWith(expect.objectContaining({ search: 'gama' })));
+    });
+
+    it('states the name rule from the validation constants and counts the typed characters', async () => {
+      mockedMine.mockResolvedValue(null);
+      mockedList.mockResolvedValue(page([]));
+      await renderGuild();
+      await openJoinTab('create');
+
+      expect(screen.getByText(`${GUILD_NAME_MIN_LENGTH} a ${GUILD_NAME_MAX_LENGTH} caracteres`)).toBeTruthy();
+      expect(screen.getByText(`0 / ${GUILD_NAME_MAX_LENGTH}`, { includeHiddenElements: true })).toBeTruthy();
+    });
+
+    it('marks each tab panel and hides the one that is not open', async () => {
+      mockedMine.mockResolvedValue(null);
+      mockedList.mockResolvedValue(page(['Alfa']));
+      await renderGuild();
+      await screen.findByTestId('guild-directory-item-id-Alfa');
+
+      const panel = (id: 'search' | 'create') => screen.getByTestId(`guild-join-panel-${id}`, { includeHiddenElements: true });
+      const hidden = (id: 'search' | 'create') => StyleSheet.flatten(panel(id).props.style)?.display === 'none';
+      expect(panel('search').props.role).toBe('tabpanel');
+      expect(panel('create').props.role).toBe('tabpanel');
+      expect([hidden('search'), hidden('create')]).toEqual([false, true]);
+
+      await openJoinTab('create');
+      expect([hidden('search'), hidden('create')]).toEqual([true, false]);
+      expect(screen.queryByTestId('guild-directory')).toBeNull();
+    });
+
+    it('keeps the screen title while the guild loads and swaps it for the heading once the user is known to have none', async () => {
+      let resolveMine: (value: MyGuild | null) => void = () => undefined;
+      mockedMine.mockReturnValue(new Promise((resolve) => { resolveMine = resolve; }));
+      mockedList.mockResolvedValue(page([]));
+      await renderGuild();
+      expect(await screen.findByText('Carregando sua guilda…')).toBeTruthy();
+      expect(screen.getByTestId('guild-title')).toBeTruthy();
+      expect(screen.queryByText('Escolha sua ordem')).toBeNull();
+
+      resolveMine(null);
+      expect(await screen.findByText('Escolha sua ordem')).toBeTruthy();
+      expect(screen.queryByTestId('guild-title')).toBeNull();
+    });
+
     it('shows the loading state of the directory', async () => {
       mockedMine.mockResolvedValue(null);
       mockedList.mockReturnValue(new Promise(() => undefined));
@@ -379,6 +436,20 @@ describe('GuildScreen', () => {
     expect(screen.getByTestId('guild-directory-item-id-Alfa')).toBeTruthy();
   });
 
+  it('shows the join failure message inside the Procurar tab and lets the user try again', async () => {
+    mockedMine.mockResolvedValue(null);
+    mockedList.mockResolvedValue(page(['Alfa']));
+    mockedJoin.mockRejectedValue(new ApiError('server', { status: 500 }));
+    await renderGuild();
+
+    await fireEvent.press(await screen.findByTestId('guild-join-id-Alfa'));
+
+    const error = await screen.findByTestId('guild-join-error');
+    expect(within(screen.getByTestId('guild-directory')).getByTestId('guild-join-error')).toBe(error);
+    expect(screen.getByText('Não foi possível entrar')).toBeTruthy();
+    expect(screen.getByTestId('guild-join-id-Alfa')).toBeTruthy();
+  });
+
   it('reloads the guild when joining reveals the user already belongs to one', async () => {
     mockedMine.mockResolvedValueOnce(null);
     mockedList.mockResolvedValue(page(['Alfa']));
@@ -406,7 +477,7 @@ describe('GuildScreen', () => {
 
     mockedList.mockResolvedValue(page([]));
     await fireEvent.changeText(screen.getByLabelText('Buscar por nome'), ' zzz ');
-    await fireEvent(screen.getByLabelText('Buscar por nome'), 'submitEditing');
+    await fireEvent.press(screen.getByTestId('guild-directory-search-submit'));
     expect(await screen.findByText('Nenhuma guilda encontrada para essa busca.')).toBeTruthy();
     expect(mockedList).toHaveBeenLastCalledWith(expect.objectContaining({ search: 'zzz' }));
   });

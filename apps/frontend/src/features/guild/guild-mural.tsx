@@ -1,10 +1,10 @@
 import { useRef, useState } from 'react';
 import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View, type NativeScrollEvent, type NativeSyntheticEvent } from 'react-native';
-import { controlStyles } from '@/design-system/components/control-styles';
 import { FeedbackMessage, WiseButton, WiseCard, WiseIcon, WiseText, theme } from '@/design-system';
 import { SectionHeader } from '@/features/character/character-parts';
 import { raidHitText, type ChatMessage, type GuildChat } from './guild-chat';
 import { CARD_GAP, CARD_PADDING, FRAME_RADIUS, INSET_RADIUS, cardText } from './guild-card-style';
+import { TabList } from './guild-tabs';
 import { HeroAvatar } from './hero-avatar';
 
 export type GuildTab = 'raid' | 'mural' | 'members' | 'history';
@@ -52,29 +52,7 @@ export function OnlineIndicator({ onlineUserIds }: { onlineUserIds: ReadonlySet<
 
 /** The phone sections of the Guild screen (Figma 06c); the desktop shows them all at once in two columns. */
 export function GuildTabs({ selected, onSelect }: { selected: GuildTab; onSelect: (tab: GuildTab) => void }) {
-  return (
-    <View accessibilityLabel="Seções da guilda" role="tablist" style={styles.tabs} testID="guild-tabs">
-      {TABS.map((tab) => <GuildTabButton active={tab.id === selected} key={tab.id} label={tab.label} onPress={() => onSelect(tab.id)} testID={`guild-tab-${tab.id}`} />)}
-    </View>
-  );
-}
-
-function GuildTabButton({ active, label, onPress, testID }: { active: boolean; label: string; onPress: () => void; testID: string }) {
-  const [focused, setFocused] = useState(false);
-  return (
-    <Pressable
-      accessibilityRole="tab"
-      accessibilityState={{ selected: active }}
-      aria-selected={active}
-      onBlur={() => setFocused(false)}
-      onFocus={() => setFocused(true)}
-      onPress={onPress}
-      style={[styles.tab, active && styles.tabActive, focused && Platform.OS === 'web' && controlStyles.webFocus]}
-      testID={testID}
-    >
-      <WiseText color={active ? 'accentHighlight' : 'textSecondary'} variant="label">{label}</WiseText>
-    </Pressable>
-  );
+  return <TabList accessibilityLabel="Seções da guilda" onSelect={onSelect} selected={selected} tabs={TABS} tabTestIDPrefix="guild-tab-" testID="guild-tabs" variant="underline" />;
 }
 
 /** Online is a filled dot, offline an empty ring: the two differ in shape as well as color. */
@@ -304,10 +282,6 @@ const styles = StyleSheet.create({
   dot: { width: 8, height: 8, borderRadius: 4, borderWidth: theme.border.standard },
   dotOnline: { backgroundColor: theme.color.feedbackSuccess, borderColor: theme.color.feedbackSuccess },
   dotOffline: { backgroundColor: 'transparent', borderColor: theme.color.textDisabled },
-  tabs: { flexDirection: 'row', flexWrap: 'wrap', gap: theme.space.inlineTight, borderBottomWidth: theme.border.standard, borderBottomColor: theme.color.borderSubtle },
-  tab: { paddingVertical: theme.space.inlineTight, paddingHorizontal: theme.space.controlInset, borderBottomWidth: 2, borderBottomColor: 'transparent', marginBottom: -1 },
-  // Selected is marked by the underline and the brighter label, never by color alone.
-  tabActive: { borderBottomColor: theme.color.accentPrimary },
   scroll: { maxHeight: 420, minHeight: 160 },
   messages: { gap: CARD_GAP },
   start: { textAlign: 'center' },
