@@ -4,332 +4,423 @@
 
 ![Node.js](https://img.shields.io/badge/Node.js-339933?style=flat&logo=nodedotjs&logoColor=white)
 ![NestJS](https://img.shields.io/badge/NestJS-E0234E?style=flat&logo=nestjs&logoColor=white)
-![React](https://img.shields.io/badge/React-61DAFB?style=flat&logo=react&logoColor=black)
+![React Native](https://img.shields.io/badge/React%20Native-61DAFB?style=flat&logo=react&logoColor=black)
+![Expo](https://img.shields.io/badge/Expo-000020?style=flat&logo=expo&logoColor=white)
 ![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?style=flat&logo=typescript&logoColor=white)
 ![MySQL](https://img.shields.io/badge/MySQL-4479A1?style=flat&logo=mysql&logoColor=white)
 ![Oracle Cloud](https://img.shields.io/badge/Oracle%20Cloud%20Always%20Free-F80000?style=flat&logo=oracle&logoColor=white)
 
-> Ver [docs/PRD.md](docs/PRD.md) para o histórico completo de decisões (ADRs) por trás da stack abaixo — em particular por que Koa.js e AWS, citados nos documentos acadêmicos originais, não fazem parte do escopo implementado.
+Wise transforma a rotina de estudos em uma jornada de RPG cooperativa.
+Estudantes, universitários e concurseiros fazem sessões de foco
+cronometradas, ganham XP e Moedas, evoluem o personagem e se juntam a guildas
+para derrotar o dragão da Raid semanal.
+
+## Sumário
+
+- [Funcionalidades](#funcionalidades)
+- [Arquitetura](#arquitetura)
+- [Estrutura do repositório](#estrutura-do-repositório)
+- [Início rápido com Docker](#início-rápido-com-docker)
+- [Desenvolvimento local](#desenvolvimento-local)
+- [Testes e gates de qualidade](#testes-e-gates-de-qualidade)
+- [Migrations do banco](#migrations-do-banco)
+- [Documentação](#documentação)
+- [Sobre o projeto](#sobre-o-projeto)
 
 ---
 
-## Sobre o projeto
-
-Wise transforma a rotina de estudos em uma jornada de RPG cooperativa. Estudantes, universitários e concurseiros realizam sessões temporizadas de produtividade, ganham XP, evoluem de nível e colaboram em guildas com metas coletivas — tornando o hábito de estudar mais estimulante e recompensador.
-
----
-
-## Funcionalidades principais
+## Funcionalidades
 
 | Funcionalidade | Descrição | Prioridade |
 |---|---|---|
-| ⏱ Temporizador Pomodoro | Sessões cronometradas com registro de tempo | Crítico |
-| 🎮 Sistema de Progressão RPG | XP, níveis e itens cosméticos desbloqueáveis | Crítico |
-| 🛡 Guildas & Raids | Desafios cooperativos semanais com metas coletivas | Crítico |
-| 🏆 Ranking de Contribuição | Classificação interna por guilda | Importante |
-| 💬 Chat de Grupo | Comunicação em tempo real via Socket.IO | Importante |
-| 👤 Perfil Customizável | Personagem e conquistas com itens de recompensa | Importante |
+| ⏱ Sessão de foco | Ciclos de 15/25/50 min com timer no servidor, controlável de qualquer dispositivo | Crítico |
+| 🎮 Progressão RPG | XP, níveis e itens cosméticos desbloqueáveis | Crítico |
+| 🛡 Guildas e Raids | Missões cooperativas semanais em que o foco de cada membro causa dano ao dragão | Crítico |
+| 🪙 Moedas e Mercado | Moedas ganhas com foco e Raids, gastas em missões e itens da Loja | Importante |
+| 🏆 Ranking de contribuição | Classificação dos membros dentro da guilda | Importante |
+| 💬 Chat da guilda | Mensagens e presença em tempo real via Socket.IO | Importante |
+| 👤 Personagem | Avatar, título, badges e acessórios equipáveis | Importante |
+
+As regras de cada funcionalidade estão nos ADRs de [`docs/PRD.md`](docs/PRD.md)
+e os termos do domínio em [`CONTEXT.md`](CONTEXT.md).
 
 ---
 
-## Stack técnica
+## Arquitetura
+
+Wise é um **monólito modular** (ADR-001): um único backend NestJS, dividido em
+módulos de domínio, atende um único frontend Expo que roda em Web, iOS e
+Android (ADR-008). O MySQL é a única fonte de verdade. O REST altera e lê o
+estado; o Socket.IO só avisa os clientes de que algo mudou.
+
+### Visão geral
+
+```mermaid
+flowchart LR
+    subgraph Clientes["Frontend universal (Expo + React Native)"]
+        Web["Web<br/>React Native Web"]
+        iOS["iOS"]
+        Android["Android"]
+    end
+
+    subgraph VM["VM Oracle Cloud Always Free (Docker Compose)"]
+        Nginx["nginx<br/>bundle Web estático"]
+        subgraph Backend["Backend NestJS"]
+            REST["API REST<br/>/api/v1"]
+            WS["Gateway Socket.IO"]
+            Modules["Módulos de domínio"]
+            Cron["Jobs agendados<br/>fechamento semanal da Raid"]
+        end
+        DB[("MySQL 8")]
+    end
+
+    Web -- "carrega o app" --> Nginx
+    Web & iOS & Android -- "HTTPS + JWT" --> REST
+    Web & iOS & Android -- "WebSocket" --> WS
+    REST --> Modules
+    Cron --> Modules
+    Modules -- "TypeORM" --> DB
+    Modules -- "eventos" --> WS
+```
+
+O access token JWT dura 15 minutos e vai no header `Authorization`. O refresh
+token é rotativo: na Web fica em cookie `httpOnly`, no iOS/Android fica no
+`expo-secure-store` (ADR-009).
+
+### Módulos do backend
+
+Cada módulo fica em `apps/backend/src/modules/` e só acessa as próprias
+entidades. Chamadas entre módulos passam pelo Service exportado do módulo
+dono do dado, inclusive dentro de transações. O diagrama mostra as dependências
+principais; `realtime` é usado por quase todos os módulos para emitir eventos.
+
+```mermaid
+flowchart TD
+    auth["auth<br/>cadastro, login, dispositivos"]
+    users["users<br/>perfil, inventário, cosméticos"]
+    progression["progression<br/>XP, nível, personagem"]
+    sessions["sessions<br/>sessões de foco"]
+    economy["economy<br/>Moedas e extrato"]
+    shop["shop<br/>Loja"]
+    guilds["guilds<br/>guildas e membros"]
+    raids["raids<br/>missões, dragão, ranking"]
+    chat["chat<br/>mensagens e presença"]
+    realtime["realtime<br/>gateway Socket.IO"]
+
+    auth --> users
+    auth --> economy
+    sessions --> progression
+    sessions --> economy
+    sessions --> raids
+    sessions --> users
+    progression --> users
+    shop --> economy
+    shop --> raids
+    shop --> users
+    raids --> guilds
+    raids --> economy
+    raids --> users
+    raids --> chat
+    chat --> guilds
+    realtime --> auth
+    realtime --> guilds
+```
+
+`auth`, `users` e `realtime` formam um ciclo resolvido com `forwardRef`. Código
+compartilhado (filtros de erro RFC 7807, paginação por cursor, rate limit) fica
+em `apps/backend/src/shared/`. As regras puras de cada módulo, como cálculo de
+XP, antifraude e fúria do dragão, ficam em `domain/` e são testadas sem banco.
 
 ### Frontend
-- Expo SDK 57 · React Native 0.86 · React 19 · TypeScript · Expo Router
-- Uma base universal para Web, iOS e Android (ADR-008)
 
-### Backend
-- Node.js · NestJS (REST + WebSocket via Socket.IO) · TypeORM
-- Monólito modular em camadas (Apresentação → Aplicação → Domínio → Infraestrutura)
-- Sessões persistentes multi-dispositivo com refresh token rotativo (ADR-009)
+```mermaid
+flowchart LR
+    Routes["Expo Router<br/>src/app"] --> Features["Features<br/>src/features"]
+    Features --> DS["Design system<br/>src/design-system"]
+    Features --> Query["TanStack Query<br/>cache do estado remoto"]
+    Query --> Api["Cliente Axios<br/>core/api"]
+    Api --> Auth["core/auth<br/>cookie ou SecureStore"]
+    Realtime["Cliente Socket.IO<br/>core/realtime"] -- "invalida consultas" --> Query
+    Api -- "REST" --> BE[(Backend)]
+    Realtime -- "WebSocket" --> BE
+```
 
-### Banco de dados
-- MySQL 8 (relacional)
+O TanStack Query guarda só o estado vindo do servidor. Um evento de tempo real
+não altera o cache diretamente: ele invalida as consultas afetadas, que são
+buscadas de novo pelo REST. Detalhes do design system, rotas e tokens estão em
+[`apps/frontend/README.md`](apps/frontend/README.md).
 
-### Infraestrutura
-- Oracle Cloud Always Free (VM Ampere A1 + MySQL HeatWave), deploy via Docker Compose — ver ADR-006
+### Fluxo de uma sessão de foco
+
+Quando um foco termina, o backend aplica todas as recompensas numa transação e
+avisa todos os dispositivos do usuário e a guilda.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor U as Estudante
+    participant A as App (dispositivo A)
+    participant B as App (dispositivo B)
+    participant API as Backend NestJS
+    participant DB as MySQL
+    participant WS as Socket.IO
+
+    U->>A: Inicia foco de 25 min
+    A->>API: POST /sessions (Idempotency-Key)
+    API->>DB: Grava sessão com prazo no servidor
+    Note over API: O prazo vale mesmo sem o app aberto
+    API->>DB: Conclui sessão: XP, Moedas e dano na Raid (transação)
+    API->>WS: Emite progress:xpUpdated, coins:changed, raid:progress
+    WS-->>A: Sala user:{id}
+    WS-->>B: Sala user:{id}
+    WS-->>B: Sala guild:{id} (membros da guilda)
+    A->>API: Busca de novo as consultas invalidadas
+    B->>API: Busca de novo as consultas invalidadas
+```
+
+Os contratos completos estão em [`docs/api/openapi.yaml`](docs/api/openapi.yaml)
+(REST) e [`docs/api/asyncapi.yaml`](docs/api/asyncapi.yaml) (eventos Socket.IO).
+
+### Stack
+
+| Camada | Tecnologias |
+|---|---|
+| Frontend | Expo SDK 57, React Native 0.86, React 19, Expo Router, TanStack Query 5, Axios, Socket.IO client |
+| Backend | Node.js ≥22.13, NestJS 10, TypeORM 0.3, Socket.IO 4, Passport JWT |
+| Banco | MySQL 8.0 com migrations TypeORM |
+| Testes | Jest 29, React Native Testing Library, Playwright 1.63 |
+| Contratos | OpenAPI e AsyncAPI, validados com Redocly CLI |
+| Infraestrutura | Docker Compose, nginx, GitHub Actions, Oracle Cloud Always Free (ADR-006) |
+
+Koa.js e AWS, citados nos documentos acadêmicos originais, saíram do escopo
+(ADR-002 e ADR-006).
 
 ---
 
-## Como executar localmente
+## Estrutura do repositório
 
-### Projeto completo com Docker Compose
+```text
+.
+├── apps/
+│   ├── backend/          # API NestJS (REST + Socket.IO)
+│   │   └── src/
+│   │       ├── modules/  # módulos de domínio
+│   │       ├── shared/   # filtros, paginação, rate limit
+│   │       └── migrations/
+│   └── frontend/         # app Expo universal (Web, iOS, Android)
+│       ├── src/
+│       └── e2e/          # testes Playwright
+├── docs/
+│   ├── PRD.md            # requisitos e ADRs
+│   ├── api/              # OpenAPI e AsyncAPI
+│   └── plans/            # planos de implementação
+├── scripts/              # script do gate E2E
+├── docker-compose.yml    # stack completa
+├── docker-compose.e2e.yml
+└── CONTEXT.md            # glossário do domínio
+```
 
-O Compose carrega automaticamente o arquivo `.env`, que contém apenas valores
-seguros para desenvolvimento local. Para selecionar o ambiente explicitamente,
-carregue o arquivo base seguido pelo override desejado:
+O repositório é um monorepo de npm workspaces. Instale as dependências sempre
+pela raiz.
+
+---
+
+## Início rápido com Docker
+
+Pré-requisito: Docker com o plugin Compose.
 
 ```bash
-# Desenvolvimento (equivale a usar apenas o .env atual)
-docker compose --env-file .env --env-file .env.development up --build
-
-# Produção: preencha .env.production antes de executar
-docker compose --env-file .env --env-file .env.production up --build -d
-
-# Atalho para desenvolvimento com os valores padrão de .env
 docker compose up --build
 ```
 
-Para iniciar em segundo plano, use `docker compose up -d --build`. Consulte o estado dos serviços com `docker compose ps`.
+Quando os serviços estiverem saudáveis (`docker compose ps`):
 
-Os arquivos `.env` e `.env.development` são versionados e devem conter somente
-configuração local não sensível. O `.env.production` armazena os secrets do deploy
-e é o único arquivo de ambiente ignorado pelo Git.
+| Serviço | Endereço |
+|---|---|
+| Frontend Web | http://localhost:8081 |
+| API | http://localhost:3000/api/v1 |
+| Healthcheck | http://localhost:3000/api/v1/health |
 
-Depois que os serviços estiverem saudáveis:
+Para encerrar, use `docker compose down`. Os dados ficam no volume `mysql_data`.
+Se você mudar usuário, senha ou nome do banco depois da primeira execução,
+recrie o volume com `docker compose down --volumes`.
 
-- Frontend: `http://localhost:8081`
-- Backend: `http://localhost:3000/api/v1`
-- Healthcheck da API: `http://localhost:3000/api/v1/health`
+### Arquivos de ambiente
 
-Para encerrar, execute `docker compose down`. O banco permanece no volume `mysql_data`.
-Se usuário, senha ou nome do banco forem alterados depois da primeira execução,
-recrie o volume local com `docker compose down --volumes` antes de subir a stack.
+| Arquivo | Conteúdo | No Git? |
+|---|---|---|
+| `.env` | valores seguros para desenvolvimento local, carregados por padrão | sim |
+| `.env.development` | override explícito de desenvolvimento | sim |
+| `.env.production` | secrets do deploy | não |
 
-### Execução fora do Docker
+Para escolher o ambiente, carregue o arquivo base seguido do override:
 
 ```bash
-# 1. Suba somente o banco
-docker compose up -d mysql
+# Desenvolvimento
+docker compose --env-file .env --env-file .env.development up --build
 
-# 2. Instalar dependências (raiz do monorepo, workspaces)
-npm install
-
-# 3. Backend (copie apps/backend/.env.example para apps/backend/.env antes)
-npm run dev:backend
-
-# 4. Frontend
-npm run dev:frontend
+# Produção (preencha .env.production antes)
+docker compose --env-file .env --env-file .env.production up --build -d
 ```
 
-Backend em `http://localhost:3000/api/v1`; o Metro do frontend inicia em
-`http://localhost:8081` e permite abrir a plataforma desejada pelo terminal.
-Testes: `npm test` (roda a suíte de cada workspace).
+---
 
-### Frontend universal fora do Docker
+## Desenvolvimento local
 
-#### Pré-requisitos
-
-- Node.js ≥22.13 e npm (a CI usa Node 22).
-- Web: um navegador moderno; nenhuma toolchain nativa é necessária.
-- iOS (somente macOS): Xcode com Command Line Tools, um iOS Simulator e
-  CocoaPods. Selecione o Xcode ativo com `sudo xcode-select -s
-  /Applications/Xcode.app/Contents/Developer` e aceite a licença antes da
-  primeira compilação.
-- Android: JDK 17, Android Studio, Android SDK Platform 36, Build Tools 36 e
-  `platform-tools` (`adb`). O repositório inclui `.sdkmanrc`; com SDKMAN
-  configurado, execute `sdk env` na raiz para selecionar o JDK 17.
-
-No macOS, exponha o Android SDK no shell:
+Pré-requisito: Node.js ≥22.13 e npm (a CI usa Node 22).
 
 ```bash
-export ANDROID_HOME="$HOME/Library/Android/sdk"
-export PATH="$ANDROID_HOME/platform-tools:$ANDROID_HOME/emulator:$PATH"
-```
-
-Crie `apps/frontend/.env` a partir de `apps/frontend/.env.example`. Variáveis
-consumidas pelo aplicativo precisam do prefixo `EXPO_PUBLIC_` e são incorporadas
-ao bundle, portanto nunca coloque secrets nelas:
-
-```bash
+npm ci                                   # instala todos os workspaces pelo lockfile
+cp apps/backend/.env.example apps/backend/.env
 cp apps/frontend/.env.example apps/frontend/.env
+
+npm run dev:backend                      # sobe o MySQL no Docker e o NestJS em modo watch
+npm run dev:frontend                     # inicia o Metro em http://localhost:8081
 ```
 
-Configure `EXPO_PUBLIC_API_URL` com um host alcançável pela plataforma:
+`dev:backend` sobe só o container `mysql` e roda a API em
+`http://localhost:3000/api/v1`. Pelo terminal do Metro você abre a plataforma
+desejada.
 
-- Web e iOS Simulator: `http://localhost:3000/api/v1`;
-- Android Emulator padrão: `http://10.0.2.2:3000/api/v1`;
-- iOS/Android em dispositivo físico: prefira uma URL HTTPS; para desenvolvimento
-  local, use o IP LAN da máquina e mantenha aparelho e computador na mesma rede;
-- release: use HTTPS. O projeto não habilita cleartext global no Android nem
-  desativa o App Transport Security no iOS.
+### Frontend: Web, iOS e Android
 
-O refresh token nativo é salvo pelo `expo-secure-store` e excluído do Android
-Auto Backup pelo config plugin. Depois de instalar ou atualizar esse módulo, ou
-de alterar `app.json`, regenere os projetos nativos antes de recompilar. O
-comando Android já executa um Prebuild limpo antes da compilação:
+Requisitos por plataforma:
 
-```bash
-npm run android --workspace apps/frontend
+- **Web:** um navegador moderno.
+- **iOS** (só macOS): Xcode com Command Line Tools, iOS Simulator e CocoaPods.
+  Selecione o Xcode com
+  `sudo xcode-select -s /Applications/Xcode.app/Contents/Developer` e aceite a
+  licença antes da primeira compilação.
+- **Android:** JDK 17, Android Studio, Android SDK Platform 36, Build Tools 36
+  e `platform-tools` (`adb`). Com SDKMAN, rode `sdk env` na raiz para usar o
+  JDK 17 do `.sdkmanrc`. No macOS, exponha o SDK no shell:
 
-# Para regenerar Android e iOS juntos antes de compilar o iOS:
-npm run prebuild:native --workspace apps/frontend
-npm run ios --workspace apps/frontend
-```
+  ```bash
+  export ANDROID_HOME="$HOME/Library/Android/sdk"
+  export PATH="$ANDROID_HOME/platform-tools:$ANDROID_HOME/emulator:$PATH"
+  ```
 
-O Prebuild com `--clean` recria os diretórios nativos e reaplica os config
-plugins. Fast Refresh não aplica mudanças em módulos ou configuração nativa.
+Configure `EXPO_PUBLIC_API_URL` em `apps/frontend/.env` com um endereço que a
+plataforma alcance:
 
-Instale todas as dependências na raiz do monorepo. `npm ci` reproduz exatamente
-o lockfile e é o comando usado pela CI:
+| Onde o app roda | `EXPO_PUBLIC_API_URL` |
+|---|---|
+| Web e iOS Simulator | `http://localhost:3000/api/v1` |
+| Android Emulator | `http://10.0.2.2:3000/api/v1` |
+| Dispositivo físico | IP da máquina na rede local, com aparelho e computador na mesma rede; prefira HTTPS |
+| Release | sempre HTTPS |
 
-```bash
-npm ci
-```
+Variáveis `EXPO_PUBLIC_*` são embutidas no bundle. Nunca coloque secrets nelas.
+O projeto não libera cleartext global no Android nem desativa o App Transport
+Security no iOS.
 
-#### Comandos por plataforma
+Comandos:
 
 ```bash
 # Web no navegador
 npm run web --workspace apps/frontend
 
-# Primeira compilação/instalação nativa ou após mudar dependências/config nativa
+# Primeira compilação nativa, ou depois de mudar dependências/config nativa
 npm run ios --workspace apps/frontend
 npm run android --workspace apps/frontend
 
-# Ciclo diário depois que o binário nativo já está instalado
+# Dia a dia, com o binário nativo já instalado (Fast Refresh)
 npm run dev:frontend
 ```
 
-`ios` exige um Simulator iniciado ou dispositivo conectado; `android` exige um
-emulador iniciado ou dispositivo visível em `adb devices`. Os comandos
-`expo run:*` geram `apps/frontend/ios` ou `apps/frontend/android`, compilam o
-binário de debug, instalam-no e iniciam o Metro. Alterações apenas em JavaScript
-ou TypeScript usam `npm run dev:frontend` e Fast Refresh sem recompilar código
-nativo.
+`ios` precisa de um Simulator aberto ou dispositivo conectado; `android`
+precisa de um emulador aberto ou dispositivo listado em `adb devices`. Esses
+comandos geram `apps/frontend/ios` ou `apps/frontend/android`, compilam o app de
+debug, instalam e iniciam o Metro. Mudanças só em TypeScript não exigem
+recompilar.
 
-#### Gates M1/M2 e tipos de saída
+Depois de instalar ou atualizar um módulo nativo (como o `expo-secure-store`)
+ou de alterar `app.json`, regenere os projetos nativos. O comando `android` já
+faz um Prebuild limpo; para o iOS:
 
 ```bash
-# Tipos + lint + Jest + Expo Doctor + bundles das três plataformas
-npm run verify:m1
+npm run prebuild:native --workspace apps/frontend
+npm run ios --workspace apps/frontend
+```
 
-# Gate M1 completo + shell M2, bundle Web e fallback SPA no container
-npm run verify:m2
+O Expo Go serve para uma checagem rápida enquanto o projeto usar só módulos
+compatíveis, mas não substitui a compilação nativa. Diretórios nativos gerados,
+`.expo`, `dist` e arquivos `.ipa`, `.apk` e `.aab` ficam fora do Git.
 
-# Matriz de versões do Expo SDK. Fora dos gates: a Expo publica patches sem aviso e
-# derrubaria PRs que não tocam nas dependências. O workflow semanal Expo drift roda isto.
-npm run expo:check --workspace apps/frontend
-npm run expo:doctor --workspace apps/frontend
+---
 
-# Somente o bundle Web pronto para servir
-npm run build --workspace apps/frontend
+## Testes e gates de qualidade
 
-# Somente os bundles Metro de Web, iOS e Android
-npm run export:bundles --workspace apps/frontend
+| Comando | O que verifica |
+|---|---|
+| `npm test` | testes unitários de backend e frontend |
+| `npm run lint` | ESLint nos dois workspaces |
+| `npm run ci:backend` | build, lint, testes unitários e de integração do backend |
+| `npm run ci:frontend` | tipos, lint, Jest, Expo Doctor, bundles das três plataformas e entrega Web em container |
+| `npm run lint:openapi` | contrato OpenAPI |
+| `npm run verify:quality` | todos os itens acima, como a CI |
+| `npm run test:e2e` | fluxo Web completo com Playwright contra a stack em Docker |
+| `npm run verify` | `verify:quality` + E2E |
 
-# Gate E2E Web da autenticação (Chromium + MySQL/Backend/NGINX descartáveis)
+Os testes de integração do backend precisam de um MySQL. Depois de mudar os
+`imports` de um módulo, rode
+`npm run test:auth:integration --workspace apps/backend`: ele sobe o
+`AppModule` real e é o único teste que detecta um ciclo de módulos não
+resolvido.
+
+### Gate E2E
+
+Antes da primeira execução, instale o Chromium:
+
+```bash
 npm run playwright:install --workspace apps/frontend
 npm run test:e2e
 ```
 
-Uma **exportação de bundle** transforma JavaScript/TypeScript e assets em saída
-por plataforma, mas não produz um `.app`, `.ipa`, `.apk` ou `.aab` instalável.
-Uma **compilação nativa** usa Xcode ou Gradle por meio de `expo run:ios` ou
-`expo run:android` para gerar e instalar um aplicativo local. O **Expo Go** é
-opcional para uma verificação rápida enquanto o projeto usar apenas módulos
-compatíveis; ele não substitui a compilação nativa validada por este projeto.
+O script usa `docker-compose.e2e.yml` num projeto Compose isolado, com portas
+livres (ou `E2E_BACKEND_PORT` e `E2E_FRONTEND_PORT`), banco sem volume e
+migrations aplicadas no boot do backend. Um gateway nginx com certificado
+efêmero serve tudo em HTTPS para que o cookie `Secure` funcione no navegador.
+Ao terminar, o script remove serviços e volumes. Relatórios, traces e vídeos
+ficam em diretórios ignorados pelo Git.
 
-O gate E2E usa `docker-compose.e2e.yml` com um projeto Compose isolado, portas
-locais livres (ou as portas informadas por `E2E_BACKEND_PORT` e
-`E2E_FRONTEND_PORT`), banco sem volume persistente e migrations aplicadas pelo
-backend antes do health check. O script desmonta os serviços e volumes ao
-terminar; relatórios, traces, vídeos, screenshots e storage state ficam em
-diretórios ignorados pelo Git. O gateway local usa HTTPS com certificado
-efêmero para que o cookie `Secure` seja exercitado no navegador.
+### Outros comandos do frontend
 
-#### Contrato público do design system M2
+```bash
+npm run build --workspace apps/frontend            # só o bundle Web
+npm run export:bundles --workspace apps/frontend   # bundles Metro de Web, iOS e Android
+npm run expo:check --workspace apps/frontend       # matriz de versões do Expo SDK
+```
 
-Consuma a API pelo barrel `src/design-system/index.ts`. Os componentes exportados
-e seus contratos estáveis são:
+Uma exportação de bundle não gera um app instalável (`.app`, `.ipa`, `.apk`,
+`.aab`). `expo:check` fica fora dos gates porque a Expo publica patches sem
+aviso; o workflow semanal *Expo drift* roda essa checagem.
 
-| Componente | Contrato público |
-| --- | --- |
-| `WiseText` | variantes `display`, `title`, `subtitle`, `body`, `label`, `caption` e `mono`; cor sempre semântica |
-| `WiseIcon` | nomes Wise/Ionicons permitidos, tamanhos `small`, `medium` e `large`; ícone informativo exige rótulo acessível |
-| `WiseCard` | superfície não interativa nas variantes `default`, `elevated` e `ornamented` |
-| `Screen` | título obrigatório, safe areas, gutters, rolagem e acomodação opcional do teclado |
-| `WiseButton` | variantes `primary`, `secondary`, `ghost` e `danger`; tamanhos `medium` e `large`; estados disabled/loading |
-| `WiseField` | label obrigatório e props nativas de `TextInput`, com ajuda ou erro associado e anunciável |
-| `FeedbackMessage` | variantes `info`, `success`, `warning` e `error`, com título opcional e live region apropriada |
-| `ProgressBar` | modo determinado com intervalo/valor ou `indeterminate`, ambos com semântica de progresso |
-| `ResourcePill` | metadado não interativo por padrão; quando acionável, exige `onPress` e rótulo acessível |
+---
 
-O mesmo barrel exporta `theme`, `typographyFor`, `motionDuration`,
-`isSemanticColor`, `isDesktopLayout`, `screenGutter`, nomes/tipos de ícone e os
-tipos de props e variantes. Componentes consumidores devem usar esses aliases,
-sem introduzir cores, fontes, espaçamentos ou durações compartilhadas fora do
-tema.
+## Migrations do banco
 
-| Grupo semântico | Tokens e valores |
-| --- | --- |
-| fundos | `backgroundCanvas` `#07070c`; `backgroundRaised` `#0c0c14`; `backgroundOverlay` `#12121c` |
-| superfícies | `surfaceCard` `#181826`; `surfaceElevated`/`surfaceCardActive` `#1f1f2e`; `surfaceInset` `#0a0a12` |
-| bordas | `borderGhost` `rgba(212,168,90,0.08)`; `borderSubtle`/`borderSoft` `rgba(212,168,90,0.16)`; `borderEmphasis` `rgba(212,168,90,0.28)`; `borderFocus` `rgba(212,168,90,0.45)` |
-| destaque | `accentPrimary` `#d4a85a`; `accentHighlight` `#f0c97a`; `accentMuted` `#8a6a3a`; `accentGlow` `rgba(212,168,90,0.35)` |
-| feedback | `feedbackDanger` `#c44545`; `feedbackInfo` `#5b7fc4`; `feedbackSuccess` `#4ea672`; `feedbackEnergy` `#d65a8a`; `feedbackArcane` `#8a5bc4` |
-| texto | `textPrimary` `#f3ead4`; `textSecondary` `#b3a98e`; `textTertiary` `#6b6555`; `textDisabled` `#46412f` |
-
-As escalas oficiais são: espaço `0, 4, 8, 12, 16, 20, 24, 32, 40, 48, 64`;
-raio `3, 5, 8, 12, 999`; borda `1/2`; ícone `16/24/32`; movimento
-`0/120/180/240 ms`; e tipografia `display 32/40`, `title 24/32`,
-`subtitle`/`subtitleStrong 18/26`, `body 16/24`, `label 14/20`, `caption 12/16`
-e `mono`/`monoEmphasis 14/20` (tamanho/altura de linha), usando Cinzel, Inter e
-JetBrains Mono. Layout usa alvo mínimo `44`, sidebar `248`, conteúdo máximo
-`1200` e gutters `16/24/32`.
-
-#### Destinos e layout adaptativo M2
-
-| Destino | Rota | Estado |
-| --- | --- | --- |
-| Acampamento | `/` | disponível |
-| Forja | `/sessao` | disponível |
-| Personagem | `/perfil` | disponível |
-| Guilda | `/guilda` | disponível |
-| Mercado Arcano | nenhuma | “Em breve” |
-| Crônicas | nenhuma | “Em breve” |
-| Configuração | nenhuma | “Em breve” |
-
-Web a partir de `900 px` usa sidebar; Web abaixo desse breakpoint, iOS e Android
-usam barra inferior e o menu local “Mais”. Destinos “Em breve” são apenas
-informativos: não possuem `href`, arquivo de rota, foco ou ação. O catálogo
-imutável em `src/design-system/navigation/destinations.ts` é a fonte única para
-as duas composições.
-
-Valide as quatro URLs e uma URL inexistente nas três plataformas. No navegador,
-acesse ou atualize a URL diretamente; em iOS/Android, abra os deep links
-`wise://`, `wise://sessao`, `wise://perfil`, `wise://guilda` e
-`wise://runa-inexistente` no simulador/emulador. O fallback deve mostrar “Página
-não encontrada” e retornar ao início pelo botão.
-
-Os diretórios nativos gerados, cache `.expo`, `dist` e artefatos locais `.ipa`,
-`.apk` e `.aab` permanecem fora do Git.
-
-Limitações da M2: as quatro rotas contêm apenas telas de transição, sem
-autenticação, chamadas ao backend ou funcionalidades de produto; não há tema
-selecionável nem layout específico para tablets. Exportações Web/Metro validam
-bundles, mas não substituem build e QA nativos em simulador/emulador, incluindo
-safe area, teclado, fonte ampliada, VoiceOver e TalkBack.
-
-### Migrations do banco
-
-O schema MySQL é versionado por migrations TypeORM. O backend mantém
-`synchronize: false` em todos os ambientes; em `NODE_ENV=production`, as
-migrations compiladas em `dist/migrations` são aplicadas automaticamente antes
-de o servidor começar a aceitar requisições. Em desenvolvimento e teste, a
-execução automática fica desativada.
-
-A migration de idempotência de sessão cria triggers de compatibilidade. Com o
-binary log habilitado, o MySQL exige `log_bin_trust_function_creators=1` para
-criá-los sem conceder `SUPER` ao usuário da aplicação. O serviço MySQL desta
-stack já inicia com essa opção; para conectar a um MySQL gerenciado, configure
-o parâmetro no servidor antes de aplicar as migrations. Consulte a
-[documentação do MySQL 8 sobre triggers e binary logging](https://dev.mysql.com/doc/refman/8.0/en/stored-programs-logging.html).
-
-Com o MySQL acessível e a partir da raiz do monorepo, execute:
+O schema é versionado por migrations TypeORM, com `synchronize: false` em todos
+os ambientes. Em `NODE_ENV=production`, o backend aplica as migrations
+compiladas antes de aceitar requisições. Em desenvolvimento e teste, rode-as à
+mão a partir da raiz:
 
 ```bash
 npm run migration:run --workspace apps/backend
 npm run migration:revert --workspace apps/backend
 ```
 
-Os mesmos comandos podem ser executados dentro de `apps/backend` com
-`npm run migration:run` e `npm run migration:revert`. Antes de reverter uma
-migration em qualquer ambiente, faça e valide um backup do banco; `revert`
-desfaz o schema da migration e pode remover dados.
+Faça e valide um backup antes de reverter: `revert` desfaz o schema e pode
+apagar dados.
 
-Para validar o schema contra um MySQL real (o teste cria um database isolado,
-aplica e reverte a migration), configure credenciais de administrador e rode:
+A migration de idempotência de sessão cria triggers. Com binary log ativo, o
+MySQL exige `log_bin_trust_function_creators=1` para criá-los sem dar `SUPER`
+ao usuário da aplicação. O MySQL do Compose já sobe com essa opção; num MySQL
+gerenciado, configure o parâmetro no servidor antes das migrations (veja a
+[documentação do MySQL 8](https://dev.mysql.com/doc/refman/8.0/en/stored-programs-logging.html)).
+
+Para validar as migrations num MySQL real (o teste cria um banco isolado,
+aplica e reverte):
 
 ```bash
 TEST_DB_HOST=127.0.0.1 TEST_DB_PORT=3306 \
@@ -337,32 +428,33 @@ TEST_DB_ADMIN_USERNAME=root TEST_DB_ADMIN_PASSWORD=change-me-root \
 npm run migration:test --workspace apps/backend
 ```
 
-O comando de teste não faz parte da suíte unitária comum, portanto `npm test`
-não exige Docker local. O CI executa esse teste em um job separado com um
-serviço MySQL 8. Para executar migrations compiladas manualmente, rode o build
-e use o DataSource em `apps/backend/dist/config/data-source.js` com o CLI
-TypeORM; o container de produção já faz a aplicação automaticamente no boot.
+Esse teste não faz parte de `npm test`; a CI o executa num job com MySQL 8.
 
 ---
 
-## Público-alvo
+## Documentação
 
-Estudantes, universitários e concurseiros que enfrentam procrastinação, isolamento e falta de constância na rotina acadêmica.
+| Documento | Conteúdo |
+|---|---|
+| [`docs/PRD.md`](docs/PRD.md) | requisitos, roadmap e registro de ADRs |
+| [`CONTEXT.md`](CONTEXT.md) | glossário do domínio |
+| [`docs/api/openapi.yaml`](docs/api/openapi.yaml) | contrato REST |
+| [`docs/api/asyncapi.yaml`](docs/api/asyncapi.yaml) | eventos Socket.IO |
+| [`apps/frontend/README.md`](apps/frontend/README.md) | design system, rotas e layout adaptativo |
+| [`docs/plans/`](docs/plans/) | planos de implementação por marco |
+| [`AGENTS.md`](AGENTS.md) | regras para contribuições e agentes |
 
 ---
 
-## Equipe & custo estimado
+## Sobre o projeto
 
-- **Time:** 4 desenvolvedores
-- **Prazo:** 1 ano
-- **Estimativa:** R$ 550.000/ano (~R$ 46.000/mês)
-  - Cobre equipe, hospedagem, licenças de software, marketing e margem de segurança
+**Público-alvo:** estudantes, universitários e concurseiros que enfrentam
+procrastinação, isolamento e falta de constância na rotina de estudos.
 
----
+**Equipe e custo estimado:** 4 desenvolvedores, prazo de 1 ano, estimativa de
+R$ 550.000/ano (cerca de R$ 46.000/mês), cobrindo equipe, hospedagem, licenças,
+marketing e margem de segurança.
 
-## Referências
-
-- [Focumon](https://www.focumon.com/)
-- [Habitica](https://habitica.com/)
-- [GymRats](https://www.gymrats.app)
-- [Idle Habits](https://idlehabits.com)
+**Referências:** [Focumon](https://www.focumon.com/),
+[Habitica](https://habitica.com/), [GymRats](https://www.gymrats.app),
+[Idle Habits](https://idlehabits.com).
