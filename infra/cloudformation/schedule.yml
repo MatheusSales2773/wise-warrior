@@ -167,3 +167,181 @@ Resources:
         RetryPolicy:
           MaximumRetryAttempts: 5
           MaximumEventAgeInSeconds: 3600
+
+  StopAllLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/${AWS::StackName}-stop-all"
+      RetentionInDays: 7
+
+  StopAllRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: stop-environment
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: ec2:StopInstances
+                Resource:
+                  - !Sub
+                    - "arn:${AWS::Partition}:ec2:${AWS::Region}:${AWS::AccountId}:instance/${InstanceId}"
+                    - InstanceId:
+                        Fn::ImportValue: !Sub "${ComputeStackName}-AppInstanceId"
+                  - !Sub
+                    - "arn:${AWS::Partition}:ec2:${AWS::Region}:${AWS::AccountId}:instance/${InstanceId}"
+                    - InstanceId:
+                        Fn::ImportValue: !Sub "${ComputeStackName}-NatInstanceId"
+              - Effect: Allow
+                Action: rds:StopDBInstance
+                Resource: !Sub
+                  - "arn:${AWS::Partition}:rds:${AWS::Region}:${AWS::AccountId}:db:${DbInstanceId}"
+                  - DbInstanceId:
+                      Fn::ImportValue: !Sub "${DataStackName}-DbInstanceId"
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: !GetAtt StopAllLogGroup.Arn
+
+  StopAllFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub "${AWS::StackName}-stop-all"
+      Description: Desliga o app, a NAT e o RDS de uma vez
+      Runtime: python3.13
+      Handler: index.handler
+      Role: !GetAtt StopAllRole.Arn
+      Timeout: 30
+      LoggingConfig:
+        LogGroup: !Ref StopAllLogGroup
+      Environment:
+        Variables:
+          APP_INSTANCE_ID:
+            Fn::ImportValue: !Sub "${ComputeStackName}-AppInstanceId"
+          NAT_INSTANCE_ID:
+            Fn::ImportValue: !Sub "${ComputeStackName}-NatInstanceId"
+          DB_INSTANCE_ID:
+            Fn::ImportValue: !Sub "${DataStackName}-DbInstanceId"
+      Code:
+        ZipFile: |
+          import os
+
+          import boto3
+
+          ec2 = boto3.client("ec2")
+          rds = boto3.client("rds")
+
+
+          def handler(event, context):
+              instance_ids = [os.environ["APP_INSTANCE_ID"], os.environ["NAT_INSTANCE_ID"]]
+              ec2.stop_instances(InstanceIds=instance_ids)
+              result = {"ec2": f"stopping {instance_ids}"}
+              try:
+                  rds.stop_db_instance(DBInstanceIdentifier=os.environ["DB_INSTANCE_ID"])
+                  result["rds"] = "stopping"
+              except rds.exceptions.InvalidDBInstanceStateFault as error:
+                  result["rds"] = f"skipped: {error.response['Error']['Message']}"
+              return result
+
+  StartAllLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/${AWS::StackName}-start-all"
+      RetentionInDays: 7
+
+  StartAllRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: start-environment
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: ec2:StartInstances
+                Resource:
+                  - !Sub
+                    - "arn:${AWS::Partition}:ec2:${AWS::Region}:${AWS::AccountId}:instance/${InstanceId}"
+                    - InstanceId:
+                        Fn::ImportValue: !Sub "${ComputeStackName}-AppInstanceId"
+                  - !Sub
+                    - "arn:${AWS::Partition}:ec2:${AWS::Region}:${AWS::AccountId}:instance/${InstanceId}"
+                    - InstanceId:
+                        Fn::ImportValue: !Sub "${ComputeStackName}-NatInstanceId"
+              - Effect: Allow
+                Action: rds:StartDBInstance
+                Resource: !Sub
+                  - "arn:${AWS::Partition}:rds:${AWS::Region}:${AWS::AccountId}:db:${DbInstanceId}"
+                  - DbInstanceId:
+                      Fn::ImportValue: !Sub "${DataStackName}-DbInstanceId"
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: !GetAtt StartAllLogGroup.Arn
+
+  StartAllFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub "${AWS::StackName}-start-all"
+      Description: Liga o RDS, a NAT e o app de uma vez
+      Runtime: python3.13
+      Handler: index.handler
+      Role: !GetAtt StartAllRole.Arn
+      Timeout: 30
+      LoggingConfig:
+        LogGroup: !Ref StartAllLogGroup
+      Environment:
+        Variables:
+          APP_INSTANCE_ID:
+            Fn::ImportValue: !Sub "${ComputeStackName}-AppInstanceId"
+          NAT_INSTANCE_ID:
+            Fn::ImportValue: !Sub "${ComputeStackName}-NatInstanceId"
+          DB_INSTANCE_ID:
+            Fn::ImportValue: !Sub "${DataStackName}-DbInstanceId"
+      Code:
+        ZipFile: |
+          import os
+
+          import boto3
+
+          ec2 = boto3.client("ec2")
+          rds = boto3.client("rds")
+
+
+          def handler(event, context):
+              result = {}
+              try:
+                  rds.start_db_instance(DBInstanceIdentifier=os.environ["DB_INSTANCE_ID"])
+                  result["rds"] = "starting"
+              except rds.exceptions.InvalidDBInstanceStateFault as error:
+                  result["rds"] = f"skipped: {error.response['Error']['Message']}"
+              instance_ids = [os.environ["NAT_INSTANCE_ID"], os.environ["APP_INSTANCE_ID"]]
+              ec2.start_instances(InstanceIds=instance_ids)
+              result["ec2"] = f"starting {instance_ids}"
+              return result
+
+Outputs:
+  StopAllFunctionName:
+    Description: "aws lambda invoke --function-name <valor> --region us-east-1 /dev/stdout"
+    Value: !Ref StopAllFunction
+
+  StartAllFunctionName:
+    Description: "aws lambda invoke --function-name <valor> --region us-east-1 /dev/stdout"
+    Value: !Ref StartAllFunction
