@@ -91,18 +91,45 @@ beforeEach(() => {
 afterEach(() => { jest.clearAllMocks(); [mockedRaid, mockedRanking, mockedPast, mockedMine, mockedList, mockedCreate, mockedJoin, mockedMembers, mockedLeave, mockedJoinRaid].forEach((mock) => mock.mockReset()); });
 
 describe('GuildScreen', () => {
-  it('shows the guild of a member with level, size and role', async () => {
+  it('shows the header of a Leader with emblem, level, size and role seal', async () => {
     mockedMine.mockResolvedValue(mine);
     mockedMembers.mockResolvedValue(members(['Ana']));
     await renderGuild();
 
     expect((await screen.findByTestId('guild-mine-name')).props.children).toBe('Ordem do Foco');
-    expect(screen.getByText('Nível 2')).toBeTruthy();
-    expect(screen.getByText('3 membros')).toBeTruthy();
-    expect(screen.getAllByText('LÍDER').length).toBeGreaterThanOrEqual(1);
+    expect(within(screen.getByTestId('guild-mine')).getByTestId('guild-emblem', { includeHiddenElements: true })).toBeTruthy();
+    expect(screen.getByTestId('guild-mine-stats').props.children).toBe('NÍVEL 2 · 3 MEMBROS · 1 RAID VENCIDA');
+    expect(within(screen.getByTestId('guild-mine-role')).getByText('VOCÊ É LÍDER')).toBeTruthy();
     expect(screen.queryByTestId('guild-create')).toBeNull();
     expect(mockedList).not.toHaveBeenCalled();
-    expect(screen.getByTestId('guild-mine-leader').props.children).toEqual(['Líder: ', 'Ana']);
+  });
+
+  it('shows the MEMBRO seal for a member and hides the won Raids at Level 1', async () => {
+    mockedMine.mockResolvedValue({ role: 'member', guild: { ...mine.guild, level: 1 } });
+    mockedMembers.mockResolvedValue(members(['Ana']));
+    await renderGuild();
+
+    expect(within(await screen.findByTestId('guild-mine-role')).getByText('MEMBRO')).toBeTruthy();
+    expect(screen.getByTestId('guild-mine-stats').props.children).toBe('NÍVEL 1 · 3 MEMBROS');
+  });
+
+  it('pluralises the won Raids from Level 3 on', async () => {
+    mockedMine.mockResolvedValue({ ...mine, guild: { ...mine.guild, level: 4, memberCount: 1 } });
+    mockedMembers.mockResolvedValue(members(['Ana']));
+    await renderGuild();
+
+    expect((await screen.findByTestId('guild-mine-stats')).props.children).toBe('NÍVEL 4 · 1 MEMBRO · 3 RAIDS VENCIDAS');
+  });
+
+  it('keeps the leave error messages of the header action', async () => {
+    mockedMine.mockResolvedValue({ ...mine, role: 'member' });
+    mockedMembers.mockResolvedValue(members(['Ana']));
+    mockedLeave.mockRejectedValueOnce(new ApiError('network', { status: 0 }));
+    await renderGuild();
+
+    await fireEvent.press(await screen.findByTestId('guild-leave'));
+    await fireEvent.press(screen.getByTestId('guild-leave-confirm-button'));
+    expect(await screen.findByText('Não foi possível sair da guilda. Verifique sua conexão e tente novamente.')).toBeTruthy();
   });
 
   it('lists the members with level and title and loads further pages', async () => {
