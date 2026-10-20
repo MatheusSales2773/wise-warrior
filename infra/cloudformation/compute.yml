@@ -235,6 +235,10 @@ Outputs:
 
   AppInstanceId:
     Value: !Ref AppInstance
+    Export:
+      Name: !Sub "${AWS::StackName}-AppInstanceId"
 
   NatInstanceId:
     Value: !Ref NatInstance
+    Export:
+      Name: !Sub "${AWS::StackName}-NatInstanceId"

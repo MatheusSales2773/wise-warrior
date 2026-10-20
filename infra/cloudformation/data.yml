@@ -41,3 +41,9 @@ Resources:
       ManageMasterUserPassword: true
       BackupRetentionPeriod: 1
       DBName: wise
+
+Outputs:
+  DbInstanceId:
+    Value: !Ref Database
+    Export:
+      Name: !Sub "${AWS::StackName}-DbInstanceId"
