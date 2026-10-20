@@ -12,7 +12,8 @@ import { CoinMark } from '@/features/market/coin';
 import type { ActiveRaid, MyGuild, RaidHit, RaidRankingEntry } from './api';
 import { RAID_GOAL_REACHED, formatPosition, formatRewardCoins, formatRewardName } from './messages';
 import { activeRaidQueryOptions, myGuildQueryOptions, raidRankingQueryOptions } from './queries';
-import { bossLifePercent, formatBattleTimeLeft, formatFocusHours, formatRaidHit, formatStreak, heroOf, partyHeroSprites, raidParty, raidWeekGrid, weeklyStrikes, type Strike, type WeekDay } from './raid-battle';
+import { bossLifePercent, formatBattleTimeLeft, formatFocusHours, formatRaidHit, formatStreak, raidParty, raidWeekGrid, weeklyStrikes, type Strike, type WeekDay } from './raid-battle';
+import { HeroAvatar } from './hero-avatar';
 import { raidSceneArt } from './raid-scene-art';
 import { RaidScene, raidSceneScale } from './raid-scene';
 
@@ -138,9 +139,7 @@ function StrikeRow({ compact, strike }: { compact: boolean; strike: Strike }) {
     style={styles.strike}
     testID={`raid-strike-${entry.userId}`}
   >
-    <View style={styles.avatar}>
-      <PixelSprite scale={2} sprite={partyHeroSprites[heroOf(entry)]} style={styles.avatarSprite} />
-    </View>
+    <HeroAvatar entry={entry} />
     <View style={styles.strikeMain}>
       <View style={styles.spread}>
         <Text numberOfLines={1} style={[styles.strikeName, entry.isMe && styles.strikeNameMe]}>{name}</Text>
@@ -475,8 +474,6 @@ const styles = StyleSheet.create({
   furiaStripText: { flex: 1, fontFamily: 'Inter-Regular', fontSize: 12, lineHeight: 17, color: theme.color.textSecondary },
 
   strike: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  avatar: { width: 32, height: 32, overflow: 'hidden', borderRadius: 4, borderWidth: theme.border.standard, borderColor: theme.color.borderSubtle, backgroundColor: theme.color.surfaceInset },
-  avatarSprite: { position: 'absolute', left: -1, top: 0 },
   strikeMain: { flex: 1, gap: 4 },
   strikeName: { flexShrink: 1, fontFamily: 'Inter-SemiBold', fontSize: 13, lineHeight: 16, color: theme.color.textPrimary },
   strikeNameMe: { color: theme.color.accentHighlight },

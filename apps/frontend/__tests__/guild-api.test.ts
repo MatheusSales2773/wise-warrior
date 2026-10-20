@@ -1,7 +1,8 @@
 import { getAuthenticatedHttpClient } from '@/core/api/api-client';
 import { ApiError } from '@/core/api/api-error';
 import { createGuild, getActiveRaid, getMyGuild, getRaidRanking, joinGuild, leaveGuild, listGuildMembers, listGuilds, listPastRaids, joinRaid } from '@/features/guild/api';
-import { formatGuildRole, formatMemberCount, formatMyPosition, formatPastRaidMine, formatPastRaidOutcome, formatRaidWeek, rankingEntryLabel } from '@/features/guild/messages';
+import { formatGuildRole, formatMemberCount, formatMyPosition, formatPastRaidMine, formatPastRaidOutcome, formatRaidWeek } from '@/features/guild/messages';
+import { rankingEntryLabel } from '@/features/guild/raid-battle';
 import { validateGuildName } from '@/features/guild/validation';
 
 jest.mock('@/core/api/api-client', () => ({

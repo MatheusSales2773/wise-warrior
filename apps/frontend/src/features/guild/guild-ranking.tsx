@@ -2,19 +2,26 @@ import { useInfiniteQuery } from '@tanstack/react-query';
 import { Link } from 'expo-router';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { FeedbackMessage, ProgressBar, WiseButton, WiseCard, WiseText, theme } from '@/design-system';
-import { PixelSprite } from '@/features/character/PixelSprite';
 import { SectionHeader, useFocusRing } from '@/features/character/character-parts';
 import type { RaidRankingEntry } from './api';
-import { formatPosition, rankingEntryLabel } from './messages';
+import { HeroAvatar } from './hero-avatar';
+import { formatPosition } from './messages';
 import { raidRankingQueryOptions } from './queries';
-import { formatFocusHours, heroOf, partyHeroSprites } from './raid-battle';
+import { formatFocusHours, rankingEntryLabel } from './raid-battle';
 
 /* Ranking interno da 06c: só os primeiros Participantes; a lista inteira fica na tela "Ver batalha". */
 
 /** Rows per layout, as in the Figma 06c frames: five on the desktop, four on the phone. */
 const RANKING_ROWS = { desktop: 5, mobile: 4 } as const;
 
-const mono = 'JetBrainsMono-Medium';
+const { fontFamily: mono } = theme.type.mono;
+const { fontFamily: sans } = theme.type.label;
+/** Figma 06c values with no token in the spacing scale. */
+const CARD_PADDING = 9;
+const ROW_PADDING_RIGHT = 14;
+const BAR_WIDTH = { desktop: 160, compact: 56 } as const;
+const HOURS_WIDTH = 44;
+const POSITION_WIDTH = 22;
 
 function SeeAllLink() {
   const { focusProps, focusStyle } = useFocusRing();
@@ -36,9 +43,7 @@ function RankingItem({ compact, entry, fraction }: { compact: boolean; entry: Ra
       testID={`guild-ranking-item-${entry.userId}`}
     >
       <Text style={[styles.position, entry.position === 1 && styles.positionFirst]}>{formatPosition(entry.position)}</Text>
-      <View accessibilityElementsHidden aria-hidden importantForAccessibility="no-hide-descendants" style={styles.avatar}>
-        <PixelSprite scale={2} sprite={partyHeroSprites[heroOf(entry)]} style={styles.avatarSprite} />
-      </View>
+      <HeroAvatar entry={entry} style={styles.avatar} />
       <View style={styles.main}>
         <Text numberOfLines={1} style={[styles.name, entry.isMe && styles.nameMe]}>{name}</Text>
         <Text numberOfLines={1} style={styles.detail}>{detail}</Text>
@@ -84,23 +89,22 @@ export function RankingCard({ compact, guildId, raidId }: { compact: boolean; gu
 }
 
 const styles = StyleSheet.create({
-  block: { gap: 12 },
-  card: { padding: 9, gap: 4 },
+  block: { gap: theme.space.stackTight },
+  card: { padding: CARD_PADDING, gap: theme.space.inlineHairline },
   message: { gap: theme.space.stackDefault, padding: theme.space.stackTight },
   seeAll: { minHeight: 44, justifyContent: 'center' },
   seeAllText: { fontFamily: mono, fontSize: 10, lineHeight: 13, letterSpacing: 0.8, color: theme.color.accentPrimary },
-  item: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 8, paddingLeft: 12, paddingRight: 14, borderRadius: theme.radius.control, borderWidth: theme.border.standard, borderColor: 'transparent' },
+  item: { flexDirection: 'row', alignItems: 'center', gap: theme.space.stackTight, paddingVertical: theme.space.inlineTight, paddingLeft: theme.space.stackTight, paddingRight: ROW_PADDING_RIGHT, borderRadius: theme.radius.control, borderWidth: theme.border.standard, borderColor: 'transparent' },
   // The own row is marked by a border and by the name as well as by the fill, never by color alone.
   itemMe: { backgroundColor: theme.color.surfaceElevated, borderColor: theme.color.accentMuted },
-  position: { width: 22, fontFamily: mono, fontSize: 11, lineHeight: 15, letterSpacing: 0.8, color: theme.color.textTertiary },
+  position: { width: POSITION_WIDTH, fontFamily: mono, fontSize: 11, lineHeight: 15, letterSpacing: 0.8, color: theme.color.textTertiary },
   positionFirst: { color: theme.color.accentHighlight },
-  avatar: { width: 32, height: 32, overflow: 'hidden', borderRadius: 4, borderWidth: theme.border.standard, borderColor: theme.color.borderGhost, backgroundColor: theme.color.surfaceInset },
-  avatarSprite: { position: 'absolute', left: -1, top: 0 },
+  avatar: { borderColor: theme.color.borderGhost },
   main: { flex: 1, minWidth: 0, gap: 2 },
-  name: { fontFamily: 'Inter-SemiBold', fontSize: 13, lineHeight: 16, color: theme.color.textPrimary },
+  name: { fontFamily: sans, fontSize: 13, lineHeight: 16, color: theme.color.textPrimary },
   nameMe: { color: theme.color.accentHighlight },
   detail: { fontFamily: mono, fontSize: 10, lineHeight: 13, color: theme.color.textTertiary },
-  bar: { width: 160 },
-  barCompact: { width: 56 },
-  hours: { width: 44, textAlign: 'right', fontFamily: mono, fontSize: 11, lineHeight: 15, color: theme.color.textPrimary },
+  bar: { width: BAR_WIDTH.desktop },
+  barCompact: { width: BAR_WIDTH.compact },
+  hours: { width: HOURS_WIDTH, textAlign: 'right', fontFamily: mono, fontSize: 11, lineHeight: 15, color: theme.color.textPrimary },
 });

@@ -615,6 +615,7 @@ describe('Ranking interno', () => {
     const link = await screen.findByTestId('guild-ranking-all');
     expect(within(link).getByText('Ver todos')).toBeTruthy();
     expect(link.props.accessibilityRole).toBe('link');
+    expect(link.props.href).toBe('/guilda/raid');
     expect(link.props.accessibilityLabel).toBe('Ver todos os participantes do Ranking interno');
     expect(screen.queryByText(/participantes/)).toBeNull();
   });
@@ -643,6 +644,19 @@ describe('Ranking interno', () => {
     mockedRanking.mockResolvedValue(rankingPage([row(1, 'Bruno', 300)]));
     await fireEvent.press(within(screen.getByTestId('guild-ranking-error')).getByLabelText('Tentar novamente'));
     expect(await screen.findByTestId('guild-ranking-item-u-Bruno')).toBeTruthy();
+  });
+
+  it('keeps the last ranking on screen and warns that it is outdated when a refresh fails', async () => {
+    mockedRanking.mockResolvedValue(rankingPage([row(1, 'Bruno', 300)]));
+    const view = await renderGuild();
+    await screen.findByTestId('guild-ranking-item-u-Bruno');
+
+    mockedRanking.mockRejectedValue(new ApiError('network', {}));
+    await view.client.refetchQueries({ queryKey: ['guild', 'raid', 'g1', 'ranking', 'r1'] });
+
+    expect(await screen.findByTestId('guild-ranking-stale')).toBeTruthy();
+    expect(screen.getByTestId('guild-ranking-item-u-Bruno')).toBeTruthy();
+    expect(screen.queryByTestId('guild-ranking-error')).toBeNull();
   });
 
   it('refreshes the ranking, but not the Raid, when the user confirms participation', async () => {
