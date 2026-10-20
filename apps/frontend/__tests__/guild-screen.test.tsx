@@ -296,22 +296,22 @@ describe('GuildScreen', () => {
       expect(await screen.findByTestId('guild-directory-item-id-Alfa')).toBeTruthy();
       expect(screen.getByTestId('guild-create')).toBeTruthy();
       expect(screen.getByTestId('guild-how-it-works')).toBeTruthy();
-      expect(screen.getByTestId('guild-directory-search-submit')).toBeTruthy();
+      await fireEvent.changeText(screen.getByLabelText('Buscar por nome'), ' beta ');
+      await fireEvent.press(screen.getByTestId('guild-directory-search-submit'));
+      await waitFor(() => expect(mockedList).toHaveBeenLastCalledWith(expect.objectContaining({ search: 'beta' })));
+      expect(within(screen.getByTestId('guild-directory-item-id-Alfa')).getByTestId('guild-emblem', { includeHiddenElements: true })).toBeTruthy();
     });
 
-    it('searches on a phone with the "Buscar" button and with the keyboard submit', async () => {
+    it('searches on a phone with the keyboard submit, with no "Buscar" button as in the Figma', async () => {
       mockedMine.mockResolvedValue(null);
       mockedList.mockResolvedValue(page(['Alfa']));
       await renderGuild();
       await screen.findByTestId('guild-directory-item-id-Alfa');
 
+      expect(screen.queryByTestId('guild-directory-search-submit')).toBeNull();
       await fireEvent.changeText(screen.getByLabelText('Buscar por nome'), ' beta ');
-      await fireEvent.press(screen.getByTestId('guild-directory-search-submit'));
-      await waitFor(() => expect(mockedList).toHaveBeenLastCalledWith(expect.objectContaining({ search: 'beta' })));
-
-      await fireEvent.changeText(screen.getByLabelText('Buscar por nome'), 'gama');
       await fireEvent(screen.getByLabelText('Buscar por nome'), 'submitEditing');
-      await waitFor(() => expect(mockedList).toHaveBeenLastCalledWith(expect.objectContaining({ search: 'gama' })));
+      await waitFor(() => expect(mockedList).toHaveBeenLastCalledWith(expect.objectContaining({ search: 'beta' })));
     });
 
     it('states the name rule from the validation constants and counts the typed characters', async () => {
@@ -480,7 +480,7 @@ describe('GuildScreen', () => {
 
     mockedList.mockResolvedValue(page([]));
     await fireEvent.changeText(screen.getByLabelText('Buscar por nome'), ' zzz ');
-    await fireEvent.press(screen.getByTestId('guild-directory-search-submit'));
+    await fireEvent(screen.getByLabelText('Buscar por nome'), 'submitEditing');
     expect(await screen.findByText('Nenhuma guilda encontrada para essa busca.')).toBeTruthy();
     expect(mockedList).toHaveBeenLastCalledWith(expect.objectContaining({ search: 'zzz' }));
   });

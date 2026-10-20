@@ -65,4 +65,44 @@ test.describe('Guilda web', () => {
     await expect(page).toHaveURL(/\/sessao\?modo=guilda$/);
     await expect(page.getByTestId('study-session-mode-guild')).toHaveAttribute('aria-checked', 'true');
   });
+
+  test('no celular: encontra a guilda na aba Procurar, busca pelo teclado e entra', async ({ browser }) => {
+    const guildName = `Procurar E2E ${Date.now()}`;
+    const leaderContext = await browser.newContext();
+    const memberContext = await browser.newContext();
+    const leader = await leaderContext.newPage();
+    const member = await memberContext.newPage();
+    try {
+      await registerThroughUi(leader, undefined, 'Ana Procurar');
+      await leader.getByTestId('web-sidebar').getByRole('link', { name: 'Guilda' }).click();
+      await leader.getByLabel('Nome da guilda').fill(guildName);
+      await leader.getByRole('button', { name: 'Fundar guilda' }).click();
+      await expect(leader.getByTestId('guild-mine')).toBeVisible();
+
+      // O cadastro espera a barra lateral do desktop; a tela encolhe para o celular depois.
+      await registerThroughUi(member, undefined, 'Bruno Procurar');
+      await member.setViewportSize({ width: 390, height: 844 });
+      await member.getByRole('link', { name: 'Guilda' }).first().click();
+
+      // A aba Procurar abre primeiro, com a lista, o emblema e sem o botão "Buscar" (Figma 06d).
+      await expect(member.getByRole('tab', { name: 'Procurar' })).toHaveAttribute('aria-selected', 'true');
+      await expect(member.getByTestId('guild-directory')).toBeVisible();
+      await expect(member.getByTestId('guild-directory-search-submit')).toHaveCount(0);
+      await expect(member.locator('[data-testid^="guild-directory-item-"]').first()).toBeVisible();
+
+      const search = member.getByLabel('Buscar por nome');
+      await search.fill(guildName);
+      await search.press('Enter');
+      const row = member.getByRole('button', { name: `Entrar na guilda ${guildName}` });
+      await expect(row).toBeVisible();
+      await expect(member.locator('[data-testid^="guild-directory-item-"]')).toHaveCount(1);
+      await expect(member.locator('[data-testid^="guild-directory-item-"]').first().getByTestId('guild-emblem')).toBeAttached();
+
+      await row.click();
+      await expect(member.getByTestId('guild-mine')).toBeVisible();
+    } finally {
+      await leaderContext.close();
+      await memberContext.close();
+    }
+  });
 });

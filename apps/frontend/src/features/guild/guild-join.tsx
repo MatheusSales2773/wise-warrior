@@ -98,8 +98,8 @@ function DirectoryItem({ busy, first, guild, onJoin }: { busy: boolean; first: b
   );
 }
 
-/** The name field with its "Buscar" button; the search runs on the button or on the keyboard's own submit. */
-function DirectorySearch({ onSearch }: { onSearch: (name: string) => void }) {
+/** The name field; the search runs on the keyboard's own submit, and the desktop (Figma 06d) adds a "Buscar" button. */
+function DirectorySearch({ desktop, onSearch }: { desktop: boolean; onSearch: (name: string) => void }) {
   const [draft, setDraft] = useState('');
   const run = () => onSearch(draft.trim());
   return (
@@ -117,7 +117,7 @@ function DirectorySearch({ onSearch }: { onSearch: (name: string) => void }) {
           value={draft}
         />
       </View>
-      <WiseButton label="Buscar" onPress={run} testID="guild-directory-search-submit" variant="secondary" />
+      {desktop ? <WiseButton label="Buscar" onPress={run} testID="guild-directory-search-submit" variant="secondary" /> : null}
     </View>
   );
 }
@@ -171,7 +171,7 @@ function DirectoryCard({ desktop, onJoined, onConflict }: { desktop: boolean; on
     <View accessibilityLabel="Encontrar guilda" role="region" style={styles.directoryBlock} testID="guild-directory">
       <SectionHeader aside={desktop ? <Text style={cardText.meta}>Entrada aberta</Text> : undefined}>Encontre uma guilda</SectionHeader>
       <WiseCard style={[styles.directoryCard, !desktop && styles.directoryCardPhone]}>
-        <DirectorySearch onSearch={setSearch} />
+        <DirectorySearch desktop={desktop} onSearch={setSearch} />
         {join.isError ? <FeedbackMessage message={joinGuildErrorMessage(join.error)} testID="guild-join-error" title="Não foi possível entrar" variant="error" /> : null}
         <DirectoryList
           directory={directory}
