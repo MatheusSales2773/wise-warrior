@@ -153,6 +153,15 @@ describe('Mural', () => {
     expect(screen.getByTestId('guild-online-count')).toBeOnTheScreen();
   });
 
+  it('keeps the unsent draft when the member visits another tab and comes back', async () => {
+    await openMural();
+    await fireEvent.changeText(screen.getByLabelText('Mensagem para a guilda'), 'Rascunho que não enviei');
+    await fireEvent.press(screen.getByTestId('guild-tab-members'));
+    expect(screen.queryByTestId('guild-mural')).toBeNull();
+    await fireEvent.press(screen.getByTestId('guild-tab-mural'));
+    expect(screen.getByLabelText('Mensagem para a guilda')).toHaveDisplayValue('Rascunho que não enviei');
+  });
+
   it('loads older messages', async () => {
     gateway.handlers['chat:history'] = ({ before }) => (before === undefined
       ? { ok: true, messages: [message(5)], nextBefore: 5 }

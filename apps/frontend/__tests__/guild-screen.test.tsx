@@ -499,6 +499,20 @@ describe('GuildScreen', () => {
       }
     });
 
+    it('lets the open tab fill the screen below the tabs, from the top, whichever tab is open', async () => {
+      await renderGuild();
+      await screen.findByText('Cerco ao Grimório');
+      const grows = (id: string) => expect(StyleSheet.flatten(screen.getByTestId(id).props.style)).toMatchObject({ flexGrow: 1 });
+
+      grows('guild-content');
+      grows('guild-layout-tabs');
+      expect(StyleSheet.flatten(screen.getByTestId('guild-scroll').props.contentContainerStyle)).toMatchObject({ justifyContent: 'flex-start' });
+      for (const tab of ['raid', 'mural', 'members', 'history'] as const) {
+        await openTab(tab);
+        grows('guild-tab-content');
+      }
+    });
+
     it('keeps the Raid ranking with the Raid tab on a phone', async () => {
       mockedRanking.mockResolvedValue({ items: [], nextCursor: null });
       await renderGuild();

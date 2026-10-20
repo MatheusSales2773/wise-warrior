@@ -504,8 +504,17 @@ function MemberGuild({ mine, desktop, onLeft, onConflict }: { mine: MyGuild; des
       {announcer}
     </View>;
   }
-  const content = { raid, mural, members, history: pastRaids }[tab];
-  return <View style={styles.stack} testID="guild-layout-tabs">{header}<GuildTabs onSelect={setTab} selected={tab} />{content}{announcer}</View>;
+  const content = { raid, members, history: pastRaids }[tab as Exclude<GuildTab, 'mural'>];
+  // The Mural stays mounted and is only hidden, so the unsent draft and the scroll position survive a tab change.
+  return <View style={[styles.stack, styles.grow]} testID="guild-layout-tabs">
+    {header}
+    <GuildTabs onSelect={setTab} selected={tab} />
+    <View style={[styles.stack, styles.grow]} testID="guild-tab-content">
+      <View style={tab === 'mural' ? undefined : styles.hidden}>{mural}</View>
+      {tab === 'mural' ? null : content}
+    </View>
+    {announcer}
+  </View>;
 }
 
 export function GuildScreen() {
@@ -541,7 +550,7 @@ export function GuildScreen() {
 
   const desktop = isDesktopLayout(Platform.OS, width);
   return (
-    <Screen safeAreaEdges={[]} testID="guild" title="Guilda">
+    <Screen contentContainerStyle={mine.data ? styles.fromTop : undefined} contentStyle={mine.data ? styles.grow : undefined} safeAreaEdges={[]} testID="guild" title="Guilda">
       {mine.isError ? <FeedbackMessage message="Não foi possível atualizar sua guilda." testID="guild-refresh-error" title="Dados desatualizados" variant="error" /> : null}
       {mine.data
         ? <MemberGuild key={mine.data.guild.id} desktop={desktop} mine={mine.data} onConflict={refreshOnConflict} onLeft={() => void refreshGuild()} />
@@ -558,6 +567,10 @@ const styles = StyleSheet.create({
   grid: { gap: theme.space.stackDefault },
   desktopGrid: { flexDirection: 'row', alignItems: 'flex-start', gap: theme.space.stackDefault },
   column: { flex: 1 },
+  hidden: { display: 'none' },
+  grow: { flexGrow: 1 },
+  // The Screen centers its content; a guild screen starts at the top and its open tab runs down to the bottom.
+  fromTop: { justifyContent: 'flex-start' },
   // Figma 06c desktop: a 680 px main column and a 392 px side column.
   columnMain: { flex: 680 },
   columnSide: { flex: 392 },
