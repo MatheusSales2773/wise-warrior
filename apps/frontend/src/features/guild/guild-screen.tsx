@@ -1,6 +1,6 @@
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { Platform, StyleSheet, View, useWindowDimensions } from 'react-native';
 import { FeedbackMessage, ProgressBar, Screen, WiseButton, WiseCard, WiseField, WiseText, isDesktopLayout, theme } from '@/design-system';
 import { isApiError } from '@/core/api/api-error';
@@ -16,6 +16,10 @@ import { GuildTabs, MuralAnnouncer, MuralPanel, OnlineIndicator, PresenceDot, ty
 import { RaidScene } from './raid-scene';
 import { RAID_SCENE_HEIGHT, RAID_SCENE_WIDTH } from './raid-scene-sprites';
 import { GUILD_NAME_MAX_LENGTH, normalizeGuildName, validateGuildName } from './validation';
+
+// The 06c widths of the desktop columns.
+const DESKTOP_MAIN_COLUMN_MAX_WIDTH = 680;
+const DESKTOP_SIDE_COLUMN_WIDTH = 392;
 
 /** The smallest whole scale that fills the card width; the scene is cropped at the sides instead of letterboxed. */
 function thumbnailScale(width: number): number {
@@ -483,36 +487,32 @@ function MemberGuild({ mine, desktop, onLeft, onConflict }: { mine: MyGuild; des
   const header = <GuildCard mine={mine} onlineUserIds={chat.onlineUserIds} />;
   const raid = <RaidSection guildId={guild.id} />;
   const mural = <MuralPanel chat={chat} />;
-  const members = <MembersCard guildId={guild.id} onlineUserIds={chat.onlineUserIds} />;
   const pastRaids = <PastRaidsCard guildId={guild.id} />;
-  const announcer = <MuralAnnouncer arrival={chat.arrival} />;
-  const leave = (
+  // Leaving the Guild belongs with the Membros wherever they are shown.
+  const membersAndLeave = <>
+    <MembersCard guildId={guild.id} onlineUserIds={chat.onlineUserIds} />
     <View testID="guild-leave-section">
       <LeaveGuildAction guildId={guild.id} isLeader={role === 'leader'} onConflict={onConflict} onLeft={onLeft} />
     </View>
-  );
-  if (desktop) {
-    return (
-      <View style={styles.stack} testID="guild-layout-desktop">
-        {header}
-        <View style={styles.desktopGrid}>
-          <View style={[styles.mainColumn, styles.stack]} testID="guild-column-main">{raid}{pastRaids}</View>
-          <View style={[styles.sideColumn, styles.stack]} testID="guild-column-side">{mural}{members}{leave}</View>
-        </View>
-        {announcer}
-      </View>
-    );
-  }
+  </>;
+  // The Mural is not here: it stays mounted on a phone, hidden instead of replaced.
+  const tabPanels: Record<Exclude<GuildTab, 'mural'>, ReactNode> = { raid, members: membersAndLeave, 'past-raids': pastRaids };
+
   return (
-    <View style={styles.stack} testID="guild-layout-tabs">
+    <View style={styles.stack} testID={desktop ? 'guild-layout-desktop' : 'guild-layout-tabs'}>
       {header}
-      <GuildTabs onSelect={setTab} selected={tab} />
-      {tab === 'raid' ? raid : null}
-      {/* Kept mounted and only hidden, so the draft and the scroll position survive a tab change. */}
-      <View style={tab === 'mural' ? undefined : styles.hidden}>{mural}</View>
-      {tab === 'members' ? <>{members}{leave}</> : null}
-      {tab === 'history' ? pastRaids : null}
-      {announcer}
+      {desktop
+        ? <View style={styles.desktopGrid}>
+          <View style={[styles.mainColumn, styles.stack]} testID="guild-column-main">{raid}{pastRaids}</View>
+          <View style={[styles.sideColumn, styles.stack]} testID="guild-column-side">{mural}{membersAndLeave}</View>
+        </View>
+        : <>
+          <GuildTabs onSelect={setTab} selected={tab} />
+          {tab === 'mural' ? null : tabPanels[tab]}
+          {/* Kept mounted and only hidden, so the draft and the scroll position survive a tab change. */}
+          <View style={tab === 'mural' ? undefined : styles.hidden}>{mural}</View>
+        </>}
+      <MuralAnnouncer arrival={chat.arrival} />
     </View>
   );
 }
@@ -567,9 +567,8 @@ const styles = StyleSheet.create({
   grid: { gap: theme.space.stackDefault },
   desktopGrid: { flexDirection: 'row', alignItems: 'flex-start', gap: theme.space.stackDefault },
   column: { flex: 1 },
-  // The 06c widths: up to 680 px of Raid next to 392 px of Mural and Membros.
-  mainColumn: { flex: 1, minWidth: 0, maxWidth: 680 },
-  sideColumn: { width: 392, flexShrink: 1 },
+  mainColumn: { flex: 1, minWidth: 0, maxWidth: DESKTOP_MAIN_COLUMN_MAX_WIDTH },
+  sideColumn: { width: DESKTOP_SIDE_COLUMN_WIDTH, flexShrink: 1 },
   hidden: { display: 'none' },
   raidImage: { height: 160, overflow: 'hidden', borderRadius: theme.radius.card, backgroundColor: theme.color.surfaceInset },
   rankingItem: { flexDirection: 'row', alignItems: 'center', gap: theme.space.stackTight, paddingVertical: theme.space.inlineTight, paddingHorizontal: theme.space.inlineTight, borderRadius: theme.radius.control, borderWidth: theme.border.standard, borderColor: 'transparent' },

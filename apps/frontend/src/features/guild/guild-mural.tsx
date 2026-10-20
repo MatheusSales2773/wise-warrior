@@ -4,9 +4,15 @@ import { controlStyles } from '@/design-system/components/control-styles';
 import { FeedbackMessage, WiseButton, WiseCard, WiseField, WiseText, theme } from '@/design-system';
 import { raidHitText, type ChatMessage, type GuildChat } from './guild-chat';
 
-export type GuildTab = 'raid' | 'mural' | 'members' | 'history';
+export type GuildTab = 'raid' | 'mural' | 'members' | 'past-raids';
 
-const TABS: { id: GuildTab; label: string }[] = [{ id: 'raid', label: 'Raid' }, { id: 'mural', label: 'Mural' }, { id: 'members', label: 'Membros' }, { id: 'history', label: 'Histórico' }];
+// "Histórico" is the label of the 06c; the tab holds the Raids anteriores, not the Mural history.
+const TABS: { id: GuildTab; label: string }[] = [
+  { id: 'raid', label: 'Raid' },
+  { id: 'mural', label: 'Mural' },
+  { id: 'members', label: 'Membros' },
+  { id: 'past-raids', label: 'Histórico' },
+];
 
 export function formatOnlineCount(count: number): string {
   return `${count} online`;
