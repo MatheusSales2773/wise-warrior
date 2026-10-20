@@ -139,13 +139,47 @@ describe('GuildScreen', () => {
     await openTab('members');
 
     expect(await screen.findByTestId('guild-member-u-Ana')).toBeTruthy();
-    expect(screen.getByText('Nível 2 · Aprendiz')).toBeTruthy();
+    expect(screen.getByText('Nv 2')).toBeTruthy();
     expect(screen.getByTestId('guild-member-u-Bruno')).toBeTruthy();
+    expect(screen.getByTestId('guild-members-count')).toHaveTextContent('3');
+    expect(screen.getByTestId('guild-member-portrait-u-Ana')).toBeTruthy();
 
     mockedMembers.mockResolvedValueOnce({ items: [{ ...members(['Carla']).items[0]!, role: 'member' }], nextCursor: null });
     await fireEvent.press(screen.getByTestId('guild-members-more'));
     expect(await screen.findByTestId('guild-member-u-Carla')).toBeTruthy();
     expect(mockedMembers).toHaveBeenLastCalledWith('g1', expect.objectContaining({ cursor: 'next' }));
+  });
+
+  it('marks only the Leader with the LÍDER seal and keeps the row readable', async () => {
+    mockedMine.mockResolvedValue(mine);
+    mockedMembers.mockResolvedValue(members(['Ana', 'Bruno']));
+    await renderGuild();
+    await openTab('members');
+
+    expect(await screen.findByTestId('guild-member-seal-u-Ana')).toHaveTextContent('LÍDER');
+    expect(screen.queryByTestId('guild-member-seal-u-Bruno')).toBeNull();
+    expect(screen.getByTestId('guild-member-u-Ana')).toHaveProp('accessibilityLabel', expect.stringContaining('Líder'));
+  });
+
+  it('shows no Presença, no online count and only the level while the connection is unknown', async () => {
+    mockedMine.mockResolvedValue(mine);
+    mockedMembers.mockResolvedValue(members(['Ana']));
+    await renderGuild();
+    await openTab('members');
+
+    expect(await screen.findByText('Nv 2')).toBeTruthy();
+    expect(screen.queryByTestId('guild-member-online-u-Ana')).toBeNull();
+    expect(screen.queryByTestId('guild-member-offline-u-Ana')).toBeNull();
+    expect(screen.getByTestId('guild-members-count')).toHaveTextContent(/^3$/);
+  });
+
+  it('shows an empty state when the guild has no members to list', async () => {
+    mockedMine.mockResolvedValue(mine);
+    mockedMembers.mockResolvedValue({ items: [], nextCursor: null });
+    await renderGuild();
+    await openTab('members');
+
+    expect(await screen.findByTestId('guild-members-empty')).toBeTruthy();
   });
 
   it('keeps the guild visible when the members cannot be loaded', async () => {
