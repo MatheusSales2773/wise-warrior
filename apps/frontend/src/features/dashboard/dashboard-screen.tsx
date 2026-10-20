@@ -5,6 +5,7 @@ import { useEffect, useRef, useState, type PropsWithChildren } from 'react';
 import { AccessibilityInfo, Platform, Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import Svg, { Defs, Path, RadialGradient, Rect, Stop } from 'react-native-svg';
 import { FeedbackMessage, ProgressBar, Screen, WiseButton, WiseCard, WiseText, isDesktopLayout, theme, type WiseCardProps } from '@/design-system';
+import { GuildSigil } from '@/features/guild/guild-emblem';
 import { formatCadenceDate, formatCappedReason, formatDayCount, formatDiscardReason, formatDuration, formatSessionDate, formatSessionsToday, formatXp, levelProgressPercent } from './formatters';
 import type { CadenceDay, RecentStudySession, SessionMetrics } from './api';
 import { profileQueryOptions, recentActivityQueryOptions, sessionMetricsQueryOptions } from './queries';
@@ -60,13 +61,6 @@ function DashboardGlow({ hero = false }: { hero?: boolean }) {
       </RadialGradient>
     </Defs>
     <Rect width="100%" height="100%" fill={`url(#${hero ? 'dashboardHeroGlow' : 'dashboardPageGlow'})`} />
-  </Svg>;
-}
-
-function GuildSigil({ size = 40 }: { size?: number }) {
-  return <Svg aria-hidden width={size} height={size} viewBox="0 0 100 100" fill="none">
-    <Path d="M50 6 L86 22 V52 C86 70 70 86 50 94 C30 86 14 70 14 52 V22 Z" stroke={theme.color.accentPrimary} strokeWidth={1.5} fill="rgba(212,168,90,0.04)" />
-    <Path d="M50 28 V64 M44 60 L50 66 L56 60 M44 36 H56" stroke={theme.color.accentPrimary} strokeWidth={2} strokeLinecap="round" />
   </Svg>;
 }
 
@@ -423,7 +417,7 @@ export function DashboardScreen() {
         <FramedCard accessibilityLabel="Guilda" role="region" testID="dashboard-guild-preview">
           <View style={styles.guildHeader}>
             <LinearGradient colors={[theme.color.backgroundOverlay, 'transparent']} pointerEvents="none" style={StyleSheet.absoluteFill} />
-            <GuildSigil />
+            <GuildSigil size={40} />
             <View style={styles.guildHeaderCopy}>
               <Text style={styles.guildEyebrow}>Guilda</Text>
               <Text accessibilityRole="header" aria-level={2} style={styles.guildName}>Sua guilda</Text>
