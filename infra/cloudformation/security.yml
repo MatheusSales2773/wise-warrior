@@ -91,7 +91,7 @@ Resources:
     Type: AWS::EC2::SecurityGroupIngress
     Properties:
       GroupId: !Ref NatSecurityGroup
-      Description: Todo o tráfego de saída do app para a internet
+      Description: Todo o trafego de saida do app para a internet
       IpProtocol: "-1"
       SourceSecurityGroupId: !Ref AppSecurityGroup
 
