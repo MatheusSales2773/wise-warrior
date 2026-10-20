@@ -6,6 +6,7 @@ import { SectionHeader, useFocusRing } from '@/features/character/character-part
 import type { RaidRankingEntry } from './api';
 import { HeroAvatar } from './hero-avatar';
 import { formatPosition } from './messages';
+import { rowText } from './guild-row-text';
 import { raidRankingQueryOptions } from './queries';
 import { formatFocusHours, rankingEntryLabel } from './raid-battle';
 
@@ -15,7 +16,6 @@ import { formatFocusHours, rankingEntryLabel } from './raid-battle';
 const RANKING_ROWS = { desktop: 5, mobile: 4 } as const;
 
 const { fontFamily: mono } = theme.type.mono;
-const { fontFamily: sans } = theme.type.label;
 /** Figma 06c values with no token in the spacing scale. */
 const CARD_PADDING = 9;
 const ROW_PADDING_RIGHT = 14;
@@ -45,8 +45,8 @@ function RankingItem({ compact, entry, fraction }: { compact: boolean; entry: Ra
       <Text style={[styles.position, entry.position === 1 && styles.positionFirst]}>{formatPosition(entry.position)}</Text>
       <HeroAvatar entry={entry} style={styles.avatar} />
       <View style={styles.main}>
-        <Text numberOfLines={1} style={[styles.name, entry.isMe && styles.nameMe]}>{name}</Text>
-        <Text numberOfLines={1} style={styles.detail}>{detail}</Text>
+        <Text numberOfLines={1} style={[rowText.name, entry.isMe && styles.nameMe]}>{name}</Text>
+        <Text numberOfLines={1} style={rowText.detail}>{detail}</Text>
       </View>
       <View style={compact ? styles.barCompact : styles.bar}>
         <ProgressBar accessibilityLabel={`Contribuição de ${entry.isMe ? 'você' : entry.displayName}`} maximumValue={1} size="hairline" value={fraction} />
@@ -101,9 +101,7 @@ const styles = StyleSheet.create({
   positionFirst: { color: theme.color.accentHighlight },
   avatar: { borderColor: theme.color.borderGhost },
   main: { flex: 1, minWidth: 0, gap: 2 },
-  name: { fontFamily: sans, fontSize: 13, lineHeight: 16, color: theme.color.textPrimary },
   nameMe: { color: theme.color.accentHighlight },
-  detail: { fontFamily: mono, fontSize: 10, lineHeight: 13, color: theme.color.textTertiary },
   bar: { width: BAR_WIDTH.desktop },
   barCompact: { width: BAR_WIDTH.compact },
   hours: { width: HOURS_WIDTH, textAlign: 'right', fontFamily: mono, fontSize: 11, lineHeight: 15, color: theme.color.textPrimary },

@@ -117,7 +117,7 @@ function RaidActions({ desktop, guildId, raid }: { desktop: boolean; guildId: st
       : <JoinRaidButton label="Participar da Raid" loading={join.isPending} onPress={() => { if (!join.isPending) { join.reset(); join.mutate(); } }} testID="guild-raid-join" />;
   const summary = <View style={styles.reward} testID="guild-raid-reward">
     <WiseIcon color="accentPrimary" name="sparkles" size="xsmall" />
-    <Text style={styles.rewardText}>{formatRewardSummary(raid.rewards, raid.coins)}</Text>
+    <Text style={styles.rewardText}>{formatRewardSummary(raid)}</Text>
   </View>;
 
   return <View accessibilityLiveRegion="polite" style={styles.actions}>

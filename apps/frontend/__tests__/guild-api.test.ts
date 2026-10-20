@@ -1,7 +1,7 @@
 import { getAuthenticatedHttpClient } from '@/core/api/api-client';
 import { ApiError } from '@/core/api/api-error';
 import { createGuild, getActiveRaid, getMyGuild, getRaidRanking, joinGuild, leaveGuild, listGuildMembers, listGuilds, listPastRaids, joinRaid } from '@/features/guild/api';
-import { formatGuildRole, formatMemberCount, formatMyPosition, formatPastRaidMine, formatPastRaidOutcome, formatRaidEnds, formatRaidWeek, formatRewardSummary } from '@/features/guild/messages';
+import { formatGuildRole, formatMemberCount, formatMyPosition, formatPastRaidMine, formatPastRaidOutcome, formatPastRaidPeriod, formatPastRaidSeal, formatPastRaidTotals, formatRaidEnds, formatRaidWeek, formatWonRaids } from '@/features/guild/messages';
 import { rankingEntryLabel } from '@/features/guild/raid-battle';
 import { validateGuildName } from '@/features/guild/validation';
 
@@ -130,7 +130,19 @@ describe('past raid helpers', () => {
     expect(formatPastRaidOutcome('completed')).toMatch(/Meta batida/);
     expect(formatPastRaidOutcome('expired')).toBe('Meta não batida');
     expect(formatPastRaidMine({ participated: false, contributionXp: 0, position: null })).toBe('Você não participou');
-    expect(formatPastRaidMine({ participated: true, contributionXp: 0, position: 3 })).toBe('Você: 3º · 0 XP');
+    expect(formatPastRaidMine({ participated: true, contributionXp: 5640, position: 3 })).toBe('Você: 9,4h · 3º');
+    expect(formatPastRaidMine({ participated: true, contributionXp: 600, position: null })).toBe('Você: 1,0h');
+    // The own result is rounded like the Raid totals, so it never reads above the goal.
+    expect(formatPastRaidMine({ participated: true, contributionXp: 7620, position: 1 })).toBe('Você: 12h · 1º');
+    expect(formatPastRaidTotals({ status: 'completed', goalXp: 7620, progressXp: 7700 })).toBe('12h');
+    expect(formatPastRaidTotals({ status: 'expired', goalXp: 108000, progressXp: 84000 })).toBe('140h de 180h');
+    expect(formatPastRaidSeal('completed')).toBe('VENCIDA');
+    expect(formatPastRaidSeal('expired')).toBe('NÃO VENCIDA');
+    expect(formatPastRaidPeriod('2026-10-05T03:00:00.000Z', '2026-10-12T02:59:59.000Z')).toBe('05–11 OUT');
+    expect(formatPastRaidPeriod('2026-09-28T03:00:00.000Z', '2026-10-05T02:59:59.000Z')).toBe('28 SET–04 OUT');
+    expect(formatWonRaids(1)).toBe('nenhuma vencida');
+    expect(formatWonRaids(2)).toBe('1 vencida');
+    expect(formatWonRaids(7)).toBe('6 vencidas');
   });
 });
 
@@ -161,12 +173,5 @@ describe('guild helpers', () => {
 describe('Raid card messages', () => {
   it('reads the end of the Raid week in São Paulo time', () => {
     expect(formatRaidEnds('2026-10-12T02:59:59.000Z')).toBe('Termina domingo · 23:59');
-  });
-
-  it('lists the rewards in one sentence, quoting a Título', () => {
-    expect(formatRewardSummary([{ name: 'Escama Rubra', category: 'accessory' }], 50)).toBe('Escama Rubra e +50 moedas');
-    expect(formatRewardSummary([{ name: 'Caçador de Dragões', category: 'title' }, { name: 'Escama Rubra', category: 'accessory' }], 50))
-      .toBe('Título “Caçador de Dragões”, Escama Rubra e +50 moedas');
-    expect(formatRewardSummary([], 50)).toBe('+50 moedas');
   });
 });

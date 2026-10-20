@@ -373,7 +373,7 @@ describe('GuildScreen', () => {
       expect(bar.props.accessibilityValue).toMatchObject({ min: 0, max: 100, now: 0 });
       expect(screen.getByTestId('guild-raid-boss-life-percent')).toHaveTextContent('0%');
       expect(screen.getByTestId('guild-raid-time-left').props.children).toBe('2d 3h restantes');
-      expect(within(screen.getByTestId('guild-raid-reward')).getByText('Marcador do Grimório e +50 moedas')).toBeTruthy();
+      expect(within(screen.getByTestId('guild-raid-reward')).getByText('Marcador do Grimório e +50 Moedas')).toBeTruthy();
       expect(screen.queryByTestId('guild-raid-goal-reached')).toBeNull();
     });
 
@@ -398,6 +398,40 @@ describe('GuildScreen', () => {
       expect(await screen.findByTestId('guild-raid-streak')).toHaveTextContent('2 dias sem falhar');
       expect(screen.getAllByTestId('raid-week-day-studied')).toHaveLength(2);
       expect(screen.getAllByTestId('raid-week-day-today')).toHaveLength(1);
+    });
+
+    describe('"Ao derrotar" card', () => {
+      it('lists each reward with its kind, the Moedas for every Participante and the rule', async () => {
+        mockedRaid.mockResolvedValue(raid({ rewards: [{ itemId: 'i1', name: 'Caçador de Dragões', category: 'title' }, { itemId: 'i2', name: 'Escama Rubra', category: 'accessory' }] }));
+        await renderGuild();
+
+        await screen.findByTestId('guild-reward-i1');
+        const card = screen.getByTestId('guild-rewards');
+        expect(within(screen.getByTestId('guild-reward-i1')).getByText('Título “Caçador de Dragões”')).toBeTruthy();
+        expect(within(screen.getByTestId('guild-reward-i1')).getByText('Título')).toBeTruthy();
+        expect(within(screen.getByTestId('guild-reward-i2')).getByText('Escama Rubra')).toBeTruthy();
+        expect(within(screen.getByTestId('guild-reward-i2')).getByText('Acessório')).toBeTruthy();
+        expect(within(screen.getByTestId('guild-reward-coins')).getByText('+50 Moedas')).toBeTruthy();
+        expect(within(screen.getByTestId('guild-reward-coins')).getByText('Para cada Participante')).toBeTruthy();
+        expect(within(card).getByText(/contribua com ao menos uma sessão de guilda/)).toBeTruthy();
+        expect(within(screen.getByTestId('guild-raid-reward')).getByText('Título “Caçador de Dragões”, Escama Rubra e +50 Moedas')).toBeTruthy();
+      });
+
+      it('says there is no Raid this week instead of listing rewards', async () => {
+        mockedRaid.mockResolvedValue(null);
+        await renderGuild();
+
+        expect(await screen.findByTestId('guild-rewards-empty')).toBeTruthy();
+        expect(screen.queryByTestId('guild-reward-coins')).toBeNull();
+      });
+
+      it('reports the Raid failing to load and leaves the retry to the Raid card', async () => {
+        mockedRaid.mockRejectedValue(new Error('boom'));
+        await renderGuild();
+
+        expect(await screen.findByTestId('guild-rewards-error')).toBeTruthy();
+        expect(screen.getAllByText('Tentar novamente')).toHaveLength(1);
+      });
     });
 
     it('shows "Meta batida" once the goal is reached, with the boss life at zero', async () => {
@@ -596,12 +630,14 @@ describe('GuildScreen', () => {
       }
     });
 
-    it('keeps the Raid ranking with the Raid tab on a phone', async () => {
+    it('keeps the Raid ranking and the rewards with the Raid tab on a phone', async () => {
       mockedRanking.mockResolvedValue({ items: [], nextCursor: null });
       await renderGuild();
       expect(await screen.findByTestId('guild-ranking')).toBeTruthy();
+      expect(await screen.findByTestId('guild-rewards')).toBeTruthy();
       await openTab('mural');
       expect(screen.queryByTestId('guild-ranking')).toBeNull();
+      expect(screen.queryByTestId('guild-rewards')).toBeNull();
     });
 
     it('uses two columns on desktop with no tabs: Raid, ranking and history on the left, Mural and members on the right', async () => {
@@ -619,6 +655,7 @@ describe('GuildScreen', () => {
       expect(within(main).getByTestId('guild-past-raids')).toBeTruthy();
       expect(within(side).getByTestId('guild-mural')).toBeTruthy();
       expect(within(side).getByTestId('guild-members')).toBeTruthy();
+      expect(within(side).getByTestId('guild-rewards')).toBeTruthy();
       expect(within(side).queryByTestId('guild-raid')).toBeNull();
     });
 
@@ -774,7 +811,7 @@ describe('Raids anteriores', () => {
     status: 'completed',
     goalXp: 1000,
     progressXp: 1250,
-    me: { participated: true, contributionXp: 300, position: 2 },
+    me: { participated: true, contributionXp: 5640, position: 2 },
     ...overrides,
   });
 
@@ -796,14 +833,27 @@ describe('Raids anteriores', () => {
 
     const won = await screen.findByTestId('guild-past-raid-p1');
     expect(within(won).getByText('Cerco ao Grimório')).toBeTruthy();
-    expect(within(won).getByText('Semana de 05/10 a 11/10')).toBeTruthy();
-    expect(screen.getByTestId('guild-past-raid-outcome-p1')).toHaveTextContent('✦ Meta batida · a guilda subiu de nível');
-    expect(screen.getByTestId('guild-past-raid-mine-p1')).toHaveTextContent('Você: 2º · 300 XP');
-    expect(won.props.accessibilityLabel).toBe('Cerco ao Grimório. Semana de 05/10 a 11/10. Meta batida · a guilda subiu de nível. 1250 de 1000 XP. Você: 2º · 300 XP.');
+    expect(within(won).getByText('05–11 OUT · 1,6h')).toBeTruthy();
+    expect(screen.getByTestId('guild-past-raid-outcome-p1')).toHaveTextContent('VENCIDA');
+    expect(won.props.accessibilityLabel).toBe('Cerco ao Grimório. Semana de 05/10 a 11/10. Meta batida · a guilda subiu de nível. 1,6h. Você: 9,4h · 2º.');
+    // The phone frame has no own-result line; it stays in the accessible label.
+    expect(screen.queryByTestId('guild-past-raid-mine-p1')).toBeNull();
+    expect(screen.getByTestId('guild-past-raids-won')).toHaveTextContent('1 vencida');
 
-    expect(screen.getByTestId('guild-past-raid-outcome-p2')).toHaveTextContent('Meta não batida');
-    expect(screen.getByTestId('guild-past-raid-mine-p2')).toHaveTextContent('Você não participou');
+    const lost = screen.getByTestId('guild-past-raid-p2');
+    expect(within(lost).getByText('28 SET–04 OUT · 0,3h de 1,6h')).toBeTruthy();
+    expect(screen.getByTestId('guild-past-raid-outcome-p2')).toHaveTextContent('NÃO VENCIDA');
     expect(mockedPast).toHaveBeenCalledWith('g1', expect.objectContaining({ cursor: null }));
+  });
+
+  it('shows the own result and the Guild Level on each row of the desktop column', async () => {
+    Dimensions.set({ window: { width: 1280, height: 800, scale: 1, fontScale: 1 } });
+    mockedPast.mockResolvedValue({ items: [past('p1'), past('p2', { status: 'expired', me: { participated: false, contributionXp: 0, position: null } })], nextCursor: null });
+    await renderGuild();
+
+    expect(await screen.findByTestId('guild-past-raid-mine-p1')).toHaveTextContent('Você: 9,4h · 2º');
+    expect(screen.getByTestId('guild-past-raid-mine-p2')).toHaveTextContent('Você não participou');
+    expect(screen.getByTestId('guild-past-raids-won')).toHaveTextContent('Nível 2 · 1 vencida');
   });
 
   it('explains when no Raid has closed yet', async () => {

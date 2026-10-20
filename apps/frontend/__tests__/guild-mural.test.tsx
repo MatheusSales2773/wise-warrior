@@ -128,6 +128,7 @@ describe('Guild presence', () => {
     await renderGuild();
     expect(await screen.findByTestId('guild-mine')).toBeOnTheScreen();
     expect(screen.queryByTestId('guild-online-count')).toBeNull();
+    expect(screen.queryByTestId('guild-mural-online')).toBeNull();
   });
 });
 
@@ -203,6 +204,7 @@ describe('Mural', () => {
     await openMural();
     await gateway.emit('chat:message', message(3, { kind: 'raid_hit', userId: 'u2', displayName: 'Ravenstone', xp: 75, body: '' }));
     const notice = screen.getByTestId('guild-mural-notice-m3');
+    expect(screen.getByTestId('guild-mural-online')).toHaveTextContent(/online$/);
     expect(within(notice).getByText('Ravenstone causou 75 de dano')).toBeOnTheScreen();
     expect(notice).toHaveProp('accessibilityLabel', 'Aviso, 14:03: Ravenstone causou 75 de dano');
     expect(screen.queryByTestId('guild-mural-message-m3')).toBeNull();
@@ -277,6 +279,42 @@ describe('Mural', () => {
     expect(screen.getByLabelText('Mensagem para a guilda')).toHaveProp('value', 'oi');
   });
 
+  it('shows the send error under the field, not as a Mural failure', async () => {
+    gateway.handlers['chat:send'] = () => ({ ok: false, error: { code: 'EMPTY', message: 'EMPTY' } });
+    await openMural();
+    await fireEvent.press(screen.getByTestId('guild-mural-send'));
+    expect(await screen.findByTestId('guild-mural-send-error')).toBeOnTheScreen();
+    expect(screen.getByTestId('guild-mural-messages')).toBeOnTheScreen();
+    // A screen reader hears the refusal with the field, not only as a separate message.
+    const input = screen.getByLabelText('Mensagem para a guilda');
+    expect(input).toHaveProp('accessibilityHint', 'Escreva algo antes de enviar.');
+    expect(input).toHaveProp('aria-invalid', true);
+  });
+
+  it('marks the send button busy and disabled while a message is on its way', async () => {
+    let answerSend!: () => void;
+    const original = gateway.request.bind(gateway);
+    gateway.request = ((event: string, payload: unknown) => (event === 'chat:send'
+      ? new Promise((resolve) => { answerSend = () => resolve({ ok: true, message: message(3, { body: (payload as { body: string }).body }) } as never); })
+      : original(event, payload))) as typeof gateway.request;
+    await openMural();
+    await fireEvent.changeText(screen.getByLabelText('Mensagem para a guilda'), 'Bora');
+    await fireEvent.press(screen.getByTestId('guild-mural-send'));
+    expect(screen.getByTestId('guild-mural-send')).toBeDisabled();
+    expect(screen.getByTestId('guild-mural-send')).toHaveProp('accessibilityState', expect.objectContaining({ busy: true }));
+    await act(async () => { answerSend(); });
+    expect(await screen.findByText('Bora')).toBeOnTheScreen();
+    expect(screen.getByTestId('guild-mural-send')).not.toBeDisabled();
+  });
+
+  it('draws a portrait on a message but none on an Aviso', async () => {
+    await openMural();
+    await gateway.emit('chat:message', message(3, { userId: 'u2', displayName: 'Bruno', body: 'Cheguei' }));
+    await gateway.emit('chat:message', message(4, { kind: 'raid_hit', userId: 'u2', displayName: 'Bruno', xp: 10, body: '' }));
+    expect(within(screen.getByTestId('guild-mural-notice-m4')).queryByTestId('hero-avatar', { includeHiddenElements: true })).toBeNull();
+    expect(within(screen.getByTestId('guild-mural-message-m3')).getByTestId('hero-avatar', { includeHiddenElements: true })).toBeTruthy();
+  });
+
   it('recovers missed messages after a reconnection without duplicates', async () => {
     gateway.handlers['chat:sync'] = () => ({ ok: true, messages: [message(2, { userId: 'u2', displayName: 'Bruno' }), message(3, { body: 'Perdida' })], truncated: false, onlineUserIds: ['u2'] });
     await openMural();
@@ -287,7 +325,7 @@ describe('Mural', () => {
     expect(await screen.findByText('Perdida')).toBeOnTheScreen();
     expect(gateway.sent('chat:sync')[0]?.payload).toEqual({ guildId: 'g1', afterSeq: 2 });
     expect(screen.getAllByText('Mensagem 2')).toHaveLength(1);
-    expect(screen.getByText('1 online')).toBeOnTheScreen();
+    expect(screen.getByTestId('guild-online-count')).toHaveTextContent('1 online');
     expect(gateway.sent('chat:join')).toHaveLength(1);
   });
 

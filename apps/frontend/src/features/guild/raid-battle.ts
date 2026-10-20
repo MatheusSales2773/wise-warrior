@@ -2,27 +2,16 @@ import { DEFAULT_HERO_ID, cosmeticSprite } from '@/features/character/catalog';
 import type { ItemSpriteName, PixelSpriteData } from '@/features/character/sprites';
 import { heroSprites } from '@/features/character/sprites';
 import type { ActiveRaid, RaidHit, RaidRankingEntry } from './api';
+import { XP_PER_FOCUS_HOUR, formatFocusHours } from './focus-hours';
 import { raidWeapons, sentinelaSprite } from './raid-scene-sprites';
 
 /*
  * Regras de apresentação da tela da Raid (Figma 06b). O domínio continua em XP; a tela mostra horas de foco.
  */
 
-/** A Raid soma o XP das sessões, e o backend dá 10 XP por minuto de foco (`XP_PER_MINUTE`): 600 XP valem uma hora. */
-export const XP_PER_FOCUS_HOUR = 600;
+export { XP_PER_FOCUS_HOUR, formatFocusHours };
 
-const ONE_DECIMAL = new Intl.NumberFormat('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
 const WHOLE = new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 0 });
-
-/**
- * XP em horas de foco. Totais da Raid acima de 10h aparecem inteiros ("138h"); o resto, e o que cada membro
- * fez (`precise`), com uma casa ("24,2h").
- */
-export function formatFocusHours(xp: number, { precise = false }: { precise?: boolean } = {}): string {
-  const hours = Math.max(0, xp) / XP_PER_FOCUS_HOUR;
-  if (!precise && hours >= 10) return `${WHOLE.format(Math.floor(hours))}h`;
-  return `${ONE_DECIMAL.format(Math.floor(hours * 10) / 10)}h`;
-}
 
 /**
  * Golpe sobre a cena: o dano ("−75") e, abaixo, "Eldoria · 25 min". O dano fica em XP e a duração substitui os

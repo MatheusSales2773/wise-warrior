@@ -1,22 +1,24 @@
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { Platform, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
-import { FeedbackMessage, ProgressBar, Screen, WiseButton, WiseCard, WiseField, WiseText, isDesktopLayout, theme } from '@/design-system';
+import { FeedbackMessage, ProgressBar, Screen, WiseButton, WiseCard, WiseField, WiseIcon, WiseText, isDesktopLayout, theme } from '@/design-system';
 import { isApiError } from '@/core/api/api-error';
-import { createGuild, joinGuild, leaveGuild, type GuildMember, type GuildSummary, type MyGuild, type PastRaid } from './api';
+import { createGuild, joinGuild, leaveGuild, type GuildMember, type GuildSummary, type MyGuild } from './api';
 import {
-  createGuildErrorMessage, formatPastRaidMine, formatPastRaidOutcome, formatRaidWeek, formatGuildRole, formatGuildRoleSeal, formatGuildStats, formatMemberCount,
+  createGuildErrorMessage, formatGuildRole, formatGuildRoleSeal, formatGuildStats, formatMemberCount,
   joinGuildErrorMessage, leaveGuildErrorMessage,
 } from './messages';
-import { activeRaidQueryOptions, guildDirectoryQueryOptions, guildKeys, guildMembersQueryOptions, myGuildQueryOptions, pastRaidsQueryOptions } from './queries';
+import { activeRaidQueryOptions, guildDirectoryQueryOptions, guildKeys, guildMembersQueryOptions, myGuildQueryOptions } from './queries';
 import { profileQueryOptions } from '@/features/dashboard/queries';
 import { useGuildChat } from './guild-chat';
 import { SectionHeader } from '@/features/character/character-parts';
 import { GuildTabs, MuralAnnouncer, MuralPanel, OnlineIndicator, PresenceDot, formatOnlineCount, type GuildTab } from './guild-mural';
 import { HeroAvatar } from './hero-avatar';
 import { GuildEmblem } from './guild-emblem';
-import { RankingCard } from './guild-ranking';
+import { PastRaidsCard } from './guild-past-raids';
 import { RaidCard } from './guild-raid-card';
+import { RankingCard } from './guild-ranking';
+import { RewardsCard } from './guild-rewards';
 import { GUILD_NAME_MAX_LENGTH, normalizeGuildName, validateGuildName } from './validation';
 
 function MemberItem({ member, online }: { member: GuildMember; online: boolean | null }) {
@@ -110,63 +112,6 @@ function GuildCard({ mine, onlineUserIds, desktop }: { mine: MyGuild; onlineUser
         </View>
       </View>
     </View>
-  );
-}
-
-function PastRaidItem({ raid }: { raid: PastRaid }) {
-  const week = formatRaidWeek(raid.startsAt, raid.endsAt);
-  const outcome = formatPastRaidOutcome(raid.status);
-  const mine = formatPastRaidMine(raid.me);
-  return (
-    <View
-      accessible
-      accessibilityLabel={`${raid.mission.name}. ${week}. ${outcome}. ${raid.progressXp} de ${raid.goalXp} XP. ${mine}.`}
-      style={styles.pastRaidItem}
-      testID={`guild-past-raid-${raid.id}`}
-    >
-      <WiseText variant="label">{raid.mission.name}</WiseText>
-      <WiseText color="textSecondary" variant="body">{week}</WiseText>
-      <WiseText color={raid.status === 'completed' ? 'accentPrimary' : 'textSecondary'} testID={`guild-past-raid-outcome-${raid.id}`} variant="body">
-        {raid.status === 'completed' ? '✦ ' : ''}{outcome}
-      </WiseText>
-      <WiseText color="textSecondary" variant="body">{raid.progressXp} / {raid.goalXp} XP</WiseText>
-      <WiseText testID={`guild-past-raid-mine-${raid.id}`} variant="body">{mine}</WiseText>
-    </View>
-  );
-}
-
-function PastRaidsCard({ guildId }: { guildId: string }) {
-  const past = useInfiniteQuery(pastRaidsQueryOptions(guildId));
-  const raids = past.data?.pages.flatMap((page) => page.items) ?? [];
-
-  const body = (() => {
-    if (past.isPending) return <WiseText color="textSecondary" testID="guild-past-raids-loading" variant="body">Carregando as Raids anteriores…</WiseText>;
-    if (past.isError && !past.data) {
-      return <View style={styles.stack} testID="guild-past-raids-error">
-        <FeedbackMessage message="Não foi possível carregar as Raids anteriores." title="Histórico indisponível" variant="error" />
-        <WiseButton label="Tentar novamente" loading={past.isRefetching} onPress={() => void past.refetch()} variant="secondary" />
-      </View>;
-    }
-    if (!raids.length) {
-      return <WiseText color="textSecondary" testID="guild-past-raids-empty" variant="body">Nenhuma Raid encerrada ainda. A primeira fecha no fim desta semana.</WiseText>;
-    }
-    return <>
-      {past.isError ? <FeedbackMessage message="Não foi possível atualizar o histórico." testID="guild-past-raids-stale" title="Dados desatualizados" variant="error" /> : null}
-      {raids.map((raid) => <PastRaidItem key={raid.id} raid={raid} />)}
-      {past.isFetchNextPageError ? <FeedbackMessage message="Não foi possível carregar mais Raids." title="Lista incompleta" variant="error" /> : null}
-      {past.hasNextPage
-        ? <WiseButton label="Carregar mais" loading={past.isFetchingNextPage} onPress={() => void past.fetchNextPage()} testID="guild-past-raids-more" variant="ghost" />
-        : null}
-    </>;
-  })();
-
-  return (
-    <WiseCard accessibilityLabel="Raids anteriores" role="region" testID="guild-past-raids">
-      <View style={styles.cardContent}>
-        <WiseText accessibilityRole="header" aria-level={2} variant="subtitle">Raids anteriores</WiseText>
-        {body}
-      </View>
-    </WiseCard>
   );
 }
 
@@ -308,21 +253,23 @@ function MemberGuild({ mine, desktop, onLeft, onConflict }: { mine: MyGuild; des
     </View>
   );
   const raid = <RaidSection compact={!desktop} guildId={guild.id} />;
+  const rewards = <RewardsCard guildId={guild.id} />;
   const mural = <MuralPanel chat={chat} />;
   const members = <MembersCard guildId={guild.id} memberCount={guild.memberCount} onlineUserIds={chat.onlineUserIds} />;
-  const pastRaids = <PastRaidsCard guildId={guild.id} />;
+  const pastRaids = <PastRaidsCard compact={!desktop} guildId={guild.id} level={guild.level} />;
   const announcer = <MuralAnnouncer arrival={chat.arrival} />;
   if (desktop) {
     return <View style={styles.stack} testID="guild-layout-desktop">
       {header}
       <View style={styles.desktopGrid}>
         <View style={[styles.columnMain, styles.stack]} testID="guild-column-main">{raid}{pastRaids}</View>
-        <View style={[styles.columnSide, styles.stack]} testID="guild-column-side">{mural}{members}</View>
+        <View style={[styles.columnSide, styles.stack]} testID="guild-column-side">{mural}{members}{rewards}</View>
       </View>
       {announcer}
     </View>;
   }
-  const content = { raid, members, history: pastRaids }[tab as Exclude<GuildTab, 'mural'>];
+  // The phone has no "Ao derrotar" frame of its own: the rewards close the Raid tab.
+  const content = { raid: <>{raid}{rewards}</>, members, history: pastRaids }[tab as Exclude<GuildTab, 'mural'>];
   // The Mural stays mounted and is only hidden, so the unsent draft and the scroll position survive a tab change.
   return <View style={[styles.stack, styles.grow]} testID="guild-layout-tabs">
     {header}
@@ -403,7 +350,6 @@ const styles = StyleSheet.create({
   statsRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', columnGap: theme.space.stackTight, rowGap: theme.space.inlineHairline },
   rolePill: { paddingVertical: theme.space.inlineHairline, paddingHorizontal: theme.space.inlineTight, borderRadius: theme.radius.pill, borderWidth: theme.border.standard, borderColor: theme.color.borderSubtle, backgroundColor: theme.color.surfaceInset },
   rolePillLeader: { borderColor: theme.color.accentPrimary },
-    pastRaidItem: { gap: theme.space.inlineHairline, paddingVertical: theme.space.inlineTight, borderTopWidth: theme.border.standard, borderTopColor: theme.color.borderSubtle },
 
   cardContent: { padding: theme.space.cardInset, gap: theme.space.stackTight },
   directoryItem: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: theme.space.stackTight },
