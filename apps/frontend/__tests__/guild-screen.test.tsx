@@ -2,7 +2,7 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Dimensions, Platform, StyleSheet } from 'react-native';
 import { ApiError } from '@/core/api/api-error';
-import { createGuild, getActiveRaid, getMyGuild, getRaidRanking, joinGuild, joinRaid, leaveGuild, listGuildMembers, listGuilds, listPastRaids, type ActiveRaid, type PastRaid, type GuildMemberPage, type GuildPage, type MyGuild, type RaidRankingEntry, type RaidRankingPage } from '@/features/guild/api';
+import { createGuild, getActiveRaid, getMyGuild, getNextMission, getRaidRanking, joinGuild, joinRaid, leaveGuild, listGuildMembers, listGuilds, listPastRaids, type ActiveRaid, type PastRaid, type GuildMemberPage, type GuildPage, type MyGuild, type RaidRankingEntry, type RaidRankingPage } from '@/features/guild/api';
 import { GuildScreen } from '@/features/guild/guild-screen';
 import { GUILD_NAME_MAX_LENGTH, GUILD_NAME_MIN_LENGTH } from '@/features/guild/validation';
 
@@ -18,6 +18,9 @@ jest.mock('@/features/guild/api', () => ({
   joinRaid: jest.fn(),
   listGuildMembers: jest.fn(),
   leaveGuild: jest.fn(),
+  getNextMission: jest.fn(),
+  listAvailableMissions: jest.fn(),
+  chooseNextMission: jest.fn(),
 }));
 
 const mockedMine = getMyGuild as jest.MockedFunction<typeof getMyGuild>;
@@ -29,6 +32,7 @@ const mockedLeave = leaveGuild as jest.MockedFunction<typeof leaveGuild>;
 const mockedJoinRaid = joinRaid as jest.MockedFunction<typeof joinRaid>;
 const mockedRaid = getActiveRaid as jest.MockedFunction<typeof getActiveRaid>;
 const mockedRanking = getRaidRanking as jest.MockedFunction<typeof getRaidRanking>;
+const mockedNextMission = getNextMission as jest.MockedFunction<typeof getNextMission>;
 const mockedPast = listPastRaids as jest.MockedFunction<typeof listPastRaids>;
 
 const DAY = 24 * 60 * 60 * 1000;
@@ -53,6 +57,7 @@ const raid = (overrides: Partial<ActiveRaid> = {}): ActiveRaid => ({
   streak: 0,
   me: { participating: false, contributionXp: 0, position: null },
   lastHit: null,
+  missionOwner: null,
   ...overrides,
 });
 
@@ -92,8 +97,9 @@ beforeEach(() => {
   mockedRaid.mockResolvedValue(raid());
   mockedRanking.mockResolvedValue({ items: [], nextCursor: null });
   mockedPast.mockResolvedValue({ items: [], nextCursor: null });
+  mockedNextMission.mockResolvedValue(null);
 });
-afterEach(() => { jest.clearAllMocks(); [mockedRaid, mockedRanking, mockedPast, mockedMine, mockedList, mockedCreate, mockedJoin, mockedMembers, mockedLeave, mockedJoinRaid].forEach((mock) => mock.mockReset()); });
+afterEach(() => { jest.clearAllMocks(); [mockedRaid, mockedRanking, mockedPast, mockedNextMission, mockedMine, mockedList, mockedCreate, mockedJoin, mockedMembers, mockedLeave, mockedJoinRaid].forEach((mock) => mock.mockReset()); });
 
 describe('GuildScreen', () => {
   it('shows the header of a Leader with emblem, level, size and role seal', async () => {
@@ -604,6 +610,30 @@ describe('GuildScreen', () => {
       expect(screen.getByTestId('guild-raid-last-hit')).toHaveTextContent('ÚLTIMO GOLPE−75 · Eldoria · 25 min');
       expect(screen.getByTestId('guild-raid-time-left')).toHaveTextContent('2d 3h restantes');
       expect(screen.getByTestId('guild-raid-image')).toBeTruthy();
+    });
+
+    it('names whose Missão the Raid is', async () => {
+      mockedRaid.mockResolvedValue(raid({ missionOwner: { userId: 'u2', displayName: 'Bruno' } }));
+      await renderGuild();
+      expect(await screen.findByTestId('guild-raid-mission-owner')).toHaveTextContent('Missão de Bruno');
+    });
+
+    it('names the rotation when nobody chose the Missão', async () => {
+      await renderGuild();
+      expect(await screen.findByTestId('guild-raid-mission-owner')).toHaveTextContent('Missão do rodízio');
+    });
+
+    it('shows the Próxima Raid card, with the choice button only for the Leader', async () => {
+      await renderGuild();
+      expect(await screen.findByTestId('next-raid-rotation')).toBeTruthy();
+      expect(screen.getByTestId('next-raid-choose')).toBeTruthy();
+    });
+
+    it('hides the choice button from a member', async () => {
+      mockedMine.mockResolvedValue({ ...mine, role: 'member' });
+      await renderGuild();
+      expect(await screen.findByTestId('next-raid-rotation')).toBeTruthy();
+      expect(screen.queryByTestId('next-raid-choose')).toBeNull();
     });
 
     it('draws the week of the Sequência and the streak of the Guild', async () => {

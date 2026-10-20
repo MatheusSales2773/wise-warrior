@@ -130,6 +130,7 @@ describe('Raid da semana against MySQL', () => {
         description: expect.any(String),
         imageUrl: null,
       },
+      missionOwner: null,
       rewards: [{ itemId: 'c05e71c0-0000-4000-8000-000000000009', name: 'Marcador do Grimório', category: 'badge' }],
       coins: 50,
       party: [], // nobody has confirmed participation yet

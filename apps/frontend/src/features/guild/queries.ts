@@ -1,5 +1,5 @@
 import { infiniteQueryOptions, keepPreviousData, queryOptions } from '@tanstack/react-query';
-import { getActiveRaid, getMyGuild, getRaidRanking, listGuildMembers, listGuilds, listPastRaids } from './api';
+import { getActiveRaid, getMyGuild, getNextMission, listAvailableMissions, getRaidRanking, listGuildMembers, listGuilds, listPastRaids } from './api';
 
 export const guildKeys = {
   all: ['guild'] as const,
@@ -10,6 +10,8 @@ export const guildKeys = {
   raid: (guildId: string) => ['guild', 'raid', guildId] as const,
   // Nested under the Raid key: invalidating the Raid (as the Forja does after a guild session) refreshes the ranking too.
   raidRanking: (guildId: string, raidId: string) => ['guild', 'raid', guildId, 'ranking', raidId] as const,
+  nextMission: (guildId: string) => ['guild', 'next-mission', guildId] as const,
+  availableMissions: (guildId: string) => ['guild', 'next-mission', guildId, 'available'] as const,
   pastRaids: (guildId: string) => ['guild', 'raid', guildId, 'past'] as const,
 };
 
@@ -62,5 +64,20 @@ export const pastRaidsQueryOptions = (guildId: string) => infiniteQueryOptions({
   initialPageParam: null as string | null,
   getNextPageParam: (lastPage) => lastPage.nextCursor,
   staleTime: 60_000,
+  retry: false,
+});
+
+export const nextMissionQueryOptions = (guildId: string) => queryOptions({
+  queryKey: guildKeys.nextMission(guildId),
+  queryFn: ({ signal }) => getNextMission(guildId, { signal }),
+  staleTime: 30_000,
+  retry: false,
+});
+
+export const availableMissionsQueryOptions = (guildId: string) => queryOptions({
+  queryKey: guildKeys.availableMissions(guildId),
+  queryFn: ({ signal }) => listAvailableMissions(guildId, { signal }),
+  // The owners follow the members and what they buy: always fresh when the drawer opens.
+  staleTime: 0,
   retry: false,
 });

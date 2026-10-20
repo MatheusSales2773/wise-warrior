@@ -187,3 +187,21 @@ export function chatErrorMessage(error: ChatAckError): string {
     default: return 'Não foi possível enviar a mensagem agora. Tente novamente.';
   }
 }
+
+/** "Missão de <nome>" for a chosen Missão, "Missão do rodízio" when nobody chose or the Missão is free. */
+export function formatMissionOwner(owner: { displayName: string } | null | undefined): string {
+  return owner ? `Missão de ${owner.displayName}` : 'Missão do rodízio';
+}
+
+export const NEXT_MISSION_LOCK_NOTICE = 'A escolha trava quando a próxima Raid começa, na segunda-feira. Até lá você pode trocar.';
+
+export const NEXT_MISSION_ROTATION_NOTICE = 'Ninguém escolheu a Missão: vale o rodízio da próxima semana.';
+
+export function chooseNextMissionErrorMessage(error: unknown): string {
+  if (isApiError(error)) {
+    if (error.status === 403) return 'Apenas o Líder escolhe a Missão da próxima Raid.';
+    if (error.status === 404 || error.status === 422) return 'Essa Missão não está mais disponível na guilda. Atualizamos a lista.';
+    if (error.category === 'network') return 'Não foi possível salvar a escolha. Verifique sua conexão e tente novamente.';
+  }
+  return 'Não foi possível salvar a escolha agora. Tente novamente.';
+}

@@ -34,6 +34,10 @@ export interface HttpClientWithDelete extends HttpClientWithPatch {
   delete<T = unknown>(url: string, options?: HttpRequestOptions): Promise<HttpResponse<T>>;
 }
 
+export interface HttpClientWithPut extends HttpClientWithDelete {
+  put<T = unknown>(url: string, body?: unknown, options?: HttpRequestOptions): Promise<HttpResponse<T>>;
+}
+
 export type HttpClientConfig = {
   baseURL?: string;
   bearer?: () => string | null;
@@ -231,6 +235,7 @@ async function replayOnce<T>(
 }
 
 /** Restaura a Session uma única vez antes de repetir uma request protegida rejeitada. */
+export function createSessionAwareHttpClient(transport: HttpClientWithPut): HttpClientWithPut;
 export function createSessionAwareHttpClient(transport: HttpClientWithDelete): HttpClientWithDelete;
 export function createSessionAwareHttpClient(transport: HttpClientWithPatch): HttpClientWithPatch;
 export function createSessionAwareHttpClient(transport: HttpClient): HttpClient;
@@ -281,6 +286,7 @@ export function createSessionAwareHttpClient(transport: HttpClient): HttpClient 
 
   const patchTransport = (transport as Partial<HttpClientWithPatch>).patch;
   const deleteTransport = (transport as Partial<HttpClientWithDelete>).delete;
+  const putTransport = (transport as Partial<HttpClientWithPut>).put;
   return {
     get: <T>(url: string, options?: HttpRequestOptions) =>
       request(url, (requestOptions) => transport.get<T>(url, requestOptions), options),
@@ -293,6 +299,10 @@ export function createSessionAwareHttpClient(transport: HttpClient): HttpClient 
     ...(deleteTransport ? {
       delete: <T>(url: string, options?: HttpRequestOptions) =>
         request<T>(url, (requestOptions) => (transport as HttpClientWithDelete).delete<T>(url, requestOptions), options),
+    } : {}),
+    ...(putTransport ? {
+      put: <T>(url: string, body?: unknown, options?: HttpRequestOptions) =>
+        request<T>(url, (requestOptions) => (transport as HttpClientWithPut).put<T>(url, body, requestOptions), options),
     } : {}),
   };
 }
@@ -321,7 +331,7 @@ export function applyAuthorizationHeader(
  * access token em memória. Erros Axios são reduzidos à taxonomia pública antes
  * de atravessarem esta fronteira.
  */
-export function createHttpClient(config: HttpClientConfig = {}): HttpClientWithDelete {
+export function createHttpClient(config: HttpClientConfig = {}): HttpClientWithPut {
   const instance = create(resolveAxiosConfig(config));
 
   const bearer = config.bearer;
@@ -363,6 +373,16 @@ export function createHttpClient(config: HttpClientConfig = {}): HttpClientWithD
         throw toApiError(error);
       }
     },
+    async put<T>(url: string, body?: unknown, options?: HttpRequestOptions): Promise<HttpResponse<T>> {
+      try {
+        const response = options?.signal
+          ? await instance.put<T>(url, body, { signal: options.signal, headers: options.headers })
+          : await instance.put<T>(url, body, { headers: options?.headers });
+        return { status: response.status, data: response.data };
+      } catch (error) {
+        throw toApiError(error);
+      }
+    },
     async delete<T>(url: string, options?: HttpRequestOptions): Promise<HttpResponse<T>> {
       try {
         const response = options?.signal
@@ -376,7 +396,7 @@ export function createHttpClient(config: HttpClientConfig = {}): HttpClientWithD
   };
 }
 
-let authenticatedClient: HttpClientWithDelete | null = null;
+let authenticatedClient: HttpClientWithPut | null = null;
 let bareClient: HttpClient | null = null;
 
 export function shouldSendBrowserCredentials(platform = Platform.OS): boolean {
@@ -384,7 +404,7 @@ export function shouldSendBrowserCredentials(platform = Platform.OS): boolean {
 }
 
 /** Cliente autenticado para rotas de produto; usa somente o bearer em memória. */
-export function getAuthenticatedHttpClient(): HttpClientWithDelete {
+export function getAuthenticatedHttpClient(): HttpClientWithPut {
   if (!authenticatedClient) {
     authenticatedClient = createSessionAwareHttpClient(
       createHttpClient({ bearer: getAccessToken, withCredentials: false }),
