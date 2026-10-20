@@ -122,7 +122,7 @@ function RaidSection({ compact, guildId, role }: { compact: boolean; guildId: st
   return (
     <View style={styles.stack}>
       <RaidCard desktop={!compact} guildId={guildId} />
-      <NextRaidCard desktop={!compact} guildId={guildId} role={role} />
+      <NextRaidCard desktop={!compact} guildId={guildId} raidId={raid.data?.id} role={role} />
       {raid.data ? <RankingCard compact={compact} guildId={guildId} key={raid.data.id} raidId={raid.data.id} /> : null}
     </View>
   );

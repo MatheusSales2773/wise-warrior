@@ -1,7 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { FeedbackMessage, WiseButton, WiseText, theme } from '@/design-system';
+import { isApiError } from '@/core/api/api-error';
 import { RadioMark } from '@/features/character/character-art';
 import { CharacterModal, usePanelStyle } from '@/features/character/equipment-drawer';
 import { SectionHeader, useFocusRing } from '@/features/character/character-parts';
@@ -16,15 +17,19 @@ import { availableMissionsQueryOptions, guildKeys, nextMissionQueryOptions } fro
 /** One row of the drawer: a Missão and whose it is. A priced Missão appears once per owner. */
 type MissionOption = { key: string; mission: AvailableMission; owner: MissionOwner | null };
 
+/** A rotation Missão has no owner, so its key is the Missão id alone. */
+function keyOf(missionId: string, owner: MissionOwner | null): string {
+  return owner ? `${missionId}:${owner.userId}` : missionId;
+}
+
 function optionsOf(missions: readonly AvailableMission[]): MissionOption[] {
   return missions.flatMap((mission): MissionOption[] => mission.owners.length
-    ? mission.owners.map((owner) => ({ key: `${mission.id}:${owner.userId}`, mission, owner }))
-    : [{ key: mission.id, mission, owner: null }]);
+    ? mission.owners.map((owner) => ({ key: keyOf(mission.id, owner), mission, owner }))
+    : [{ key: keyOf(mission.id, null), mission, owner: null }]);
 }
 
 function optionKeyOf(choice: NextMissionChoice | null | undefined): string | null {
-  if (!choice) return null;
-  return choice.owner ? `${choice.mission.id}:${choice.owner.userId}` : choice.mission.id;
+  return choice ? keyOf(choice.mission.id, choice.owner) : null;
 }
 
 /** "Missão de <nome>" / "Missão do rodízio", the seal of the Raid card and of the Raid screen. */
@@ -65,14 +70,15 @@ function ChoicePanel({ desktop, guildId, onClose }: { desktop: boolean; guildId:
   const { focusProps, focusStyle } = useFocusRing();
 
   const save = useMutation({
-    mutationFn: (option: MissionOption) => chooseNextMission(guildId, option.owner ? { missionId: option.mission.id, ownerId: option.owner.userId } : { missionId: option.mission.id }),
+    mutationFn: (option: MissionOption) => chooseNextMission(guildId, { missionId: option.mission.id, ownerId: option.owner?.userId }),
     onSuccess: (choice) => {
       queryClient.setQueryData(guildKeys.nextMission(guildId), choice);
       onClose();
     },
-    // The owner may have left or sold nothing anymore: show what is available now.
+    // The owner may have left the Guild: reload what is available and drop the selection that may be gone.
     onError: (error) => {
-      if ((error as { status?: number }).status === 422 || (error as { status?: number }).status === 404) {
+      if (isApiError(error) && (error.status === 422 || error.status === 404)) {
+        setPicked(null);
         void queryClient.invalidateQueries({ queryKey: guildKeys.availableMissions(guildId) });
       }
     },
@@ -101,6 +107,7 @@ function ChoicePanel({ desktop, guildId, onClose }: { desktop: boolean; guildId:
       </Pressable>
     </View>
     <ScrollView accessibilityLabel="Missões da guilda" accessibilityRole="radiogroup" contentContainerStyle={styles.options} style={styles.scroll}>{list}</ScrollView>
+    {current.isSuccess && !current.data ? <Text style={styles.note} testID="mission-choice-rotation-notice">{NEXT_MISSION_ROTATION_NOTICE}</Text> : null}
     <Text style={styles.note} testID="mission-choice-lock-notice">{NEXT_MISSION_LOCK_NOTICE}</Text>
     {save.isError ? <FeedbackMessage message={chooseNextMissionErrorMessage(save.error)} testID="mission-choice-error" title="Escolha não salva" variant="error" /> : null}
     <View style={styles.footer}>
@@ -113,9 +120,17 @@ function ChoicePanel({ desktop, guildId, onClose }: { desktop: boolean; guildId:
 }
 
 /** Card "Próxima Raid" (Figma 06c): the chosen Missão (or the rotation) for everyone, and "Escolher missão" for the Leader. */
-export function NextRaidCard({ desktop, guildId, role }: { desktop: boolean; guildId: string; role: GuildRole }) {
+export function NextRaidCard({ desktop, guildId, raidId, role }: { desktop: boolean; guildId: string; raidId?: string; role: GuildRole }) {
+  const queryClient = useQueryClient();
   const next = useQuery(nextMissionQueryOptions(guildId));
   const [open, setOpen] = useState(false);
+  // A new Raid consumes the choice: the card must not keep showing it as the next one.
+  const seenRaid = useRef(raidId);
+  useEffect(() => {
+    if (raidId === seenRaid.current) return;
+    seenRaid.current = raidId;
+    void queryClient.invalidateQueries({ queryKey: guildKeys.nextMission(guildId) });
+  }, [guildId, queryClient, raidId]);
   const leader = role === 'leader';
 
   const body = (() => {

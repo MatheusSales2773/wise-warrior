@@ -32,9 +32,10 @@ const choice = (mission: AvailableMission, owner: { userId: string; displayName:
   chosenAt: '2026-10-07T12:00:00Z',
 });
 
+const client = () => new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
+
 async function renderCard(role: 'leader' | 'member', desktop = true) {
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
-  return render(<QueryClientProvider client={client}><NextRaidCard desktop={desktop} guildId="g1" role={role} /></QueryClientProvider>);
+  return render(<QueryClientProvider client={client()}><NextRaidCard desktop={desktop} guildId="g1" raidId="r1" role={role} /></QueryClientProvider>);
 }
 
 beforeEach(() => {
@@ -79,7 +80,27 @@ describe('Próxima Raid (escolha da Missão)', () => {
     expect(await screen.findByTestId('next-raid-rotation')).toBeTruthy();
   });
 
+  it('reloads the choice when a new Raid starts, since it consumed the previous one', async () => {
+    mockedNext.mockResolvedValue(choice(pricedMission, pricedMission.owners[0] ?? null));
+    const queryClient = client();
+    const tree = (raidId: string) => <QueryClientProvider client={queryClient}><NextRaidCard desktop guildId="g1" raidId={raidId} role="member" /></QueryClientProvider>;
+    const view = await render(tree('r1'));
+    expect(await screen.findByTestId('next-raid-owner')).toHaveTextContent('Missão de Bruno');
+
+    mockedNext.mockResolvedValue(null);
+    await view.rerender(tree('r2'));
+
+    expect(await screen.findByTestId('next-raid-rotation')).toBeTruthy();
+  });
+
   describe('gaveta do Líder', () => {
+    it('tells that the rotation applies when nobody chose', async () => {
+      await renderCard('leader');
+      await fireEvent.press(await screen.findByTestId('next-raid-choose'));
+
+      expect(await screen.findByTestId('mission-choice-rotation-notice')).toHaveTextContent(/vale o rodízio/);
+    });
+
     it('lists every Missão with its owner or "rodízio", and warns that the choice locks when the Raid starts', async () => {
       await renderCard('leader');
       await fireEvent.press(await screen.findByTestId('next-raid-choose'));
@@ -126,6 +147,9 @@ describe('Próxima Raid (escolha da Missão)', () => {
 
       expect(await screen.findByTestId('mission-choice-error')).toBeTruthy();
       expect(screen.getByTestId('mission-choice-drawer')).toBeTruthy();
+      // The refused selection is dropped and the list is reloaded.
+      expect(screen.getByText('Confirmar escolha')).toBeDisabled();
+      await waitFor(() => expect(mockedAvailable).toHaveBeenCalledTimes(2));
     });
 
     it('starts with the current choice selected', async () => {

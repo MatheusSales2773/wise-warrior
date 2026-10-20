@@ -193,7 +193,7 @@ export function formatMissionOwner(owner: { displayName: string } | null | undef
   return owner ? `Missão de ${owner.displayName}` : 'Missão do rodízio';
 }
 
-export const NEXT_MISSION_LOCK_NOTICE = 'A escolha trava quando a próxima Raid começa, na segunda-feira. Até lá você pode trocar.';
+export const NEXT_MISSION_LOCK_NOTICE = 'A escolha trava quando a próxima Raid começa. Até lá você pode trocar.';
 
 export const NEXT_MISSION_ROTATION_NOTICE = 'Ninguém escolheu a Missão: vale o rodízio da próxima semana.';
 
