@@ -16,7 +16,7 @@ test.describe('Guilda web', () => {
     // 1. Criar a Guild: a Raid da semana nasce com ela.
     await sidebar.getByRole('link', { name: 'Guilda' }).click();
     await page.getByLabel('Nome da guilda').fill(`Ordem E2E ${Date.now()}`);
-    await page.getByRole('button', { name: 'Criar guilda' }).click();
+    await page.getByRole('button', { name: 'Fundar guilda' }).click();
     await expect(page.getByTestId('guild-mine')).toBeVisible();
 
     // 2. Ver a Raid: sem Participantes, o ranking convida a participar.

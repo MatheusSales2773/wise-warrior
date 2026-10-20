@@ -15,6 +15,7 @@ export const wiseIconNames = [
   'ellipsis-horizontal-circle-outline',
   'ellipsis-horizontal-circle',
   'flame',
+  'chatbubble-ellipses-outline',
   'sparkles',
   'swap-horizontal-outline',
   'lock-closed',
