@@ -59,6 +59,7 @@ function MembersCard({ guildId, memberCount, onlineUserIds }: { guildId: string;
         <WiseButton label="Tentar novamente" loading={members.isRefetching} onPress={() => void members.refetch()} variant="secondary" />
       </View>;
     }
+    if (!items.length) return <WiseText color="textSecondary" testID="guild-members-empty" variant="body">Nenhum membro para mostrar ainda.</WiseText>;
     return <>
       {members.isError && !members.isFetchNextPageError ? <FeedbackMessage message="Não foi possível atualizar os membros." testID="guild-members-stale" title="Dados desatualizados" variant="error" /> : null}
       {items.map((member) => <MemberItem key={member.userId} member={member} online={onlineUserIds ? onlineUserIds.has(member.userId) : null} />)}

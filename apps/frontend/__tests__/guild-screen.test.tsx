@@ -161,6 +161,27 @@ describe('GuildScreen', () => {
     expect(screen.getByTestId('guild-member-u-Ana')).toHaveProp('accessibilityLabel', expect.stringContaining('Líder'));
   });
 
+  it('shows no Presença, no online count and only the level while the connection is unknown', async () => {
+    mockedMine.mockResolvedValue(mine);
+    mockedMembers.mockResolvedValue(members(['Ana']));
+    await renderGuild();
+    await openTab('members');
+
+    expect(await screen.findByText('Nv 2')).toBeTruthy();
+    expect(screen.queryByTestId('guild-member-online-u-Ana')).toBeNull();
+    expect(screen.queryByTestId('guild-member-offline-u-Ana')).toBeNull();
+    expect(screen.getByTestId('guild-members-count')).toHaveTextContent(/^3$/);
+  });
+
+  it('shows an empty state when the guild has no members to list', async () => {
+    mockedMine.mockResolvedValue(mine);
+    mockedMembers.mockResolvedValue({ items: [], nextCursor: null });
+    await renderGuild();
+    await openTab('members');
+
+    expect(await screen.findByTestId('guild-members-empty')).toBeTruthy();
+  });
+
   it('keeps the guild visible when the members cannot be loaded', async () => {
     mockedMine.mockResolvedValue(mine);
     mockedMembers.mockRejectedValue(new ApiError('server', { status: 500 }));
