@@ -65,4 +65,11 @@ describe('WiseField', () => {
       Object.defineProperty(Platform, 'OS', { configurable: true, value: platform });
     }
   });
+
+  it('styles the help text as a small tertiary mono caption (Figma 06d)', async () => {
+    await render(<WiseField label="Nome" helpText="3 a 60 caracteres" />);
+    expect(StyleSheet.flatten(screen.getByText('3 a 60 caracteres').props.style)).toMatchObject({
+      fontFamily: 'JetBrainsMono-Medium', fontSize: 10, color: theme.color.textTertiary,
+    });
+  });
 });
