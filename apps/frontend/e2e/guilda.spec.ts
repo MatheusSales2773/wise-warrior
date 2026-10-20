@@ -52,8 +52,8 @@ test.describe('Guilda web', () => {
     await expect(rows).toHaveCount(1);
     await expect(rows.first()).toContainText('1º');
     await expect(rows.first()).toContainText('Ana E2E (você)');
-    await expect(rows.first()).toContainText(`${stopped.xpAwarded} XP`);
-    await expect(rows.first()).toHaveAttribute('aria-label', new RegExp(`^Posição 1: Ana E2E \\(você\\), nível \\d+, Aprendiz, ${stopped.xpAwarded} XP$`));
+    await expect(rows.first()).toContainText(/\d+,\dh/);
+    await expect(rows.first()).toHaveAttribute('aria-label', /^Posição 1: Ana E2E \(você\), nível \d+, Aprendiz, \d+,\dh de foco$/);
 
     // 6. A batalha (Figma 06b): o golpe aparece em horas de foco, e "Atacar com foco" abre a Forja em modo Guilda.
     await page.getByTestId('guild-raid-battle').click();

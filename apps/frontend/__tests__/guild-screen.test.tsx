@@ -585,31 +585,66 @@ describe('Ranking interno', () => {
     mockedMembers.mockResolvedValue(members(['Ana']));
   });
 
-  it('shows position, name, level, Título and Contribution of each Participante, zero-XP rows last', async () => {
+  it('shows position, name, level, Título and Contribution in focus hours, zero rows last', async () => {
     mockedRanking.mockResolvedValue(rankingPage([
-      row(1, 'Bruno', 300, { title: 'Aprendiz', level: 4 }),
-      row(2, 'Ana', 300),
+      row(1, 'Bruno', 14_520, { title: 'Aprendiz', level: 4 }),
+      row(2, 'Ana', 14_520),
       row(3, 'Dani', 0),
     ]));
     await renderGuild();
 
     const first = await screen.findByTestId('guild-ranking-item-u-Bruno');
     expect(within(first).getByText('1º')).toBeTruthy();
-    expect(within(first).getByText('Nível 4 · Aprendiz')).toBeTruthy();
-    expect(within(first).getByText('300 XP')).toBeTruthy();
-    expect(within(screen.getByTestId('guild-ranking-item-u-Dani')).getByText('0 XP')).toBeTruthy();
+    expect(within(first).getByText('Nv 4 · Aprendiz')).toBeTruthy();
+    expect(within(first).getByText('24,2h')).toBeTruthy();
+    expect(within(screen.getByTestId('guild-ranking-item-u-Dani')).getByText('0,0h')).toBeTruthy();
     expect(mockedRanking).toHaveBeenCalledWith('r1', expect.objectContaining({ cursor: null }));
   });
 
-  it('marks the own row with a label and a screen-reader sentence, not only with color', async () => {
-    mockedRanking.mockResolvedValue(rankingPage([row(1, 'Bruno', 300), row(2, 'Ana', 120, { isMe: true, title: 'Aprendiz' })]));
+  it('highlights the own row with a border and a label, not only with color', async () => {
+    mockedRanking.mockResolvedValue(rankingPage([row(1, 'Bruno', 6_000), row(2, 'Ana', 1_200, { isMe: true, title: 'Aprendiz' })]));
     await renderGuild();
 
     const mineRow = await screen.findByTestId('guild-ranking-item-u-Ana');
-    expect(within(mineRow).getByText('Ana (você)')).toBeTruthy();
-    expect(mineRow.props.accessibilityLabel).toBe('Posição 2: Ana (você), nível 3, Aprendiz, 120 XP');
-    expect(screen.getByTestId('guild-ranking-item-u-Bruno').props.accessibilityLabel).toBe('Posição 1: Bruno, nível 3, 300 XP');
+    expect(within(mineRow).getByText('Você')).toBeTruthy();
+    expect(mineRow.props.accessibilityLabel).toBe('Posição 2: Ana (você), nível 3, Aprendiz, 2,0h de foco');
+    expect(screen.getByTestId('guild-ranking-item-u-Bruno').props.accessibilityLabel).toBe('Posição 1: Bruno, nível 3, 10,0h de foco');
     expect(StyleSheet.flatten(mineRow.props.style).borderColor).not.toBe('transparent');
+    expect(StyleSheet.flatten(screen.getByTestId('guild-ranking-item-u-Bruno').props.style).borderColor).toBe('transparent');
+  });
+
+  it('names the own row on the desktop and shows five rows with no "Carregar mais"', async () => {
+    Dimensions.set({ window: { width: 1280, height: 800, scale: 1, fontScale: 1 } });
+    mockedRanking.mockResolvedValue(rankingPage(
+      ['Ana', 'Bruno', 'Carla', 'Dani', 'Eva', 'Fábio'].map((name, index) => row(index + 1, name, 6_000 - index * 600, { isMe: name === 'Dani' })),
+      'next',
+    ));
+    await renderGuild();
+
+    await screen.findByTestId('guild-ranking-item-u-Eva');
+    expect(within(screen.getByTestId('guild-ranking-item-u-Dani')).getByText('Dani (você)')).toBeTruthy();
+    expect(screen.queryByTestId('guild-ranking-item-u-Fábio')).toBeNull();
+    expect(screen.queryByTestId('guild-ranking-more')).toBeNull();
+  });
+
+  it('shows four rows on a phone', async () => {
+    mockedRanking.mockResolvedValue(rankingPage(['Ana', 'Bruno', 'Carla', 'Dani', 'Eva'].map((name, index) => row(index + 1, name, 6_000 - index * 600))));
+    await renderGuild();
+
+    await screen.findByTestId('guild-ranking-item-u-Dani');
+    expect(screen.queryByTestId('guild-ranking-item-u-Eva')).toBeNull();
+  });
+
+  it('links "Ver todos", with no participant count, to the battle screen', async () => {
+    mockedRanking.mockResolvedValue(rankingPage([row(1, 'Bruno', 300)]));
+    await renderGuild();
+
+    const link = await screen.findByTestId('guild-ranking-all');
+    expect(within(link).getByText('Ver todos')).toBeTruthy();
+    expect(link.props.accessibilityRole).toBe('link');
+    expect(link.props.href).toBe('/guilda/raid');
+    expect(link.props.accessibilityLabel).toBe('Ver todos os participantes do Ranking interno');
+    expect(screen.queryByText(/participantes/)).toBeNull();
   });
 
   it('shows the own place in the Raid block for a Participante', async () => {
@@ -638,17 +673,17 @@ describe('Ranking interno', () => {
     expect(await screen.findByTestId('guild-ranking-item-u-Bruno')).toBeTruthy();
   });
 
-  it('loads more rows with the cursor and keeps the positions of the first page', async () => {
-    mockedRanking.mockResolvedValueOnce(rankingPage([row(1, 'Bruno', 300), row(2, 'Ana', 200)], 'next'));
-    await renderGuild();
-    await screen.findByTestId('guild-ranking-item-u-Ana');
+  it('keeps the last ranking on screen and warns that it is outdated when a refresh fails', async () => {
+    mockedRanking.mockResolvedValue(rankingPage([row(1, 'Bruno', 300)]));
+    const view = await renderGuild();
+    await screen.findByTestId('guild-ranking-item-u-Bruno');
 
-    mockedRanking.mockResolvedValueOnce(rankingPage([row(3, 'Carla', 100)]));
-    await fireEvent.press(screen.getByTestId('guild-ranking-more'));
+    mockedRanking.mockRejectedValue(new ApiError('network', {}));
+    await view.client.refetchQueries({ queryKey: ['guild', 'raid', 'g1', 'ranking', 'r1'] });
 
-    expect(await screen.findByTestId('guild-ranking-item-u-Carla')).toBeTruthy();
-    expect(mockedRanking).toHaveBeenLastCalledWith('r1', expect.objectContaining({ cursor: 'next' }));
-    expect(screen.queryByTestId('guild-ranking-more')).toBeNull();
+    expect(await screen.findByTestId('guild-ranking-stale')).toBeTruthy();
+    expect(screen.getByTestId('guild-ranking-item-u-Bruno')).toBeTruthy();
+    expect(screen.queryByTestId('guild-ranking-error')).toBeNull();
   });
 
   it('refreshes the ranking, but not the Raid, when the user confirms participation', async () => {
