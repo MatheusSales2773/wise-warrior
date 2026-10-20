@@ -4,9 +4,14 @@ import { controlStyles } from '@/design-system/components/control-styles';
 import { FeedbackMessage, WiseButton, WiseCard, WiseField, WiseText, theme } from '@/design-system';
 import { raidHitText, type ChatMessage, type GuildChat } from './guild-chat';
 
-export type GuildTab = 'raid' | 'mural';
+export type GuildTab = 'raid' | 'mural' | 'members' | 'history';
 
-const TABS: { id: GuildTab; label: string }[] = [{ id: 'raid', label: 'Raid' }, { id: 'mural', label: 'Mural' }];
+const TABS: { id: GuildTab; label: string }[] = [
+  { id: 'raid', label: 'Raid' },
+  { id: 'mural', label: 'Mural' },
+  { id: 'members', label: 'Membros' },
+  { id: 'history', label: 'Histórico' },
+];
 
 export function formatOnlineCount(count: number): string {
   return `${count} online`;
@@ -42,7 +47,7 @@ export function OnlineIndicator({ onlineUserIds }: { onlineUserIds: ReadonlySet<
   );
 }
 
-/** Raid and Mural; Missões and Loja come with #148. */
+/** The phone sections of the Guild screen (Figma 06c); the desktop shows them all at once in two columns. */
 export function GuildTabs({ selected, onSelect }: { selected: GuildTab; onSelect: (tab: GuildTab) => void }) {
   return (
     <View accessibilityLabel="Seções da guilda" role="tablist" style={styles.tabs} testID="guild-tabs">
@@ -270,7 +275,7 @@ const styles = StyleSheet.create({
   dot: { width: 8, height: 8, borderRadius: 4, borderWidth: theme.border.standard },
   dotOnline: { backgroundColor: theme.color.feedbackSuccess, borderColor: theme.color.feedbackSuccess },
   dotOffline: { backgroundColor: 'transparent', borderColor: theme.color.textDisabled },
-  tabs: { flexDirection: 'row', gap: theme.space.inlineTight, borderBottomWidth: theme.border.standard, borderBottomColor: theme.color.borderSubtle },
+  tabs: { flexDirection: 'row', flexWrap: 'wrap', gap: theme.space.inlineTight, borderBottomWidth: theme.border.standard, borderBottomColor: theme.color.borderSubtle },
   tab: { paddingVertical: theme.space.inlineTight, paddingHorizontal: theme.space.controlInset, borderBottomWidth: 2, borderBottomColor: 'transparent', marginBottom: -1 },
   // Selected is marked by the underline and the brighter label, never by color alone.
   tabActive: { borderBottomColor: theme.color.accentPrimary },

@@ -16,7 +16,7 @@ test.describe('Mural da Guilda web', () => {
       await ana.getByLabel('Nome da guilda').fill(guildName);
       await ana.getByRole('button', { name: 'Criar guilda' }).click();
       await expect(ana.getByTestId('guild-online-count')).toHaveText('1 online');
-      await ana.getByRole('tab', { name: 'Mural' }).click();
+      // No desktop o Mural fica na coluna lateral, sem abas.
       await expect(ana.getByTestId('guild-mural-empty')).toBeVisible();
 
       // 2. Bruno entra na mesma Guild: o "N online" da Ana sobe sem recarregar.
@@ -29,7 +29,6 @@ test.describe('Mural da Guilda web', () => {
       await expect(ana.getByTestId('guild-online-count')).toHaveText('2 online');
 
       // 3. Bruno escreve no Mural; a mensagem chega na Ana em tempo real.
-      await bruno.getByRole('tab', { name: 'Mural' }).click();
       await bruno.getByLabel('Mensagem para a guilda').fill('Bora estudar, Ana?');
       await bruno.getByRole('button', { name: 'Enviar' }).click();
       await expect(bruno.getByTestId('guild-mural-messages')).toContainText('Bora estudar, Ana?');
@@ -42,6 +41,43 @@ test.describe('Mural da Guilda web', () => {
     } finally {
       await anaContext.close();
       await brunoContext.close().catch(() => undefined);
+    }
+  });
+
+  test('no mobile: navega pelas quatro abas e o Mural segue conectado', async ({ browser }) => {
+    const context = await browser.newContext();
+    const page = await context.newPage();
+    try {
+      // O cadastro espera a barra lateral do desktop; a tela encolhe para o celular depois.
+      await registerThroughUi(page, undefined, 'Ana Mobile');
+      await page.setViewportSize({ width: 390, height: 844 });
+      await page.getByRole('link', { name: 'Guilda' }).first().click();
+      await page.getByLabel('Nome da guilda').fill(`Abas E2E ${Date.now()}`);
+      await page.getByRole('button', { name: 'Criar guilda' }).click();
+      await expect(page.getByTestId('guild-online-count')).toHaveText('1 online');
+
+      await expect(page.getByRole('tab', { name: 'Raid' })).toHaveAttribute('aria-selected', 'true');
+      await expect(page.getByTestId('guild-raid')).toBeVisible();
+
+      await page.getByRole('tab', { name: 'Mural' }).click();
+      await expect(page.getByTestId('guild-mural-empty')).toBeVisible();
+      await expect(page.getByTestId('guild-raid')).toHaveCount(0);
+      await page.getByLabel('Mensagem para a guilda').fill('Olá do celular');
+      await page.getByRole('button', { name: 'Enviar' }).click();
+      await expect(page.getByTestId('guild-mural-messages')).toContainText('Olá do celular');
+
+      await page.getByRole('tab', { name: 'Membros' }).click();
+      await expect(page.getByTestId('guild-members')).toBeVisible();
+      await page.getByRole('tab', { name: 'Histórico' }).click();
+      await expect(page.getByTestId('guild-past-raids')).toBeVisible();
+
+      // Voltar ao Mural: a conexão continua, sem tela de reconexão.
+      await page.getByRole('tab', { name: 'Mural' }).click();
+      await expect(page.getByTestId('guild-mural-messages')).toContainText('Olá do celular');
+      await expect(page.getByTestId('guild-mural-reconnecting')).toHaveCount(0);
+      await expect(page.getByTestId('guild-online-count')).toHaveText('1 online');
+    } finally {
+      await context.close();
     }
   });
 });

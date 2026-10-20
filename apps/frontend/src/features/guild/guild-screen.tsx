@@ -479,25 +479,33 @@ function MemberGuild({ mine, desktop, onLeft, onConflict }: { mine: MyGuild; des
   const { guild, role } = mine;
   const profile = useQuery(profileQueryOptions());
   const chat = useGuildChat(guild.id, profile.data?.id);
+  // The tab is screen state, not a route: the Mural connection above lives in this component and is never remounted.
   const [tab, setTab] = useState<GuildTab>('raid');
-  const header = <GuildCard mine={mine} onlineUserIds={chat.onlineUserIds} />;
-  const tabs = <GuildTabs onSelect={setTab} selected={tab} />;
-  const content = tab === 'raid' ? <RaidSection guildId={guild.id} /> : <MuralPanel chat={chat} />;
+  const header = (
+    <View style={[styles.stack, desktop && styles.headerRow]} testID="guild-header">
+      <View style={desktop ? styles.column : undefined}><GuildCard mine={mine} onlineUserIds={chat.onlineUserIds} /></View>
+      <View testID="guild-leave-section">
+        <LeaveGuildAction guildId={guild.id} isLeader={role === 'leader'} onConflict={onConflict} onLeft={onLeft} />
+      </View>
+    </View>
+  );
+  const raid = <RaidSection guildId={guild.id} />;
+  const mural = <MuralPanel chat={chat} />;
   const members = <MembersCard guildId={guild.id} onlineUserIds={chat.onlineUserIds} />;
   const pastRaids = <PastRaidsCard guildId={guild.id} />;
   const announcer = <MuralAnnouncer arrival={chat.arrival} />;
-  const leave = (
-    <View testID="guild-leave-section">
-      <LeaveGuildAction guildId={guild.id} isLeader={role === 'leader'} onConflict={onConflict} onLeft={onLeft} />
-    </View>
-  );
-  return desktop
-    ? <View style={styles.desktopGrid} testID="guild-layout-desktop">
-      <View style={[styles.column, styles.stack]} testID="guild-column-main">{header}{tabs}{content}</View>
-      <View style={[styles.column, styles.stack]} testID="guild-column-side">{pastRaids}{members}{leave}</View>
+  if (desktop) {
+    return <View style={styles.stack} testID="guild-layout-desktop">
+      {header}
+      <View style={styles.desktopGrid}>
+        <View style={[styles.columnMain, styles.stack]} testID="guild-column-main">{raid}{pastRaids}</View>
+        <View style={[styles.columnSide, styles.stack]} testID="guild-column-side">{mural}{members}</View>
+      </View>
       {announcer}
-    </View>
-    : <View style={styles.stack} testID="guild-layout-stacked">{header}{tabs}{content}{pastRaids}{members}{leave}{announcer}</View>;
+    </View>;
+  }
+  const content = { raid, mural, members, history: pastRaids }[tab];
+  return <View style={styles.stack} testID="guild-layout-tabs">{header}<GuildTabs onSelect={setTab} selected={tab} />{content}{announcer}</View>;
 }
 
 export function GuildScreen() {
@@ -548,8 +556,12 @@ export function GuildScreen() {
 const styles = StyleSheet.create({
   stack: { gap: theme.space.stackDefault },
   grid: { gap: theme.space.stackDefault },
-  desktopGrid: { flexDirection: 'row', alignItems: 'flex-start' },
+  desktopGrid: { flexDirection: 'row', alignItems: 'flex-start', gap: theme.space.stackDefault },
   column: { flex: 1 },
+  // Figma 06c desktop: a 680 px main column and a 392 px side column.
+  columnMain: { flex: 680 },
+  columnSide: { flex: 392 },
+  headerRow: { flexDirection: 'row', alignItems: 'flex-start' },
   raidImage: { height: 160, overflow: 'hidden', borderRadius: theme.radius.card, backgroundColor: theme.color.surfaceInset },
   rankingItem: { flexDirection: 'row', alignItems: 'center', gap: theme.space.stackTight, paddingVertical: theme.space.inlineTight, paddingHorizontal: theme.space.inlineTight, borderRadius: theme.radius.control, borderWidth: theme.border.standard, borderColor: 'transparent' },
   // The own row is marked by a border and a "(você)" label as well as by the fill, never by color alone.
