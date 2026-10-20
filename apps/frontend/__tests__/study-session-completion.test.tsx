@@ -1,14 +1,24 @@
 import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { StudySessionScreen } from '@/features/study-session/study-session-screen';
+import { StudySessionHeartbeatRuntime } from '@/features/study-session/study-session-heartbeat-runtime';
 import {
   completeStudySession,
   getActiveStudySession,
-  type StudySessionSnapshot,
+  type StudySessionTransitionResult,
 } from '@/features/study-session/api';
 import { clearCompletionIntent } from '@/features/study-session/completion-intent';
 import { useStudySessionAppActive } from '@/features/study-session/use-study-session-app-active';
 import { dashboardKeys } from '@/features/dashboard/queries';
+
+// Without a Guild the Forja offers only solo sessions.
+// The day history and the week chart have their own tests (forge-history.test.tsx).
+jest.mock('@/features/study-session/forge-history', () => ({ ForgeHistory: () => null }));
+jest.mock('@/features/guild/api', () => ({
+  getMyGuild: jest.fn(async () => null),
+  getActiveRaid: jest.fn(async () => null),
+  joinRaid: jest.fn(),
+}));
 
 jest.mock('@/features/study-session/api', () => ({
   STUDY_SESSION_PRESETS: [900, 1500, 3000],
@@ -32,16 +42,16 @@ const appActive = useStudySessionAppActive as jest.MockedFunction<typeof useStud
 let mockedNow: number;
 let studySessionTimerTick: (() => void) | undefined;
 const queryClients: QueryClient[] = [];
-const snapshot: StudySessionSnapshot = {
-  id: 'study-1', mode: 'solo', subject: null, state: 'running', plannedDurationSeconds: 1500,
+const snapshot: StudySessionTransitionResult = {
+  id: 'study-1', mode: 'solo', raidId: null, subject: null, state: 'running', plannedDurationSeconds: 1500,
   startedAt: '2026-09-22T12:00:00.000Z', runDeadlineAt: '2026-09-22T12:25:00.000Z',
   pausedAt: null, pausedTotalSeconds: 0, durationValidSeconds: 0, remainingSeconds: 1500,
   serverNow: '2026-09-22T12:00:00.000Z', version: 1, endedAt: null, xpAwarded: 0,
-  terminalReason: null, discardedReason: null, canControl: true,
+  terminalReason: null, discardedReason: null, canControl: true, raidContribution: null,
   receivedAtMs: new Date('2026-09-22T12:00:00.000Z').getTime(),
 };
 
-function atZero(): StudySessionSnapshot {
+function atZero(): StudySessionTransitionResult {
   return {
     ...snapshot,
     remainingSeconds: 0,
@@ -51,7 +61,7 @@ function atZero(): StudySessionSnapshot {
   };
 }
 
-function completed(base: StudySessionSnapshot): StudySessionSnapshot {
+function completed(base: StudySessionTransitionResult): StudySessionTransitionResult {
   return {
     ...base,
     state: 'completed',
@@ -115,7 +125,7 @@ afterEach(() => {
 
 it('sends one completion at zero, blocks controls, and displays only the confirmed result', async () => {
   const zeroSnapshot = atZero();
-  let resolveCompletion!: (result: StudySessionSnapshot) => void;
+  let resolveCompletion!: (result: StudySessionTransitionResult) => void;
   getActive.mockResolvedValue(zeroSnapshot);
   complete.mockImplementationOnce(() => new Promise((resolve) => { resolveCompletion = resolve; }));
   const { view, client } = await renderStudySession();
@@ -156,7 +166,7 @@ it('retries a lost response with the same key', async () => {
 
 it('waits for a fresh zero projection after an early conflict and preserves the original key', async () => {
   const zeroSnapshot = atZero();
-  const refreshedSnapshot: StudySessionSnapshot = {
+  const refreshedSnapshot: StudySessionTransitionResult = {
     ...zeroSnapshot,
     remainingSeconds: 12,
     runDeadlineAt: new Date(mockedNow + 12_000).toISOString(),
@@ -185,7 +195,7 @@ it('waits for a fresh zero projection after an early conflict and preserves the 
 
 it('reuses the waiting intent after a failed reconciliation and a successful manual refresh', async () => {
   const zeroSnapshot = atZero();
-  const refreshedSnapshot: StudySessionSnapshot = {
+  const refreshedSnapshot: StudySessionTransitionResult = {
     ...zeroSnapshot,
     remainingSeconds: 12,
     runDeadlineAt: new Date(mockedNow + 12_000).toISOString(),
@@ -237,9 +247,51 @@ it('does not auto-complete in the background and reconciles on return', async ()
   view.unmount();
 });
 
+it('shows the result the server completed on read when the device returns after the deadline', async () => {
+  getActive.mockResolvedValueOnce(snapshot);
+  const { view, client, setShowScreen } = await renderStudySession();
+  await view.findByTestId('study-session-active');
+
+  appActive.mockReturnValue(false);
+  await act(async () => setShowScreen(true));
+  mockedNow = new Date(snapshot.runDeadlineAt!).getTime() + 5 * 60 * 1000;
+  getActive.mockResolvedValue(completed(snapshot));
+  appActive.mockReturnValue(true);
+  await act(async () => setShowScreen(true));
+
+  await view.findByText('Sessão concluída');
+  expect(view.getByText('XP confirmado: 250')).toBeTruthy();
+  expect(complete).not.toHaveBeenCalled();
+  // The read completed the focus here: the result takes the place of the remote-end warning.
+  expect(view.queryByTestId('study-session-remote-end')).toBeNull();
+  expect(client.getQueryData(['study-session', 'active'])).toBeNull();
+  view.unmount();
+});
+
+it('keeps the server result read by the app-wide runtime until the screen shows it', async () => {
+  getActive.mockResolvedValueOnce(completed(atZero())).mockResolvedValue(null);
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
+  queryClients.push(client);
+  const tree = (showScreen: boolean) => (
+    <QueryClientProvider client={client}>
+      <StudySessionHeartbeatRuntime />
+      {showScreen ? <StudySessionScreen /> : null}
+    </QueryClientProvider>
+  );
+  const view = await render(tree(false));
+  await waitFor(() => expect(getActive).toHaveBeenCalledTimes(1));
+
+  await act(async () => view.rerender(tree(true)));
+
+  await view.findByText('Sessão concluída');
+  expect(view.getByText('XP confirmado: 250')).toBeTruthy();
+  expect(complete).not.toHaveBeenCalled();
+  view.unmount();
+});
+
 it('keeps the in-flight idempotent intent across a screen remount', async () => {
   const zeroSnapshot = atZero();
-  let resolveCompletion!: (result: StudySessionSnapshot) => void;
+  let resolveCompletion!: (result: StudySessionTransitionResult) => void;
   getActive.mockResolvedValue(zeroSnapshot);
   complete.mockImplementationOnce(() => new Promise((resolve) => { resolveCompletion = resolve; }));
   const { view, client, setShowScreen } = await renderStudySession();
@@ -259,7 +311,7 @@ it('keeps the in-flight idempotent intent across a screen remount', async () => 
 
 it('shows a safe reason and zero XP when the server confirms a discarded session', async () => {
   const zeroSnapshot = atZero();
-  const discardedSnapshot: StudySessionSnapshot = {
+  const discardedSnapshot: StudySessionTransitionResult = {
     ...zeroSnapshot,
     state: 'discarded',
     endedAt: zeroSnapshot.runDeadlineAt,
@@ -289,4 +341,45 @@ it('shows a safe reason and zero XP when the server confirms a discarded session
   });
   view.unmount();
   client.clear();
+});
+
+it('explains that the XP of a completed session was capped by the daily limit', async () => {
+  const zeroSnapshot = atZero();
+  const cappedSnapshot: StudySessionTransitionResult = {
+    ...zeroSnapshot,
+    state: 'completed',
+    endedAt: zeroSnapshot.runDeadlineAt,
+    durationValidSeconds: 600,
+    remainingSeconds: 0,
+    xpAwarded: 100,
+    terminalReason: 'auto-complete',
+    cappedReason: 'daily-limit',
+  };
+  getActive.mockResolvedValue(zeroSnapshot);
+  complete.mockResolvedValue(cappedSnapshot);
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false, gcTime: 30_000 }, mutations: { retry: false, gcTime: 0 } },
+  });
+  const { view } = await renderStudySession(client);
+
+  await view.findByText('Sessão concluída');
+  expect(view.getByText('XP limitado pelo teto diário.')).toBeTruthy();
+  expect(view.getByText('XP confirmado: 100')).toBeTruthy();
+  view.unmount();
+  client.clear();
+});
+
+it.each([
+  [{ status: 'counted', xpContributed: 250 }, '+250 XP para a Raid da Guilda.'],
+  [{ status: 'outside-raid-window', xpContributed: 0 }, 'Esta sessão não contou para a Raid: terminou fora da janela da Raid.'],
+  [{ status: 'no-validated-xp', xpContributed: 0 }, 'Esta sessão não contou para a Raid: não houve XP validado.'],
+] as const)('tells whether the Study Session counted for the Raid (%o)', async (raidContribution, message) => {
+  const zeroSnapshot = atZero();
+  getActive.mockResolvedValue(zeroSnapshot);
+  complete.mockResolvedValue({ ...completed(zeroSnapshot), raidContribution });
+  const { view } = await renderStudySession();
+
+  await view.findByText('Sessão concluída');
+  expect(view.getByTestId('study-session-result-raid-contribution')).toHaveTextContent(message);
+  view.unmount();
 });

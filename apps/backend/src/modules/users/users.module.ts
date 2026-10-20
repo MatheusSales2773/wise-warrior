@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { forwardRef, Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { UsersController } from './users.controller';
 import { UsersService } from './users.service';
@@ -7,12 +7,14 @@ import { CosmeticItem } from './entities/cosmetic-item.entity';
 import { UserCosmeticItem } from './entities/user-cosmetic-item.entity';
 import { AuthModule } from '../auth/auth.module';
 import { ProgressionModule } from '../progression/progression.module';
+import { RealtimeModule } from '../realtime/realtime.module';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([User, CosmeticItem, UserCosmeticItem]),
-    AuthModule,
-    ProgressionModule,
+    forwardRef(() => AuthModule),
+    forwardRef(() => ProgressionModule),
+    forwardRef(() => RealtimeModule),
   ],
   controllers: [UsersController],
   providers: [UsersService],

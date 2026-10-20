@@ -1,9 +1,10 @@
 import { act } from '@testing-library/react-native';
+import { Slot } from 'expo-router';
 import { fireEvent, renderRouter, screen, waitFor } from 'expo-router/testing-library';
 import { useState } from 'react';
 import { Dimensions, Platform, Pressable, StyleSheet, Text } from 'react-native';
 import { AppNavigation, restoreNavigationTriggerFocus } from '@/design-system/components/AppNavigation';
-import { AppShellFrame } from '@/design-system/components/AppShell';
+import { AppShell, AppShellFrame } from '@/design-system/components/AppShell';
 import { isDesktopLayout } from '@/design-system/tokens/layout';
 import { modalAnimationType, MoreMenu } from '@/design-system/navigation/MoreMenu';
 import { render, within } from '@testing-library/react-native';
@@ -11,6 +12,7 @@ import { theme } from '@/design-system/tokens/theme';
 import { mockAuthState } from '../test-utils/auth-context';
 
 jest.mock('@/core/auth/auth-context', () => require('../test-utils/auth-context').createAuthContextMock());
+jest.mock('@/core/realtime/realtime-runtime', () => ({ RealtimeRuntime: () => null }));
 
 const originalPlatform = Platform.OS;
 const originalWindow = Dimensions.get('window');
@@ -69,11 +71,12 @@ describe('adaptive application navigation', () => {
     });
     expect(screen.queryByTestId('mobile-navigation')).toBeNull();
     const links = screen.getAllByRole('link');
-    expect(links).toHaveLength(4);
+    expect(links).toHaveLength(5);
+    expect(screen.getByRole('link', { name: 'Mercado' })).toBeTruthy();
     expect(links.filter((link) => link.props.accessibilityState?.selected)).toHaveLength(1);
     expect(screen.getByRole('link', { name: 'Forja' }).props.accessibilityState.selected).toBe(true);
 
-    for (const label of ['Mercado Arcano', 'Crônicas', 'Configuração']) {
+    for (const label of ['Crônicas', 'Configuração']) {
       const item = screen.getByLabelText(`${label}, indisponível, em breve`);
       expect(item.props.onPress).toBeUndefined();
       expect(item.props.href).toBeUndefined();
@@ -182,12 +185,14 @@ describe('adaptive application navigation', () => {
     expect(StyleSheet.flatten(screen.getByTestId('app-route-content', { includeHiddenElements: true }).props.style).pointerEvents).toBe('none');
     expect(screen.getByTestId('mobile-navigation', { includeHiddenElements: true }).props['aria-hidden']).toBe(true);
 
-    for (const label of ['Mercado Arcano', 'Crônicas', 'Configuração']) {
+    for (const label of ['Crônicas', 'Configuração']) {
       const item = screen.getByLabelText(`${label}, indisponível, em breve`);
       expect(item.props.accessibilityState).toEqual({ disabled: true });
       expect(item.props.onPress).toBeUndefined();
       expect(item.props.focusable).toBe(false);
     }
+
+    expect(screen.getByRole('link', { name: 'Mercado' })).toBeTruthy();
 
     await fireEvent(screen.getByTestId('more-modal'), 'requestClose');
     await waitFor(() => expect(screen.queryByTestId('more-modal')).toBeNull());
@@ -210,9 +215,29 @@ describe('adaptive application navigation', () => {
     await fireEvent.press(screen.getByRole('button', { name: 'Mais' }));
 
     expect(screen.getByRole('button', { name: 'Sair' })).toBeTruthy();
-    for (const label of ['Mercado Arcano', 'Crônicas', 'Configuração']) {
+    for (const label of ['Crônicas', 'Configuração']) {
       expect(screen.getByLabelText(`${label}, indisponível, em breve`)).toBeTruthy();
     }
+  });
+
+  it('opens the Mercado from Mais, closes the menu and keeps Mais lit there', async () => {
+    await setViewport('android', 390);
+    // One shell across both routes, as in the app layout, so the menu must close on the route change itself.
+    const router = renderRouter({
+      _layout: () => <AppShell><Slot /></AppShell>,
+      index: () => <Text>Início</Text>,
+      'mercado/index': () => <Text>Conteúdo do Mercado</Text>,
+    }, { initialUrl: '/' });
+    await router;
+    expect(screen.getByRole('button', { name: 'Mais' }).props.accessibilityState).toEqual({ selected: false });
+
+    await fireEvent.press(screen.getByRole('button', { name: 'Mais' }));
+    await fireEvent.press(screen.getByRole('link', { name: 'Mercado' }));
+
+    await waitFor(() => expect(router).toHavePathname('/mercado'));
+    await waitFor(() => expect(screen.queryByTestId('more-modal')).toBeNull());
+    expect(screen.getByText('Conteúdo do Mercado')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Mais' }).props.accessibilityState).toEqual({ selected: true });
   });
 
   it('replaces the route only after logout resolves', async () => {

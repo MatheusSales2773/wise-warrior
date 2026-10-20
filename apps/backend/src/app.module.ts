@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
+import { ScheduleModule } from '@nestjs/schedule';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { HealthController } from './health.controller';
 import { AuthModule } from './modules/auth/auth.module';
@@ -8,12 +9,18 @@ import { ProgressionModule } from './modules/progression/progression.module';
 import { SessionsModule } from './modules/sessions/sessions.module';
 import { GuildsModule } from './modules/guilds/guilds.module';
 import { RaidsModule } from './modules/raids/raids.module';
+import { ShopModule } from './modules/shop/shop.module';
+import { ChatModule } from './modules/chat/chat.module';
 import { RealtimeModule } from './modules/realtime/realtime.module';
 import { createDatabaseOptions } from './config/database.config';
+import { RateLimitModule } from './shared/security/rate-limit';
 
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
+    RateLimitModule,
+    // Registered once, here: importing it in more modules would run each job more than once.
+    ScheduleModule.forRoot(),
     TypeOrmModule.forRootAsync({
       inject: [ConfigService],
       useFactory: (config: ConfigService) =>
@@ -33,7 +40,9 @@ import { createDatabaseOptions } from './config/database.config';
     SessionsModule,
     GuildsModule,
     RaidsModule,
+    ShopModule,
     RealtimeModule,
+    ChatModule,
   ],
   controllers: [HealthController],
 })

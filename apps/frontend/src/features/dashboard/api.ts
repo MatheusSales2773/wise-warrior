@@ -9,7 +9,15 @@ export type UserProfile = {
   levelStartXp: number;
   nextLevelXp: number;
   xpTotal: number;
+  /** ADR-010: nome do Título equipado, ou `null`. */
   title: string | null;
+  equipped: EquippedCosmeticItem[];
+};
+
+export type EquippedCosmeticItem = {
+  category: 'avatar' | 'badge' | 'title' | 'accessory';
+  itemId: string;
+  name: string;
 };
 
 export type RecentStudySession = {
@@ -22,6 +30,20 @@ export type RecentStudySession = {
   durationValidSeconds: number;
   xpAwarded: number;
   discardedReason: string | null;
+  cappedReason?: 'continuous-limit' | 'daily-limit' | null;
+};
+
+/** One Study Session of the Histórico do dia (`GET /sessions/history`). */
+export type SessionHistoryItem = RecentStudySession & {
+  /** Place of a focus completed in full in the Pomodoro cycle (1 to 4); `null` for any other outcome. */
+  cyclePosition: number | null;
+};
+
+export type SessionHistoryPage = {
+  /** The UTC day listed, the same calendar day the metrics use. */
+  date: string;
+  items: SessionHistoryItem[];
+  nextCursor: string | null;
 };
 
 export type CadenceDay = {
@@ -56,5 +78,15 @@ export async function getRecentStudySessions({ signal }: { signal?: AbortSignal 
 
 export async function getSessionMetrics({ signal }: { signal?: AbortSignal } = {}): Promise<SessionMetrics> {
   const response = await getAuthenticatedHttpClient().get<SessionMetrics>('/sessions/metrics', { signal });
+  return response.data;
+}
+
+export async function getSessionHistory(
+  date: string,
+  { cursor, signal }: { cursor?: string | null; signal?: AbortSignal } = {},
+): Promise<SessionHistoryPage> {
+  const params = new URLSearchParams({ date });
+  if (cursor) params.set('cursor', cursor);
+  const response = await getAuthenticatedHttpClient().get<SessionHistoryPage>(`/sessions/history?${params.toString()}`, { signal });
   return response.data;
 }

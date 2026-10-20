@@ -7,6 +7,7 @@ import {
   PrimaryGeneratedColumn,
 } from 'typeorm';
 import { Guild } from '../../guilds/entities/guild.entity';
+import { Mission } from './mission.entity';
 
 export type RaidStatus = 'active' | 'completed' | 'expired';
 
@@ -23,8 +24,13 @@ export class Raid {
   @Column({ name: 'guild_id', type: 'varchar', length: '36' })
   guildId: string;
 
-  @Column()
-  title: string;
+  /** A Raid herda o título da Missão. */
+  @ManyToOne(() => Mission, { onDelete: 'RESTRICT' })
+  @JoinColumn({ name: 'mission_id', foreignKeyConstraintName: 'FK_raids_mission_id_missions' })
+  mission: Mission;
+
+  @Column({ name: 'mission_id', type: 'varchar', length: '36' })
+  missionId: string;
 
   @Column({ name: 'goal_xp' })
   goalXp: number;
@@ -38,6 +44,23 @@ export class Raid {
   @Column({ name: 'ends_at', type: 'datetime' })
   endsAt: Date;
 
+  /** A primeira vez que o progresso alcançou a meta. Não muda o status nem fecha a Raid. */
+  @Column({ name: 'goal_reached_at', type: 'datetime', precision: 3, nullable: true })
+  goalReachedAt: Date | null;
+
+  /** Vida que a Fúria do dragão já devolveu ao chefe. Vida do chefe = `goalXp − progressXp + regeneratedXp`, entre 0 e `goalXp`. */
+  @Column({ name: 'regenerated_xp', default: 0 })
+  regeneratedXp: number;
+
+  /** O último dia (`YYYY-MM-DD` de São Paulo) cuja Fúria já foi aplicada; cada Raid e dia regenera uma vez. */
+  @Column({ name: 'fury_through', type: 'varchar', length: 10, nullable: true })
+  furyThrough: string | null;
+
+  /** Quando a Raid abriu: o dia parcial de criação não regenera. Nulo (Raids antigas) vale `startsAt`. */
+  @Column({ name: 'opened_at', type: 'datetime', precision: 3, nullable: true })
+  openedAt: Date | null;
+
+  /** `active` durante a semana; só o fechamento decide `completed` (Meta batida) ou `expired`. */
   @Column({ type: 'varchar', default: 'active' })
   status: RaidStatus;
 }

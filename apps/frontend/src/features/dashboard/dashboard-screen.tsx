@@ -5,7 +5,8 @@ import { useEffect, useRef, useState, type PropsWithChildren } from 'react';
 import { AccessibilityInfo, Platform, Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import Svg, { Defs, Path, RadialGradient, Rect, Stop } from 'react-native-svg';
 import { FeedbackMessage, ProgressBar, Screen, WiseButton, WiseCard, WiseText, isDesktopLayout, theme, type WiseCardProps } from '@/design-system';
-import { formatCadenceDate, formatDiscardReason, formatDuration, formatSessionDate, formatXp } from './formatters';
+import { GuildSigil } from '@/features/guild/guild-emblem';
+import { formatCadenceDate, formatCappedReason, formatDayCount, formatDiscardReason, formatDuration, formatSessionDate, formatSessionsToday, formatXp, levelProgressPercent } from './formatters';
 import type { CadenceDay, RecentStudySession, SessionMetrics } from './api';
 import { profileQueryOptions, recentActivityQueryOptions, sessionMetricsQueryOptions } from './queries';
 
@@ -63,13 +64,6 @@ function DashboardGlow({ hero = false }: { hero?: boolean }) {
   </Svg>;
 }
 
-function GuildSigil({ size = 40 }: { size?: number }) {
-  return <Svg aria-hidden width={size} height={size} viewBox="0 0 100 100" fill="none">
-    <Path d="M50 6 L86 22 V52 C86 70 70 86 50 94 C30 86 14 70 14 52 V22 Z" stroke={theme.color.accentPrimary} strokeWidth={1.5} fill="rgba(212,168,90,0.04)" />
-    <Path d="M50 28 V64 M44 60 L50 66 L56 60 M44 36 H56" stroke={theme.color.accentPrimary} strokeWidth={2} strokeLinecap="round" />
-  </Svg>;
-}
-
 function FlameGlyph({ size = 15 }: { size?: number }) {
   return <Svg aria-hidden width={size} height={size} viewBox="0 0 24 24" fill="none">
     <Path d="M12 3c.5 3.5 4.5 5.5 4.5 10a4.5 4.5 0 1 1-9 0c0-2.3 1.2-3.6 2.2-4.8.3 1.6 1.1 2.6 2.3 3.1C11.4 8.8 11 6 12 3Z" stroke={theme.color.backgroundCanvas} strokeWidth={1.8} strokeLinejoin="round" />
@@ -98,7 +92,9 @@ function describeActivity(session: RecentStudySession) {
   const subjectLabel = subject ?? NO_SUBJECT_LABEL;
   const isGuild = session.mode === 'guild';
   const modeLabel = formatSessionMode(session.mode);
-  const discarded = session.discardedReason ? formatDiscardReason(session.discardedReason) : null;
+  const discarded = session.discardedReason
+    ? formatDiscardReason(session.discardedReason)
+    : session.cappedReason ? formatCappedReason(session.cappedReason) : null;
   const xp = `${formatXp(session.xpAwarded)} XP`;
   const metaLine = joinDetails([formatSessionState(session.state), modeLabel, formatSessionDate(session.endedAt), formatDuration(session.durationValidSeconds)]);
 
@@ -212,7 +208,7 @@ function MetricsCard({ query }: { query: UseQueryResult<SessionMetrics> }) {
 
   const metrics = query.data;
   if (!metrics) return null;
-  const goal = Math.max(0, metrics.dailyGoal);
+  const sessionsToday = formatSessionsToday(metrics);
   return <View style={styles.metricsGrid} testID="dashboard-metrics">
     <WiseCard accessibilityLabel={`Streak: ${metrics.currentStreakDays} dias; recorde pessoal de ${metrics.longestStreakDays} dias`} role="region" style={styles.metricCard} testID="dashboard-streak">
       <View style={styles.metricContent}>
@@ -221,10 +217,10 @@ function MetricsCard({ query }: { query: UseQueryResult<SessionMetrics> }) {
         <Text style={styles.metricTrend}>Recorde pessoal: {formatDayCount(metrics.longestStreakDays)}</Text>
       </View>
     </WiseCard>
-    <WiseCard accessibilityLabel={`Sessões hoje: ${metrics.sessionsToday}${goal ? ` de ${goal}` : ''}; ${formatDuration(metrics.validSecondsToday)} de foco válido`} role="region" style={styles.metricCard} testID="dashboard-sessions">
+    <WiseCard accessibilityLabel={`Sessões hoje: ${sessionsToday.spoken}; ${formatDuration(metrics.validSecondsToday)} de foco válido`} role="region" style={styles.metricCard} testID="dashboard-sessions">
       <View style={styles.metricContent}>
         <StatLabel>Sessões hoje</StatLabel>
-        <Text style={styles.metricBig}>{metrics.sessionsToday}{goal ? ` / ${goal}` : ''}</Text>
+        <Text style={styles.metricBig}>{sessionsToday.value}</Text>
         <Text style={styles.metricTrend}>{formatDuration(metrics.validSecondsToday)} de foco válido</Text>
       </View>
     </WiseCard>
@@ -233,10 +229,6 @@ function MetricsCard({ query }: { query: UseQueryResult<SessionMetrics> }) {
       {query.isError ? <View testID="dashboard-metrics-refresh-error"><FeedbackMessage message="Não foi possível atualizar suas métricas de treino." title="Métricas desatualizadas" variant="error" /><WiseButton label="Tentar novamente" loading={query.isRefetching} onPress={() => void retry()} variant="secondary" /></View> : null}
     </View> : null}
   </View>;
-}
-
-function formatDayCount(value: number): string {
-  return `${value} ${value === 1 ? 'dia' : 'dias'}`;
 }
 
 function formatSessionMode(mode: string): string {
@@ -385,7 +377,7 @@ export function DashboardScreen() {
   const canPullToRefresh = Platform.OS !== 'web';
   const refreshProps = canPullToRefresh ? { refreshing, onRefresh: () => { void refresh(); } } : {};
   const compact = width < 640;
-  const xpPercent = Math.min(100, Math.round(((user.xpTotal - user.levelStartXp) / Math.max(1, user.nextLevelXp - user.levelStartXp)) * 100));
+  const xpPercent = levelProgressPercent(user);
   return <Screen backgroundOverlay={<DashboardGlow />} safeAreaEdges={[]} title="Acampamento" testID="dashboard" {...refreshProps}>
     {partialErrorMessage ? <View accessibilityLiveRegion="none" aria-live="off" style={styles.partialError} testID="dashboard-partial-error"><WiseText color="feedbackDanger" variant="caption">{partialErrorMessage}</WiseText></View> : null}
     <View testID="dashboard-grid" style={[styles.grid, desktop && styles.desktopGrid]}>
@@ -425,7 +417,7 @@ export function DashboardScreen() {
         <FramedCard accessibilityLabel="Guilda" role="region" testID="dashboard-guild-preview">
           <View style={styles.guildHeader}>
             <LinearGradient colors={[theme.color.backgroundOverlay, 'transparent']} pointerEvents="none" style={StyleSheet.absoluteFill} />
-            <GuildSigil />
+            <GuildSigil size={40} />
             <View style={styles.guildHeaderCopy}>
               <Text style={styles.guildEyebrow}>Guilda</Text>
               <Text accessibilityRole="header" aria-level={2} style={styles.guildName}>Sua guilda</Text>
@@ -472,7 +464,7 @@ const styles = StyleSheet.create({
   desktopGrid: { flexDirection: 'row', alignItems: 'flex-start' },
   mainColumn: { flex: 1, minWidth: 0, gap: 18 },
   sideColumn: { minWidth: 0, gap: 18 },
-  desktopSideColumn: { width: 320, flexShrink: 0 },
+  desktopSideColumn: { width: theme.layout.sidePanelWidth, flexShrink: 0 },
 
   framedCard: { borderRadius: theme.radius.control, overflow: 'visible', borderColor: theme.color.borderSoft, borderWidth: theme.border.standard },
   corner: { position: 'absolute', width: cornerSize, height: cornerSize, borderColor: theme.color.borderEmphasis },

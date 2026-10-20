@@ -7,10 +7,16 @@ import {
 } from '@nestjs/common';
 import { DataSource, type EntityManager } from 'typeorm';
 import { ProgressionService } from '../progression/progression.service';
+import { RaidsService, type RaidContributionOutcome } from '../raids/raids.service';
+import { EconomyService } from '../economy/economy.service';
+import { UsersService } from '../users/users.service';
+import type { CoinMovementResult } from '../economy/domain/coin-origin';
 import { StudySession } from './entities/study-session.entity';
-import type { StudySessionSnapshot } from './study-session-start.service';
-import { deserializeStudySessionSnapshot, studySessionSnapshot } from './study-session-start.service';
+import type { StudySessionSnapshot } from './study-session-snapshot';
+import { deserializeStudySessionSnapshot, studySessionSnapshot } from './study-session-snapshot';
 import { StudySessionTransitionDto } from './dto/study-session-transition.dto';
+import { StudySessionEventsService } from './study-session-events.service';
+import { coinsForDuration } from './domain/coin-rate';
 import { isValidIdempotencyKey } from './domain/idempotency-key';
 import { rejectIfStudySessionCommandKeyUsed } from './study-session-command-keys';
 import {
@@ -32,8 +38,44 @@ export type StudySessionTransitionContext = {
   idempotencyKey: string | undefined;
 };
 
+/** Se a Study Session de modo Guilda contou para a Raid; `xpContributed` é 0 quando não contou. */
+export type RaidContributionFeedback = { status: RaidContributionOutcome['status']; xpContributed: number };
+
+/** Só as transições devolvem o feedback da Contribuição; null para sessões solo e pausa/retomada. */
+export type StudySessionTransitionResult = StudySessionSnapshot & {
+  raidContribution: RaidContributionFeedback | null;
+};
+
+type TerminalEffects = {
+  xpGained: number;
+  progressionResult: XpApplicationResult | null;
+  coinMovement: CoinMovementResult | null;
+  raidContributionOutcome: RaidContributionOutcome | null;
+};
+
+/** A focus the server completed at its deadline, and the publication to run once its transaction commits. */
+export type ExpiredCompletion = {
+  result: StudySessionTransitionResult;
+  publish: () => void;
+};
+
+const EXPIRED_RUNNING_WHERE = 'studySession.userId = :userId AND studySession.state = :running AND studySession.runDeadlineAt <= :now';
+
+const NO_TERMINAL_EFFECTS: TerminalEffects = {
+  xpGained: 0,
+  progressionResult: null,
+  coinMovement: null,
+  raidContributionOutcome: null,
+};
+
 type StudySessionTransitionCommand = StudySessionTransitionContext & {
   action: StudySessionCommandAction;
+};
+
+/** `applied` separates a transition this request applied from a replay that only returned a receipt. */
+type TransitionOutcome = TerminalEffects & {
+  snapshot: StudySessionTransitionResult;
+  applied: boolean;
 };
 
 const TRANSITION_VERBS: Record<StudySessionCommandAction, string> = {
@@ -47,7 +89,7 @@ type TransitionReceiptRow = {
   study_session_id: string;
   action: StudySessionCommandAction;
   expected_version: number | string;
-  response_json: StudySessionSnapshot | string;
+  response_json: StudySessionTransitionResult | string;
 };
 
 const problemTypes = {
@@ -55,7 +97,6 @@ const problemTypes = {
   idempotencyKeyReused: 'https://wise.app/errors/idempotency-key-reused',
   versionConflict: 'https://wise.app/errors/study-session-version-conflict',
   transitionNotAllowed: 'https://wise.app/errors/study-session-transition-not-allowed',
-  notControllable: 'https://wise.app/errors/study-session-not-controllable',
   deadlinePassed: 'https://wise.app/errors/study-session-deadline-passed',
   completionTooEarly: 'https://wise.app/errors/study-session-completion-too-early',
 };
@@ -66,27 +107,31 @@ export class StudySessionTransitionService {
     private readonly dataSource: DataSource,
     @Inject(STUDY_SESSION_CLOCK) private readonly clock: StudySessionClock,
     private readonly progression: ProgressionService,
+    private readonly raids: RaidsService,
+    private readonly economy: EconomyService,
+    private readonly users: UsersService,
+    private readonly events: StudySessionEventsService,
   ) {}
 
-  pause(command: StudySessionTransitionContext): Promise<StudySessionSnapshot> {
+  pause(command: StudySessionTransitionContext): Promise<StudySessionTransitionResult> {
     return this.transition({ ...command, action: 'pause' });
   }
 
-  resume(command: StudySessionTransitionContext): Promise<StudySessionSnapshot> {
+  resume(command: StudySessionTransitionContext): Promise<StudySessionTransitionResult> {
     return this.transition({ ...command, action: 'resume' });
   }
 
-  stop(command: StudySessionTransitionContext): Promise<StudySessionSnapshot> {
+  stop(command: StudySessionTransitionContext): Promise<StudySessionTransitionResult> {
     return this.transition({ ...command, action: 'stop' });
   }
 
-  complete(command: StudySessionTransitionContext): Promise<StudySessionSnapshot> {
+  complete(command: StudySessionTransitionContext): Promise<StudySessionTransitionResult> {
     return this.transition({ ...command, action: 'complete' });
   }
 
   private async transition(
-    { userId, authSessionId, studySessionId, action, dto, idempotencyKey }: StudySessionTransitionCommand,
-  ): Promise<StudySessionSnapshot> {
+    { userId, studySessionId, action, dto, idempotencyKey }: StudySessionTransitionCommand,
+  ): Promise<StudySessionTransitionResult> {
     if (!isValidIdempotencyKey(idempotencyKey)) {
       throw new BadRequestException({
         type: problemTypes.idempotencyKeyRequired,
@@ -100,9 +145,9 @@ export class StudySessionTransitionService {
       });
     }
 
-    const result = await this.dataSource.transaction(async (manager) => {
+    const result: TransitionOutcome = await this.dataSource.transaction(async (manager) => {
       // Match the user-first lock order used by start, serializing the per-user idempotency key scope.
-      await manager.query('SELECT id FROM users WHERE id = ? FOR UPDATE', [userId]);
+      await this.users.lockForUpdate(userId, manager);
 
       const sessions = manager.getRepository(StudySession);
       const session = await sessions
@@ -112,12 +157,6 @@ export class StudySessionTransitionService {
         .getOne();
 
       if (!session) throw new NotFoundException('Study Session não encontrada');
-      if (session.initiatingSessionId !== authSessionId) {
-        throw new ConflictException({
-          type: problemTypes.notControllable,
-          message: 'Esta Study Session só pode ser controlada pela Session autenticada que a iniciou',
-        });
-      }
 
       const receiptRows = await manager.query(
         `SELECT study_session_id, action, expected_version, response_json
@@ -138,13 +177,27 @@ export class StudySessionTransitionService {
           });
         }
         return {
-          snapshot: deserializeStudySessionSnapshot(receipt.response_json),
-          xpGained: 0,
-          progressionResult: null,
+          snapshot: deserializeTransitionResult(receipt.response_json),
+          ...NO_TERMINAL_EFFECTS,
+          applied: false,
         };
       }
 
       await rejectIfStudySessionCommandKeyUsed(manager, userId, idempotencyKey);
+
+      // Another device (or the server) already completed this focus from the version the caller saw:
+      // that is the outcome the caller asked for, so answer with it without applying the effects again.
+      if (
+        action === 'complete'
+        && session.terminalReason === 'auto-complete'
+        && dto.expectedVersion === (session.version ?? 1) - 1
+      ) {
+        return {
+          snapshot: { ...studySessionSnapshot(session, this.clock.now()), raidContribution: null },
+          ...NO_TERMINAL_EFFECTS,
+          applied: false,
+        };
+      }
 
       if ((session.version ?? 1) !== dto.expectedVersion) {
         throw new ConflictException({
@@ -158,14 +211,10 @@ export class StudySessionTransitionService {
       let completionResult: ReturnType<typeof applyStudySessionComplete> | null = null;
       try {
         if (action === 'stop') {
-          stopResult = applyStudySessionStop(session, now);
+          const priorDailySeconds = await this.sumEligibleFocusSecondsToday(manager, userId, studySessionId, now);
+          stopResult = applyStudySessionStop(session, now, priorDailySeconds);
         } else if (action === 'complete') {
-          const priorDailySeconds = session.state === 'running'
-            && session.runDeadlineAt
-            && now.getTime() >= session.runDeadlineAt.getTime()
-            ? await this.sumEligibleFocusSecondsToday(manager, userId, studySessionId, now)
-            : 0;
-          completionResult = applyStudySessionComplete(session, now, priorDailySeconds);
+          completionResult = await this.completeAtDeadline(manager, session, now);
         } else {
           applyStudySessionTransition(session, action, now);
         }
@@ -188,18 +237,14 @@ export class StudySessionTransitionService {
       }
 
       const saved = await sessions.save(session);
-      const snapshot = studySessionSnapshot(saved, authSessionId, now);
-      let progressionResult: XpApplicationResult | null = null;
       const terminalXpAwarded = stopResult?.xpAwarded ?? completionResult?.xpAwarded ?? 0;
-      if (stopResult || completionResult) {
-        await manager.query(
-          'DELETE FROM active_study_sessions WHERE user_id = ? AND study_session_id = ?',
-          [userId, studySessionId],
-        );
-        if (terminalXpAwarded > 0) {
-          progressionResult = await this.progression.awardXpInTransaction(manager, userId, terminalXpAwarded);
-        }
-      }
+      const effects = stopResult || completionResult
+        ? await this.applyTerminalEffects(manager, saved, terminalXpAwarded)
+        : NO_TERMINAL_EFFECTS;
+      const snapshot: StudySessionTransitionResult = {
+        ...studySessionSnapshot(saved, now),
+        raidContribution: raidContributionFeedback(effects.raidContributionOutcome),
+      };
       await manager.query(
         'INSERT INTO study_session_command_keys (user_id, idempotency_key, command_kind) VALUES (?, ?, ?)',
         [userId, idempotencyKey, action],
@@ -210,15 +255,127 @@ export class StudySessionTransitionService {
          VALUES (?, ?, ?, ?, ?, ?)`,
         [userId, studySessionId, idempotencyKey, action, dto.expectedVersion, JSON.stringify(snapshot)],
       );
-      return { snapshot, xpGained: terminalXpAwarded, progressionResult };
+      return { snapshot, ...effects, applied: true };
     });
 
-    if (result.progressionResult) {
-      this.progression.publishAwardedXp(userId, result.xpGained, result.progressionResult);
-    }
+    // Both publications run after the commit, so no device sees a state that could still roll back.
+    this.publishTerminalEffects(userId, result);
+    if (result.applied) this.events.publishChanged(userId, result.snapshot);
     return result.snapshot;
   }
 
+  /**
+   * ADR-011 item 6: a running focus completes at its canonical deadline even when no client calls
+   * `/complete`, so a device that died at the deadline does not hold the only active slot forever.
+   * Paused sessions never complete by age (D-014). Returns the result once: the next read finds no
+   * expired focus.
+   */
+  async completeExpired(userId: string): Promise<StudySessionTransitionResult | null> {
+    // An unlocked read first, so reading the active session takes no lock in the common case.
+    const pending = await this.dataSource.getRepository(StudySession)
+      .createQueryBuilder('studySession')
+      .where(EXPIRED_RUNNING_WHERE, { userId, running: 'running', now: this.clock.now() })
+      .getExists();
+    if (!pending) return null;
+
+    const completion = await this.dataSource.transaction(async (manager) => {
+      await this.users.lockForUpdate(userId, manager);
+      return this.completeExpiredInTransaction(manager, userId);
+    });
+    completion?.publish();
+    return completion?.result ?? null;
+  }
+
+  /** {@link completeExpired} inside the caller's transaction, which already holds the user lock. */
+  async completeExpiredInTransaction(manager: EntityManager, userId: string): Promise<ExpiredCompletion | null> {
+    const now = this.clock.now();
+    // A plain read finds the candidate and the lock goes by primary key: a locking range read here takes
+    // gap locks that deadlock with the inserts of other users' concurrent starts.
+    const expired = await manager.getRepository(StudySession)
+      .createQueryBuilder('studySession')
+      .select('studySession.id')
+      .where(EXPIRED_RUNNING_WHERE, { userId, running: 'running', now })
+      .getOne();
+    // None, or another request completed it while this one waited for the user lock.
+    if (!expired) return null;
+    const session = await manager.getRepository(StudySession).findOneOrFail({
+      where: { id: expired.id },
+      lock: { mode: 'pessimistic_write' },
+    });
+    const completion = await this.completeAtDeadline(manager, session, now);
+    const saved = await manager.getRepository(StudySession).save(session);
+    const effects = await this.applyTerminalEffects(manager, saved, completion.xpAwarded);
+    const result: StudySessionTransitionResult = {
+      ...studySessionSnapshot(saved, now),
+      raidContribution: raidContributionFeedback(effects.raidContributionOutcome),
+    };
+    return {
+      result,
+      publish: () => {
+        this.publishTerminalEffects(userId, effects);
+        this.events.publishChanged(userId, result);
+      },
+    };
+  }
+
+  /** The daily cap of a completion counts the focus of the deadline day, even when it is recorded later. */
+  private async completeAtDeadline(manager: EntityManager, session: StudySession, now: Date) {
+    const priorDailySeconds = session.state === 'running'
+      && session.runDeadlineAt
+      && now.getTime() >= session.runDeadlineAt.getTime()
+      ? await this.sumEligibleFocusSecondsToday(manager, session.userId, session.id, session.runDeadlineAt)
+      : 0;
+    return applyStudySessionComplete(session, now, priorDailySeconds);
+  }
+
+  /** XP, Moeda and Contribuição of a terminal Study Session, in the transaction that ended it. */
+  private async applyTerminalEffects(
+    manager: EntityManager,
+    saved: StudySession,
+    xpAwarded: number,
+  ): Promise<TerminalEffects> {
+    const { userId, id: studySessionId } = saved;
+    let progressionResult: XpApplicationResult | null = null;
+    let coinMovement: CoinMovementResult | null = null;
+    let raidContributionOutcome: RaidContributionOutcome | null = null;
+    await manager.query(
+      'DELETE FROM active_study_sessions WHERE user_id = ? AND study_session_id = ?',
+      [userId, studySessionId],
+    );
+    if (xpAwarded > 0) {
+      progressionResult = await this.progression.awardXpInTransaction(manager, userId, xpAwarded);
+      // Mesma transação do XP: a Moeda do foco e o XP são commitados ou revertidos juntos (ADR-012).
+      coinMovement = await this.economy.credit(manager, userId, coinsForDuration(saved.durationValidSeconds), {
+        type: 'study-session',
+        ref: studySessionId,
+      });
+    }
+    if (saved.mode === 'guild' && saved.raidId) {
+      raidContributionOutcome = await this.raids.recordContributionInTransaction(manager, {
+        raidId: saved.raidId,
+        userId,
+        studySessionId,
+        xpContributed: xpAwarded,
+        endedAt: saved.endedAt!,
+      });
+    }
+    return { xpGained: xpAwarded, progressionResult, coinMovement, raidContributionOutcome };
+  }
+
+  private publishTerminalEffects(userId: string, effects: TerminalEffects): void {
+    if (effects.progressionResult) {
+      this.progression.publishAwardedXp(userId, effects.xpGained, effects.progressionResult);
+    }
+    if (effects.coinMovement?.applied) {
+      this.economy.publishBalanceChanged(userId, effects.coinMovement);
+    }
+    if (effects.raidContributionOutcome) this.raids.publishContribution(effects.raidContributionOutcome);
+  }
+
+  /**
+   * Focus of the day of `endedAt`. There is no upper bound: a late completion passes its deadline, and
+   * no other session can have started after it while this one was running (D-005).
+   */
   private async sumEligibleFocusSecondsToday(
     manager: EntityManager,
     userId: string,
@@ -234,11 +391,21 @@ export class StudySessionTransitionService {
       .select('COALESCE(SUM(session.durationValidSeconds), 0)', 'total')
       .where('session.userId = :userId', { userId })
       .andWhere('session.id != :excludeStudySessionId', { excludeStudySessionId })
-      .andWhere('session.endedAt >= :startOfDay', { startOfDay })
+      .andWhere('session.startedAt >= :startOfDay', { startOfDay })
       .andWhere('session.discardedReason IS NULL')
       .andWhere("(session.state IS NULL OR session.state IN ('completed', 'stopped_early'))")
       .getRawOne<{ total: string }>();
 
     return Number(row?.total ?? 0);
   }
+}
+
+function raidContributionFeedback(outcome: RaidContributionOutcome | null): RaidContributionFeedback | null {
+  return outcome ? { status: outcome.status, xpContributed: outcome.xpContributed } : null;
+}
+
+function deserializeTransitionResult(value: StudySessionTransitionResult | string): StudySessionTransitionResult {
+  const original = typeof value === 'string' ? JSON.parse(value) as StudySessionTransitionResult : value;
+  // Recibos gravados antes do feedback da Contribuição não têm `raidContribution`.
+  return { ...deserializeStudySessionSnapshot(original), raidContribution: original.raidContribution ?? null };
 }

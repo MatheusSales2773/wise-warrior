@@ -2,6 +2,7 @@ import type { ConfigService } from '@nestjs/config';
 import type { JwtService } from '@nestjs/jwt';
 import type { Server, Socket } from 'socket.io';
 import type { JwtStrategy } from '../auth/strategies/jwt.strategy';
+import type { GuildsService } from '../guilds/guilds.service';
 import { RealtimeGateway } from './realtime.gateway';
 
 type Middleware = (
@@ -14,6 +15,8 @@ function client(token?: string): Socket {
     data: {},
     disconnect: jest.fn(),
     join: jest.fn(),
+    leave: jest.fn(),
+    rooms: new Set<string>(),
     handshake: { auth: token ? { token } : {}, query: {} },
   } as unknown as Socket;
 }
@@ -36,10 +39,15 @@ describe('RealtimeGateway authentication', () => {
       validate: jest.fn().mockResolvedValue(payload),
     } as unknown as JwtStrategy;
 
+    const guilds = {
+      findGuildIdOf: jest.fn().mockResolvedValue('guild-1'),
+    } as unknown as GuildsService;
+
     return {
-      gateway: new RealtimeGateway(jwt, config, jwtStrategy),
+      gateway: new RealtimeGateway(jwt, config, jwtStrategy, guilds),
       jwt,
       jwtStrategy,
+      guilds,
     };
   }
 
@@ -75,7 +83,7 @@ describe('RealtimeGateway authentication', () => {
     const next = jest.fn();
 
     await middlewareFor(gateway)(socket, next);
-    gateway.handleConnection(socket);
+    await gateway.handleConnection(socket);
 
     expect(jwt.verify).toHaveBeenCalledWith('access-token', {
       secret: 'access-secret',
@@ -89,6 +97,7 @@ describe('RealtimeGateway authentication', () => {
     expect(socket.data).toEqual({
       userId: 'user-1',
       sessionId: 'session-1',
+      identity: expect.objectContaining({ sub: 'user-1', sessionId: 'session-1' }),
     });
     expect(socket.join).toHaveBeenCalledWith('user:user-1');
     expect(socket.disconnect).not.toHaveBeenCalled();
@@ -105,5 +114,16 @@ describe('RealtimeGateway authentication', () => {
     expect(next).toHaveBeenCalledWith(expect.any(Error));
     expect(socket.join).not.toHaveBeenCalled();
     expect(socket.disconnect).not.toHaveBeenCalled();
+  });
+
+  it('drops a socket whose Session was revoked between the handshake and the room join', async () => {
+    const { gateway, jwtStrategy } = createGateway();
+    const socket = client('access-token');
+    await middlewareFor(gateway)(socket, jest.fn());
+    (jwtStrategy.validate as jest.Mock).mockRejectedValue(new Error('revoked'));
+
+    await gateway.handleConnection(socket);
+
+    expect(socket.disconnect).toHaveBeenCalled();
   });
 });

@@ -3,6 +3,7 @@ import { renderRouter, testRouter } from 'expo-router/testing-library';
 import { mockAuthState, updateMockAuthState } from '../test-utils/auth-context';
 
 jest.mock('@/core/auth/auth-context', () => require('../test-utils/auth-context').createAuthContextMock());
+jest.mock('@/core/realtime/realtime-runtime', () => ({ RealtimeRuntime: () => null }));
 
 beforeEach(() => {
   mockAuthState.status = 'anonymous';

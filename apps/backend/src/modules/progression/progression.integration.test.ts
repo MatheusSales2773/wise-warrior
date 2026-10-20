@@ -7,7 +7,10 @@ import {
 import { Character } from './entities/character.entity';
 import { ProgressionService } from './progression.service';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
+import { CosmeticItem } from '../users/entities/cosmetic-item.entity';
+import { UserCosmeticItem } from '../users/entities/user-cosmetic-item.entity';
 import { User } from '../users/entities/user.entity';
+import { UsersService } from '../users/users.service';
 import {
   APPLICATION_MIGRATIONS,
   createIntegrationDatabase,
@@ -67,7 +70,13 @@ describe('progression persistence against MySQL', () => {
       throw new Error('Data source was not initialized');
     }
     const realtime = { emitToUser: jest.fn() } as unknown as RealtimeGateway;
-    return new ProgressionService(dataSource.getRepository(Character), realtime);
+    const users = new UsersService(
+      dataSource.getRepository(User),
+      dataSource.getRepository(UserCosmeticItem),
+      dataSource.getRepository(CosmeticItem),
+      {} as ProgressionService, // the profile read is not exercised here
+    );
+    return new ProgressionService(dataSource.getRepository(Character), realtime, users);
   }
 
   it('hydrates BIGINT as number and preserves two sequential XP credits', async () => {

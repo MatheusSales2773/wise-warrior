@@ -1,4 +1,4 @@
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -14,14 +14,25 @@ import {
   STUDY_SESSION_PRESETS,
   type PlannedDurationSeconds,
   type StudySessionSnapshot,
+  type StudySessionTransitionResult,
   type StudySessionTransitionAction,
   type StudySessionTransitionRequest,
 } from './api';
-import { activeStudySessionQueryKey, recentStudySessionSubjectsQueryKey, useActiveStudySession, useRecentStudySessionSubjects } from './queries';
+import { activeStudySessionQueryKey, invalidateStudySessionResult, recentStudySessionSubjectsQueryKey, useActiveStudySession, useFocusCycle, useRecentStudySessionSubjects } from './queries';
+import { BREAK_SECONDS, breakRemainingSeconds, clearBreak, currentBreak, startBreak, type BreakKind, type BreakRun } from './pomodoro-break';
+import { useSessionEndSounds } from './use-session-end-sounds';
 import { formatRemainingTime, remainingStudySeconds } from './timer';
 import { MAX_SUBJECT_LENGTH, validateSubject, type SubjectValidation } from './subject';
 import { FeedbackMessage } from '@/design-system/components/FeedbackMessage';
-import { dashboardKeys } from '@/features/dashboard/queries';
+import { sessionMetricsQueryOptions } from '@/features/dashboard/queries';
+import { useIsOnline } from '@/core/query/online-manager';
+import { ForgeHistory } from './forge-history';
+import { ForgeSyncIndicator } from './sync-indicator';
+import { forgeSyncStatus } from './sync-status';
+import { formatSessionsToday } from '@/features/dashboard/formatters';
+import { isApiError } from '@/core/api/api-error';
+import { joinRaid, type ActiveRaid } from '@/features/guild/api';
+import { activeRaidQueryOptions, guildKeys, myGuildQueryOptions } from '@/features/guild/queries';
 import {
   clearCompletionIntent,
   completionIntentCanRetryAt,
@@ -33,6 +44,7 @@ import {
   newIdempotencyKey,
   submitCompletionIntent,
   syncCompletionIntentWithSnapshot,
+  takeServerCompletion,
   type StudySessionCompletionIntent,
 } from './completion-intent';
 import { useStudySessionAppActive } from './use-study-session-app-active';
@@ -40,7 +52,7 @@ import { useStudySessionAppActive } from './use-study-session-app-active';
 type TransitionAction = Exclude<StudySessionTransitionAction, 'complete'>;
 type TransitionCommand = StudySessionTransitionRequest & { action: TransitionAction };
 
-const TRANSITION_HANDLERS: Record<TransitionAction, (command: StudySessionTransitionRequest) => Promise<StudySessionSnapshot>> = {
+const TRANSITION_HANDLERS: Record<TransitionAction, (command: StudySessionTransitionRequest) => Promise<StudySessionTransitionResult>> = {
   pause: pauseStudySession,
   resume: resumeStudySession,
   stop: stopStudySession,
@@ -53,6 +65,7 @@ const TRANSITION_COPY: Record<TransitionAction, { status: string; action: string
 };
 
 const STUDY_SESSION_VERSION_CONFLICT = 'https://wise.app/errors/study-session-version-conflict';
+const RAID_ENDED = 'https://wise.app/errors/raid-ended';
 
 function ForgePageGradient() {
   return (
@@ -251,6 +264,145 @@ function RecentSubjectSuggestions({ selectedSubject, disabled, onSelect }: {
   );
 }
 
+export type SessionMode = 'solo' | 'guild';
+type ForgeRaid = { guildId: string; raid: ActiveRaid };
+
+/**
+ * The Raid a guild-mode session would contribute to: the active Raid of the user's Guild. Without a
+ * Guild, without a Raid or on any failure there is none and the option stays hidden. A Raid that ends
+ * while cached is caught by the server, which answers the start with 409.
+ */
+function useForgeRaid(): ForgeRaid | null {
+  const mine = useQuery(myGuildQueryOptions());
+  const guildId = mine.data?.guild.id;
+  const raid = useQuery({ ...activeRaidQueryOptions(guildId ?? ''), enabled: guildId !== undefined });
+  if (!guildId || !raid.data || raid.data.status === 'expired') return null;
+  return { guildId, raid: raid.data };
+}
+
+function SessionModeOptions({ mode, disabled, onSelect }: {
+  mode: SessionMode;
+  disabled: boolean;
+  onSelect: (mode: SessionMode) => void;
+}) {
+  const [focusedMode, setFocusedMode] = useState<SessionMode | null>(null);
+  const options: { value: SessionMode; label: string }[] = [
+    { value: 'solo', label: 'Sessão solo' },
+    { value: 'guild', label: 'Sessão de guilda' },
+  ];
+  return (
+    <View accessibilityLabel="Tipo de sessão" accessibilityRole="radiogroup" style={styles.presets} testID="study-session-mode">
+      {options.map((option) => (
+        <Pressable
+          accessibilityLabel={option.label}
+          accessibilityRole="radio"
+          accessibilityState={{ checked: mode === option.value, disabled }}
+          aria-checked={mode === option.value}
+          aria-disabled={disabled}
+          disabled={disabled}
+          key={option.value}
+          onBlur={() => setFocusedMode((current) => (current === option.value ? null : current))}
+          onFocus={() => setFocusedMode(option.value)}
+          onPress={() => onSelect(option.value)}
+          style={[styles.preset, mode === option.value && styles.selected, focusedMode === option.value && Platform.OS === 'web' && controlStyles.webFocus]}
+          testID={`study-session-mode-${option.value}`}
+        >
+          <WiseText variant="label">{option.label}</WiseText>
+        </Pressable>
+      ))}
+    </View>
+  );
+}
+
+/** "Hoje" pill of the Forja header: sessions concluded today against the daily goal. Hidden until known. */
+function TodayPill() {
+  const { data: metrics } = useQuery(sessionMetricsQueryOptions());
+  if (!metrics) return null;
+  const goal = Math.min(8, Math.max(0, Math.trunc(metrics.dailyGoal)));
+  const { value, spoken } = formatSessionsToday(metrics);
+  return (
+    <View accessibilityLabel={`Hoje: ${spoken} sessões`} accessible style={styles.todayPill} testID="study-session-today">
+      <Text allowFontScaling style={styles.todayLabel}>Hoje</Text>
+      <View style={styles.todayBars}>
+        {Array.from({ length: goal }, (_, index) => (
+          <View key={index} style={[styles.todayBar, index < metrics.sessionsToday && styles.todayBarDone]} />
+        ))}
+      </View>
+      <Text allowFontScaling style={styles.todayValue}>{value}</Text>
+    </View>
+  );
+}
+
+const BREAK_COPY: Record<BreakKind, { title: string; phase: string; action: string; offer: (minutes: number) => string }> = {
+  short: {
+    title: 'Pausa curta',
+    phase: 'PAUSA CURTA',
+    action: 'Iniciar pausa curta',
+    offer: (minutes) => `Pausa curta de ${minutes} minutos. Não concede XP.`,
+  },
+  long: {
+    title: 'Pausa longa',
+    phase: 'PAUSA LONGA',
+    action: 'Iniciar pausa longa',
+    offer: (minutes) => `Quatro focos concluídos. Pausa longa de ${minutes} minutos, sem XP.`,
+  },
+};
+
+/** After a completed focus: the next break and where the user stands in the cycle of four. */
+function BreakOffer({ kind, completedInCycle, onStart }: {
+  kind: BreakKind;
+  completedInCycle: number | null;
+  onStart: (kind: BreakKind) => void;
+}) {
+  const copy = BREAK_COPY[kind];
+  return (
+    <View style={styles.breakOffer} testID="study-session-break-offer">
+      <ForgeCardTitle>Hora de descansar</ForgeCardTitle>
+      {completedInCycle !== null ? <WiseText color="accentHighlight" variant="mono">Forja {completedInCycle} de 4</WiseText> : null}
+      <WiseText color="textSecondary" variant="body">{copy.offer(BREAK_SECONDS[kind] / 60)}</WiseText>
+      <WiseButton label={copy.action} onPress={() => onStart(kind)} testID="study-session-break-start" />
+    </View>
+  );
+}
+
+function BreakStage({ run, remaining, ringSize, onSkip, onFinish }: {
+  run: BreakRun;
+  remaining: number;
+  ringSize: number;
+  onSkip: () => void;
+  onFinish: () => void;
+}) {
+  const copy = BREAK_COPY[run.kind];
+  const finished = remaining === 0;
+  return (
+    <WiseCard style={styles.stage} testID="study-session-break">
+      <ForgeStageGradient />
+      <View style={styles.stageHeader}>
+        <Text accessibilityRole="header" allowFontScaling style={styles.stageTitle}>{copy.title}</Text>
+        <Text allowFontScaling style={styles.stageMeta}>{run.durationSeconds / 60} min · sem XP</Text>
+      </View>
+      <View style={styles.stageBody}>
+        <ForgeTimer
+          remaining={remaining}
+          duration={run.durationSeconds}
+          phase={copy.phase}
+          size={ringSize}
+          testID="study-session-break-timer"
+          accessibilityLabel={`Tempo restante da pausa: ${Math.floor(remaining / 60)} minutos e ${remaining % 60} segundos.`}
+        />
+      </View>
+      <View style={styles.stageActions}>
+        <WiseText accessibilityLiveRegion="polite" aria-live="polite" color="textSecondary" variant="body">
+          {finished ? 'Pausa concluída. Pronto para outra forja?' : 'Descanse. O contador segue mesmo se você sair desta tela.'}
+        </WiseText>
+        {finished
+          ? <WiseButton label="Nova sessão" onPress={onFinish} size="large" testID="study-session-break-new" />
+          : <WiseButton label="Pular pausa" onPress={onSkip} variant="secondary" testID="study-session-break-skip" />}
+      </View>
+    </WiseCard>
+  );
+}
+
 function isVersionConflict(error: unknown): boolean {
   if (typeof error !== 'object' || error === null) return false;
   const responseData = (error as { response?: { data?: unknown } }).response?.data;
@@ -259,18 +411,27 @@ function isVersionConflict(error: unknown): boolean {
     && (responseData as { type?: unknown }).type === STUDY_SESSION_VERSION_CONFLICT;
 }
 
-export function StudySessionScreen() {
+/** `initialMode` comes from the route: "Atacar com foco" on the Raid opens the Forja with `?modo=guilda`. */
+export function StudySessionScreen({ initialMode = 'solo' }: { initialMode?: SessionMode } = {}) {
   const { width } = useWindowDimensions();
   const wideLayout = width >= 1140;
   const ringSize = wideLayout ? 340 : Platform.OS === 'web' ? Math.min(310, width * 0.78) : Math.min(264, width * 0.68);
   const queryClient = useQueryClient();
   const [selected, setSelected] = useState<PlannedDurationSeconds>(1500);
   const [subjectInput, setSubjectInput] = useState('');
+  const [sessionMode, setSessionMode] = useState<SessionMode>(initialMode);
+  const [raidEndedNotice, setRaidEndedNotice] = useState(false);
+  const forgeRaid = useForgeRaid();
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [focusedDuration, setFocusedDuration] = useState<PlannedDurationSeconds | null>(null);
   const [now, setNow] = useState(0);
+  const [breakRun, setBreakRun] = useState<BreakRun | null>(() => currentBreak(queryClient));
+  const [sawActiveSession, setSawActiveSession] = useState(false);
+  const [cycleFresh, setCycleFresh] = useState(true);
+  const [breakNow, setBreakNow] = useState(() => Date.now());
   const [retryTransition, setRetryTransition] = useState<TransitionCommand | null>(null);
-  const [terminalResult, setTerminalResult] = useState<StudySessionSnapshot | null>(null);
+  const [terminalResult, setTerminalResult] = useState<StudySessionTransitionResult | null>(null);
+  const [remoteEndNotice, setRemoteEndNotice] = useState(false);
   const [completionIntentState, setCompletionIntentState] = useState<StudySessionCompletionIntent | null>(
     () => getRetainedCompletionIntent(),
   );
@@ -278,11 +439,16 @@ export function StudySessionScreen() {
   const [foregroundSyncPending, setForegroundSyncPending] = useState(false);
   const pendingKey = useRef<string | null>(null);
   const announcedStatus = useRef<string | null>(null);
-  const observedCompletionPromise = useRef<Promise<StudySessionSnapshot> | null>(null);
+  const observedCompletionPromise = useRef<Promise<StudySessionTransitionResult> | null>(null);
+  // The last session this screen saw active, to tell "ended elsewhere" from a Forja that never had one.
+  const previousActiveSessionId = useRef<string | null>(null);
+  const serverCompletionTaken = useRef(false);
   const requiresForegroundRefresh = useRef(false);
   const applicationActive = useStudySessionAppActive();
   const wasApplicationActive = useRef(applicationActive);
   const active = useActiveStudySession();
+  const online = useIsOnline();
+  const focusCycle = useFocusCycle();
   const refetchActive = active.refetch;
   const refreshActive = useCallback(async () => {
     const result = await refetchActive();
@@ -294,6 +460,16 @@ export function StudySessionScreen() {
     return result;
   }, [refetchActive]);
   const activeSnapshot = active.data;
+  // A session started elsewhere ends the local break and the previous result: drop them once, not on every render.
+  if ((activeSnapshot != null) !== sawActiveSession) {
+    setSawActiveSession(activeSnapshot != null);
+    if (activeSnapshot != null && breakRun) setBreakRun(null);
+    if (activeSnapshot != null && terminalResult && terminalResult.id !== activeSnapshot.id) setTerminalResult(null);
+  }
+  const hasActiveSession = activeSnapshot != null;
+  useEffect(() => {
+    if (hasActiveSession) clearBreak(queryClient);
+  }, [hasActiveSession, queryClient]);
   const retainedCompletionIntent = activeSnapshot
     ? getCompletionIntentForSnapshot(activeSnapshot)
     : getRetainedCompletionIntent();
@@ -309,16 +485,46 @@ export function StudySessionScreen() {
   const completionResult = completionIntent?.result ?? null;
   const displayedTerminalResult = completionResult ?? terminalResult;
 
-  const settleTerminalResult = useCallback(async (result: StudySessionSnapshot) => {
+  const settleTerminalResult = useCallback(async (result: StudySessionTransitionResult) => {
     setTerminalResult(result);
+    setCycleFresh(false);
     await queryClient.cancelQueries({ queryKey: activeStudySessionQueryKey });
     queryClient.setQueryData(activeStudySessionQueryKey, null);
-    await Promise.allSettled([
-      queryClient.invalidateQueries({ queryKey: dashboardKeys.profile() }),
-      queryClient.invalidateQueries({ queryKey: dashboardKeys.recentActivity() }),
-      queryClient.invalidateQueries({ queryKey: dashboardKeys.metrics() }),
-    ]);
+    await invalidateStudySessionResult(queryClient, result.mode);
+    // Only now does the cycle include this focus, so the right break (short or long) can be offered.
+    setCycleFresh(true);
   }, [queryClient]);
+
+  // The read itself may have completed the expired focus on the server: show that result like a local completion.
+  useEffect(() => {
+    const serverResult = takeServerCompletion();
+    serverCompletionTaken.current = serverResult !== null;
+    if (serverResult) queueMicrotask(() => void settleTerminalResult(serverResult));
+  }, [active.dataUpdatedAt, settleTerminalResult]);
+
+  // D-005/D-006: a session that vanishes without a result from this device ended on another device. There is no
+  // route for the result, so only warn — XP and Moedas arrive through their own events.
+  useEffect(() => {
+    if (activeSnapshot) {
+      previousActiveSessionId.current = activeSnapshot.id;
+      serverCompletionTaken.current = false;
+      queueMicrotask(() => setRemoteEndNotice(false));
+      return;
+    }
+    // A result from this device always wins: hide a warning that a racing event may have raised.
+    if (terminalResult || completionResult) {
+      previousActiveSessionId.current = null;
+      queueMicrotask(() => setRemoteEndNotice(false));
+      return;
+    }
+    if (!active.isSuccess || active.isFetching) return;
+    const endedId = previousActiveSessionId.current;
+    if (!endedId) return;
+    previousActiveSessionId.current = null;
+    // The read itself completed the expired focus: it has a result to show instead of the warning.
+    if (serverCompletionTaken.current) return;
+    queueMicrotask(() => setRemoteEndNotice(true));
+  }, [active.isFetching, active.isSuccess, activeSnapshot, completionResult, terminalResult]);
 
   const observeCompletion = useCallback((intent: StudySessionCompletionIntent) => {
     const promise = intent.promise;
@@ -360,19 +566,39 @@ export function StudySessionScreen() {
   }, [observeCompletion]);
 
   const start = useMutation({
-    mutationFn: ({ duration, key, subject }: { duration: PlannedDurationSeconds; key: string; subject: string | null }) => startStudySession(duration, key, subject),
+    mutationFn: async ({ duration, key, subject, guild }: { duration: PlannedDurationSeconds; key: string; subject: string | null; guild: ForgeRaid | null }) => {
+      if (!guild) return startStudySession(duration, key, subject);
+      // "Participar e iniciar": confirm the participation first; joining again is harmless on the server.
+      if (!guild.raid.me.participating) {
+        await joinRaid(guild.raid.id);
+        queryClient.setQueryData<ActiveRaid | null>(
+          guildKeys.raid(guild.guildId),
+          (current) => (current ? { ...current, me: { ...current.me, participating: true } } : current),
+        );
+      }
+      return startStudySession(duration, key, subject, guild.raid.id);
+    },
     onSuccess(snapshot) {
       pendingKey.current = null;
       setSubjectInput('');
       setSettingsOpen(false);
       setTerminalResult(null);
+      clearBreak(queryClient);
+      setBreakRun(null);
       clearCompletionIntent();
       setCompletionIntentState(null);
       queryClient.setQueryData(activeStudySessionQueryKey, snapshot);
       // The started Matéria is now the most recent one; a cached list would flash the old order on return.
       queryClient.removeQueries({ queryKey: recentStudySessionSubjectsQueryKey });
     },
-    onError() {
+    onError(error, { guild }) {
+      // The Raid ended before the start: fall back to a solo session. Other conflicts keep the usual handling.
+      if (guild && isApiError(error) && error.problemType === RAID_ENDED) {
+        pendingKey.current = null;
+        setSessionMode('solo');
+        setRaidEndedNotice(true);
+        void queryClient.invalidateQueries({ queryKey: [...guildKeys.all, 'raid'] });
+      }
       void refreshActive();
     },
   });
@@ -447,6 +673,21 @@ export function StudySessionScreen() {
     return () => clearInterval(interval);
   }, [snapshotId, snapshotState, applicationActive]);
 
+  useEffect(() => {
+    if (!breakRun || !applicationActive) return;
+    const interval = setInterval(() => {
+      const at = Date.now();
+      setBreakNow(at);
+      if (breakRemainingSeconds(breakRun, at) === 0) clearInterval(interval);
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [breakRun, applicationActive]);
+
+  useSessionEndSounds({
+    breakRemaining: breakRun ? breakRemainingSeconds(breakRun, breakNow) : null,
+    completedSessionId: displayedTerminalResult?.state === 'completed' ? displayedTerminalResult.id : null,
+  });
+
   const projectedRemaining = snapshot
     ? now === 0 ? snapshot.remainingSeconds : remainingStudySeconds(snapshot, now, clockOffset)
     : selected;
@@ -463,7 +704,6 @@ export function StudySessionScreen() {
   useEffect(() => {
     if (
       !activeSnapshot
-      || !activeSnapshot.canControl
       || activeSnapshot.state !== 'running'
       || !applicationActive
       || active.isFetching
@@ -526,12 +766,12 @@ export function StudySessionScreen() {
       ? 'Sessão pausada. O contador está congelado.'
       : 'Sessão em andamento. O contador está ativo.';
   useEffect(() => {
-    if (!snapshot?.canControl || announcedStatus.current === sessionStatus) return;
+    if (!snapshot || announcedStatus.current === sessionStatus) return;
     announcedStatus.current = sessionStatus;
     if (Platform.OS === 'ios') {
       AccessibilityInfo.announceForAccessibilityWithOptions(sessionStatus, { queue: true });
     }
-  }, [sessionStatus, snapshot?.canControl]);
+  }, [sessionStatus, snapshot]);
 
   const subjectValidation = validateSubject(subjectInput);
   const subjectMessage = subjectError(subjectValidation);
@@ -543,15 +783,26 @@ export function StudySessionScreen() {
     setSubjectInput(text);
   };
 
+  const guildSession = sessionMode === 'guild' ? forgeRaid : null;
+  const startLabel = guildSession && !guildSession.raid.me.participating ? 'Participar e iniciar' : 'Iniciar foco';
+
+  const changeSessionMode = (mode: SessionMode) => {
+    // Another mode is another start request, so it needs a new key.
+    if (mode !== sessionMode) pendingKey.current = null;
+    setRaidEndedNotice(false);
+    setSessionMode(mode);
+  };
+
   const begin = () => {
     if (subjectValidation.status !== 'valid') return;
     const key = pendingKey.current ?? newIdempotencyKey();
     pendingKey.current = key;
-    start.mutate({ duration: selected, key, subject: subjectValidation.subject });
+    setRaidEndedNotice(false);
+    start.mutate({ duration: selected, key, subject: subjectValidation.subject, guild: guildSession });
   };
 
   const changeSessionState = (action: TransitionAction) => {
-    if (!snapshot?.canControl || transition.isPending || retryAvailable || refreshingCanonicalSnapshot) return;
+    if (!snapshot || transition.isPending || retryAvailable || refreshingCanonicalSnapshot) return;
     const command = retryTransition?.id === snapshot.id && retryTransition.action === action
       ? retryTransition
       : { id: snapshot.id, action, expectedVersion: snapshot.version, idempotencyKey: newIdempotencyKey() };
@@ -563,9 +814,43 @@ export function StudySessionScreen() {
     if (retryTransition) transition.mutate(retryTransition);
   };
 
+  const startNewSession = () => {
+    pendingKey.current = null;
+    clearBreak(queryClient);
+    setBreakRun(null);
+    clearCompletionIntent();
+    setCompletionIntentState(null);
+    setTerminalResult(null);
+  };
+
+  const beginBreak = (kind: BreakKind) => {
+    const at = Date.now();
+    setBreakNow(at);
+    setBreakRun(startBreak(queryClient, kind, at));
+  };
+
+  // A break is offered only after a focus completed in full; early stops and discards skip it.
+  const nextBreak: BreakKind = focusCycle.data?.nextBreak ?? 'short';
+
+  // #17: where the session stands against the server. Offline, TanStack Query pauses the requests and resumes
+  // them, with a refetch of the active session, when the network comes back.
+  const syncStatus = forgeSyncStatus({
+    online,
+    syncing: foregroundSyncPending || (active.isFetching && !active.isPending) || transition.isPending || start.isPending || completionPending,
+    failed: (active.isError && snapshot !== null) || (transition.isError && !transition.isPending) || completionRetryAvailable,
+  });
+  const showSync = activeSnapshot != null || completionPending || completionRetryAvailable;
+
   return (
     <Screen avoidKeyboard backgroundOverlay={<ForgePageGradient />} hasBottomNavigation safeAreaEdges={['right', 'left']} testID="study-session" title="Forja" contentContainerStyle={styles.screenContent}>
       <View style={styles.layout}>
+        <TodayPill />
+        {showSync ? <ForgeSyncIndicator onRetry={() => void refreshActive()} status={syncStatus} /> : null}
+        {remoteEndNotice ? (
+          <WiseText accessibilityLiveRegion="polite" aria-live="polite" color="textSecondary" testID="study-session-remote-end" variant="body">
+            Sessão encerrada em outro dispositivo
+          </WiseText>
+        ) : null}
         {active.isPending && !snapshot ? <WiseText variant="body">Buscando sua sessão ativa…</WiseText> : null}
         {active.isError && !snapshot ? (
           <WiseCard style={styles.messageCard} testID="study-session-load-error">
@@ -573,14 +858,16 @@ export function StudySessionScreen() {
             <WiseButton label="Tentar novamente" onPress={() => void refreshActive()} variant="secondary" />
           </WiseCard>
         ) : null}
-        {snapshot && !snapshot.canControl ? (
-          <WiseCard style={styles.messageCard} testID="study-session-remote-conflict">
-            <WiseText variant="subtitle">Foco em outro dispositivo</WiseText>
-            <WiseText variant="body">Já existe uma sessão ativa nesta conta. Volte ao dispositivo que a iniciou para acompanhá-la.</WiseText>
-            <WiseButton label="Atualizar estado" onPress={() => void refreshActive()} variant="secondary" />
-          </WiseCard>
+        {breakRun && !activeSnapshot ? (
+          <BreakStage
+            onFinish={startNewSession}
+            onSkip={startNewSession}
+            remaining={breakRemainingSeconds(breakRun, breakNow)}
+            ringSize={ringSize}
+            run={breakRun}
+          />
         ) : null}
-        {displayedTerminalResult ? (
+        {displayedTerminalResult && !breakRun ? (
           <WiseCard style={styles.messageCard} testID="study-session-result">
             <WiseText accessibilityLiveRegion="polite" aria-live="polite" variant="subtitle">
               {displayedTerminalResult.state === 'discarded'
@@ -603,6 +890,15 @@ export function StudySessionScreen() {
             </WiseText>
             <WiseText variant="body">Foco válido: {formatRemainingTime(displayedTerminalResult.durationValidSeconds)}</WiseText>
             <WiseText variant="body">XP confirmado: {displayedTerminalResult.xpAwarded}</WiseText>
+            {displayedTerminalResult.raidContribution ? (
+              <WiseText accessibilityLiveRegion="polite" aria-live="polite" color={displayedTerminalResult.raidContribution.status === 'counted' ? 'textPrimary' : 'textSecondary'} variant="body" testID="study-session-result-raid-contribution">
+                {displayedTerminalResult.raidContribution.status === 'counted'
+                  ? `+${displayedTerminalResult.raidContribution.xpContributed} XP para a Raid da Guilda.`
+                  : displayedTerminalResult.raidContribution.status === 'outside-raid-window'
+                    ? 'Esta sessão não contou para a Raid: terminou fora da janela da Raid.'
+                    : 'Esta sessão não contou para a Raid: não houve XP validado.'}
+              </WiseText>
+            ) : null}
             {displayedTerminalResult.state === 'discarded' ? (
               <WiseText color="textSecondary" variant="body">
                 {displayedTerminalResult.discardedReason === 'continuous-session-exceeds-limit'
@@ -610,20 +906,26 @@ export function StudySessionScreen() {
                   : 'O limite diário de foco foi atingido.'}
               </WiseText>
             ) : null}
+            {displayedTerminalResult.state === 'completed' && cycleFresh && !focusCycle.isFetching ? (
+              <BreakOffer kind={nextBreak} completedInCycle={focusCycle.data?.completedInCycle ?? null} onStart={beginBreak} />
+            ) : null}
+            {displayedTerminalResult.cappedReason ? (
+              <WiseText color="textSecondary" testID="study-session-result-capped" variant="body">
+                {displayedTerminalResult.cappedReason === 'daily-limit'
+                  ? 'XP limitado pelo teto diário.'
+                  : 'XP limitado ao máximo de sessão contínua.'}
+              </WiseText>
+            ) : null}
             <WiseButton
               label="Nova sessão"
-              onPress={() => {
-                pendingKey.current = null;
-                clearCompletionIntent();
-                setCompletionIntentState(null);
-                setTerminalResult(null);
-              }}
+              onPress={startNewSession}
               size="large"
               testID="study-session-new"
+              variant={displayedTerminalResult.state === 'completed' ? 'secondary' : 'primary'}
             />
           </WiseCard>
         ) : null}
-        {snapshot?.canControl && !displayedTerminalResult ? (
+        {snapshot && !displayedTerminalResult ? (
           <View style={[styles.forgeColumns, wideLayout && styles.forgeColumnsWide]} testID="study-session-active">
           <WiseCard style={[styles.stage, wideLayout && styles.stageWide]} testID="study-session-stage">
             <ForgeStageGradient />
@@ -638,7 +940,9 @@ export function StudySessionScreen() {
                 {snapshot.subject ?? NO_SUBJECT_LABEL}
               </Text>
               <Text accessibilityRole="header" allowFontScaling style={styles.stageTitle}>{snapshot.state === 'paused' ? 'Sessão pausada' : 'Sessão em andamento'}</Text>
-              <Text allowFontScaling style={styles.stageMeta}>{snapshot.plannedDurationSeconds / 60} min de foco</Text>
+              <Text allowFontScaling style={styles.stageMeta}>
+                {snapshot.plannedDurationSeconds / 60} min de foco{snapshot.mode === 'guild' ? ' · Sessão de guilda' : ''}
+              </Text>
             </View>
             <View style={styles.stageBody}>
               <ForgeTimer
@@ -777,7 +1081,7 @@ export function StudySessionScreen() {
           </View>
           </View>
         ) : null}
-        {!displayedTerminalResult && !active.isPending && !active.isError && !snapshot ? (
+        {!displayedTerminalResult && !breakRun && !active.isPending && !active.isError && !snapshot ? (
           <View style={[styles.forgeColumns, wideLayout && styles.forgeColumnsWide]} testID="study-session-setup">
           <WiseCard style={[styles.stage, wideLayout && styles.stageWide]} testID="study-session-stage">
             <ForgeStageGradient />
@@ -806,14 +1110,33 @@ export function StudySessionScreen() {
                 selectedSubject={subjectValidation.status === 'valid' ? subjectValidation.subject : null}
               />
             </View>
+            {forgeRaid ? (
+              <View style={styles.subjectSection}>
+                <SessionModeOptions disabled={start.isPending} mode={sessionMode} onSelect={changeSessionMode} />
+                {sessionMode === 'guild' ? (
+                  <Text allowFontScaling style={[styles.cardCopy, { color: theme.color.textSecondary }]} testID="study-session-guild-raid">
+                    {forgeRaid.raid.me.participating
+                      ? `O XP desta sessão conta para a Raid ${forgeRaid.raid.mission.name}.`
+                      : `Você vai confirmar sua participação na Raid ${forgeRaid.raid.mission.name} e começar a sessão.`}
+                  </Text>
+                ) : null}
+              </View>
+            ) : null}
             <View style={[styles.stageActions, width < 450 && styles.stageActionsCompact]}>
               {settingsOpen && !wideLayout ? <DurationSettings selected={selected} focusedDuration={focusedDuration} startPending={start.isPending} onSelect={(duration) => { pendingKey.current = null; setSelected(duration); }} onFocus={setFocusedDuration} onClose={() => setSettingsOpen(false)} inline /> : null}
               <View style={[styles.actionRow, width < 450 && styles.actionRowCompact]}>
                 <View style={styles.actionButtonPlaceholder} />
-                <ForgeAction icon="play" primary label="Iniciar foco" loading={start.isPending} disabled={subjectValidation.status !== 'valid'} onPress={begin} testID="study-session-start" />
+                <ForgeAction icon="play" primary label={startLabel} loading={start.isPending} disabled={subjectValidation.status !== 'valid'} onPress={begin} testID="study-session-start" />
                 <ForgeAction icon="settings-outline" iconOnly label="Configurar duração" expanded={settingsOpen} onPress={() => setSettingsOpen((open) => !open)} />
               </View>
-              {start.isError ? <WiseText color="feedbackDanger" variant="body">Não foi possível confirmar o início. Tente novamente.</WiseText> : null}
+              {raidEndedNotice ? (
+                <FeedbackMessage
+                  variant="error"
+                  title="A Raid foi encerrada"
+                  message="Não foi possível iniciar a sessão de guilda. Você pode iniciar uma sessão solo."
+                  testID="study-session-raid-ended"
+                />
+              ) : start.isError ? <WiseText color="feedbackDanger" variant="body">Não foi possível confirmar o início. Tente novamente.</WiseText> : null}
             </View>
           </WiseCard>
           <View style={[styles.sideColumn, wideLayout && styles.sideColumnWide]}>
@@ -825,6 +1148,7 @@ export function StudySessionScreen() {
           </View>
           </View>
         ) : null}
+        <ForgeHistory wide={wideLayout} />
       </View>
     </Screen>
   );
@@ -833,6 +1157,13 @@ export function StudySessionScreen() {
 const styles = StyleSheet.create({
   screenContent: { justifyContent: 'flex-start' },
   layout: { width: '100%', maxWidth: 1040, alignSelf: 'center', gap: theme.space.sectionGap },
+  todayPill: { alignSelf: 'flex-end', flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 14, paddingVertical: 8, borderWidth: 1, borderColor: theme.color.borderEmphasis, borderRadius: theme.radius.pill, backgroundColor: theme.color.surfaceCard },
+  todayLabel: { fontFamily: 'Inter-SemiBold', fontSize: 13, color: theme.color.textSecondary },
+  todayBars: { flexDirection: 'row', gap: 4 },
+  todayBar: { width: 18, height: 6, borderRadius: 2, borderWidth: 1, borderColor: theme.color.borderSubtle, backgroundColor: theme.color.surfaceInset },
+  todayBarDone: { backgroundColor: theme.color.accentPrimary },
+  todayValue: { fontFamily: 'JetBrainsMono-Medium', fontSize: 11, color: theme.color.textPrimary },
+  breakOffer: { gap: theme.space.stackTight, borderTopWidth: 1, borderTopColor: theme.color.borderGhost, paddingTop: theme.space.controlInset },
   messageCard: { maxWidth: 580, alignSelf: 'center', padding: theme.space.cardInset, gap: theme.space.controlInset },
   forgeColumns: { width: '100%', gap: theme.space.cardInset },
   forgeColumnsWide: { flexDirection: 'row', alignItems: 'flex-start' },

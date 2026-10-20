@@ -3,7 +3,6 @@ import { Platform, StyleSheet, Text, TextInput, View, type TextInputProps } from
 import { theme, typographyFor } from '../tokens/theme';
 import { useFontFallback } from './font-runtime';
 import { FeedbackMessage } from './FeedbackMessage';
-import { WiseText } from './WiseText';
 import { controlStyles } from './control-styles';
 
 export type WiseFieldProps = Omit<TextInputProps, 'style' | 'children' | 'accessibilityLabel' | 'accessibilityLabelledBy' | 'accessibilityHint' | 'aria-label' | 'aria-labelledby' | 'id'> & {
@@ -58,7 +57,7 @@ export function WiseField({ label, hint, helpText, error, nativeID, onFocus, onB
       {error ? (
         <FeedbackMessage nativeID={messageId} variant="error" title="Erro" message={error} />
       ) : helpText ? (
-        <WiseText nativeID={messageId} variant="body" color="textSecondary">{helpText}</WiseText>
+        <Text nativeID={messageId} style={[styles.helpText, fallback && styles.fallbackMono]}>{helpText}</Text>
       ) : null}
     </View>
   );
@@ -69,6 +68,7 @@ const styles = StyleSheet.create({
   labelRow: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', gap: theme.space.inlineTight },
   label: { fontFamily: 'Inter-Medium', fontSize: 12, lineHeight: 16, color: theme.color.textSecondary, flexShrink: 1 },
   hint: { fontFamily: 'JetBrainsMono-Medium', fontSize: 9, lineHeight: 12, letterSpacing: 0.8, textTransform: 'uppercase', color: theme.color.textTertiary },
+  helpText: { fontFamily: 'JetBrainsMono-Medium', fontSize: 10, lineHeight: 14, color: theme.color.textTertiary },
   fallbackFont: { fontFamily: undefined },
   fallbackMono: { fontFamily: 'monospace' },
   inputRow: { position: 'relative', justifyContent: 'center' },

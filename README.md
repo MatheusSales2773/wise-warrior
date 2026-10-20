@@ -356,7 +356,7 @@ compatíveis, mas não substitui a compilação nativa. Diretórios nativos gera
 | `npm test` | testes unitários de backend e frontend |
 | `npm run lint` | ESLint nos dois workspaces |
 | `npm run ci:backend` | build, lint, testes unitários e de integração do backend |
-| `npm run ci:frontend` | tipos, lint, Jest, Expo Doctor, bundles das três plataformas e entrega Web em container |
+| `npm run ci:frontend` | tipos, lint, Jest, bundles das três plataformas e entrega Web em container |
 | `npm run lint:openapi` | contrato OpenAPI |
 | `npm run verify:quality` | todos os itens acima, como a CI |
 | `npm run test:e2e` | fluxo Web completo com Playwright contra a stack em Docker |
@@ -390,11 +390,12 @@ ficam em diretórios ignorados pelo Git.
 npm run build --workspace apps/frontend            # só o bundle Web
 npm run export:bundles --workspace apps/frontend   # bundles Metro de Web, iOS e Android
 npm run expo:check --workspace apps/frontend       # matriz de versões do Expo SDK
+npm run expo:doctor --workspace apps/frontend      # Expo Doctor
 ```
 
 Uma exportação de bundle não gera um app instalável (`.app`, `.ipa`, `.apk`,
-`.aab`). `expo:check` fica fora dos gates porque a Expo publica patches sem
-aviso; o workflow semanal *Expo drift* roda essa checagem.
+`.aab`). `expo:check` e `expo:doctor` ficam fora dos gates porque a Expo publica patches sem
+aviso; o workflow semanal *Expo drift* roda as duas checagens.
 
 ---
 

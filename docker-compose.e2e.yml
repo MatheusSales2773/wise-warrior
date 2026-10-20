@@ -41,12 +41,17 @@ services:
       DB_USERNAME: wise
       DB_PASSWORD: wise-e2e-password
       DB_DATABASE: wise_e2e
-      JWT_ACCESS_SECRET: wise-e2e-access-secret
+      JWT_ACCESS_SECRET: wise-e2e-access-token-signing-key-0001
       JWT_ACCESS_TTL: 15m
       JWT_REFRESH_SECRET: wise-e2e-refresh-secret
       JWT_REFRESH_TTL_DAYS: 30
       MAX_SESSIONS_PER_USER: 5
       CORS_ORIGIN: ${E2E_BASE_URL:?E2E_BASE_URL is required}
+      # The gateway is the only proxy in front of the backend.
+      TRUST_PROXY: 1
+      # Every Playwright user registers and logs in from the same address.
+      RATE_LIMIT_CREDENTIALS_LIMIT: 1000
+      RATE_LIMIT_REFRESH_LIMIT: 1000
       PORT: 3000
     ports:
       - "127.0.0.1:${E2E_BACKEND_PORT:?E2E_BACKEND_PORT is required}:3000"

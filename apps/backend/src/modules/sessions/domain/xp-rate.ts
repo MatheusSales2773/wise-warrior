@@ -1,14 +1,16 @@
-/**
- * Taxa de conversão de duração válida de sessão em XP. Nenhum documento
- * orientador define esse número — só que "quanto mais focado e contínuo,
- * mais XP acumulado" (Pitch). Valor inicial assumido para o MVP, sujeito a
- * balanceamento pelo Product Owner: 10 XP por minuto completo de foco válido.
- */
-export const XP_PER_MINUTE = 10;
+import { getXpPerMinute } from './economy-config';
 
+/** Menos que isso de foco válido não rende XP nem Contribuição para Raid (Cancelamento). */
+export const MIN_FOCUS_SECONDS_FOR_XP = 300;
+
+/**
+ * Converte foco válido em XP: `XP_PER_MINUTE` (padrão 10, ADR-011) por minuto
+ * completo, proporcional a qualquer duração planejada; abaixo de 5 minutos, zero.
+ */
 export function xpForDuration(validSeconds: number): number {
   if (validSeconds < 0) {
     throw new Error('validSeconds não pode ser negativo');
   }
-  return Math.floor(validSeconds / 60) * XP_PER_MINUTE;
+  if (validSeconds < MIN_FOCUS_SECONDS_FOR_XP) return 0;
+  return Math.floor(validSeconds / 60) * getXpPerMinute();
 }

@@ -5,7 +5,7 @@ info:
   description: >
     Contrato REST da Fase 1 (dev/phase-1). Gerado a partir dos controllers
     NestJS reais em apps/backend/src/modules/**. Eventos WebSocket (Socket.IO)
-    estão documentados separadamente em docs/api/asyncapi.yaml (pendente).
+    estão documentados separadamente em docs/api/asyncapi.yaml.
   license:
     name: MIT
     url: https://opensource.org/licenses/MIT
@@ -59,6 +59,7 @@ paths:
               schema: { $ref: "#/components/schemas/SessionTokenResponse" }
         "400": { $ref: "#/components/responses/BadRequest" }
         "409": { $ref: "#/components/responses/Conflict" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
 
   /auth/login:
     post:
@@ -85,6 +86,7 @@ paths:
               schema: { $ref: "#/components/schemas/SessionTokenResponse" }
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
 
   /auth/refresh:
     post:
@@ -107,6 +109,7 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/SessionTokenResponse" }
         "401": { $ref: "#/components/responses/Unauthorized" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
 
   /auth/logout:
     post:
@@ -158,6 +161,7 @@ paths:
         "400": { $ref: "#/components/responses/BadRequest" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "409": { $ref: "#/components/responses/Conflict" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
 
   /auth/native/login:
     post:
@@ -183,6 +187,7 @@ paths:
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
 
   /auth/native/refresh:
     post:
@@ -207,6 +212,7 @@ paths:
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
 
   /auth/native/logout:
     post:
@@ -240,17 +246,142 @@ paths:
               schema: { $ref: "#/components/schemas/UserProfile" }
         "401": { $ref: "#/components/responses/Unauthorized" }
 
+  /users/me/cosmetics:
+    get:
+      summary: Lista o Catálogo inteiro de Cosmetic Items com o estado no Inventário
+      description: >
+        Devolve todos os Cosmetic Items, desbloqueados ou não, sem ordem
+        garantida: a interface define a ordem de exibição. Sem paginação por
+        decisão explícita: o Catálogo é uma tabela versionada pequena (seed
+        por migration).
+      operationId: listCosmeticsCatalog
+      tags: [Users]
+      responses:
+        "200":
+          description: Catálogo
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/CatalogCosmeticItem" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
   /users/me/cosmetics/{itemId}:
     patch:
-      summary: Equipa um item cosmético já desbloqueado
+      summary: Equipa um Cosmetic Item do Inventário
+      description: >
+        Troca o item equipado da categoria: no máximo um item por categoria,
+        garantido mesmo com requisições simultâneas. Item fora do Inventário
+        (bloqueado ou inexistente) devolve 404. Item premium passa pela
+        checagem de entitlement (ADR-007), mas a política do MVP o libera para
+        todos enquanto `COSMETICS_PREMIUM_FOR_ALL` não for `false`; com a flag
+        desligada, um usuário `free` recebe 403.
       operationId: equipCosmeticItem
       tags: [Users]
       parameters:
         - { name: itemId, in: path, required: true, schema: { type: string, format: uuid } }
       responses:
         "204": { description: Item equipado }
+        "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
+
+  /users/me/cosmetics/{itemId}/equipped:
+    delete:
+      summary: Desequipa um Cosmetic Item, de qualquer categoria
+      description: >
+        Idempotente: desequipar um item já desequipado devolve 204. Item fora
+        do Inventário (bloqueado, inexistente ou de outro usuário) devolve 404.
+      operationId: unequipCosmeticItem
+      tags: [Users]
+      parameters:
+        - { name: itemId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "204": { description: Item desequipado }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /users/me/coins:
+    get:
+      summary: Saldo de Moedas do usuário autenticado
+      description: >
+        Saldo do usuário (ADR-012). Sem registro de saldo, o saldo é zero. Devolve só os dados de quem está autenticado.
+      operationId: getMyCoinBalance
+      tags: [Users]
+      responses:
+        "200":
+          description: Saldo
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CoinBalance" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /users/me/coins/statement:
+    get:
+      summary: Extrato de Moedas do usuário autenticado
+      description: >
+        Cada crédito e débito de Moedas, do mais recente para o mais antigo, com a origem de cada um. `nextCursor`
+        é opaco; `null` indica a última página.
+      operationId: getMyCoinStatement
+      tags: [Users]
+      parameters:
+        - { name: cursor, in: query, required: false, schema: { type: string, maxLength: 200 } }
+        - { name: limit, in: query, required: false, schema: { type: integer, minimum: 1, maximum: 50, default: 20 } }
+      responses:
+        "200":
+          description: Página do Extrato
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CoinStatementPage" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /shop/items:
+    get:
+      summary: Loja, seção Itens
+      description: >
+        Os Cosmetic Items À venda (ADR-012), com o preço e o estado para o usuário autenticado. `state` é `owned` (já
+        está no Inventário), `purchasable` (o saldo basta) ou `insufficient` (faltam `missing` Moedas, "Faltam 60").
+        Recompensas de Raid, itens de nível e Itens premium nunca aparecem. A interface define a ordem.
+      operationId: listShopItems
+      tags: [Shop]
+      responses:
+        "200":
+          description: Itens À venda
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/ShopItem" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /shop/items/{itemId}/purchase:
+    post:
+      summary: Comprar um Cosmetic Item À venda
+      description: >
+        Debita o preço e desbloqueia o item na mesma transação (a Compra é uma Condição de desbloqueio, pelo
+        Desbloqueio idempotente). O item aparece no Inventário, pronto para Equipar, e o Extrato registra a origem
+        `purchase`. Item que não está À venda (ou não existe) responde 404; item já possuído, 409; saldo insuficiente,
+        422 com `missing`, e o saldo não muda. Limite de 30 Compras por minuto por usuário.
+      operationId: purchaseShopItem
+      tags: [Shop]
+      parameters:
+        - { name: itemId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "201":
+          description: Compra feita
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ShopPurchase" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422":
+          description: Saldo de Moedas insuficiente
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/InsufficientCoinsProblem" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
 
   /users/me/sessions:
     get:
@@ -281,6 +412,10 @@ paths:
   /users/me/sessions/{sessionId}:
     delete:
       summary: Encerra um dispositivo específico
+      description: >
+        Uma sessão inexistente, já revogada ou de outro usuário devolve 404,
+        e não 401, para que o cliente não confunda o caso com a própria
+        sessão expirada.
       operationId: revokeMySession
       tags: [Users]
       parameters:
@@ -288,16 +423,23 @@ paths:
       responses:
         "204": { description: Sessão revogada }
         "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
 
   /sessions:
     post:
-      summary: Inicia uma Study Session solo
+      summary: Inicia uma Study Session solo ou de modo Guilda
       description: >
         Aceita presets de 900, 1500 ou 3000 segundos; o padrão defensivo é
         1500. Idempotency-Key é única por usuário entre inícios e transições.
         Um replay idêntico devolve o snapshot original; reutilizar a chave por
-        outro comando, com duração diferente ou com outra Matéria devolve
-        conflito estável.
+        outro comando, com duração, Matéria ou modo diferente devolve
+        conflito estável. No modo `guild`, `raidId` precisa ser a Raid ativa da
+        Guild do usuário e ele precisa ser Participante: quem não é Participante
+        ou é de outra Guild recebe 403, e uma Raid encerrada recebe 409
+        (`raid-ended`). Ao concluir dentro da semana da Raid, o XP da sessão vira
+        Contribuição no progresso coletivo. Antes de iniciar, um foco `running`
+        com o prazo canônico vencido é concluído pelo servidor (ADR-011, item 6),
+        liberando a vaga; um foco `paused` nunca é concluído por idade (D-014).
       operationId: startStudySession
       tags: [Sessions]
       parameters:
@@ -317,24 +459,39 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/StudySessionSnapshot" }
         "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
         "409": { $ref: "#/components/responses/StudySessionStartConflict" }
         "401": { $ref: "#/components/responses/Unauthorized" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
 
   /sessions/active:
     get:
       summary: Consulta a Study Session ativa desta conta
       description: >
         Retorna 200 com o snapshot e canControl, ou 204 sem corpo quando não
-        há sessão ativa. Outra Session autenticada pode consultar o snapshot,
-        mas não pode controlar a Study Session.
+        há sessão ativa. Qualquer Session autenticada do usuário pode consultar
+        e controlar a Study Session (D-006). Um foco `running` com o prazo
+        canônico vencido é concluído pelo servidor nesta leitura (ADR-011, item
+        6), com `endedAt` no prazo e as mesmas recompensas da conclusão pelo
+        cliente. Essa leitura devolve, uma única vez, o snapshot terminal com
+        `raidContribution`, para que o dispositivo exiba o resultado; as leituras
+        seguintes devolvem 204. Um foco `paused` nunca é concluído por idade
+        (D-014).
       operationId: getActiveStudySession
       tags: [Sessions]
       responses:
         "200":
-          description: Snapshot ativo; canControl indica se esta Session autenticada pode controlá-lo
+          description: >
+            Snapshot ativo (`running` ou `paused`), ou, uma única vez, o
+            resultado terminal do foco vencido que esta leitura concluiu.
+            canControl é sempre true para o dono da Study Session.
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/StudySessionSnapshot" }
+              schema:
+                anyOf:
+                  - { $ref: "#/components/schemas/StudySessionSnapshot" }
+                  - { $ref: "#/components/schemas/StudySessionTransitionResponse" }
         "204": { description: Nenhuma Study Session ativa }
         "401": { $ref: "#/components/responses/Unauthorized" }
 
@@ -364,11 +521,12 @@ paths:
           description: Snapshot confirmado no estado paused
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/StudySessionSnapshot" }
+              schema: { $ref: "#/components/schemas/StudySessionTransitionResponse" }
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/StudySessionNotFound" }
         "409": { $ref: "#/components/responses/StudySessionPauseConflict" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
 
   /sessions/{id}/resume:
     post:
@@ -396,11 +554,12 @@ paths:
           description: Snapshot confirmado no estado running
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/StudySessionSnapshot" }
+              schema: { $ref: "#/components/schemas/StudySessionTransitionResponse" }
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/StudySessionNotFound" }
         "409": { $ref: "#/components/responses/StudySessionResumeConflict" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
 
   /sessions/{id}/stop:
     post:
@@ -431,11 +590,12 @@ paths:
           description: Snapshot terminal confirmado, com a duração válida e o XP concedido
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/StudySessionSnapshot" }
+              schema: { $ref: "#/components/schemas/StudySessionTransitionResponse" }
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/StudySessionNotFound" }
         "409": { $ref: "#/components/responses/StudySessionStopConflict" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
 
   /sessions/recent:
     get:
@@ -453,6 +613,31 @@ paths:
                 items: { $ref: "#/components/schemas/RecentStudySession" }
         "401": { $ref: "#/components/responses/Unauthorized" }
 
+  /sessions/history:
+    get:
+      summary: Histórico do dia do usuário autenticado
+      description: >
+        Toda Sessão de estudo encerrada num dia em UTC (o mesmo recorte das métricas
+        do Dashboard), da mais recente para a mais antiga, com todos os desfechos:
+        concluída, encerrada antecipadamente, cancelada e descartada. Cada foco
+        concluído por inteiro traz `cyclePosition`, sua posição no ciclo Pomodoro
+        (1 a 4), contada sobre os mesmos focos de `/sessions/cycle`. `nextCursor` é
+        opaco; `null` indica a última página.
+      operationId: getStudySessionHistory
+      tags: [Sessions]
+      parameters:
+        - { name: date, in: query, required: false, description: "Dia em UTC (AAAA-MM-DD); hoje por padrão", schema: { type: string, format: date } }
+        - { name: cursor, in: query, required: false, schema: { type: string, maxLength: 200 } }
+        - { name: limit, in: query, required: false, schema: { type: integer, minimum: 1, maximum: 50, default: 20 } }
+      responses:
+        "200":
+          description: Página do histórico do dia
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/StudySessionHistoryPage" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
   /sessions/subjects/recent:
     get:
       summary: Sugere as Matérias usadas mais recentemente pelo usuário autenticado
@@ -468,6 +653,23 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/RecentStudySessionSubjects" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /sessions/cycle:
+    get:
+      summary: Retorna a posição do usuário na cadência Pomodoro e a próxima pausa
+      description: >
+        Só focos concluídos integralmente avançam a sequência de quatro; encerramento antecipado,
+        cancelamento e descarte não a avançam nem a reiniciam. Com quatro focos a pausa oferecida é a
+        longa; o quinto foco concluído inicia um novo ciclo. As pausas em si são locais ao dispositivo.
+      operationId: getStudySessionCycle
+      tags: [Sessions]
+      responses:
+        "200":
+          description: Posição atual no ciclo de quatro focos
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/StudySessionCycle" }
         "401": { $ref: "#/components/responses/Unauthorized" }
 
   /sessions/metrics:
@@ -493,6 +695,7 @@ paths:
       responses:
         "204": { description: Heartbeat registrado }
         "404": { $ref: "#/components/responses/StudySessionNotFound" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
 
   /sessions/{id}/complete:
     post:
@@ -502,8 +705,11 @@ paths:
         foi alcançado. O servidor limita o foco à duração planejada, aplica a
         validação antifraude e atualiza sessão, progressão, referência ativa e
         recibo idempotente em uma única transação. Repetir a mesma chave e
-        expectedVersion devolve o snapshot original. Registros legados sem
-        estado canônico preservam o comportamento anterior.
+        expectedVersion devolve o snapshot original. Se outro dispositivo ou o
+        servidor já concluiu o foco a partir da expectedVersion enviada, a
+        resposta é 200 com esse resultado confirmado, sem recompensas em
+        dobro. Registros legados sem estado canônico preservam o comportamento
+        anterior.
       operationId: completeStudySession
       tags: [Sessions]
       parameters:
@@ -531,7 +737,7 @@ paths:
             application/json:
               schema:
                 oneOf:
-                  - { $ref: "#/components/schemas/StudySessionSnapshot" }
+                  - { $ref: "#/components/schemas/StudySessionTransitionResponse" }
                   - { $ref: "#/components/schemas/StudySession" }
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
@@ -569,7 +775,11 @@ paths:
                     detail: Não é possível concluir a Study Session no estado atual
                     instance: /api/v1/sessions/{id}/complete
                 notControllable:
-                  summary: A Session autenticada não iniciou o foco
+                  summary: "Obsoleto: a Session autenticada não iniciou o foco"
+                  description: >
+                    Não é mais enviado desde a D-006, porque qualquer Session do usuário
+                    controla a Study Session. Fica documentado por um ciclo para clientes
+                    antigos já instalados.
                   value:
                     type: https://wise.app/errors/study-session-not-controllable
                     title: ConflictException
@@ -584,10 +794,31 @@ paths:
                     status: 409
                     detail: Idempotency-Key já foi usada por outro comando
                     instance: /api/v1/sessions/{id}/complete
+        "429": { $ref: "#/components/responses/TooManyRequests" }
 
   /guilds:
+    get:
+      summary: Descobre guildas (busca por nome, paginação por cursor)
+      description: >
+        Ordenação estável por nome e id. `nextCursor` é opaco: reenvie-o em
+        `cursor` para a próxima página; `null` indica a última.
+      operationId: listGuilds
+      tags: [Guilds]
+      parameters:
+        - { name: search, in: query, required: false, schema: { type: string, maxLength: 60 } }
+        - { name: cursor, in: query, required: false, schema: { type: string, maxLength: 200 } }
+        - { name: limit, in: query, required: false, schema: { type: integer, minimum: 1, maximum: 20, default: 20 } }
+      responses:
+        "200":
+          description: Página de guildas
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/GuildPage" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
     post:
       summary: Cria uma guilda (o criador se torna líder)
+      description: Um usuário participa de no máximo uma guilda; quem já participa de uma recebe 409.
       operationId: createGuild
       tags: [Guilds]
       requestBody:
@@ -602,6 +833,20 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/Guild" }
         "409": { $ref: "#/components/responses/Conflict" }
+
+  /guilds/me:
+    get:
+      summary: Guilda do usuário autenticado e o papel dele nela
+      operationId: getMyGuild
+      tags: [Guilds]
+      responses:
+        "200":
+          description: Guilda do usuário
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MyGuild" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
 
   /guilds/{id}:
     get:
@@ -621,6 +866,9 @@ paths:
   /guilds/{id}/members:
     post:
       summary: Entra na guilda
+      description: >
+        Idempotente para a guilda em que o usuário já está. Se ele participa de
+        outra guilda, responde 409.
       operationId: joinGuild
       tags: [Guilds]
       parameters:
@@ -628,10 +876,173 @@ paths:
       responses:
         "204": { description: Membro adicionado }
         "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+    get:
+      summary: Lista os membros da guilda (apenas para membros)
+      description: >
+        Ordem estável por entrada (mais antigo primeiro) e id. `nextCursor` é
+        opaco; `null` indica a última página. Não-membros recebem 403.
+      operationId: listGuildMembers
+      tags: [Guilds]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: cursor, in: query, required: false, schema: { type: string, maxLength: 200 } }
+        - { name: limit, in: query, required: false, schema: { type: integer, minimum: 1, maximum: 50, default: 20 } }
+      responses:
+        "200":
+          description: Página de membros
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/GuildMemberPage" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /guilds/{id}/members/me:
+    delete:
+      summary: Sai da guilda
+      description: >
+        Se quem sai é o líder, o membro mais antigo restante assume a liderança.
+        Quando o último membro sai, a guilda é encerrada.
+      operationId: leaveGuild
+      tags: [Guilds]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "204": { description: Saída registrada }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /guilds/{id}/raids/active:
+    get:
+      summary: Raid da semana da guilda
+      description: >
+        A Raid ativa da guilda (segunda 00:00 a domingo 23:59:59 em
+        `America/Sao_Paulo`, datas em UTC), com a Missão do rodízio semanal e a
+        Recompensa de Raid prevista, `goalReachedAt` com a Meta batida, e em `me`
+        a participação e a Contribuição de quem consulta, e em `lastHit` o Golpe mais recente. Só membros da guilda a veem. `404` quando a guilda não
+        tem Raid ativa.
+      operationId: getActiveGuildRaid
+      tags: [Raids]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: Raid ativa
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ActiveRaid" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /guilds/{id}/raids/next-mission/available:
+    get:
+      summary: Missões que o Líder pode escolher para a próxima Raid
+      description: >
+        As Missões possuídas pelos membros atuais, com o dono de cada uma (ADR-012). As Missões do rodízio vêm
+        com `rotation: true` e `owners` vazio, porque são de todos. Só membros da guilda (`403` para os demais).
+      operationId: listAvailableGuildMissions
+      tags: [Raids]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: Missões disponíveis
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/AvailableMission" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /guilds/{id}/raids/next-mission:
+    get:
+      summary: Missão escolhida para a próxima Raid
+      description: >
+        A escolha pendente do Líder, com a Missão e o dono, ou `choice: null` quando não há escolha ou o dono já
+        saiu da guilda (a Raid usará o rodízio). Só membros da guilda.
+      operationId: getNextGuildMission
+      tags: [Raids]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: Escolha pendente
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/NextMissionChoiceResponse" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    put:
+      summary: Escolhe a Missão da próxima Raid
+      description: >
+        Só o Líder (`403` para membro comum e não-membro). Aceita a Missão do rodízio ou uma Missão à venda possuída
+        por um membro atual, que o corpo identifica em `ownerId` (`422` caso contrário). A mesma Missão pode se
+        repetir, e a escolha pode ser trocada até a Raid começar: o job de segunda a usa e a consome, e se o dono
+        saiu antes a Raid usa o rodízio. O dono não recebe nada. Limite de 30 requisições por minuto por usuário.
+      operationId: chooseNextGuildMission
+      tags: [Raids]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [missionId]
+              properties:
+                missionId: { type: string, format: uuid }
+                ownerId: { type: string, format: uuid, description: "Dono da Missão à venda; omitido na Missão do rodízio" }
+      responses:
+        "200":
+          description: Escolha gravada
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/NextMissionChoiceResponse" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422":
+          description: A Missão não é de um membro atual
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+
+  /guilds/{id}/raids:
+    get:
+      summary: Raids anteriores da guilda
+      description: >
+        As Raids já fechadas pelo fechamento semanal (`completed` com Meta batida,
+        `expired` sem), da mais recente para a mais antiga, com a Missão, a semana
+        e em `me` a participação, a Contribuição e a posição de quem consulta no
+        Ranking interno de cada uma. A Raid ativa não entra. Só membros da guilda
+        a veem. `nextCursor` é opaco; `null` indica a última página.
+      operationId: listPastGuildRaids
+      tags: [Raids]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: cursor, in: query, required: false, schema: { type: string, maxLength: 100 } }
+        - { name: limit, in: query, required: false, schema: { type: integer, minimum: 1, maximum: 20, default: 10 } }
+      responses:
+        "200":
+          description: Página de Raids anteriores
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PastRaidPage" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
 
   /raids/{id}:
     get:
       summary: Detalhe de uma raid
+      description: Restrito aos membros da guilda da raid; quem é de fora recebe 403.
       operationId: getRaid
       tags: [Raids]
       parameters:
@@ -642,40 +1053,109 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/RaidDetail" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
 
   /raids/{id}/ranking:
     get:
-      summary: Ranking de contribuição da raid
+      summary: Ranking interno da Raid
       description: >
-        Sem paginação por decisão explícita: bounded pelo tamanho da guilda
-        (tipicamente dezenas de membros, não milhares) — ver nota de
-        /users/me/sessions acima para o mesmo raciocínio.
+        Participantes que ainda são membros da guilda, ordenados por
+        Contribuição em XP (decrescente), depois por quem chegou antes ao total
+        (última Contribuição mais antiga) e por `userId`. Participantes sem
+        Contribuição aparecem no fim com 0 XP. Quem saiu da guilda não aparece,
+        mas as Contribuições dele continuam no progresso coletivo. As posições
+        são densas e começam em 1; `nextCursor` é opaco e `null` marca a última
+        página. Restrito aos membros da guilda da raid; quem é de fora recebe 403.
       operationId: getRaidRanking
       tags: [Raids]
       parameters:
         - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: cursor, in: query, required: false, schema: { type: string, maxLength: 100 } }
+        - { name: limit, in: query, required: false, schema: { type: integer, minimum: 1, maximum: 50, default: 20 } }
       responses:
         "200":
-          description: Ranking ordenado por XP contribuído (desc)
+          description: Página do ranking
           content:
             application/json:
-              schema:
-                type: array
-                items: { $ref: "#/components/schemas/RaidRankingEntry" }
+              schema: { $ref: "#/components/schemas/RaidRankingPage" }
+        "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
 
   /raids/{id}/join:
     post:
       summary: Confirma participação numa raid ativa da guilda do usuário (UC02)
+      description: >
+        Grava a participação do usuário na Raid. Idempotente: repetir a chamada
+        devolve 204 sem duplicar. Uma Raid com a meta batida continua aceitando
+        participação até o fim da semana. `403` para quem não é da guilda da
+        Raid; `409` quando a Raid já terminou (UC02 A01).
       operationId: joinRaid
       tags: [Raids]
       parameters:
         - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
       responses:
         "204": { description: Participação confirmada }
+        "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  /shop/missions:
+    get:
+      summary: Loja, seção Missões, com preço e estado para o usuário
+      description: >
+        Missões à venda (preço de 90 a 480), das mais baratas às mais caras (ADR-012). As Missões do rodízio são
+        grátis, todo usuário as possui e elas não aparecem aqui. `state` é `owned` (já possui), `purchasable`
+        (o saldo basta) ou `insufficient` (faltam `missing` Moedas).
+      operationId: listShopMissions
+      tags: [Shop]
+      responses:
+        "200":
+          description: Missões à venda
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/StoreMission" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /shop/missions/{id}/purchase:
+    post:
+      summary: Compra uma Missão
+      description: >
+        Debita o preço e registra a posse numa única transação; a Missão fica com o usuário para sempre. `404` para
+        Missão inexistente ou do rodízio (não está à venda). `409` quando o usuário já possui a Missão.
+        `422` quando o saldo não basta: o corpo traz `missing` (Moedas que faltam) e nada muda. Duas Compras
+        simultâneas nunca deixam o saldo negativo. Limite de 30 Compras por minuto por usuário.
+      operationId: purchaseShopMission
+      tags: [Shop]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "201":
+          description: Missão comprada
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MissionPurchase" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422":
+          description: Saldo insuficiente
+          content:
+            application/problem+json:
+              schema:
+                allOf:
+                  - { $ref: "#/components/schemas/Problem" }
+                  - type: object
+                    required: [missing]
+                    properties:
+                      missing: { type: integer, minimum: 1, description: "Moedas que faltam para a Compra" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
 
 components:
   securitySchemes:
@@ -776,7 +1256,7 @@ components:
       description: >
         A projeção mantém a coerência do progresso: levelStartXp <= xpTotal <
         nextLevelXp.
-      required: [id, email, displayName, planTier, level, levelStartXp, nextLevelXp, xpTotal, title]
+      required: [id, email, displayName, planTier, level, levelStartXp, nextLevelXp, xpTotal, title, equipped]
       properties:
         id: { type: string, format: uuid }
         email: { type: string, format: email }
@@ -801,7 +1281,183 @@ components:
           minimum: 0
           maximum: 9000000000000000
           description: Experiência total acumulada.
-        title: { type: [string, "null"] }
+        title:
+          type: [string, "null"]
+          description: >
+            Nome do Cosmetic Item de categoria Título equipado (ADR-010), ou
+            null quando não há Título equipado.
+        equipped:
+          type: array
+          description: Cosmetic Items equipados, no máximo um por categoria.
+          items: { $ref: "#/components/schemas/EquippedCosmeticItem" }
+
+    EquippedCosmeticItem:
+      type: object
+      required: [category, itemId, name]
+      properties:
+        category: { type: string, enum: [avatar, badge, title, accessory] }
+        itemId: { type: string, format: uuid }
+        name: { type: string }
+
+    CatalogCosmeticItem:
+      type: object
+      description: >
+        `unlocked` indica que o item está no Inventário. `equipped` só é true
+        para itens desbloqueados, com no máximo um por categoria.
+      required: [id, category, name, requiresPremium, unlocked, equipped, forSale, unlockCondition]
+      properties:
+        id: { type: string, format: uuid }
+        category: { type: string, enum: [avatar, badge, title, accessory] }
+        name: { type: string }
+        requiresPremium: { type: boolean, description: "Item premium (✦), ADR-007." }
+        unlocked: { type: boolean }
+        equipped: { type: boolean }
+        forSale: { type: boolean, description: "Item de Compra à venda na Loja. Um item de Compra com false está Fora de venda." }
+        unlockCondition: { $ref: "#/components/schemas/UnlockCondition" }
+
+    UnlockCondition:
+      description: Condição de desbloqueio estruturada, para a interface montar o texto.
+      oneOf:
+        - type: object
+          required: [type, level]
+          properties:
+            type: { type: string, const: level }
+            level: { type: integer, minimum: 1 }
+        - type: object
+          required: [type, slug]
+          properties:
+            type: { type: string, const: raid }
+            slug: { type: string, description: "Slug da Raid. `*` vale para qualquer Raid." }
+        - type: object
+          required: [type]
+          description: Item da Loja, desbloqueado pela Compra (ADR-012).
+          properties:
+            type: { type: string, const: purchase }
+
+    ShopItem:
+      type: object
+      required: [id, category, name, price, state, missing]
+      properties:
+        id: { type: string, format: uuid }
+        category: { type: string, enum: [avatar, badge, title, accessory] }
+        name: { type: string }
+        price: { type: integer, minimum: 30, maximum: 300, description: Preço em Moedas }
+        state: { type: string, enum: [owned, purchasable, insufficient] }
+        missing: { type: integer, minimum: 0, description: "Moedas que faltam; 0 quando já possui ou o saldo basta" }
+
+    ShopPurchase:
+      type: object
+      required: [itemId, price, balance]
+      properties:
+        itemId: { type: string, format: uuid }
+        price: { type: integer, minimum: 30, maximum: 300 }
+        balance: { type: integer, minimum: 0, description: Saldo depois da Compra }
+
+    MissionOwner:
+      type: object
+      required: [userId, displayName]
+      properties:
+        userId: { type: string, format: uuid }
+        displayName: { type: string }
+    AvailableMission:
+      type: object
+      required: [id, slug, name, description, imageUrl, rotation, owners]
+      properties:
+        id: { type: string, format: uuid }
+        slug: { type: string }
+        name: { type: string }
+        description: { type: string }
+        imageUrl: { type: [string, "null"] }
+        rotation: { type: boolean, description: "Missão do rodízio: grátis e de todos os membros" }
+        owners:
+          type: array
+          items: { $ref: "#/components/schemas/MissionOwner" }
+    NextMissionChoice:
+      type: object
+      required: [mission, owner, chosenAt]
+      properties:
+        mission:
+          type: object
+          required: [id, slug, name, description, imageUrl, rotation]
+          properties:
+            id: { type: string, format: uuid }
+            slug: { type: string }
+            name: { type: string }
+            description: { type: string }
+            imageUrl: { type: [string, "null"] }
+            rotation: { type: boolean }
+        owner:
+          oneOf:
+            - { $ref: "#/components/schemas/MissionOwner" }
+            - { type: "null" }
+        chosenAt: { type: string, format: date-time }
+    NextMissionChoiceResponse:
+      type: object
+      required: [choice]
+      properties:
+        choice:
+          oneOf:
+            - { $ref: "#/components/schemas/NextMissionChoice" }
+            - { type: "null" }
+    StoreMission:
+      type: object
+      required: [id, slug, name, description, imageUrl, price, reward, state, missing]
+      properties:
+        id: { type: string, format: uuid }
+        slug: { type: string }
+        name: { type: string }
+        description: { type: string, maxLength: 140 }
+        imageUrl: { type: [string, "null"] }
+        price: { type: integer, minimum: 1, description: "Preço em Moedas" }
+        reward:
+          type: object
+          required: [id, name, category]
+          properties:
+            id: { type: string, format: uuid }
+            name: { type: string }
+            category: { type: string, enum: [avatar, badge, title, accessory] }
+        state: { type: string, enum: [owned, purchasable, insufficient] }
+        missing: { type: integer, minimum: 0, description: "Moedas que faltam; 0 quando já possui ou o saldo basta" }
+
+    MissionPurchase:
+      type: object
+      required: [missionId, price, balance]
+      properties:
+        missionId: { type: string, format: uuid }
+        price: { type: integer, minimum: 1 }
+        balance: { type: integer, minimum: 0, description: "Saldo depois da Compra" }
+
+    CoinBalance:
+      type: object
+      required: [balance]
+      properties:
+        balance: { type: integer, minimum: 0 }
+
+    CoinOrigin:
+      type: object
+      required: [type, ref]
+      properties:
+        type: { type: string, enum: [study-session, raid-win, purchase, signup, migration] }
+        ref: { type: string, maxLength: 64, description: "Referência da origem, como o id da Study Session" }
+
+    CoinStatementItem:
+      type: object
+      required: [id, amount, balanceAfter, origin, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        amount: { type: integer, description: "Positivo para crédito, negativo para débito" }
+        balanceAfter: { type: integer, minimum: 0, description: "Saldo logo depois deste lançamento" }
+        origin: { $ref: "#/components/schemas/CoinOrigin" }
+        createdAt: { type: string, format: date-time }
+
+    CoinStatementPage:
+      type: object
+      required: [items, nextCursor]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/CoinStatementItem" }
+        nextCursor: { type: [string, "null"] }
 
     SessionSummary:
       type: object
@@ -829,6 +1485,15 @@ components:
             normalização e recusa quebras de linha e caracteres de controle
             junto de texto com 400 application/problem+json.
           example: Cálculo II
+        mode:
+          type: string
+          enum: [solo, guild]
+          default: solo
+          description: Uma sessão `guild` contribui para a Raid `raidId` ao ser concluída dentro da semana.
+        raidId:
+          type: string
+          format: uuid
+          description: Obrigatório no modo `guild` e recusado no modo `solo`.
 
     StudySessionTransitionRequest:
       type: object
@@ -837,12 +1502,33 @@ components:
       properties:
         expectedVersion: { type: integer, minimum: 1 }
 
+    RaidContributionFeedback:
+      type: object
+      required: [status, xpContributed]
+      properties:
+        status: { type: string, enum: [counted, outside-raid-window, no-validated-xp], description: Razão pela qual a sessão contou ou não para a Raid }
+        xpContributed: { type: integer, minimum: 0, description: XP efetivamente contribuído; 0 quando não contou }
+
+    StudySessionTransitionResponse:
+      description: Snapshot devolvido por pause, resume, stop e complete, com o feedback da Contribuição para a Raid.
+      allOf:
+        - { $ref: "#/components/schemas/StudySessionSnapshot" }
+        - type: object
+          required: [raidContribution]
+          properties:
+            raidContribution:
+              anyOf:
+                - { $ref: "#/components/schemas/RaidContributionFeedback" }
+                - { type: "null" }
+              description: null para sessões solo e para pause/resume; preenchido em stop e complete de modo Guilda.
+
     StudySessionSnapshot:
       type: object
-      required: [id, mode, subject, state, plannedDurationSeconds, startedAt, runDeadlineAt, pausedAt, pausedTotalSeconds, durationValidSeconds, remainingSeconds, serverNow, version, endedAt, xpAwarded, terminalReason, discardedReason, canControl]
+      required: [id, mode, raidId, subject, state, plannedDurationSeconds, startedAt, runDeadlineAt, pausedAt, pausedTotalSeconds, durationValidSeconds, remainingSeconds, serverNow, version, endedAt, xpAwarded, terminalReason, discardedReason, cappedReason, canControl]
       properties:
         id: { type: string, format: uuid }
-        mode: { type: string, enum: [solo] }
+        mode: { type: string, enum: [solo, guild] }
+        raidId: { type: [string, "null"], format: uuid, description: A Raid que recebe a Contribuição; null no modo solo }
         subject:
           type: [string, "null"]
           description: Matéria normalizada definida no início; null é Sem matéria. Não muda depois do início.
@@ -856,14 +1542,23 @@ components:
         remainingSeconds: { type: integer, minimum: 0 }
         serverNow: { type: string, format: date-time }
         version: { type: integer, minimum: 1 }
-        endedAt: { type: [string, "null"], format: date-time }
+        endedAt:
+          type: [string, "null"]
+          format: date-time
+          description: Na conclusão automática, é o runDeadlineAt, mesmo quando a conclusão é registrada depois do prazo.
         xpAwarded: { type: integer, minimum: 0 }
         terminalReason: { type: [string, "null"], enum: [manual-stop, auto-complete, legacy-session-without-owner, null] }
         discardedReason: { type: [string, "null"] }
-        canControl: { type: boolean }
+        cappedReason:
+          type: [string, "null"]
+          enum: [continuous-limit, daily-limit, null]
+        canControl:
+          type: boolean
+          description: Sempre true. Mantido por compatibilidade; qualquer Session autenticada do usuário controla a Study Session (D-006).
       example:
         id: 00000000-0000-4000-8000-000000000074
         mode: solo
+        raidId: null
         subject: null
         state: running
         plannedDurationSeconds: 1500
@@ -893,13 +1588,15 @@ components:
         endedAt: { type: [string, "null"], format: date-time }
         durationValidSeconds: { type: integer, minimum: 0 }
         xpAwarded: { type: integer, minimum: 0 }
-        discardedReason:
+        discardedReason: { type: [string, "null"] }
+        cappedReason:
           type: [string, "null"]
-          enum: [continuous-session-exceeds-limit, daily-limit-exceeded, null]
+          enum: [continuous-limit, daily-limit, null]
+          description: Antifraude limit that truncated the valid focus; XP is computed on the truncated time (ADR-011).
 
     RecentStudySession:
       type: object
-      required: [id, subject, mode, state, startedAt, endedAt, durationValidSeconds, xpAwarded, discardedReason]
+      required: [id, subject, mode, state, startedAt, endedAt, durationValidSeconds, xpAwarded, discardedReason, cappedReason]
       properties:
         id: { type: string, format: uuid }
         subject: { type: [string, "null"] }
@@ -909,9 +1606,33 @@ components:
         endedAt: { type: string, format: date-time }
         durationValidSeconds: { type: integer, minimum: 0 }
         xpAwarded: { type: integer, minimum: 0 }
-        discardedReason:
+        discardedReason: { type: [string, "null"] }
+        cappedReason:
           type: [string, "null"]
-          enum: [continuous-session-exceeds-limit, daily-limit-exceeded, null]
+          enum: [continuous-limit, daily-limit, null]
+          description: Antifraude limit that truncated the valid focus; XP is computed on the truncated time (ADR-011).
+
+    StudySessionHistoryItem:
+      allOf:
+        - $ref: "#/components/schemas/RecentStudySession"
+        - type: object
+          required: [cyclePosition]
+          properties:
+            cyclePosition:
+              type: [integer, "null"]
+              minimum: 1
+              maximum: 4
+              description: Posição do foco concluído por inteiro no ciclo Pomodoro; null para os outros desfechos
+
+    StudySessionHistoryPage:
+      type: object
+      required: [date, items, nextCursor]
+      properties:
+        date: { type: string, format: date, description: "O dia em UTC listado" }
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/StudySessionHistoryItem" }
+        nextCursor: { type: [string, "null"] }
 
     RecentStudySessionSubjects:
       type: object
@@ -921,6 +1642,17 @@ components:
           type: array
           maxItems: 6
           items: { type: string, minLength: 1, maxLength: 80 }
+
+    StudySessionCycle:
+      type: object
+      required: [completedInCycle, cycleLength, nextBreak]
+      properties:
+        completedInCycle: { type: integer, minimum: 0, maximum: 4 }
+        cycleLength: { type: integer, const: 4 }
+        nextBreak:
+          type: string
+          enum: [short, long]
+          description: Pausa curta (5 minutos) ou longa (15 minutos) oferecida após o próximo foco concluído.
 
     SessionMetrics:
       type: object
@@ -971,7 +1703,7 @@ components:
         level: { type: integer }
         createdBy: { type: string, format: uuid }
 
-    GuildDetail:
+    GuildSummary:
       type: object
       required: [id, name, level, memberCount]
       properties:
@@ -979,6 +1711,167 @@ components:
         name: { type: string }
         level: { type: integer }
         memberCount: { type: integer }
+
+    GuildDetail:
+      allOf:
+        - $ref: "#/components/schemas/GuildSummary"
+        - type: object
+          required: [leader]
+          properties:
+            leader:
+              type: [object, "null"]
+              required: [userId, displayName]
+              properties:
+                userId: { type: string, format: uuid }
+                displayName: { type: string }
+
+    GuildMember:
+      type: object
+      required: [userId, displayName, level, title, role, joinedAt]
+      properties:
+        userId: { type: string, format: uuid }
+        displayName: { type: string }
+        level: { type: integer }
+        title:
+          type: [string, "null"]
+          description: Nome do Título equipado pelo membro (ADR-010), ou null.
+        role: { type: string, enum: [leader, member] }
+        joinedAt: { type: string, format: date-time }
+
+    GuildMemberPage:
+      type: object
+      required: [items, nextCursor]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/GuildMember" }
+        nextCursor: { type: [string, "null"] }
+
+    MyGuild:
+      type: object
+      required: [guild, role]
+      properties:
+        guild: { $ref: "#/components/schemas/GuildDetail" }
+        role: { type: string, enum: [leader, member] }
+
+    GuildPage:
+      type: object
+      required: [items, nextCursor]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/GuildSummary" }
+        nextCursor: { type: [string, "null"] }
+
+    PastRaid:
+      type: object
+      required: [id, mission, startsAt, endsAt, status, goalXp, progressXp, me]
+      properties:
+        id: { type: string, format: uuid }
+        mission:
+          type: object
+          required: [slug, name]
+          properties:
+            slug: { type: string }
+            name: { type: string }
+        startsAt: { type: string, format: date-time }
+        endsAt: { type: string, format: date-time }
+        status: { type: string, enum: [completed, expired], description: "completed: Meta batida, a guilda subiu de nível; expired: meta não batida" }
+        goalXp: { type: integer, minimum: 1 }
+        progressXp: { type: integer, minimum: 0 }
+        me:
+          type: object
+          required: [participated, contributionXp, position]
+          properties:
+            participated: { type: boolean, description: "Se quem consulta confirmou participação ou contribuiu" }
+            contributionXp: { type: integer, minimum: 0 }
+            position: { type: [integer, "null"], minimum: 1, description: "Posição no Ranking interno dessa Raid; null sem participação" }
+
+    PastRaidPage:
+      type: object
+      required: [items, nextCursor]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/PastRaid" }
+        nextCursor: { type: [string, "null"] }
+
+    ActiveRaid:
+      type: object
+      required: [id, mission, rewards, coins, party, goalXp, progressXp, regeneratedXp, healthXp, furyPercent, goalReachedAt, startsAt, endsAt, status, weekDays, today, studyDays, streak, me, lastHit]
+      properties:
+        id: { type: string, format: uuid }
+        mission:
+          type: object
+          required: [slug, name, description, imageUrl]
+          properties:
+            slug: { type: string, example: vigilia-da-aurora, description: "Chave da ilustração da cena: o cliente mapeia slug → arte e usa a padrão para um slug desconhecido" }
+            name: { type: string }
+            description: { type: string, maxLength: 140 }
+            imageUrl: { type: [string, "null"], description: Nulo enquanto a Missão não tem imagem }
+        rewards:
+          type: array
+          description: Recompensa de Raid, todos os Cosmetic Items da Missão em ordem estável. Dados a quem tiver Contribuição numa Raid vencida, junto com `coins`.
+          minItems: 1
+          items:
+            type: object
+            required: [itemId, name, category]
+            properties:
+              itemId: { type: string, format: uuid }
+              name: { type: string }
+              category: { type: string, enum: [avatar, badge, title, accessory] }
+        coins: { type: integer, minimum: 0, description: "Moedas que cada premiado também recebe (`RAID_WIN_COINS`)" }
+        party:
+          type: array
+          maxItems: 5
+          description: Os 5 primeiros do Ranking interno (mesma ordem e desempate dele, com Participantes de 0 XP), com a aparência equipada, para a cena da Raid.
+          items: { $ref: "#/components/schemas/RaidRankingEntry" }
+        goalXp: { type: integer, description: "Meta coletiva, congelada na criação da Raid" }
+        progressXp: { type: integer, description: "Soma das Contribuições; continua subindo depois da Meta batida até endsAt" }
+        regeneratedXp: { type: integer, minimum: 0, description: "Vida que a Fúria do dragão já devolveu ao chefe" }
+        healthXp: { type: integer, minimum: 0, description: "Vida do chefe: `goalXp − progressXp + regeneratedXp`, entre 0 e `goalXp`" }
+        furyPercent: { type: integer, minimum: 0, maximum: 100, description: "Fúria do dragão: % da meta que o chefe recupera por dia inteiro da Raid sem Dia de estudo (`RAID_FURY_REGEN_PERCENT`)" }
+        goalReachedAt:
+          type: [string, "null"]
+          format: date-time
+          description: A primeira vez que o progresso alcançou a meta mais o regenerado, isto é, a Vida do chefe chegou a zero (Meta batida). Não muda o status.
+        startsAt: { type: string, format: date-time }
+        endsAt: { type: string, format: date-time }
+        status: { type: string, enum: [active, completed, expired] }
+        weekDays:
+          type: array
+          description: Os sete dias da semana da Raid em `America/Sao_Paulo`, da segunda ao domingo.
+          minItems: 7
+          maxItems: 7
+          items: { type: string, format: date, example: "2026-10-05" }
+        today: { type: string, format: date, description: "Hoje em `America/Sao_Paulo` pelo relógio do servidor; a tela não usa o calendário do aparelho.", example: "2026-10-07" }
+        studyDays:
+          type: array
+          description: Dias de estudo da semana da Raid até agora, em ordem. Um dia em `America/Sao_Paulo` com pelo menos uma Contribuição na Raid da Guild; sessões solo não contam.
+          items: { type: string, format: date, example: "2026-10-07" }
+        streak:
+          type: integer
+          minimum: 0
+          description: Sequência da Guild, os Dias de estudo seguidos dentro da semana da Raid. Termina hoje se hoje já teve estudo, ou ontem; hoje sem estudo não quebra. Zera na segunda.
+        me:
+          type: object
+          required: [participating, contributionXp, position]
+          properties:
+            participating: { type: boolean, description: "Se quem consulta já confirmou participação nesta Raid" }
+            contributionXp: { type: integer, minimum: 0, description: "A Contribuição de quem consulta nesta Raid" }
+            position: { type: [integer, "null"], minimum: 1, description: "A posição de quem consulta no Ranking interno; null enquanto não participa" }
+        lastHit:
+          description: O Golpe mais recente (a última Contribuição), o mesmo do evento `raid:hit`; null antes da primeira Contribuição
+          oneOf:
+            - type: "null"
+            - type: object
+              required: [userId, displayName, xp, focusMinutes, at]
+              properties:
+                userId: { type: string, format: uuid }
+                displayName: { type: string }
+                xp: { type: integer, minimum: 1, description: "Dano do Golpe, o XP da Contribuição" }
+                focusMinutes: { type: [integer, "null"], minimum: 0, description: "Minutos inteiros de foco validado da Study Session; null quando ela não existe mais" }
+                at: { type: string, format: date-time }
 
     RaidDetail:
       type: object
@@ -993,10 +1886,34 @@ components:
 
     RaidRankingEntry:
       type: object
-      required: [userId, xpContributed]
+      required: [position, userId, displayName, level, title, avatar, accessory, contributionXp, isMe]
       properties:
+        position: { type: integer, minimum: 1 }
         userId: { type: string, format: uuid }
-        xpContributed: { type: integer }
+        displayName: { type: string }
+        level: { type: integer, minimum: 1 }
+        title: { type: [string, "null"], description: "O Título equipado (ADR-010); null com o espaço vazio" }
+        avatar: { $ref: "#/components/schemas/EquippedAppearanceItem" }
+        accessory: { $ref: "#/components/schemas/EquippedAppearanceItem" }
+        contributionXp: { type: integer, minimum: 0 }
+        isMe: { type: boolean, description: "Se a linha é de quem consulta" }
+
+    EquippedAppearanceItem:
+      type: [object, "null"]
+      description: O Cosmetic Item equipado naquele espaço; null com o espaço vazio
+      required: [itemId, name]
+      properties:
+        itemId: { type: string, format: uuid }
+        name: { type: string }
+
+    RaidRankingPage:
+      type: object
+      required: [items, nextCursor]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/RaidRankingEntry" }
+        nextCursor: { type: [string, "null"] }
 
     Problem:
       type: object
@@ -1009,7 +1926,28 @@ components:
         detail: { type: string }
         instance: { type: string }
 
+    InsufficientCoinsProblem:
+      description: Problema de uma Compra recusada por saldo, com as Moedas que faltam.
+      allOf:
+        - $ref: "#/components/schemas/Problem"
+        - type: object
+          required: [missing]
+          properties:
+            missing: { type: integer, minimum: 1 }
+
   responses:
+    TooManyRequests:
+      description: >
+        Limite de requisições excedido (#13). Login e cadastro: 10 por minuto por IP e por rota;
+        renovação de Session: 30 por minuto por IP; mutações de Study Session: 60 por minuto por
+        usuário; Compras na Loja: 30 por minuto por usuário. Os valores são configuráveis por `RATE_LIMIT_*`.
+      headers:
+        Retry-After:
+          description: Segundos até o limite liberar a próxima requisição.
+          schema: { type: integer, minimum: 0 }
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/Problem" }
     BadRequest:
       description: Requisição inválida
       content:
@@ -1043,7 +1981,7 @@ components:
         application/problem+json:
           schema: { $ref: "#/components/schemas/Problem" }
     StudySessionStartConflict:
-      description: Study Session ativa ou reutilização incompatível de Idempotency-Key.
+      description: Study Session ativa, Raid encerrada no modo Guilda ou reutilização incompatível de Idempotency-Key.
       content:
         application/problem+json:
           schema: { $ref: "#/components/schemas/Problem" }
@@ -1062,13 +2000,21 @@ components:
                 type: https://wise.app/errors/idempotency-key-reused
                 title: ConflictException
                 status: 409
-                detail: Idempotency-Key já foi usada com outra duração ou Matéria
+                detail: Idempotency-Key já foi usada com outra duração, Matéria ou modo
+                instance: /api/v1/sessions
+            raidEnded:
+              summary: A Raid da sessão de modo Guilda já foi encerrada
+              value:
+                type: https://wise.app/errors/raid-ended
+                title: ConflictException
+                status: 409
+                detail: Raid encerrada
                 instance: /api/v1/sessions
     # Keep operation examples local: each RFC 7807 `instance` names its route.
     StudySessionPauseConflict:
       description: >
-        Versão obsoleta, transição inválida, prazo vencido, falta de controle
-        pela Session iniciadora ou chave já usada por outro comando.
+        Versão obsoleta, transição inválida, prazo vencido ou chave já usada
+        por outro comando.
       content:
         application/problem+json:
           schema: { $ref: "#/components/schemas/Problem" }
@@ -1098,7 +2044,11 @@ components:
                 detail: O prazo canônico da Study Session já terminou
                 instance: /api/v1/sessions/{id}/pause
             notControllable:
-              summary: A Session autenticada não iniciou o foco
+              summary: "Obsoleto: a Session autenticada não iniciou o foco"
+              description: >
+                Não é mais enviado desde a D-006, porque qualquer Session do usuário
+                controla a Study Session. Fica documentado por um ciclo para clientes
+                antigos já instalados.
               value:
                 type: https://wise.app/errors/study-session-not-controllable
                 title: ConflictException
@@ -1136,7 +2086,11 @@ components:
                 detail: Não é possível retomar a Study Session no estado atual
                 instance: /api/v1/sessions/{id}/resume
             notControllable:
-              summary: A Session autenticada não iniciou o foco
+              summary: "Obsoleto: a Session autenticada não iniciou o foco"
+              description: >
+                Não é mais enviado desde a D-006, porque qualquer Session do usuário
+                controla a Study Session. Fica documentado por um ciclo para clientes
+                antigos já instalados.
               value:
                 type: https://wise.app/errors/study-session-not-controllable
                 title: ConflictException
@@ -1182,7 +2136,11 @@ components:
                 detail: Não é possível encerrar a Study Session no estado atual
                 instance: /api/v1/sessions/{id}/stop
             notControllable:
-              summary: A Session autenticada não iniciou o foco
+              summary: "Obsoleto: a Session autenticada não iniciou o foco"
+              description: >
+                Não é mais enviado desde a D-006, porque qualquer Session do usuário
+                controla a Study Session. Fica documentado por um ciclo para clientes
+                antigos já instalados.
               value:
                 type: https://wise.app/errors/study-session-not-controllable
                 title: ConflictException

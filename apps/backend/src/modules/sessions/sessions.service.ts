@@ -12,9 +12,13 @@ import { xpForDuration } from './domain/xp-rate';
 import { ProgressionService } from '../progression/progression.service';
 import { RaidsService } from '../raids/raids.service';
 import { RecentSessionResponseDto } from './dto/recent-session-response.dto';
+import type { SessionHistoryItemDto, SessionHistoryPageDto } from './dto/session-history-response.dto';
+import { SESSION_HISTORY_PAGE_SIZE_DEFAULT, type SessionHistoryQueryDto } from './dto/session-history-query.dto';
 import { RecentSubjectsResponseDto } from './dto/recent-subjects-response.dto';
 import { SessionMetricsResponseDto } from './dto/session-metrics-response.dto';
 import { buildCadence, calculateStreaks, type SessionActivityDay } from './domain/session-metrics';
+import { FOCUS_CYCLE_LENGTH, focusCycle, type FocusCycle } from './domain/focus-cycle';
+import { decodeDatetimeCursor, encodeDatetimeCursor } from '../../shared/pagination/datetime-cursor';
 
 const RECENT_SUBJECTS_LIMIT = 6;
 
@@ -44,6 +48,79 @@ export class SessionsService {
     );
   }
 
+  /** Where the user stands in the Pomodoro cadence: only focuses completed in full advance it. */
+  async focusCycle(userId: string): Promise<FocusCycle> {
+    const completedFocuses = await this.studySessions.count({ where: { userId, state: 'completed' } });
+    return focusCycle(completedFocuses);
+  }
+
+  /**
+   * Histórico do dia (#17): every Study Session that ended on a UTC day, newest first, with the place of each
+   * focus completed in full in the Pomodoro cycle. The cycle counts the same focuses as `focusCycle`.
+   */
+  async history(userId: string, query: SessionHistoryQueryDto, now: Date = new Date()): Promise<SessionHistoryPageDto> {
+    const date = query.date ?? utcDateKey(now);
+    if (Number.isNaN(utcDayStart(date).getTime()) || utcDateKey(utcDayStart(date)) !== date) {
+      throw new BadRequestException('Data inválida');
+    }
+    const limit = query.limit ?? SESSION_HISTORY_PAGE_SIZE_DEFAULT;
+    const after = query.cursor ? decodeDatetimeCursor(query.cursor) : null;
+
+    const rows = await this.studySessions.manager.query<Array<{
+      id: string;
+      subject: string | null;
+      mode: StudySession['mode'];
+      state: StudySession['state'] | null;
+      started_at: Date;
+      ended_at: Date;
+      ended_at_text: string;
+      duration_valid_seconds: number | string;
+      xp_awarded: number | string;
+      discarded_reason: string | null;
+      capped_reason: RecentSessionResponseDto['cappedReason'];
+      cycle_number: number | string | null;
+    }>>(
+      `SELECT session.id, session.subject, session.mode, session.state, session.started_at, session.ended_at,
+              DATE_FORMAT(session.ended_at, '%Y-%m-%d %H:%i:%s.%f') AS ended_at_text,
+              session.duration_valid_seconds, session.xp_awarded, session.discarded_reason, session.capped_reason,
+              completed.cycle_number
+       FROM study_sessions session
+       LEFT JOIN (
+         SELECT id, ROW_NUMBER() OVER (ORDER BY ended_at, id) AS cycle_number
+         FROM study_sessions WHERE user_id = ? AND state = 'completed'
+       ) completed ON completed.id = session.id
+       WHERE session.user_id = ?
+         AND session.ended_at >= ? AND session.ended_at < ?
+         ${after ? 'AND (session.ended_at < ? OR (session.ended_at = ? AND session.id < ?))' : ''}
+       ORDER BY session.ended_at DESC, session.id DESC
+       LIMIT ?`,
+      [
+        userId, userId, utcDayStart(date), utcDayStart(nextDay(date)),
+        ...(after ? [after.datetime, after.datetime, after.id] : []),
+        limit + 1,
+      ],
+    );
+    const page = rows.slice(0, limit);
+    const last = page[page.length - 1];
+    return {
+      date,
+      items: page.map((row): SessionHistoryItemDto => ({
+        id: row.id,
+        subject: row.subject,
+        mode: row.mode,
+        state: row.state ?? null,
+        startedAt: row.started_at,
+        endedAt: row.ended_at,
+        durationValidSeconds: Number(row.duration_valid_seconds),
+        xpAwarded: Number(row.xp_awarded),
+        discardedReason: row.discarded_reason ?? null,
+        cappedReason: row.capped_reason ?? null,
+        cyclePosition: row.cycle_number === null ? null : ((Number(row.cycle_number) - 1) % FOCUS_CYCLE_LENGTH) + 1,
+      })),
+      nextCursor: rows.length > limit && last ? encodeDatetimeCursor(last.ended_at_text, last.id) : null,
+    };
+  }
+
   async recent(userId: string): Promise<RecentSessionResponseDto[]> {
     const sessions = await this.studySessions.find({
       where: { userId, endedAt: Not(IsNull()) },
@@ -61,6 +138,7 @@ export class SessionsService {
       durationValidSeconds: session.durationValidSeconds,
       xpAwarded: session.xpAwarded,
       discardedReason: session.discardedReason ?? null,
+      cappedReason: session.cappedReason ?? null,
     }));
   }
 
@@ -149,11 +227,8 @@ export class SessionsService {
    * Heartbeat periódico (UC03/S01) — o servidor, nunca o cliente, é quem
    * carimba o tempo. Isso é o que torna a validação antifraude possível.
    */
-  async heartbeat(userId: string, sessionId: string, authSessionId?: string): Promise<void> {
+  async heartbeat(userId: string, sessionId: string): Promise<void> {
     const session = await this.loadOwnedActiveSession(userId, sessionId);
-    if (session.state && session.initiatingSessionId !== authSessionId) {
-      throw new ConflictException('Study Session iniciada em outra Session autenticada');
-    }
     session.lastHeartbeatAt = new Date();
     await this.studySessions.save(session);
   }
@@ -174,13 +249,11 @@ export class SessionsService {
 
     session.endedAt = endedAt;
     session.durationValidSeconds = validation.validSeconds;
-    session.discardedReason = validation.discardedReason;
-    session.xpAwarded = validation.discardedReason
-      ? 0
-      : xpForDuration(validation.validSeconds);
+    session.cappedReason = validation.cappedReason;
+    session.xpAwarded = xpForDuration(validation.validSeconds);
     await this.studySessions.save(session);
 
-    if (!validation.discardedReason && session.xpAwarded > 0) {
+    if (session.xpAwarded > 0) {
       await this.progression.awardXp(userId, session.xpAwarded);
       if (session.mode === 'guild' && session.raidId) {
         await this.raids.recordContribution(
@@ -229,7 +302,7 @@ export class SessionsService {
       .select('COALESCE(SUM(session.durationValidSeconds), 0)', 'total')
       .where('session.userId = :userId', { userId })
       .andWhere('session.id != :excludeSessionId', { excludeSessionId })
-      .andWhere('session.endedAt >= :startOfDay', { startOfDay })
+      .andWhere('session.startedAt >= :startOfDay', { startOfDay })
       .andWhere('session.discardedReason IS NULL')
       .andWhere("(session.state IS NULL OR session.state IN ('completed', 'stopped_early'))")
       .getRawOne<{ total: string }>();

@@ -1,0 +1,196 @@
+import { ExecutionContext, UnauthorizedException, ValidationPipe } from '@nestjs/common';
+import { Test } from '@nestjs/testing';
+import type { INestApplication } from '@nestjs/common';
+import type { AddressInfo } from 'node:net';
+import { DataSource } from 'typeorm';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { RateLimitGuard } from '../../shared/security/rate-limit';
+import type { JwtPayload } from '../auth/strategies/jwt.strategy';
+import type { ProgressionService } from '../progression/progression.service';
+import type { RaidsService } from '../raids/raids.service';
+import { User } from '../users/entities/user.entity';
+import { HttpExceptionFilter } from '../../shared/filters/http-exception.filter';
+import { APPLICATION_MIGRATIONS, createIntegrationDatabase, type IntegrationDatabase } from '../../test/integration-database';
+import { StudySession, type StudySessionState } from './entities/study-session.entity';
+import { SessionsController } from './sessions.controller';
+import { SessionsService } from './sessions.service';
+import { StudySessionStartService } from './study-session-start.service';
+import { StudySessionTransitionService } from './study-session-transition.service';
+
+type HistoryPage = {
+  date: string;
+  items: Array<{
+    id: string;
+    subject: string | null;
+    state: string | null;
+    startedAt: string;
+    endedAt: string;
+    durationValidSeconds: number;
+    xpAwarded: number;
+    discardedReason: string | null;
+    cappedReason: string | null;
+    cyclePosition: number | null;
+  }>;
+  nextCursor: string | null;
+};
+
+describe('Histórico do dia (GET /sessions/history) against MySQL', () => {
+  jest.setTimeout(30_000);
+
+  let database: IntegrationDatabase | undefined;
+  let dataSource: DataSource | undefined;
+  let app: INestApplication | undefined;
+  let baseUrl: string;
+  let counter: number;
+
+  const ana = '00000000-0000-4000-8000-000000000f01';
+  const bruno = '00000000-0000-4000-8000-000000000f02';
+
+  async function record(owner: string, endedAt: string | null, state: StudySessionState, extra: Partial<StudySession> = {}) {
+    counter += 1;
+    const id = `00000000-0000-4000-8000-${String(2000 + counter).padStart(12, '0')}`;
+    const end = endedAt ? new Date(endedAt) : null;
+    await dataSource!.getRepository(StudySession).insert({
+      id,
+      userId: owner,
+      subject: 'Cálculo',
+      mode: 'solo',
+      raidId: null,
+      startedAt: new Date((end ?? new Date('2026-09-01T12:00:00Z')).getTime() - 25 * 60_000),
+      endedAt: end,
+      plannedDurationSeconds: 1500,
+      state,
+      durationValidSeconds: state === 'completed' ? 1500 : 600,
+      xpAwarded: state === 'completed' ? 250 : 0,
+      ...extra,
+    });
+    return id;
+  }
+
+  const history = async (query = '?date=2026-09-01', as: string | null = ana) => fetch(`${baseUrl}/api/v1/sessions/history${query}`, {
+    headers: as === null ? {} : { authorization: 'Bearer integration-token', 'x-test-user-id': as },
+  });
+  const page = async (query?: string) => (await history(query)).json() as Promise<HistoryPage>;
+
+  beforeEach(async () => {
+    counter = 0;
+    database = await createIntegrationDatabase('wise_session_history_http');
+    dataSource = new DataSource(database.options(APPLICATION_MIGRATIONS));
+    await dataSource.initialize();
+    await dataSource.runMigrations();
+    await dataSource.getRepository(User).insert([
+      { id: ana, email: 'ana@example.com', passwordHash: 'hash', displayName: 'Ana', planTier: 'free' },
+      { id: bruno, email: 'bruno@example.com', passwordHash: 'hash', displayName: 'Bruno', planTier: 'free' },
+    ]);
+
+    const sessions = new SessionsService(dataSource.getRepository(StudySession), {} as ProgressionService, {} as RaidsService);
+    const moduleRef = await Test.createTestingModule({
+      controllers: [SessionsController],
+      providers: [
+        { provide: SessionsService, useValue: sessions },
+        { provide: StudySessionStartService, useValue: {} },
+        { provide: StudySessionTransitionService, useValue: {} },
+      ],
+    })
+      .overrideGuard(RateLimitGuard)
+      .useValue({ canActivate: () => true })
+      .overrideGuard(JwtAuthGuard)
+      .useValue({
+        canActivate(context: ExecutionContext) {
+          const request = context.switchToHttp().getRequest<{
+            headers: Record<string, string | undefined>;
+            user?: JwtPayload;
+          }>();
+          if (request.headers.authorization !== 'Bearer integration-token') throw new UnauthorizedException();
+          request.user = { sub: request.headers['x-test-user-id']! } as JwtPayload;
+          return true;
+        },
+      })
+      .compile();
+
+    app = moduleRef.createNestApplication();
+    app.setGlobalPrefix('api/v1');
+    app.useGlobalPipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }));
+    app.useGlobalFilters(new HttpExceptionFilter());
+    await app.init();
+    await app.listen(0, '127.0.0.1');
+    baseUrl = `http://127.0.0.1:${(app.getHttpServer().address() as AddressInfo).port}`;
+  });
+
+  afterEach(async () => {
+    await app?.close();
+    if (dataSource?.isInitialized) await dataSource.destroy();
+    await database?.close();
+  });
+
+  it('requires authentication and validates the query', async () => {
+    expect((await history('', null)).status).toBe(401);
+    expect((await history('?date=01/09/2026')).status).toBe(400);
+    expect((await history('?date=2026-02-30')).status).toBe(400);
+    expect((await history('?date=2026-09-01&cursor=nope')).status).toBe(400);
+    expect((await history('?date=2026-09-01&limit=51')).status).toBe(400);
+  });
+
+  it('lists every outcome of the UTC day, newest first, with what the user needs to read it', async () => {
+    const early = await record(ana, '2026-09-01T00:00:00.000Z', 'completed');
+    const stopped = await record(ana, '2026-09-01T10:00:00.000Z', 'stopped_early');
+    const discarded = await record(ana, '2026-09-01T11:00:00.000Z', 'discarded', { discardedReason: 'heartbeat-gap', xpAwarded: 0 });
+    const capped = await record(ana, '2026-09-01T12:00:00.000Z', 'stopped_early', { cappedReason: 'daily-limit' });
+    const cancelled = await record(ana, '2026-09-01T23:59:59.999Z', 'cancelled');
+    await record(ana, '2026-08-31T23:59:59.999Z', 'completed'); // the day before
+    await record(ana, '2026-09-02T00:00:00.000Z', 'completed'); // the day after
+    await record(ana, null, 'running'); // not ended yet
+    await record(bruno, '2026-09-01T12:00:00.000Z', 'completed'); // someone else
+
+    const result = await page();
+
+    expect(result.date).toBe('2026-09-01');
+    expect(result.nextCursor).toBeNull();
+    expect(result.items.map((item) => item.id)).toEqual([cancelled, capped, discarded, stopped, early]);
+    expect(result.items.find((item) => item.id === discarded)).toMatchObject({ state: 'discarded', discardedReason: 'heartbeat-gap', xpAwarded: 0, cyclePosition: null });
+    expect(result.items.find((item) => item.id === capped)).toMatchObject({ cappedReason: 'daily-limit', cyclePosition: null });
+    expect(result.items.find((item) => item.id === early)).toMatchObject({ subject: 'Cálculo', durationValidSeconds: 1500, xpAwarded: 250 });
+    expect(new Date(result.items[0]!.endedAt).toISOString()).toBe('2026-09-01T23:59:59.999Z');
+  });
+
+  it('numbers each focus completed in full in the Pomodoro cycle, counting across days', async () => {
+    await record(ana, '2026-08-31T20:00:00.000Z', 'completed'); // 1st focus, the day before
+    await record(ana, '2026-08-31T21:00:00.000Z', 'completed'); // 2nd
+    await record(ana, '2026-09-01T09:00:00.000Z', 'stopped_early'); // never counts
+    const third = await record(ana, '2026-09-01T10:00:00.000Z', 'completed');
+    const fourth = await record(ana, '2026-09-01T11:00:00.000Z', 'completed');
+    const fifth = await record(ana, '2026-09-01T12:00:00.000Z', 'completed');
+
+    const byId = Object.fromEntries((await page()).items.map((item) => [item.id, item.cyclePosition]));
+
+    expect(byId[third]).toBe(3);
+    expect(byId[fourth]).toBe(4);
+    expect(byId[fifth]).toBe(1);
+  });
+
+  it('pages without repeating or skipping rows, even when two sessions end in the same millisecond', async () => {
+    const ids = [];
+    for (const minute of [10, 20, 20, 30, 40]) {
+      ids.push(await record(ana, `2026-09-01T08:${String(minute).padStart(2, '0')}:00.123Z`, 'completed'));
+    }
+
+    const seen: string[] = [];
+    let cursor: string | null = null;
+    let pages = 0;
+    do {
+      const next: HistoryPage = await page(`?date=2026-09-01&limit=2${cursor ? `&cursor=${cursor}` : ''}`);
+      expect(next.items.length).toBeLessThanOrEqual(2);
+      seen.push(...next.items.map((item) => item.id));
+      cursor = next.nextCursor;
+      pages += 1;
+    } while (cursor && pages < 10);
+
+    expect(pages).toBe(3);
+    expect(new Set(seen).size).toBe(5);
+    expect([...seen].sort()).toEqual([...ids].sort());
+  });
+
+  it('returns an empty page for a day without sessions', async () => {
+    expect(await page('?date=2026-09-03')).toEqual({ date: '2026-09-03', items: [], nextCursor: null });
+  });
+});

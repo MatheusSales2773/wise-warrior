@@ -8,6 +8,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import type { Request } from 'express';
+import { RateLimit } from '../../shared/security/rate-limit';
 import { AuthService } from './auth.service';
 import { RejectBrowserOriginGuard } from './guards/reject-browser-origin.guard';
 import { NativeLoginDto } from './dto/native-login.dto';
@@ -26,6 +27,7 @@ export class NativeAuthController {
   constructor(private readonly auth: AuthService) {}
 
   @Post('register')
+  @RateLimit('credentials')
   @HttpCode(HttpStatus.CREATED)
   async register(@Body() dto: NativeRegisterDto, @Req() req: Request) {
     const { deviceLabel, ...registration } = dto;
@@ -36,6 +38,7 @@ export class NativeAuthController {
   }
 
   @Post('login')
+  @RateLimit('credentials')
   @HttpCode(HttpStatus.OK)
   async login(@Body() dto: NativeLoginDto, @Req() req: Request) {
     const user = await this.auth.validateCredentials(dto.email, dto.password);
@@ -46,6 +49,7 @@ export class NativeAuthController {
   }
 
   @Post('refresh')
+  @RateLimit('refresh')
   @HttpCode(HttpStatus.OK)
   async refresh(@Body() dto: NativeRefreshDto) {
     return this.auth.refresh(dto.refreshToken);

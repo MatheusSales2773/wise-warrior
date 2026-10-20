@@ -1,6 +1,6 @@
 import type { Connection } from 'mysql2/promise';
 import mysql from 'mysql2/promise';
-import type { DataSourceOptions } from 'typeorm';
+import type { DataSource, DataSourceOptions, MigrationInterface } from 'typeorm';
 import { createDatabaseOptions } from '../config/database.config';
 import { AddSessionRefreshTokenHistory1788458460000 } from '../migrations/1788458460000-add-session-refresh-token-history';
 import { CreateWiseSchema1788458400000 } from '../migrations/1788458400000-create-wise-schema';
@@ -10,8 +10,29 @@ import { AddStudySessionPauseResume1788458880000 } from '../migrations/178845888
 import { UnifyStudySessionIdempotencyKeys1788459000000 } from '../migrations/1788459000000-unify-study-session-idempotency-keys';
 import { AddStudySessionEndedAtPrecision1788459060000 } from '../migrations/1788459060000-add-study-session-ended-at-precision';
 import { AddStudySessionStartReceiptSubject1788459120000 } from '../migrations/1788459120000-add-study-session-start-receipt-subject';
+import { EnforceSingleGuildPerUser1788459180000 } from '../migrations/1788459180000-enforce-single-guild-per-user';
+import { DropCharacterTitle1788459300000 } from '../migrations/1788459300000-drop-character-title';
+import { SeedInitialCosmeticItems1788459240000 } from '../migrations/1788459240000-seed-initial-cosmetic-items';
+import { AddRaidMissions1788459360000 } from '../migrations/1788459360000-add-raid-missions';
+import { AddRaidParticipations1788459420000 } from '../migrations/1788459420000-add-raid-participations';
+import { AddRaidGoalReachedAt1788459480000 } from '../migrations/1788459480000-add-raid-goal-reached-at';
+import { AddGuildChatMessageSequence1788459540000 } from '../migrations/1788459540000-add-guild-chat-message-sequence';
+import { AddStudySessionCappedReason1788459600000 } from '../migrations/1788459600000-add-study-session-capped-reason';
+import { AddCoinEconomy1788459660000 } from '../migrations/1788459660000-add-coin-economy';
+import { GrantWelcomeCoins1788459720000 } from '../migrations/1788459720000-grant-welcome-coins';
+import { AddMissionStore1788459780000 } from '../migrations/1788459780000-add-mission-store';
+import { AddCosmeticItemSale1788459840000 } from '../migrations/1788459840000-add-cosmetic-item-sale';
+import { AddMissionRewardItems1788459960000 } from '../migrations/1788459960000-add-mission-reward-items';
+import { AddGuildMissionChoice1788460020000 } from '../migrations/1788460020000-add-guild-mission-choice';
+import { KeepBadgesOffSale1788460080000 } from '../migrations/1788460080000-keep-badges-off-sale';
+import { SeedCosmeticItemsForSale1788460140000 } from '../migrations/1788460140000-seed-cosmetic-items-for-sale';
+import { SeedMissionsForSale1788460200000 } from '../migrations/1788460200000-seed-missions-for-sale';
+import { AddGuildChatNotices1788460260000 } from '../migrations/1788460260000-add-guild-chat-notices';
+import { AddRaidDragonFury1788460320000 } from '../migrations/1788460320000-add-raid-dragon-fury';
 
-export const APPLICATION_MIGRATIONS: NonNullable<DataSourceOptions['migrations']> = [
+export type MigrationClass = new () => MigrationInterface;
+
+export const APPLICATION_MIGRATIONS: MigrationClass[] = [
   CreateWiseSchema1788458400000,
   AddSessionRefreshTokenHistory1788458460000,
   AddStudySessionRecentIndex1788458520000,
@@ -20,7 +41,60 @@ export const APPLICATION_MIGRATIONS: NonNullable<DataSourceOptions['migrations']
   UnifyStudySessionIdempotencyKeys1788459000000,
   AddStudySessionEndedAtPrecision1788459060000,
   AddStudySessionStartReceiptSubject1788459120000,
+  EnforceSingleGuildPerUser1788459180000,
+  SeedInitialCosmeticItems1788459240000,
+  DropCharacterTitle1788459300000,
+  AddRaidMissions1788459360000,
+  AddRaidParticipations1788459420000,
+  AddRaidGoalReachedAt1788459480000,
+  AddGuildChatMessageSequence1788459540000,
+  AddStudySessionCappedReason1788459600000,
+  AddCoinEconomy1788459660000,
+  GrantWelcomeCoins1788459720000,
+  AddMissionStore1788459780000,
+  AddCosmeticItemSale1788459840000,
+  AddMissionRewardItems1788459960000,
+  AddGuildMissionChoice1788460020000,
+  KeepBadgesOffSale1788460080000,
+  SeedCosmeticItemsForSale1788460140000,
+  SeedMissionsForSale1788460200000,
+  AddGuildChatNotices1788460260000,
+  AddRaidDragonFury1788460320000,
 ];
+
+function positionOf(migration: MigrationClass): number {
+  const position = APPLICATION_MIGRATIONS.indexOf(migration);
+  if (position < 0) {
+    throw new Error(`${migration.name} is not in APPLICATION_MIGRATIONS`);
+  }
+  return position;
+}
+
+/** The migrations up to `migration`, in application order, without it: the schema production had just before it. */
+export function migrationsBefore(migration: MigrationClass): MigrationClass[] {
+  return APPLICATION_MIGRATIONS.slice(0, positionOf(migration));
+}
+
+/** The migrations up to `migration`, in application order, including it. Newer migrations never run. */
+export function migrationsThrough(migration: MigrationClass): MigrationClass[] {
+  return APPLICATION_MIGRATIONS.slice(0, positionOf(migration) + 1);
+}
+
+/**
+ * Undoes migrations from the top until `migration` is no longer applied.
+ * `undoLastMigration()` pops by the `migrations` table order, so each step reads the last row first.
+ */
+export async function revertThrough(dataSource: DataSource, migration: MigrationClass): Promise<void> {
+  positionOf(migration);
+  const applied = async () => (await dataSource.query('SELECT name FROM migrations ORDER BY id DESC')) as Array<{ name: string }>;
+  if (!(await applied()).some((row) => row.name === migration.name)) {
+    throw new Error(`${migration.name} is not applied, so there is nothing to revert`);
+  }
+  for (let last = (await applied())[0]; last; last = (await applied())[0]) {
+    await dataSource.undoLastMigration();
+    if (last.name === migration.name) return;
+  }
+}
 
 export interface IntegrationDatabase {
   readonly admin: Connection;

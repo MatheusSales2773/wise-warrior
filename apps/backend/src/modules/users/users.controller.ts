@@ -27,6 +27,12 @@ export class UsersController {
     return this.users.getProfile(user.sub);
   }
 
+  /** O Catálogo inteiro de Cosmetic Items, com o que o usuário desbloqueou e equipou. */
+  @Get('cosmetics')
+  listCosmetics(@CurrentUser() user: JwtPayload) {
+    return this.users.listCatalog(user.sub);
+  }
+
   @Patch('cosmetics/:itemId')
   @HttpCode(HttpStatus.NO_CONTENT)
   async equipCosmetic(
@@ -34,6 +40,16 @@ export class UsersController {
     @Param('itemId') itemId: string,
   ): Promise<void> {
     await this.users.equipCosmeticItem(user.sub, itemId);
+  }
+
+  /** Desequipa o item; idempotente, e 404 para item fora do Inventário. */
+  @Delete('cosmetics/:itemId/equipped')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async unequipCosmetic(
+    @CurrentUser() user: JwtPayload,
+    @Param('itemId') itemId: string,
+  ): Promise<void> {
+    await this.users.unequipCosmeticItem(user.sub, itemId);
   }
 
   /** Lista dispositivos com sessão ativa (ADR-009). */

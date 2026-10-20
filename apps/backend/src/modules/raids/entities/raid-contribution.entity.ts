@@ -15,7 +15,8 @@ import { StudySession } from '../../sessions/entities/study-session.entity';
 @Entity('raid_contributions')
 @Index('IDX_raid_contributions_raid_id_user_id', ['raidId', 'userId'])
 @Index('IDX_raid_contributions_user_id', ['userId'])
-@Index('IDX_raid_contributions_study_session_id', ['studySessionId'])
+/** Uma Study Session contribui no máximo uma vez, mesmo se a conclusão for reprocessada. */
+@Index('UQ_raid_contributions_study_session_id', ['studySessionId'], { unique: true })
 export class RaidContribution {
   @PrimaryGeneratedColumn('uuid')
   id: string;

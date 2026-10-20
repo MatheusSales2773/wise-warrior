@@ -12,6 +12,7 @@ import {
   setAuthenticationSnapshot,
   shouldSendBrowserCredentials,
   type HttpClient,
+  type HttpClientWithDelete,
   type HttpClientWithPatch,
   type HttpResponse,
 } from '@/core/api/api-client';
@@ -82,6 +83,25 @@ describe('api error taxonomy', () => {
     expect(toApiError(existing)).toBe(existing);
     expect(isApiError(existing)).toBe(true);
     expect(isApiError(new Error('x'))).toBe(false);
+  });
+
+  it('maps 429 to a retryable rate-limited error without exposing the detail', () => {
+    const error = toApiError({
+      isAxiosError: true,
+      response: { status: 429, data: { detail: 'Muitas requisições. Aguarde um instante e tente novamente.' } },
+    });
+    expect(error).toMatchObject({ category: 'rate-limited', status: 429, retryable: true });
+    expect(error.message).toBe('ApiError:rate-limited');
+  });
+
+  it('keeps the problem type of a conflict but never its detail', () => {
+    const error = toApiError({
+      isAxiosError: true,
+      response: { status: 409, data: { type: 'https://wise.app/errors/raid-ended', detail: 'Raid encerrada' } },
+    });
+    expect(error).toMatchObject({ category: 'conflict', problemType: 'https://wise.app/errors/raid-ended' });
+    expect(JSON.stringify(error)).not.toContain('Raid encerrada');
+    expect(toApiError({ isAxiosError: true, response: { status: 409, data: 'texto' } }).problemType).toBeUndefined();
   });
 
   it('uses one cancellation predicate for Axios, DOM and public API errors', () => {
@@ -220,6 +240,37 @@ describe('http client configuration', () => {
       });
       expect(recover).toHaveBeenCalledTimes(1);
       expect(patchCalls).toHaveBeenCalledTimes(2);
+    } finally {
+      removeRecovery();
+    }
+  });
+
+  it('restores once and retries protected DELETE requests rejected with 401', async () => {
+    let restored = false;
+    const deleteCalls = jest.fn();
+    const transport: HttpClientWithDelete = {
+      get: async <T,>() => ({ status: 204, data: undefined as T }),
+      post: async <T,>() => ({ status: 204, data: undefined as T }),
+      patch: async <T,>() => ({ status: 204, data: undefined as T }),
+      delete: async <T,>() => {
+        deleteCalls();
+        if (!restored) {
+          throw { isAxiosError: true, response: { status: 401, data: {} } };
+        }
+        return { status: 204, data: undefined as T };
+      },
+    };
+    const recover = jest.fn(async () => {
+      restored = true;
+      return true;
+    });
+    const removeRecovery = setAuthenticationRecovery(recover);
+
+    try {
+      const client = createSessionAwareHttpClient(transport);
+      await expect(client.delete('/guilds/g1/members/me')).resolves.toEqual({ status: 204, data: undefined });
+      expect(recover).toHaveBeenCalledTimes(1);
+      expect(deleteCalls).toHaveBeenCalledTimes(2);
     } finally {
       removeRecovery();
     }

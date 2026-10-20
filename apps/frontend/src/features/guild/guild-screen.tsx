@@ -1,0 +1,248 @@
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useState } from 'react';
+import { Platform, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { FeedbackMessage, ProgressBar, Screen, WiseButton, WiseCard, WiseText, isDesktopLayout, theme } from '@/design-system';
+import { isApiError } from '@/core/api/api-error';
+import { leaveGuild, type GuildMember, type MyGuild } from './api';
+import {
+  formatGuildRole, formatGuildRoleSeal, formatGuildStats, leaveGuildErrorMessage,
+} from './messages';
+import { activeRaidQueryOptions, guildKeys, guildMembersQueryOptions, myGuildQueryOptions } from './queries';
+import { profileQueryOptions } from '@/features/dashboard/queries';
+import { useGuildChat } from './guild-chat';
+import { SectionHeader } from '@/features/character/character-parts';
+import { GuildTabs, MuralAnnouncer, MuralPanel, OnlineIndicator, PresenceDot, formatOnlineCount, type GuildTab } from './guild-mural';
+import { HeroAvatar } from './hero-avatar';
+import { GuildEmblem } from './guild-emblem';
+import { PastRaidsCard } from './guild-past-raids';
+import { RaidCard } from './guild-raid-card';
+import { RankingCard } from './guild-ranking';
+import { RewardsCard } from './guild-rewards';
+import { columnStyles } from './guild-card-style';
+import { JoinGuild } from './guild-join';
+
+function MemberItem({ member, online }: { member: GuildMember; online: boolean | null }) {
+  const presence = online === null ? '' : online ? ', online' : ', offline';
+  const detail = online === null ? `Nv ${member.level}` : `Nv ${member.level} · ${online ? 'Online' : 'Offline'}`;
+  return (
+    <View accessible accessibilityLabel={`${member.displayName}${presence}, ${formatGuildRole(member.role)}. Nível ${member.level}`} style={styles.memberRow} testID={`guild-member-${member.userId}`}>
+      <View style={styles.memberAvatar} testID={`guild-member-portrait-${member.userId}`}>
+        {/* The API does not return the equipped Avatar yet (#214): every member gets the default portrait. */}
+        <HeroAvatar entry={{ avatar: null }} style={styles.memberPortrait} />
+        {online === null ? null : <View style={styles.memberPresence}><PresenceDot online={online} testID={`guild-member-${online ? 'online' : 'offline'}-${member.userId}`} /></View>}
+      </View>
+      <View style={styles.memberText}>
+        <Text numberOfLines={1} style={[styles.memberName, online === false && styles.memberNameOffline]}>{member.displayName}</Text>
+        <Text numberOfLines={1} style={styles.memberDetail}>{detail}</Text>
+      </View>
+      {member.role === 'leader'
+        ? <View style={[styles.rolePill, styles.rolePillLeader]} testID={`guild-member-seal-${member.userId}`}><Text style={styles.memberSeal}>LÍDER</Text></View>
+        : null}
+    </View>
+  );
+}
+
+function MembersCard({ guildId, memberCount, onlineUserIds }: { guildId: string; memberCount: number; onlineUserIds: ReadonlySet<string> | null }) {
+  const members = useInfiniteQuery(guildMembersQueryOptions(guildId));
+  const items = members.data?.pages.flatMap((page) => page.items) ?? [];
+
+  const body = (() => {
+    if (members.isPending) return <WiseText color="textSecondary" testID="guild-members-loading" variant="body">Carregando membros…</WiseText>;
+    if (members.isError && !members.data) {
+      return <View style={styles.stack} testID="guild-members-error">
+        <FeedbackMessage message="Não foi possível carregar os membros." title="Membros indisponíveis" variant="error" />
+        <WiseButton label="Tentar novamente" loading={members.isRefetching} onPress={() => void members.refetch()} variant="secondary" />
+      </View>;
+    }
+    if (!items.length) return <WiseText color="textSecondary" testID="guild-members-empty" variant="body">Nenhum membro para mostrar ainda.</WiseText>;
+    return <>
+      {members.isError && !members.isFetchNextPageError ? <FeedbackMessage message="Não foi possível atualizar os membros." testID="guild-members-stale" title="Dados desatualizados" variant="error" /> : null}
+      {items.map((member) => <MemberItem key={member.userId} member={member} online={onlineUserIds ? onlineUserIds.has(member.userId) : null} />)}
+      {members.isFetchNextPageError ? <FeedbackMessage message="Não foi possível carregar mais membros." title="Lista incompleta" variant="error" /> : null}
+      {members.hasNextPage
+        ? <WiseButton label="Carregar mais membros" loading={members.isFetchingNextPage} onPress={() => void members.fetchNextPage()} testID="guild-members-more" variant="ghost" />
+        : null}
+    </>;
+  })();
+
+  // The count is hidden with the Presença: without a connection there is nothing to say about who is online.
+  const count = onlineUserIds ? `${memberCount} · ${formatOnlineCount(onlineUserIds.size)}` : String(memberCount);
+  return (
+    <View accessibilityLabel="Membros da guilda" role="region" style={styles.membersBlock} testID="guild-members">
+      <SectionHeader aside={<Text style={styles.membersCount} testID="guild-members-count">{count}</Text>}>Membros</SectionHeader>
+      <WiseCard style={styles.membersCard}>{body}</WiseCard>
+    </View>
+  );
+}
+
+function LeaveGuildAction({ guildId, isLeader, onLeft, onConflict }: { guildId: string; isLeader: boolean; onLeft: () => void; onConflict: (error: unknown) => void }) {
+  const [confirming, setConfirming] = useState(false);
+  const leave = useMutation({ mutationFn: () => leaveGuild(guildId), onSuccess: onLeft, onError: onConflict });
+
+  if (!confirming) {
+    return <WiseButton label="Sair da guilda" onPress={() => { leave.reset(); setConfirming(true); }} testID="guild-leave" variant="danger" />;
+  }
+  return (
+    <View accessibilityLiveRegion="polite" style={styles.stack} testID="guild-leave-confirm">
+      <WiseText variant="body">
+        {isLeader ? 'Ao sair, a liderança passa ao membro mais antigo. Se você for o último, a guilda será encerrada.' : 'Tem certeza de que quer sair da guilda?'}
+      </WiseText>
+      {leave.isError ? <FeedbackMessage message={leaveGuildErrorMessage(leave.error)} testID="guild-leave-error" title="Não foi possível sair" variant="error" /> : null}
+      <WiseButton label="Confirmar saída" loading={leave.isPending} onPress={() => { if (!leave.isPending) leave.mutate(); }} testID="guild-leave-confirm-button" variant="danger" />
+      <WiseButton label="Cancelar" onPress={() => setConfirming(false)} testID="guild-leave-cancel" variant="ghost" />
+    </View>
+  );
+}
+
+function GuildCard({ mine, onlineUserIds, desktop }: { mine: MyGuild; onlineUserIds: ReadonlySet<string> | null; desktop: boolean }) {
+  const { guild, role } = mine;
+  return (
+    <View accessibilityLabel="Sua guilda" accessibilityRole="summary" role="region" style={styles.identity} testID="guild-mine">
+      <GuildEmblem decorative guildId={guild.id} name={guild.name} size={desktop ? 56 : 42} />
+      <View style={styles.identityText}>
+        <View style={styles.nameRow}>
+          <WiseText accessibilityRole="header" aria-level={2} testID="guild-mine-name" variant={desktop ? 'title' : 'subtitle'}>{guild.name}</WiseText>
+          <View style={[styles.rolePill, role === 'leader' && styles.rolePillLeader]} testID="guild-mine-role">
+            <WiseText color={role === 'leader' ? 'accentPrimary' : 'textSecondary'} variant="caption">{formatGuildRoleSeal(role)}</WiseText>
+          </View>
+        </View>
+        <View style={styles.statsRow}>
+          <WiseText color="textTertiary" testID="guild-mine-stats" variant="caption">{formatGuildStats(guild.level, guild.memberCount)}</WiseText>
+          <OnlineIndicator onlineUserIds={onlineUserIds} />
+        </View>
+      </View>
+    </View>
+  );
+}
+
+/** The Raid of the week and, below it, its Ranking interno. The ranking only exists while there is a Raid to rank. */
+function RaidSection({ compact, guildId }: { compact: boolean; guildId: string }) {
+  const raid = useQuery(activeRaidQueryOptions(guildId));
+  return (
+    <View style={styles.stack}>
+      <RaidCard desktop={!compact} guildId={guildId} />
+      {raid.data ? <RankingCard compact={compact} guildId={guildId} key={raid.data.id} raidId={raid.data.id} /> : null}
+    </View>
+  );
+}
+
+function MemberGuild({ mine, desktop, onLeft, onConflict }: { mine: MyGuild; desktop: boolean; onLeft: () => void; onConflict: (error: unknown) => void }) {
+  const { guild, role } = mine;
+  const profile = useQuery(profileQueryOptions());
+  const chat = useGuildChat(guild.id, profile.data?.id);
+  // The tab is screen state, not a route: the Mural connection above lives in this component and is never remounted.
+  const [tab, setTab] = useState<GuildTab>('raid');
+  const header = (
+    <View style={[styles.stack, desktop && styles.headerRow]} testID="guild-header">
+      <View style={desktop ? styles.column : undefined}><GuildCard desktop={desktop} mine={mine} onlineUserIds={chat.onlineUserIds} /></View>
+      <View style={desktop ? styles.leaveDesktop : undefined} testID="guild-leave-section">
+        <LeaveGuildAction guildId={guild.id} isLeader={role === 'leader'} onConflict={onConflict} onLeft={onLeft} />
+      </View>
+    </View>
+  );
+  const raid = <RaidSection compact={!desktop} guildId={guild.id} />;
+  const rewards = <RewardsCard guildId={guild.id} />;
+  const mural = <MuralPanel chat={chat} />;
+  const members = <MembersCard guildId={guild.id} memberCount={guild.memberCount} onlineUserIds={chat.onlineUserIds} />;
+  const pastRaids = <PastRaidsCard compact={!desktop} guildId={guild.id} level={guild.level} />;
+  const announcer = <MuralAnnouncer arrival={chat.arrival} />;
+  if (desktop) {
+    return <View style={styles.stack} testID="guild-layout-desktop">
+      {header}
+      <View style={styles.desktopGrid}>
+        <View style={[columnStyles.main, styles.stack]} testID="guild-column-main">{raid}{pastRaids}</View>
+        <View style={[columnStyles.side, styles.stack]} testID="guild-column-side">{mural}{members}{rewards}</View>
+      </View>
+      {announcer}
+    </View>;
+  }
+  // The phone has no "Ao derrotar" frame of its own: the rewards close the Raid tab.
+  const content = { raid: <>{raid}{rewards}</>, members, history: pastRaids }[tab as Exclude<GuildTab, 'mural'>];
+  // The Mural stays mounted and is only hidden, so the unsent draft and the scroll position survive a tab change.
+  return <View style={[styles.stack, styles.grow]} testID="guild-layout-tabs">
+    {header}
+    <GuildTabs onSelect={setTab} selected={tab} />
+    <View style={[styles.stack, styles.grow]} testID="guild-tab-content">
+      <View style={tab === 'mural' ? undefined : styles.hidden}>{mural}</View>
+      {tab === 'mural' ? null : content}
+    </View>
+    {announcer}
+  </View>;
+}
+
+export function GuildScreen() {
+  const mine = useQuery(myGuildQueryOptions());
+  const queryClient = useQueryClient();
+  const { width } = useWindowDimensions();
+  const refreshGuild = () => queryClient.invalidateQueries({ queryKey: guildKeys.all });
+  // A 409 (or a 404 on leave) can mean the user's guild changed elsewhere: reload so the screen reflects it.
+  const refreshOnConflict = (error: unknown) => {
+    if (isApiError(error) && (error.category === 'conflict' || error.status === 404)) void queryClient.invalidateQueries({ queryKey: guildKeys.mine() });
+  };
+
+  if (mine.isPending) {
+    return (
+      <Screen safeAreaEdges={[]} testID="guild" title="Guilda">
+        <View accessibilityLabel="Carregando sua guilda" accessibilityState={{ busy: true }} aria-busy style={styles.stack} testID="guild-loading">
+          <WiseText variant="body">Carregando sua guilda…</WiseText>
+          <ProgressBar indeterminate accessibilityLabel="Carregando sua guilda" />
+        </View>
+      </Screen>
+    );
+  }
+  if (mine.isError && mine.data === undefined) {
+    return (
+      <Screen safeAreaEdges={[]} testID="guild" title="Guilda">
+        <View style={styles.stack} testID="guild-error">
+          <FeedbackMessage message="Não foi possível carregar sua guilda." title="Guilda indisponível" variant="error" />
+          <WiseButton label="Tentar novamente" loading={mine.isRefetching} onPress={() => void mine.refetch()} />
+        </View>
+      </Screen>
+    );
+  }
+
+  const desktop = isDesktopLayout(Platform.OS, width);
+  return (
+    <Screen contentContainerStyle={styles.fromTop} contentStyle={mine.data ? styles.grow : undefined} safeAreaEdges={[]} testID="guild" title="Guilda" titleHidden={mine.data === null}>
+      {mine.isError ? <FeedbackMessage message="Não foi possível atualizar sua guilda." testID="guild-refresh-error" title="Dados desatualizados" variant="error" /> : null}
+      {mine.data
+        ? <MemberGuild key={mine.data.guild.id} desktop={desktop} mine={mine.data} onConflict={refreshOnConflict} onLeft={() => void refreshGuild()} />
+        : <JoinGuild desktop={desktop} onChanged={() => void refreshGuild()} onConflict={refreshOnConflict} />}
+    </Screen>
+  );
+}
+
+const { fontFamily: mono } = theme.type.mono;
+const { fontFamily: sans } = theme.type.label;
+
+const styles = StyleSheet.create({
+  stack: { gap: theme.space.stackDefault },
+  desktopGrid: { flexDirection: 'row', alignItems: 'flex-start', gap: theme.space.stackDefault },
+  column: { flex: 1 },
+  hidden: { display: 'none' },
+  grow: { flexGrow: 1 },
+  // The Screen centers its content; a guild screen starts at the top and its open tab runs down to the bottom.
+  fromTop: { justifyContent: 'flex-start' },
+  headerRow: { flexDirection: 'row', alignItems: 'center', gap: theme.space.stackDefault },
+  leaveDesktop: { width: 199 },
+  identity: { flexDirection: 'row', alignItems: 'center', gap: theme.space.stackDefault },
+  identityText: { flex: 1, gap: theme.space.inlineTight },
+  nameRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: theme.space.stackTight },
+  statsRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', columnGap: theme.space.stackTight, rowGap: theme.space.inlineHairline },
+  rolePill: { paddingVertical: theme.space.inlineHairline, paddingHorizontal: theme.space.inlineTight, borderRadius: theme.radius.pill, borderWidth: theme.border.standard, borderColor: theme.color.borderSubtle, backgroundColor: theme.color.surfaceInset },
+  rolePillLeader: { borderColor: theme.color.accentPrimary },
+
+  // Figma 06c Membros: 30 px portrait, 9 px Presença dot on its bottom-right corner, 31 px rows.
+  membersBlock: { gap: theme.space.stackTight },
+  membersCard: { padding: theme.space.cardInset, gap: 12 },
+  membersCount: { fontFamily: mono, fontSize: 10, letterSpacing: 0.8, color: theme.color.textTertiary },
+  memberRow: { flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 31 },
+  memberAvatar: { width: 30, height: 30 },
+  memberPortrait: { width: 30, height: 30 },
+  memberPresence: { position: 'absolute', left: 23, top: 23 },
+  memberText: { flex: 1, minWidth: 0, gap: 2 },
+  memberName: { fontFamily: sans, fontSize: 13, lineHeight: 16, color: theme.color.textPrimary },
+  memberNameOffline: { color: theme.color.textSecondary },
+  memberDetail: { fontFamily: mono, fontSize: 10, lineHeight: 13, color: theme.color.textTertiary },
+  memberSeal: { fontFamily: mono, fontSize: 9, letterSpacing: 0.8, color: theme.color.accentPrimary },
+});

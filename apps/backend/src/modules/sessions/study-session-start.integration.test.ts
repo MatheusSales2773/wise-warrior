@@ -1,9 +1,16 @@
 import { BadRequestException, ConflictException } from '@nestjs/common';
 import { DataSource } from 'typeorm';
+import { CoinBalance } from '../economy/entities/coin-balance.entity';
+import { CoinLedgerEntry } from '../economy/entities/coin-ledger-entry.entity';
+import { EconomyService } from '../economy/economy.service';
+import { Character } from '../progression/entities/character.entity';
+import { ProgressionService } from '../progression/progression.service';
+import type { RealtimeGateway } from '../realtime/realtime.gateway';
 import { User } from '../users/entities/user.entity';
 import { UsersService } from '../users/users.service';
 import { StudySession } from './entities/study-session.entity';
 import { StudySessionStartService } from './study-session-start.service';
+import { StudySessionEventsService } from './study-session-events.service';
 import { StudySessionTransitionService } from './study-session-transition.service';
 import { APPLICATION_MIGRATIONS, createIntegrationDatabase, type IntegrationDatabase } from '../../test/integration-database';
 
@@ -22,10 +29,32 @@ describe('canonical Study Session start against MySQL', () => {
   jest.setTimeout(30_000);
   let database: IntegrationDatabase | undefined;
   let dataSource: DataSource | undefined;
+  let realtime: { emitToUser: jest.Mock };
   const userId = '00000000-0000-4000-8000-000000000070';
-  const createService = () => new StudySessionStartService(
-    dataSource!, new UsersService({} as never, {} as never, {} as never, {} as never),
-  );
+  // Only the user lock of UsersService runs here; it goes through the transaction's manager.
+  const lockingUsers = () => new UsersService({} as never, {} as never, {} as never, {} as never);
+  const createService = (clock: () => Date = () => new Date()) => {
+    const users = lockingUsers();
+    const progression = new ProgressionService(dataSource!.getRepository(Character), realtime as unknown as RealtimeGateway, users);
+    const economy = new EconomyService(
+      dataSource!.getRepository(CoinBalance),
+      dataSource!.getRepository(CoinLedgerEntry),
+      realtime as unknown as RealtimeGateway,
+    );
+    const events = new StudySessionEventsService(realtime as unknown as RealtimeGateway);
+    return new StudySessionStartService(
+      dataSource!,
+      users,
+      {} as never,
+      new StudySessionTransitionService(
+        dataSource!, { now: clock }, progression, {} as never, economy, users, events,
+      ),
+      events,
+    );
+  };
+  const sessionEvents = () => realtime.emitToUser.mock.calls
+    .filter(([, event]) => event === 'studySession:changed')
+    .map(([, , payload]) => payload);
 
   beforeEach(async () => {
     database = await createIntegrationDatabase('wise_study_start');
@@ -33,6 +62,7 @@ describe('canonical Study Session start against MySQL', () => {
     await dataSource.initialize();
     await dataSource.runMigrations();
     await dataSource.getRepository(User).insert({ id: userId, email: 'focus@example.com', passwordHash: 'hash', displayName: 'Focus', planTier: 'free' });
+    realtime = { emitToUser: jest.fn() };
   });
 
   afterEach(async () => {
@@ -40,9 +70,9 @@ describe('canonical Study Session start against MySQL', () => {
     await database?.close();
   });
 
-  it('returns absence, defaults to 25 minutes and restores only for the initiating Session', async () => {
+  it('returns absence, defaults to 25 minutes and restores for any Session of the user', async () => {
     const service = createService();
-    expect(await service.active(userId, 'device-a')).toBeNull();
+    expect(await service.active(userId)).toBeNull();
     for (const invalidBody of [
       { plannedDurationSeconds: null }, 42, 'x', true, [], null,
     ]) {
@@ -58,12 +88,62 @@ describe('canonical Study Session start against MySQL', () => {
       plannedDurationSeconds: 1500, startedAt: expect.any(Date), runDeadlineAt: expect.any(Date),
       pausedAt: null, pausedTotalSeconds: 0, durationValidSeconds: 0, remainingSeconds: expect.any(Number),
       serverNow: expect.any(Date), version: 1, endedAt: null, xpAwarded: 0,
-      terminalReason: null, discardedReason: null, canControl: true,
+      terminalReason: null, discardedReason: null, cappedReason: null, canControl: true,
     }));
-    expect(await service.active(userId, 'device-a')).toMatchObject({ id: started.id, canControl: true });
-    expect(await service.active(userId, 'device-b')).toMatchObject({ id: started.id, canControl: false });
+    expect(await service.active(userId)).toMatchObject({ id: started.id, canControl: true });
     const persisted = await dataSource!.getRepository(StudySession).findOneByOrFail({ id: started.id });
     expect(persisted).toMatchObject({ subject: null, raidId: null, mode: 'solo', initiatingSessionId: 'device-a' });
+  });
+
+  it('signals a start to every device and stays silent when the receipt is replayed', async () => {
+    const service = createService();
+
+    const started = await service.start(userId, 'device-a', { plannedDurationSeconds: 900 }, 'signal-start');
+    expect(sessionEvents()).toEqual([{ studySessionId: started.id, version: 1, state: 'running' }]);
+
+    await expect(service.start(userId, 'device-a', { plannedDurationSeconds: 900 }, 'signal-start')).resolves.toEqual(started);
+    expect(sessionEvents()).toHaveLength(1);
+  });
+
+  it('signals the expired focus completed on start and the new session, in that order', async () => {
+    await dataSource!.getRepository(Character).insert({ userId, level: 1, xpTotal: 0 });
+    const first = await createService().start(userId, 'device-a', { plannedDurationSeconds: 900 }, 'expired-start-first');
+    const deadline = new Date(Date.now() - 60_000);
+    await dataSource!.getRepository(StudySession).update(first.id, {
+      startedAt: new Date(deadline.getTime() - 900_000),
+      runDeadlineAt: deadline,
+    });
+
+    const later = createService(() => new Date(deadline.getTime() + 30_000));
+    const second = await later.start(userId, 'device-b', { plannedDurationSeconds: 900 }, 'expired-start-second');
+
+    expect(sessionEvents()).toEqual([
+      { studySessionId: first.id, version: 1, state: 'running' },
+      { studySessionId: first.id, version: 2, state: 'ended' },
+      { studySessionId: second.id, version: 1, state: 'running' },
+    ]);
+    await later.start(userId, 'device-b', { plannedDurationSeconds: 900 }, 'expired-start-second');
+    expect(sessionEvents()).toHaveLength(3);
+  });
+
+  it('signals the focus that an active read completes, once', async () => {
+    await dataSource!.getRepository(Character).insert({ userId, level: 1, xpTotal: 0 });
+    const started = await createService().start(userId, 'device-a', { plannedDurationSeconds: 900 }, 'expired-read-start');
+    const deadline = new Date(Date.now() - 60_000);
+    await dataSource!.getRepository(StudySession).update(started.id, {
+      startedAt: new Date(deadline.getTime() - 900_000),
+      runDeadlineAt: deadline,
+    });
+
+    const later = createService(() => new Date(deadline.getTime() + 30_000));
+    expect(await later.active(userId)).toMatchObject({ id: started.id, state: 'completed', version: 2 });
+    expect(sessionEvents()).toEqual([
+      { studySessionId: started.id, version: 1, state: 'running' },
+      { studySessionId: started.id, version: 2, state: 'ended' },
+    ]);
+
+    expect(await later.active(userId)).toBeNull();
+    expect(sessionEvents()).toHaveLength(2);
   });
 
   it('serializes concurrent starts and preserves the first receipt', async () => {
@@ -108,8 +188,7 @@ describe('canonical Study Session start against MySQL', () => {
     const service = createService();
     const started = await service.start(userId, 'device-a', { subject: '  ÁLGEBRA\u00a0 linear\u2003II  ' }, 'subject-a');
     expect(started.subject).toBe('ÁLGEBRA linear II');
-    expect(await service.active(userId, 'device-a')).toMatchObject({ id: started.id, subject: 'ÁLGEBRA linear II' });
-    expect(await service.active(userId, 'device-b')).toMatchObject({ id: started.id, subject: 'ÁLGEBRA linear II' });
+    expect(await service.active(userId)).toMatchObject({ id: started.id, subject: 'ÁLGEBRA linear II' });
     expect(await dataSource!.getRepository(StudySession).findOneByOrFail({ id: started.id }))
       .toMatchObject({ subject: 'ÁLGEBRA linear II' });
     expect(await dataSource!.query(
@@ -118,7 +197,13 @@ describe('canonical Study Session start against MySQL', () => {
     )).toEqual([{ subject: 'ÁLGEBRA linear II' }]);
 
     const transitions = new StudySessionTransitionService(
-      dataSource!, { now: () => new Date(started.startedAt.getTime() + 10_000) }, {} as never,
+      dataSource!,
+      { now: () => new Date(started.startedAt.getTime() + 10_000) },
+      {} as never,
+      {} as never,
+      {} as never,
+      lockingUsers(),
+      new StudySessionEventsService(realtime as unknown as RealtimeGateway),
     );
     const paused = await transitions.pause({
       userId, authSessionId: 'device-a', studySessionId: started.id, dto: { expectedVersion: 1 }, idempotencyKey: 'subject-pause',
@@ -157,7 +242,7 @@ describe('canonical Study Session start against MySQL', () => {
     expect(sameSubject).toEqual(started);
     expect(sameSubject.subject).toBe('Cálculo II');
     const decomposed = await service.start(userId, 'device-b', { plannedDurationSeconds: 900, subject: 'Ca\u0301lculo II' }, 'subject-key');
-    expect(decomposed).toEqual({ ...started, canControl: false });
+    expect(decomposed).toEqual(started);
 
     for (const other of ['Cálculo III', 'cálculo ii', null, undefined, '  ']) {
       await expectConflictType(
@@ -187,6 +272,10 @@ describe('canonical Study Session start against MySQL', () => {
       dataSource!,
       { now: () => new Date(started.startedAt.getTime() + 30_000) },
       {} as never,
+      {} as never,
+      {} as never,
+      lockingUsers(),
+      new StudySessionEventsService(realtime as unknown as RealtimeGateway),
     );
     const pause = (idempotencyKey: string) => transitionService.pause({
       userId,

@@ -10,6 +10,8 @@ import {
 import { Guild } from './guild.entity';
 import { User } from '../../users/entities/user.entity';
 
+export type GuildChatMessageKind = 'message' | 'raid_hit';
+
 @Entity('guild_chat_messages')
 export class GuildChatMessage {
   @PrimaryGeneratedColumn('uuid')
@@ -30,6 +32,31 @@ export class GuildChatMessage {
   @Column({ name: 'user_id', type: 'varchar', length: '36' })
   @Index('IDX_guild_chat_messages_user_id')
   userId: string;
+
+  /** Assigned by the database (AUTO_INCREMENT); never written by the application. */
+  @Column({
+    type: 'bigint',
+    insert: false,
+    update: false,
+    transformer: { to: (value?: number) => value, from: (value: string | number) => Number(value) },
+  })
+  seq: number;
+
+  /** `raid_hit` is an Aviso do Mural: no human wrote it, and `body` is empty. */
+  @Column({ type: 'varchar', length: 16, default: 'message' })
+  kind: GuildChatMessageKind;
+
+  /**
+   * The Contribution an Aviso announces; unique, so a Golpe is announced once. The foreign key (ON DELETE CASCADE)
+   * lives in the migration: the entity stays free of the raids module's entities, which would close an import cycle.
+   */
+  @Column({ name: 'contribution_id', type: 'varchar', length: '36', nullable: true })
+  @Index('UQ_guild_chat_messages_contribution_id', { unique: true })
+  contributionId?: string | null;
+
+  /** XP of the announced Golpe; `null` for member messages. */
+  @Column({ type: 'int', nullable: true })
+  xp?: number | null;
 
   @Column({ type: 'text' })
   body: string;

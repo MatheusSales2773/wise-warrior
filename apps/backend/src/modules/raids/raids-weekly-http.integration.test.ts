@@ -1,0 +1,277 @@
+import { ExecutionContext, UnauthorizedException, ValidationPipe } from '@nestjs/common';
+import type { INestApplication } from '@nestjs/common';
+import { Test } from '@nestjs/testing';
+import { getRepositoryToken } from '@nestjs/typeorm';
+import type { AddressInfo } from 'node:net';
+import { DataSource } from 'typeorm';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import type { JwtPayload } from '../auth/strategies/jwt.strategy';
+import { HttpExceptionFilter } from '../../shared/filters/http-exception.filter';
+import { APPLICATION_MIGRATIONS, createIntegrationDatabase, type IntegrationDatabase } from '../../test/integration-database';
+import { Guild } from '../guilds/entities/guild.entity';
+import { GuildMembership } from '../guilds/entities/guild-membership.entity';
+import { GuildsController } from '../guilds/guilds.controller';
+import { GuildsService } from '../guilds/guilds.service';
+import { CosmeticItem } from '../users/entities/cosmetic-item.entity';
+import { UserCosmeticItem } from '../users/entities/user-cosmetic-item.entity';
+import { User } from '../users/entities/user.entity';
+import { UsersService } from '../users/users.service';
+import { ProgressionService } from '../progression/progression.service';
+import { RealtimeGateway } from '../realtime/realtime.gateway';
+import { Mission } from './entities/mission.entity';
+import { MissionRewardItem } from './entities/mission-reward-item.entity';
+import { CoinBalance } from '../economy/entities/coin-balance.entity';
+import { CoinLedgerEntry } from '../economy/entities/coin-ledger-entry.entity';
+import { EconomyService } from '../economy/economy.service';
+import { StudySession } from '../sessions/entities/study-session.entity';
+import { Raid } from './entities/raid.entity';
+import { RaidContribution } from './entities/raid-contribution.entity';
+import { RaidParticipation } from './entities/raid-participation.entity';
+import { RAID_CLOCK } from './raid-clock';
+import { GuildRaidsController } from './guild-raids.controller';
+import { RaidsController } from './raids.controller';
+import { RaidsService } from './raids.service';
+
+describe('Raid da semana against MySQL', () => {
+  jest.setTimeout(30_000);
+
+  let database: IntegrationDatabase | undefined;
+  let dataSource: DataSource | undefined;
+  let app: INestApplication | undefined;
+  let baseUrl: string;
+  let raids: RaidsService;
+  /** Wednesday 2026-10-07 12:00 in São Paulo. */
+  let now: Date;
+
+  const ana = '00000000-0000-4000-8000-000000000b01';
+  const bruno = '00000000-0000-4000-8000-000000000b02';
+  const carla = '00000000-0000-4000-8000-000000000b03';
+
+  const call = (method: string, path: string, as: string | null = ana, body?: unknown) => fetch(`${baseUrl}/api/v1${path}`, {
+    method,
+    headers: {
+      ...(as === null ? {} : { authorization: 'Bearer integration-token', 'x-test-user-id': as }),
+      ...(body === undefined ? {} : { 'content-type': 'application/json' }),
+    },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+
+  const createGuild = async (name: string, as = ana) => (await (await call('POST', '/guilds', as, { name })).json() as { id: string }).id;
+
+  beforeEach(async () => {
+    now = new Date('2026-10-07T15:00:00Z');
+    database = await createIntegrationDatabase('wise_raids_http');
+    dataSource = new DataSource(database.options(APPLICATION_MIGRATIONS));
+    await dataSource.initialize();
+    await dataSource.runMigrations();
+    await dataSource.getRepository(User).insert([
+      { id: ana, email: 'ana@example.com', passwordHash: 'hash', displayName: 'Ana', planTier: 'free' },
+      { id: bruno, email: 'bruno@example.com', passwordHash: 'hash', displayName: 'Bruno', planTier: 'free' },
+      { id: carla, email: 'carla@example.com', passwordHash: 'hash', displayName: 'Carla', planTier: 'free' },
+    ]);
+
+    const repo = (entity: Parameters<DataSource['getRepository']>[0]) => ({
+      provide: getRepositoryToken(entity as never),
+      useValue: dataSource!.getRepository(entity),
+    });
+    const moduleRef = await Test.createTestingModule({
+      controllers: [GuildsController, GuildRaidsController, RaidsController],
+      providers: [
+        GuildsService,
+        RaidsService,
+        UsersService,
+        repo(Guild), repo(GuildMembership), repo(Raid), repo(RaidContribution), repo(RaidParticipation), repo(Mission), repo(MissionRewardItem), repo(CoinBalance), repo(CoinLedgerEntry), EconomyService,
+        repo(User), repo(CosmeticItem), repo(UserCosmeticItem),
+        { provide: RAID_CLOCK, useValue: () => now },
+        { provide: ProgressionService, useValue: {} },
+        { provide: RealtimeGateway, useValue: { emitToGuild: jest.fn(), emitToUser: jest.fn(), syncGuildRoom: jest.fn() } },
+      ],
+    })
+      .overrideGuard(JwtAuthGuard)
+      .useValue({
+        canActivate(context: ExecutionContext) {
+          const request = context.switchToHttp().getRequest<{
+            headers: Record<string, string | undefined>;
+            user?: JwtPayload;
+          }>();
+          if (request.headers.authorization !== 'Bearer integration-token') throw new UnauthorizedException();
+          request.user = { sub: request.headers['x-test-user-id']! } as JwtPayload;
+          return true;
+        },
+      })
+      .compile();
+
+    raids = moduleRef.get(RaidsService);
+    app = moduleRef.createNestApplication();
+    app.setGlobalPrefix('api/v1');
+    app.useGlobalPipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }));
+    app.useGlobalFilters(new HttpExceptionFilter());
+    await app.init();
+    await app.listen(0, '127.0.0.1');
+    baseUrl = `http://127.0.0.1:${(app.getHttpServer().address() as AddressInfo).port}`;
+  });
+
+  afterEach(async () => {
+    await app?.close();
+    if (dataSource?.isInitialized) await dataSource.destroy();
+    await database?.close();
+  });
+
+  it('gives a new Guild the Raid of the current week, with a goal proportional to the days left', async () => {
+    const guildId = await createGuild('Ordem do Foco');
+
+    const response = await call('GET', `/guilds/${guildId}/raids/active`);
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      id: expect.any(String),
+      mission: {
+        slug: 'cerco-ao-grimorio',
+        name: 'Cerco ao Grimório',
+        description: expect.any(String),
+        imageUrl: null,
+      },
+      rewards: [{ itemId: 'c05e71c0-0000-4000-8000-000000000009', name: 'Marcador do Grimório', category: 'badge' }],
+      coins: 50,
+      party: [], // nobody has confirmed participation yet
+      goalXp: 1000, // 1.500 × 108h left of 168h = 964.3, up to a multiple of 50
+      progressXp: 0,
+      regeneratedXp: 0,
+      healthXp: 1000,
+      furyPercent: 5,
+      goalReachedAt: null,
+      startsAt: '2026-10-05T03:00:00.000Z',
+      endsAt: '2026-10-12T02:59:59.000Z',
+      status: 'active',
+      weekDays: ['2026-10-05', '2026-10-06', '2026-10-07', '2026-10-08', '2026-10-09', '2026-10-10', '2026-10-11'],
+      today: '2026-10-07',
+      studyDays: [],
+      streak: 0,
+      me: { participating: false, contributionXp: 0, position: null },
+      lastHit: null,
+    });
+  });
+
+  describe('Dias de estudo e Sequência', () => {
+    const contribute = async (raidId: string, userId: string, at: string) => {
+      await dataSource!.getRepository(RaidContribution).insert({ raidId, userId, xpContributed: 50, createdAt: new Date(at) });
+    };
+    const activeOf = async (guildId: string) => (await (await call('GET', `/guilds/${guildId}/raids/active`)).json()) as { id: string; studyDays: string[]; streak: number; today: string };
+
+    it('counts consecutive days ending today, in São Paulo time', async () => {
+      const guildId = await createGuild('Ordem do Foco');
+      const { id } = await activeOf(guildId);
+      await contribute(id, ana, '2026-10-05T15:00:00Z'); // Mon
+      await contribute(id, bruno, '2026-10-06T02:30:00Z'); // still Mon 23:30 in São Paulo
+      await contribute(id, ana, '2026-10-06T13:00:00Z'); // Tue
+      await contribute(id, ana, '2026-10-07T13:00:00Z'); // Wed (today)
+
+      expect(await activeOf(guildId)).toMatchObject({ studyDays: ['2026-10-05', '2026-10-06', '2026-10-07'], streak: 3 });
+    });
+
+    it('ignores solo Study Sessions: only Contribuições make a Dia de estudo', async () => {
+      const guildId = await createGuild('Ordem do Foco');
+      const { id } = await activeOf(guildId);
+      await dataSource!.getRepository(StudySession).insert({
+        userId: ana, mode: 'solo', state: 'completed', xpAwarded: 300, startedAt: new Date('2026-10-06T15:00:00Z'), endedAt: new Date('2026-10-06T15:30:00Z'),
+      });
+      await contribute(id, ana, '2026-10-07T13:00:00Z');
+
+      expect(await activeOf(guildId)).toMatchObject({ studyDays: ['2026-10-07'], streak: 1 });
+    });
+
+    it('keeps the Sequência when today has no study yet', async () => {
+      const guildId = await createGuild('Ordem do Foco');
+      const { id } = await activeOf(guildId);
+      await contribute(id, ana, '2026-10-05T15:00:00Z');
+      await contribute(id, ana, '2026-10-06T15:00:00Z');
+
+      expect(await activeOf(guildId)).toMatchObject({ studyDays: ['2026-10-05', '2026-10-06'], streak: 2 });
+    });
+
+    it('turns the day at midnight in São Paulo', async () => {
+      const guildId = await createGuild('Ordem do Foco');
+      const { id } = await activeOf(guildId);
+      await contribute(id, ana, '2026-10-06T15:00:00Z'); // Tue
+      now = new Date('2026-10-08T02:59:59Z'); // Wed 23:59:59 in São Paulo: today is still Wed, yesterday studied
+      expect((await activeOf(guildId)).streak).toBe(1);
+      now = new Date('2026-10-08T03:00:00Z'); // Thu 00:00: Wed became yesterday without study
+      expect(await activeOf(guildId)).toMatchObject({ today: '2026-10-08', streak: 0 });
+    });
+  });
+
+  it('reports me.participating once the member confirms, only for that member', async () => {
+    const guildId = await createGuild('Ordem do Foco');
+    await call('POST', `/guilds/${guildId}/members`, bruno);
+    const raid = await (await call('GET', `/guilds/${guildId}/raids/active`)).json() as { id: string };
+    expect((await call('POST', `/raids/${raid.id}/join`, bruno)).status).toBe(204);
+    const participating = async (as: string) =>
+      ((await (await call('GET', `/guilds/${guildId}/raids/active`, as)).json()) as { me: { participating: boolean } }).me.participating;
+    expect(await participating(bruno)).toBe(true);
+    expect(await participating(ana)).toBe(false);
+  });
+
+  it('gives the full 1.500 XP per member to a Guild created at the start of the week', async () => {
+    now = new Date('2026-10-05T03:00:00Z');
+    const guildId = await createGuild('Madrugadores');
+    const raid = await (await call('GET', `/guilds/${guildId}/raids/active`)).json() as { goalXp: number };
+    expect(raid.goalXp).toBe(1500);
+  });
+
+  it('rotates the Missão by week, the same for every Guild', async () => {
+    const slug = async (guildId: string, as: string) =>
+      ((await (await call('GET', `/guilds/${guildId}/raids/active`, as)).json()) as { mission: { slug: string } }).mission.slug;
+    const first = await createGuild('Guilda A', ana);
+    const second = await createGuild('Guilda B', bruno);
+    expect(await slug(first, ana)).toBe('cerco-ao-grimorio');
+    expect(await slug(second, bruno)).toBe('cerco-ao-grimorio');
+
+    now = new Date('2026-10-14T15:00:00Z'); // next week
+    const third = await createGuild('Guilda C', carla);
+    expect(await slug(third, carla)).toBe('marcha-do-silencio');
+  });
+
+  it('answers 404 when the Guild has no active Raid, 403 to outsiders and 401 without a session', async () => {
+    const guildId = await createGuild('Ordem do Foco');
+    expect((await call('GET', `/guilds/${guildId}/raids/active`, bruno)).status).toBe(403);
+    expect((await call('GET', `/guilds/${guildId}/raids/active`, null)).status).toBe(401);
+
+    await call('POST', `/guilds/${guildId}/members`, bruno);
+    expect((await call('GET', `/guilds/${guildId}/raids/active`, bruno)).status).toBe(200);
+
+    now = new Date('2026-10-12T03:00:00Z'); // the week is over and no job opened the next one yet
+    expect((await call('GET', `/guilds/${guildId}/raids/active`)).status).toBe(404);
+  });
+
+  it('keeps showing the Raid after its goal is reached', async () => {
+    const guildId = await createGuild('Ordem do Foco');
+    await dataSource!.getRepository(Raid).update({ guildId }, { progressXp: 1000, status: 'completed' });
+    const response = await call('GET', `/guilds/${guildId}/raids/active`);
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ progressXp: 1000, status: 'completed' });
+  });
+
+  it('shows the most recent Golpe with its author, XP and focus minutes', async () => {
+    const guildId = await createGuild('Ordem do Foco');
+    await call('POST', `/guilds/${guildId}/members`, bruno);
+    const raid = await dataSource!.getRepository(Raid).findOneByOrFail({ guildId });
+    const strike = async (userId: string, studySessionId: string, xp: number, focusSeconds: number) => {
+      await dataSource!.getRepository(StudySession).insert({
+        id: studySessionId, userId, mode: 'guild', raidId: raid.id, state: 'completed', xpAwarded: xp, durationValidSeconds: focusSeconds, endedAt: now,
+      });
+      await raids.recordContribution(raid.id, userId, studySessionId, xp);
+    };
+
+    await strike(ana, '00000000-0000-4000-8000-000000000c01', 250, 25 * 60);
+    now = new Date(now.getTime() + 60_000);
+    await strike(bruno, '00000000-0000-4000-8000-000000000c02', 75, 7 * 60 + 40);
+
+    const response = await call('GET', `/guilds/${guildId}/raids/active`, ana);
+    expect(((await response.json()) as { lastHit: unknown }).lastHit).toEqual({
+      userId: bruno,
+      displayName: 'Bruno',
+      xp: 75,
+      focusMinutes: 7,
+      at: expect.any(String),
+    });
+  });
+});

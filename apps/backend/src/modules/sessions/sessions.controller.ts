@@ -8,10 +8,12 @@ import {
   Param,
   Patch,
   Post,
+  Query,
   Res,
   UseGuards,
 } from '@nestjs/common';
 import type { Response } from 'express';
+import { RateLimit } from '../../shared/security/rate-limit';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import type { JwtPayload } from '../auth/strategies/jwt.strategy';
@@ -22,7 +24,10 @@ import { StudySessionTransitionService } from './study-session-transition.servic
 import { StudySessionTransitionDto } from './dto/study-session-transition.dto';
 import type { RecentSessionResponseDto } from './dto/recent-session-response.dto';
 import type { RecentSubjectsResponseDto } from './dto/recent-subjects-response.dto';
+import type { FocusCycle } from './domain/focus-cycle';
 import type { SessionMetricsResponseDto } from './dto/session-metrics-response.dto';
+import type { SessionHistoryPageDto } from './dto/session-history-response.dto';
+import { SessionHistoryQueryDto } from './dto/session-history-query.dto';
 
 @Controller('sessions')
 @UseGuards(JwtAuthGuard)
@@ -35,12 +40,19 @@ export class SessionsController {
 
   @Get('active')
   async active(@CurrentUser() user: JwtPayload, @Res({ passthrough: true }) response: Response) {
-    const snapshot = await this.studySessionStart.active(user.sub, user.sessionId);
+    // An expired running focus stays readable so the returning device completes it and shows the result.
+    const snapshot = await this.studySessionStart.active(user.sub);
     if (!snapshot) {
       response.status(HttpStatus.NO_CONTENT);
       return;
     }
     return snapshot;
+  }
+
+  @Get('cycle')
+  @HttpCode(HttpStatus.OK)
+  cycle(@CurrentUser() user: JwtPayload): Promise<FocusCycle> {
+    return this.sessions.focusCycle(user.sub);
   }
 
   @Get('recent')
@@ -55,6 +67,13 @@ export class SessionsController {
     return this.sessions.recentSubjects(user.sub);
   }
 
+  /** Histórico do dia (#17): every Study Session that ended on a UTC day, newest first. */
+  @Get('history')
+  @HttpCode(HttpStatus.OK)
+  history(@CurrentUser() user: JwtPayload, @Query() query: SessionHistoryQueryDto): Promise<SessionHistoryPageDto> {
+    return this.sessions.history(user.sub, query);
+  }
+
   @Get('metrics')
   @HttpCode(HttpStatus.OK)
   metrics(@CurrentUser() user: JwtPayload): Promise<SessionMetricsResponseDto> {
@@ -62,6 +81,7 @@ export class SessionsController {
   }
 
   @Post()
+  @RateLimit('study-session')
   @HttpCode(HttpStatus.CREATED)
   start(
     @CurrentUser() user: JwtPayload,
@@ -72,6 +92,7 @@ export class SessionsController {
   }
 
   @Post(':id/pause')
+  @RateLimit('study-session')
   @HttpCode(HttpStatus.OK)
   pause(
     @CurrentUser() user: JwtPayload,
@@ -89,6 +110,7 @@ export class SessionsController {
   }
 
   @Post(':id/resume')
+  @RateLimit('study-session')
   @HttpCode(HttpStatus.OK)
   resume(
     @CurrentUser() user: JwtPayload,
@@ -106,6 +128,7 @@ export class SessionsController {
   }
 
   @Post(':id/stop')
+  @RateLimit('study-session')
   @HttpCode(HttpStatus.OK)
   stop(
     @CurrentUser() user: JwtPayload,
@@ -123,15 +146,17 @@ export class SessionsController {
   }
 
   @Patch(':id/heartbeat')
+  @RateLimit('study-session')
   @HttpCode(HttpStatus.NO_CONTENT)
   async heartbeat(
     @CurrentUser() user: JwtPayload,
     @Param('id') id: string,
   ): Promise<void> {
-    await this.sessions.heartbeat(user.sub, id, user.sessionId);
+    await this.sessions.heartbeat(user.sub, id);
   }
 
   @Post(':id/complete')
+  @RateLimit('study-session')
   @HttpCode(HttpStatus.OK)
   async complete(
     @CurrentUser() user: JwtPayload,

@@ -3,6 +3,7 @@ import { ConfigModule } from '@nestjs/config';
 import { Test } from '@nestjs/testing';
 import type { AddressInfo } from 'node:net';
 import { configureApp } from '../../app.setup';
+import { RateLimitModule } from '../../shared/security/rate-limit';
 import { AuthController } from './auth.controller';
 import { NativeAuthController } from './native-auth.controller';
 import { RejectBrowserOriginGuard } from './guards/reject-browser-origin.guard';
@@ -34,7 +35,7 @@ describe('Auth HTTP transport contract', () => {
     previousCorsOrigin = process.env.CORS_ORIGIN;
     process.env.CORS_ORIGIN = `${allowedOrigin},https://app.example.com`;
     const moduleRef = await Test.createTestingModule({
-      imports: [ConfigModule.forRoot({ isGlobal: true, ignoreEnvFile: true })],
+      imports: [ConfigModule.forRoot({ isGlobal: true, ignoreEnvFile: true }), RateLimitModule],
       controllers: [AuthController, NativeAuthController],
       providers: [
         RejectBrowserOriginGuard,

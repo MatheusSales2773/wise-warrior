@@ -14,6 +14,21 @@ export const wiseIconNames = [
   'shield',
   'ellipsis-horizontal-circle-outline',
   'ellipsis-horizontal-circle',
+  'flame',
+  'chatbubble-ellipses-outline',
+  'sparkles',
+  'swap-horizontal-outline',
+  'lock-closed',
+  'chevron-forward',
+  'chevron-back',
+  'people-outline',
+  'time-outline',
+  'play',
+  'storefront-outline',
+  'storefront',
+  'bag-handle-outline',
+  'checkmark',
+  'arrow-forward',
 ] as const;
 
 export type WiseIconName = (typeof wiseIconNames)[number];

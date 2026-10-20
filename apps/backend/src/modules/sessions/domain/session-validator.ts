@@ -1,15 +1,13 @@
 /**
  * Regra de negócio antifraude (PRD seção 7.3 — RN-ANTIFRAUDE). Camada de
  * Domínio, sem I/O: recebe timestamps já gerados pelo servidor (nunca o
- * cliente) e a soma diária prévia do usuário, e decide se a sessão é válida.
+ * cliente) e a soma diária prévia do usuário, e trunca o foco válido nos limites.
  */
 
-export const MAX_CONTINUOUS_SESSION_SECONDS = 4 * 60 * 60; // 4h
-export const MAX_DAILY_SECONDS = 16 * 60 * 60; // 16h
+import { getMaxContinuousSessionSeconds, getMaxDailySeconds } from './economy-config';
 
-export type DiscardReason =
-  | 'continuous-session-exceeds-limit'
-  | 'daily-limit-exceeded';
+/** Sessões que passam do limite são truncadas, não descartadas (ADR-011). */
+export type CappedReason = 'continuous-limit' | 'daily-limit';
 
 export interface SessionValidationInput {
   startedAt: Date;
@@ -21,7 +19,7 @@ export interface SessionValidationInput {
 export interface SessionValidationResult {
   durationSeconds: number;
   validSeconds: number;
-  discardedReason: DiscardReason | null;
+  cappedReason: CappedReason | null;
 }
 
 export function validateSessionDuration(
@@ -62,21 +60,20 @@ function validateFocusSeconds(
     throw new Error('A duração de foco deve ser maior que zero');
   }
 
-  if (durationSeconds > MAX_CONTINUOUS_SESSION_SECONDS) {
-    return {
-      durationSeconds,
-      validSeconds: 0,
-      discardedReason: 'continuous-session-exceeds-limit',
-    };
+  let validSeconds = durationSeconds;
+  let cappedReason: CappedReason | null = null;
+
+  const continuousLimit = getMaxContinuousSessionSeconds();
+  if (validSeconds > continuousLimit) {
+    validSeconds = continuousLimit;
+    cappedReason = 'continuous-limit';
   }
 
-  if (priorDailySeconds + durationSeconds > MAX_DAILY_SECONDS) {
-    return {
-      durationSeconds,
-      validSeconds: 0,
-      discardedReason: 'daily-limit-exceeded',
-    };
+  const dailyBalance = Math.max(0, getMaxDailySeconds() - priorDailySeconds);
+  if (validSeconds > dailyBalance) {
+    validSeconds = dailyBalance;
+    cappedReason = 'daily-limit';
   }
 
-  return { durationSeconds, validSeconds: durationSeconds, discardedReason: null };
+  return { durationSeconds, validSeconds, cappedReason };
 }

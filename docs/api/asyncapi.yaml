@@ -1,0 +1,382 @@
+asyncapi: "3.0.0"
+info:
+  title: Wise Realtime
+  version: "1.0.0"
+  description: >
+    Eventos Socket.IO 4.x do servidor para o app (ADR-009). O cliente conecta ao mesmo host da API REST
+    com o access token em `auth.token` do handshake. Ao conectar, o servidor coloca o socket na room
+    `user:{userId}` e, se o usuário tem Guild, na room `guild:{guildId}`. Criar, entrar ou sair de uma
+    Guild atualiza as rooms de todos os sockets do usuário sem reconectar, então ninguém recebe eventos
+    de uma Guild que não é sua. Revogar uma Sessão (logout, revogação de dispositivo, reuso de refresh token ou limite de dispositivos) encerra o socket daquele dispositivo; os demais seguem conectados. Os eventos abaixo só descem; o app não emite eventos.
+servers:
+  development:
+    host: localhost:3000
+    protocol: ws
+    description: Desenvolvimento local
+    security:
+      - $ref: "#/components/securitySchemes/accessToken"
+channels:
+  guildRoom:
+    address: "guild:{guildId}"
+    description: Room Socket.IO de uma Guild. Só os sockets dos membros atuais entram nela.
+    parameters:
+      guildId:
+        description: Identificador da Guild
+    messages:
+      raidProgress:
+        $ref: "#/components/messages/raidProgress"
+      raidHit:
+        $ref: "#/components/messages/raidHit"
+      chatMessage:
+        $ref: "#/components/messages/chatMessage"
+  userRoom:
+    address: "user:{userId}"
+    description: Room Socket.IO de um usuário. Todos os sockets dele, em qualquer dispositivo, entram nela.
+    parameters:
+      userId:
+        description: Identificador do usuário
+    messages:
+      raidComplete:
+        $ref: "#/components/messages/raidComplete"
+      xpUpdated:
+        $ref: "#/components/messages/xpUpdated"
+      levelUp:
+        $ref: "#/components/messages/levelUp"
+      equipmentChanged:
+        $ref: "#/components/messages/equipmentChanged"
+      coinsChanged:
+        $ref: "#/components/messages/coinsChanged"
+      studySessionChanged:
+        $ref: "#/components/messages/studySessionChanged"
+operations:
+  receiveRaidProgress:
+    action: receive
+    channel:
+      $ref: "#/channels/guildRoom"
+    summary: Progresso da Raid ativa mudou
+    description: >
+      Emitido para a room da Guild depois do commit de uma Contribuição e, também, quando a Fúria do dragão
+      devolve vida ao chefe (fechamento diário, uma vez por Raid e dia; não é emitido quando a vida já estava
+      cheia). Traz a Vida do chefe e o total regenerado. O app atualiza o cache da Raid ativa e invalida o
+      Ranking interno.
+    messages:
+      - $ref: "#/channels/guildRoom/messages/raidProgress"
+  receiveRaidHit:
+    action: receive
+    channel:
+      $ref: "#/channels/guildRoom"
+    summary: Um membro causou um Golpe no chefe
+    description: >
+      Emitido para a room da Guild logo depois do `raid:progress` da mesma Contribuição, só quando ela é nova:
+      repetir a conclusão da mesma Study Session não emite outro Golpe. O app mostra o Golpe sobre a cena
+      ("−75 Eldoria · 25 min") e atualiza a Raid ativa e o Ranking interno.
+    messages:
+      - $ref: "#/channels/guildRoom/messages/raidHit"
+  receiveChatMessage:
+    action: receive
+    channel:
+      $ref: "#/channels/guildRoom"
+    summary: Nova mensagem no Mural
+    description: >
+      Emitido para a room da Guild a cada mensagem do Mural. Mensagem de membro tem `kind = message`.
+      Um Golpe da Raid gera um Aviso (`kind = raid_hit`), gravado pelo Service do chat na transação da
+      Contribuição e emitido depois do commit, uma vez só por Contribuição. O Aviso não tem autor humano:
+      `userId` e `displayName` são os do autor do Golpe e `body` vem vazio; o app monta o texto com o nome
+      atual e o `xp`. Avisos têm `seq` como as demais mensagens, aparecem no histórico (`chat:history`) e são
+      recuperados na reconexão (`chat:sync`). Membros não enviam Avisos: `chat:send` só cria `kind = message`
+      e ignora `kind`, `xp` e `contributionId` do payload. As respostas de `chat:history` e `chat:sync`
+      (comandos cliente → servidor, com ack) trazem a mesma forma `ChatMessage` em `messages`, Avisos incluídos.
+      O `seq` de um Aviso é sempre menor que o de qualquer mensagem de membro gravada depois do seu commit.
+    messages:
+      - $ref: "#/channels/guildRoom/messages/chatMessage"
+  receiveRaidComplete:
+    action: receive
+    channel:
+      $ref: "#/channels/userRoom"
+    summary: Uma Raid da qual o usuário participou foi encerrada
+    description: >
+      Emitido para a room de cada Participante depois do commit do fechamento semanal, uma única vez por
+      Participante e Raid, mesmo se o fechamento rodar de novo. O app invalida a Raid ativa, as Raids
+      anteriores, a Guild (Nível) e o Catálogo de cosméticos.
+    messages:
+      - $ref: "#/channels/userRoom/messages/raidComplete"
+  receiveXpUpdated:
+    action: receive
+    channel:
+      $ref: "#/channels/userRoom"
+    summary: O usuário ganhou XP
+    description: >
+      Emitido para todos os dispositivos do usuário depois que uma Sessão de estudo concede XP. O app
+      invalida o Dashboard (perfil, atividade recente e métricas), que também alimenta o Personagem.
+    messages:
+      - $ref: "#/channels/userRoom/messages/xpUpdated"
+  receiveLevelUp:
+    action: receive
+    channel:
+      $ref: "#/channels/userRoom"
+    summary: O usuário subiu de Nível
+    description: >
+      Emitido depois de `progress:xpUpdated` quando o XP cruza o limite de um Nível. O app atualiza o
+      Dashboard e o Catálogo de cosméticos, porque subir de Nível libera itens.
+    messages:
+      - $ref: "#/channels/userRoom/messages/levelUp"
+  receiveEquipmentChanged:
+    action: receive
+    channel:
+      $ref: "#/channels/userRoom"
+    summary: O usuário equipou ou desequipou um Cosmetic Item
+    description: >
+      Emitido para todos os dispositivos do usuário depois do commit de Equipar ou desequipar. O app
+      invalida o perfil (itens equipados e Título) e o Catálogo de cosméticos.
+    messages:
+      - $ref: "#/channels/userRoom/messages/equipmentChanged"
+  receiveCoinsChanged:
+    action: receive
+    channel:
+      $ref: "#/channels/userRoom"
+    summary: O saldo de Moedas do usuário mudou
+    description: >
+      Emitido para todos os dispositivos do usuário depois do commit de um crédito ou débito de Moedas (ADR-012).
+      Só sai quando a origem foi aplicada agora, e não quando a movimentação já tinha sido feita. O app atualiza o
+      saldo e o Extrato.
+    messages:
+      - $ref: "#/channels/userRoom/messages/coinsChanged"
+  receiveStudySessionChanged:
+    action: receive
+    channel:
+      $ref: "#/channels/userRoom"
+    summary: A Study Session ativa mudou de estado
+    description: >
+      Emitido para todos os dispositivos do usuário depois do commit de um início, pausa, retomada, encerramento ou
+      conclusão da Study Session ativa, e também quando o servidor conclui um foco vencido ao ler
+      `GET /sessions/active` ou ao iniciar a próxima sessão. Só sai quando o estado mudou de fato: replay de
+      `Idempotency-Key`, a resposta idempotente para outro dispositivo que já tinha concluído o foco e o heartbeat
+      não emitem. O payload leva só o mínimo para o cliente invalidar a consulta local; o REST continua sendo a
+      fonte canônica, e o app reconsulta `GET /sessions/active` ao receber o evento. Um dispositivo ignora o eco
+      do próprio comando: tanto quando a mesma versão já foi aplicada quanto quando o evento chega antes da
+      resposta HTTP do comando em andamento. Não há sincronização por segundo.
+    messages:
+      - $ref: "#/channels/userRoom/messages/studySessionChanged"
+components:
+  securitySchemes:
+    accessToken:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Access token JWT enviado em `auth.token` no handshake do Socket.IO, não no header Authorization.
+  messages:
+    raidProgress:
+      name: raid:progress
+      title: Progresso da Raid
+      contentType: application/json
+      payload:
+        $ref: "#/components/schemas/RaidProgress"
+    raidHit:
+      name: raid:hit
+      title: Golpe
+      contentType: application/json
+      payload:
+        $ref: "#/components/schemas/RaidHit"
+    chatMessage:
+      name: chat:message
+      title: Mensagem ou Aviso do Mural
+      contentType: application/json
+      payload:
+        $ref: "#/components/schemas/ChatMessage"
+    raidComplete:
+      name: notification:raidComplete
+      title: Raid encerrada
+      contentType: application/json
+      payload:
+        $ref: "#/components/schemas/RaidComplete"
+    xpUpdated:
+      name: progress:xpUpdated
+      title: XP atualizado
+      contentType: application/json
+      payload:
+        $ref: "#/components/schemas/XpUpdated"
+    levelUp:
+      name: notification:levelup
+      title: Novo Nível
+      contentType: application/json
+      payload:
+        $ref: "#/components/schemas/LevelUp"
+    equipmentChanged:
+      name: character:equipmentChanged
+      title: Equipagem alterada
+      contentType: application/json
+      payload:
+        $ref: "#/components/schemas/EquipmentChanged"
+    coinsChanged:
+      name: coins:changed
+      title: Saldo de Moedas alterado
+      contentType: application/json
+      payload:
+        $ref: "#/components/schemas/CoinsChanged"
+    studySessionChanged:
+      name: studySession:changed
+      title: Study Session alterada
+      contentType: application/json
+      payload:
+        $ref: "#/components/schemas/StudySessionChanged"
+  schemas:
+    ChatMessage:
+      type: object
+      required: [id, seq, guildId, userId, displayName, kind, xp, body, sentAt]
+      properties:
+        id: { type: string, format: uuid }
+        seq:
+          type: integer
+          description: Sequência monotônica por Guild; pagina o histórico e recupera mensagens perdidas na reconexão
+        guildId: { type: string, format: uuid }
+        userId:
+          type: string
+          format: uuid
+          description: Autor da mensagem, ou autor do Golpe quando `kind = raid_hit`
+        displayName:
+          type: string
+          description: Nome atual do autor
+        kind:
+          type: string
+          enum: [message, raid_hit]
+          description: "`raid_hit` é um Aviso do Mural, automático e sem autor humano"
+        xp:
+          type: [integer, "null"]
+          description: XP do Golpe anunciado; null em mensagens de membros
+        body:
+          type: string
+          description: Texto do membro; vazio em Avisos
+        sentAt: { type: string, format: date-time }
+    CoinsChanged:
+      type: object
+      required: [balance, delta, origin]
+      properties:
+        balance:
+          type: integer
+          minimum: 0
+          description: Saldo do usuário depois da movimentação
+        delta:
+          type: integer
+          description: Positivo para crédito, negativo para débito
+        origin:
+          type: object
+          required: [type, ref]
+          properties:
+            type: { type: string, enum: [study-session, raid-win, purchase, signup, migration] }
+            ref: { type: string, maxLength: 64 }
+    StudySessionChanged:
+      type: object
+      required: [studySessionId, version, state]
+      properties:
+        studySessionId: { type: string, format: uuid }
+        version:
+          type: integer
+          minimum: 1
+          description: Versão canônica depois da mudança; o dispositivo que já aplicou essa versão ignora o evento
+        state:
+          type: string
+          enum: [running, paused, ended]
+          description: >
+            Estado grosso para o cliente saber se a sessão ainda ocupa o slot ativo. `ended` cobre conclusão,
+            encerramento antecipado, cancelamento e sessão descartada; o REST continua sendo a fonte dos detalhes.
+    EquipmentChanged:
+      type: object
+      required: [category, cosmeticItemId]
+      properties:
+        category:
+          type: string
+          enum: [avatar, badge, title, accessory]
+          description: Categoria cuja equipagem mudou
+        cosmeticItemId:
+          type: [string, "null"]
+          format: uuid
+          description: Item agora equipado na categoria, ou null quando ela ficou vazia
+    XpUpdated:
+      type: object
+      required: [xpGained, xpTotal, level]
+      properties:
+        xpGained:
+          type: integer
+          description: XP concedido pela Sessão de estudo
+        xpTotal:
+          type: integer
+          description: XP acumulado do Personagem depois da concessão
+        level:
+          type: integer
+          description: Nível do Personagem depois da concessão
+    LevelUp:
+      type: object
+      required: [previousLevel, newLevel]
+      properties:
+        previousLevel:
+          type: integer
+        newLevel:
+          type: integer
+    RaidProgress:
+      type: object
+      required: [raidId, progressXp, goalXp, goalReachedAt, regeneratedXp, healthXp]
+      properties:
+        raidId:
+          type: string
+          format: uuid
+        progressXp:
+          type: integer
+          description: Soma das Contribuições da Raid
+        goalXp:
+          type: integer
+          description: Meta coletiva, congelada na criação da Raid
+        goalReachedAt:
+          type: [string, "null"]
+          format: date-time
+          description: A primeira vez que o progresso alcançou a meta (Meta batida), ou null
+        regeneratedXp:
+          type: integer
+          minimum: 0
+          description: Vida que a Fúria do dragão já devolveu ao chefe
+        healthXp:
+          type: integer
+          minimum: 0
+          description: Vida do chefe, `goalXp − progressXp + regeneratedXp`, entre 0 e `goalXp`
+    RaidHit:
+      type: object
+      required: [raidId, userId, displayName, xp, focusMinutes, at]
+      properties:
+        raidId:
+          type: string
+          format: uuid
+        userId:
+          type: string
+          format: uuid
+          description: Autor do Golpe
+        displayName:
+          type: string
+        xp:
+          type: integer
+          minimum: 1
+          description: Dano do Golpe, o XP da Contribuição
+        focusMinutes:
+          type: [integer, "null"]
+          minimum: 0
+          description: Minutos inteiros de foco validado da Study Session, ou null quando ela não existe mais
+        at:
+          type: string
+          format: date-time
+          description: Quando a Contribuição foi gravada
+    RaidComplete:
+      type: object
+      required: [raidId, guildId, status, rewardItemId]
+      properties:
+        raidId:
+          type: string
+          format: uuid
+        guildId:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [completed, expired]
+          description: "`completed` com Meta batida (a Guild subiu um Nível), `expired` sem"
+        rewardItemId:
+          type: [string, "null"]
+          format: uuid
+          description: O Cosmetic Item recebido como Recompensa de Raid, ou null quando o usuário não recebeu nada
