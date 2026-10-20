@@ -76,10 +76,6 @@ export const RAID_REWARD_RULE = 'Para receber o item, contribua com ao menos uma
 /** Shown once the progress reached the goal; Contributions keep adding until the end of the week. */
 export const RAID_GOAL_REACHED = 'Meta batida! As sessões de guilda continuam contando até o fim da semana.';
 
-export function raidProgressPercent(progressXp: number, goalXp: number): number {
-  return goalXp > 0 ? Math.min(100, Math.floor((progressXp / goalXp) * 100)) : 0;
-}
-
 export function joinRaidErrorMessage(error: unknown): string {
   if (isApiError(error)) {
     if (error.category === 'conflict') return 'Essa Raid já foi encerrada. Atualizamos a tela com a Raid da semana.';

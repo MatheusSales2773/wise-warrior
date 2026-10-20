@@ -152,8 +152,7 @@ export function raidWeekGrid({ weekDays, studyDays, today }: Pick<ActiveRaid, 'w
 /** "4 dias sem falhar"; `compact` drops the "da guilda" label for the phone strip. */
 export function formatStreak(streak: number, { compact = false }: { compact?: boolean } = {}): string {
   const label = compact ? 'Guilda' : 'Sequência da guilda';
-  if (streak === 0) return `${label}: nenhum dia ainda`;
-  return `${label}: ${streak} ${streak === 1 ? 'dia' : 'dias'} sem falhar`;
+  return `${label}: ${streak === 0 ? 'nenhum dia ainda' : formatStreakDays(streak)}`;
 }
 
 /** The streak alone, for a card that already titles it: "4 dias sem falhar". */
