@@ -4,7 +4,7 @@ import { Dimensions, Platform, StyleSheet } from 'react-native';
 import { ApiError } from '@/core/api/api-error';
 import { createGuild, getActiveRaid, getMyGuild, getRaidRanking, joinGuild, joinRaid, leaveGuild, listGuildMembers, listGuilds, listPastRaids, type ActiveRaid, type PastRaid, type GuildMemberPage, type GuildPage, type MyGuild, type RaidRankingEntry, type RaidRankingPage } from '@/features/guild/api';
 import { GuildScreen } from '@/features/guild/guild-screen';
-import { GUILD_NAME_MAX_LENGTH, GUILD_NAME_MIN_LENGTH, validateGuildName } from '@/features/guild/validation';
+import { GUILD_NAME_MAX_LENGTH, GUILD_NAME_MIN_LENGTH } from '@/features/guild/validation';
 
 jest.mock('@/features/dashboard/api', () => ({ getMyProfile: jest.fn(() => new Promise(() => undefined)) }));
 jest.mock('@/features/guild/api', () => ({
@@ -393,33 +393,49 @@ describe('GuildScreen', () => {
     });
   });
 
-  it('shows the "0 / 60" counter and the "3 a 60 caracteres" rule on the founding field, and counts as the user types', async () => {
-    mockedMine.mockResolvedValue(null);
-    mockedList.mockResolvedValue(page([]));
-    await renderGuild();
-    await openJoinTab('create');
+  describe('founding form (Figma 06d)', () => {
+    async function renderFoundingForm(layout: 'phone' | 'desktop') {
+      if (layout === 'desktop') Dimensions.set({ window: { width: 1280, height: 800, scale: 1, fontScale: 1 } });
+      mockedMine.mockResolvedValue(null);
+      mockedList.mockResolvedValue(page([]));
+      await renderGuild();
+      if (layout === 'phone') await openJoinTab('create');
+      return within(await screen.findByTestId('guild-create'));
+    }
 
-    const create = within(screen.getByTestId('guild-create'));
-    expect(create.getByText('Funde sua guilda')).toBeTruthy();
-    expect(create.getByText('0 / 60', { includeHiddenElements: true })).toBeTruthy();
-    expect(create.getByText('3 a 60 caracteres')).toBeTruthy();
-    expect(screen.getByLabelText('Nome da guilda').props.maxLength).toBe(60);
+    it.each(['phone', 'desktop'] as const)('on the %s shows the "0 / 60" counter and the "3 a 60 caracteres" rule, and counts as the user types', async (layout) => {
+      const create = await renderFoundingForm(layout);
 
-    await fireEvent.changeText(screen.getByLabelText('Nome da guilda'), 'Ordem');
-    expect(create.getByText('5 / 60', { includeHiddenElements: true })).toBeTruthy();
-  });
+      expect(create.getByText('Funde sua guilda')).toBeTruthy();
+      expect(create.getByText('0 / 60', { includeHiddenElements: true })).toBeTruthy();
+      expect(create.getByText('3 a 60 caracteres')).toBeTruthy();
+      expect(create.getByRole('button', { name: 'Fundar guilda' })).toBeTruthy();
+      expect(create.getByLabelText('Nome da guilda').props.maxLength).toBe(GUILD_NAME_MAX_LENGTH);
 
-  it('keeps the creation rule message when the name is too short', async () => {
-    mockedMine.mockResolvedValue(null);
-    mockedList.mockResolvedValue(page([]));
-    await renderGuild();
-    await openJoinTab('create');
+      await fireEvent.changeText(create.getByLabelText('Nome da guilda'), 'Ordem');
+      expect(create.getByText('5 / 60', { includeHiddenElements: true })).toBeTruthy();
+    });
 
-    await fireEvent.changeText(screen.getByLabelText('Nome da guilda'), 'ab');
-    await fireEvent.press(screen.getByTestId('guild-create-submit'));
+    it.each(['phone', 'desktop'] as const)('on the %s keeps the validation message for a name that is too short', async (layout) => {
+      const create = await renderFoundingForm(layout);
 
-    expect(await screen.findByText(validateGuildName('ab') as string)).toBeTruthy();
-    expect(mockedCreate).not.toHaveBeenCalled();
+      await fireEvent.changeText(create.getByLabelText('Nome da guilda'), 'ab');
+      await fireEvent.press(create.getByTestId('guild-create-submit'));
+
+      expect(await create.findByText('O nome precisa ter ao menos 3 caracteres.')).toBeTruthy();
+      expect(mockedCreate).not.toHaveBeenCalled();
+    });
+
+    it('on the desktop explains a creation conflict without leaking backend text', async () => {
+      mockedCreate.mockRejectedValue(new ApiError('conflict', { status: 409 }));
+      const create = await renderFoundingForm('desktop');
+
+      await fireEvent.changeText(create.getByLabelText('Nome da guilda'), 'Repetida');
+      await fireEvent.press(create.getByTestId('guild-create-submit'));
+
+      expect(await create.findByTestId('guild-create-error')).toBeTruthy();
+      expect(create.getByText(/Já existe uma guilda com esse nome/)).toBeTruthy();
+    });
   });
 
   it('validates the name before calling the API, then creates and shows the new guild', async () => {
