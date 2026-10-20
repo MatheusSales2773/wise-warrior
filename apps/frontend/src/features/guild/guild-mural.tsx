@@ -4,9 +4,9 @@ import { controlStyles } from '@/design-system/components/control-styles';
 import { FeedbackMessage, WiseButton, WiseCard, WiseField, WiseText, theme } from '@/design-system';
 import { raidHitText, type ChatMessage, type GuildChat } from './guild-chat';
 
-export type GuildTab = 'raid' | 'mural';
+export type GuildTab = 'raid' | 'mural' | 'members' | 'history';
 
-const TABS: { id: GuildTab; label: string }[] = [{ id: 'raid', label: 'Raid' }, { id: 'mural', label: 'Mural' }];
+const TABS: { id: GuildTab; label: string }[] = [{ id: 'raid', label: 'Raid' }, { id: 'mural', label: 'Mural' }, { id: 'members', label: 'Membros' }, { id: 'history', label: 'Histórico' }];
 
 export function formatOnlineCount(count: number): string {
   return `${count} online`;
@@ -42,7 +42,7 @@ export function OnlineIndicator({ onlineUserIds }: { onlineUserIds: ReadonlySet<
   );
 }
 
-/** Raid and Mural; Missões and Loja come with #148. */
+/** Mobile sections of the Guild screen. Tab state lives in the screen, so the Mural connection is never remounted. */
 export function GuildTabs({ selected, onSelect }: { selected: GuildTab; onSelect: (tab: GuildTab) => void }) {
   return (
     <View accessibilityLabel="Seções da guilda" role="tablist" style={styles.tabs} testID="guild-tabs">
@@ -271,7 +271,7 @@ const styles = StyleSheet.create({
   dotOnline: { backgroundColor: theme.color.feedbackSuccess, borderColor: theme.color.feedbackSuccess },
   dotOffline: { backgroundColor: 'transparent', borderColor: theme.color.textDisabled },
   tabs: { flexDirection: 'row', gap: theme.space.inlineTight, borderBottomWidth: theme.border.standard, borderBottomColor: theme.color.borderSubtle },
-  tab: { paddingVertical: theme.space.inlineTight, paddingHorizontal: theme.space.controlInset, borderBottomWidth: 2, borderBottomColor: 'transparent', marginBottom: -1 },
+  tab: { flex: 1, alignItems: 'center', paddingVertical: theme.space.inlineTight, paddingHorizontal: theme.space.inlineTight, borderBottomWidth: 2, borderBottomColor: 'transparent', marginBottom: -1 },
   // Selected is marked by the underline and the brighter label, never by color alone.
   tabActive: { borderBottomColor: theme.color.accentPrimary },
   scroll: { maxHeight: 420, minHeight: 160, borderRadius: theme.radius.control, backgroundColor: theme.color.surfaceInset },

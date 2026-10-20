@@ -107,6 +107,7 @@ describe('Guild presence', () => {
 
   it('marks who is online in the member list', async () => {
     await renderGuild();
+    await fireEvent.press(await screen.findByTestId('guild-tab-members'));
     expect(await screen.findByTestId('guild-member-online-u1')).toBeOnTheScreen();
     expect(screen.getByTestId('guild-member-offline-u3')).toBeOnTheScreen();
     await gateway.emit('member:online', { guildId: 'g1', userId: 'u3', online: true });

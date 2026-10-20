@@ -481,8 +481,8 @@ function MemberGuild({ mine, desktop, onLeft, onConflict }: { mine: MyGuild; des
   const chat = useGuildChat(guild.id, profile.data?.id);
   const [tab, setTab] = useState<GuildTab>('raid');
   const header = <GuildCard mine={mine} onlineUserIds={chat.onlineUserIds} />;
-  const tabs = <GuildTabs onSelect={setTab} selected={tab} />;
-  const content = tab === 'raid' ? <RaidSection guildId={guild.id} /> : <MuralPanel chat={chat} />;
+  const raid = <RaidSection guildId={guild.id} />;
+  const mural = <MuralPanel chat={chat} />;
   const members = <MembersCard guildId={guild.id} onlineUserIds={chat.onlineUserIds} />;
   const pastRaids = <PastRaidsCard guildId={guild.id} />;
   const announcer = <MuralAnnouncer arrival={chat.arrival} />;
@@ -491,13 +491,29 @@ function MemberGuild({ mine, desktop, onLeft, onConflict }: { mine: MyGuild; des
       <LeaveGuildAction guildId={guild.id} isLeader={role === 'leader'} onConflict={onConflict} onLeft={onLeft} />
     </View>
   );
-  return desktop
-    ? <View style={styles.desktopGrid} testID="guild-layout-desktop">
-      <View style={[styles.column, styles.stack]} testID="guild-column-main">{header}{tabs}{content}</View>
-      <View style={[styles.column, styles.stack]} testID="guild-column-side">{pastRaids}{members}{leave}</View>
+  if (desktop) {
+    return (
+      <View style={styles.stack} testID="guild-layout-desktop">
+        {header}
+        <View style={styles.desktopGrid}>
+          <View style={[styles.mainColumn, styles.stack]} testID="guild-column-main">{raid}{pastRaids}</View>
+          <View style={[styles.sideColumn, styles.stack]} testID="guild-column-side">{mural}{members}{leave}</View>
+        </View>
+        {announcer}
+      </View>
+    );
+  }
+  return (
+    <View style={styles.stack} testID="guild-layout-tabs">
+      {header}
+      <GuildTabs onSelect={setTab} selected={tab} />
+      {tab === 'raid' ? raid : null}
+      {tab === 'mural' ? mural : null}
+      {tab === 'members' ? <>{members}{leave}</> : null}
+      {tab === 'history' ? pastRaids : null}
       {announcer}
     </View>
-    : <View style={styles.stack} testID="guild-layout-stacked">{header}{tabs}{content}{pastRaids}{members}{leave}{announcer}</View>;
+  );
 }
 
 export function GuildScreen() {
@@ -548,8 +564,11 @@ export function GuildScreen() {
 const styles = StyleSheet.create({
   stack: { gap: theme.space.stackDefault },
   grid: { gap: theme.space.stackDefault },
-  desktopGrid: { flexDirection: 'row', alignItems: 'flex-start' },
+  desktopGrid: { flexDirection: 'row', alignItems: 'flex-start', gap: theme.space.stackDefault },
   column: { flex: 1 },
+  // The 06c proportion: 680 px of Raid next to 392 px of Mural and Membros.
+  mainColumn: { flex: 680 },
+  sideColumn: { flex: 392 },
   raidImage: { height: 160, overflow: 'hidden', borderRadius: theme.radius.card, backgroundColor: theme.color.surfaceInset },
   rankingItem: { flexDirection: 'row', alignItems: 'center', gap: theme.space.stackTight, paddingVertical: theme.space.inlineTight, paddingHorizontal: theme.space.inlineTight, borderRadius: theme.radius.control, borderWidth: theme.border.standard, borderColor: 'transparent' },
   // The own row is marked by a border and a "(você)" label as well as by the fill, never by color alone.

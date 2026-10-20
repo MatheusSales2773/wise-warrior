@@ -79,7 +79,8 @@ async function renderGuild() {
 
 beforeEach(() => {
   Object.defineProperty(Platform, 'OS', { configurable: true, writable: true, value: 'web' });
-  Dimensions.set({ window: { width: 390, height: 844, scale: 1, fontScale: 1 } });
+  // Desktop by default: every card is on screen at once. The phone tabs have their own tests.
+  Dimensions.set({ window: { width: 1280, height: 800, scale: 1, fontScale: 1 } });
   mockedRaid.mockResolvedValue(raid());
   mockedRanking.mockResolvedValue({ items: [], nextCursor: null });
   mockedPast.mockResolvedValue({ items: [], nextCursor: null });
@@ -471,28 +472,58 @@ describe('GuildScreen', () => {
       expect(screen.getByText('Cerco ao Grimório')).toBeTruthy();
     });
 
-    it('stacks everything on a phone: guild, Raid, Raids anteriores, members, then leave', async () => {
+    it('shows one section at a time on a phone, in the tabs Raid, Mural, Membros and Histórico', async () => {
+      Dimensions.set({ window: { width: 390, height: 844, scale: 1, fontScale: 1 } });
       await renderGuild();
       await screen.findByText('Cerco ao Grimório');
-      expect(screen.getByTestId('guild-layout-stacked')).toBeTruthy();
+      expect(screen.getByTestId('guild-layout-tabs')).toBeTruthy();
       expect(screen.queryByTestId('guild-column-main')).toBeNull();
-      const order = ['guild-mine', 'guild-raid', 'guild-past-raids', 'guild-members', 'guild-leave-section'];
-      const tree = JSON.stringify(screen.toJSON());
-      const positions = order.map((id) => tree.indexOf(`"testID":"${id}"`));
-      expect(positions.every((position) => position >= 0)).toBe(true);
-      expect([...positions].sort((a, b) => a - b)).toEqual(positions);
+      expect(screen.getByTestId('guild-mine')).toBeTruthy();
+      expect(screen.getAllByRole('tab').map((tab) => tab.props.testID)).toEqual(['guild-tab-raid', 'guild-tab-mural', 'guild-tab-members', 'guild-tab-history']);
+
+      expect(screen.getByTestId('guild-tab-raid')).toBeSelected();
+      expect(screen.getByTestId('guild-raid')).toBeTruthy();
+      expect(screen.queryByTestId('guild-members')).toBeNull();
+      expect(screen.queryByTestId('guild-past-raids')).toBeNull();
+      expect(screen.queryByTestId('guild-mural')).toBeNull();
+
+      await fireEvent.press(screen.getByTestId('guild-tab-members'));
+      expect(screen.getByTestId('guild-tab-members')).toBeSelected();
+      expect(await screen.findByTestId('guild-members')).toBeTruthy();
+      expect(screen.getByTestId('guild-leave-section')).toBeTruthy();
+      expect(screen.queryByTestId('guild-raid')).toBeNull();
+
+      await fireEvent.press(screen.getByTestId('guild-tab-history'));
+      expect(await screen.findByTestId('guild-past-raids')).toBeTruthy();
+      expect(screen.queryByTestId('guild-members')).toBeNull();
+
+      await fireEvent.press(screen.getByTestId('guild-tab-mural'));
+      expect(await screen.findByTestId('guild-mural')).toBeTruthy();
+      expect(screen.queryByTestId('guild-past-raids')).toBeNull();
+
+      await fireEvent.press(screen.getByTestId('guild-tab-raid'));
+      expect(screen.getByTestId('guild-raid')).toBeTruthy();
     });
 
-    it('uses two columns on desktop: guild and Raid on the left, members and leave on the right', async () => {
-      Dimensions.set({ window: { width: 1280, height: 800, scale: 1, fontScale: 1 } });
+    it('keeps the Mural announcer mounted on every tab', async () => {
+      Dimensions.set({ window: { width: 390, height: 844, scale: 1, fontScale: 1 } });
+      await renderGuild();
+      await screen.findByText('Cerco ao Grimório');
+      await fireEvent.press(screen.getByTestId('guild-tab-history'));
+      expect(screen.getByTestId('guild-mural-announcer')).toBeTruthy();
+    });
+
+    it('uses two columns on desktop, with no tabs: Raid and Raids anteriores on the left, Mural, members and leave on the right', async () => {
       await renderGuild();
       await screen.findByText('Cerco ao Grimório');
 
       const main = screen.getByTestId('guild-column-main');
       const side = screen.getByTestId('guild-column-side');
-      expect(within(main).getByTestId('guild-mine')).toBeTruthy();
+      expect(screen.queryByTestId('guild-tabs')).toBeNull();
+      expect(screen.getByTestId('guild-mine')).toBeTruthy();
       expect(within(main).getByTestId('guild-raid')).toBeTruthy();
-      expect(within(side).getByTestId('guild-past-raids')).toBeTruthy();
+      expect(within(main).getByTestId('guild-past-raids')).toBeTruthy();
+      expect(within(side).getByTestId('guild-mural')).toBeTruthy();
       expect(within(side).getByTestId('guild-members')).toBeTruthy();
       expect(within(side).getByTestId('guild-leave-section')).toBeTruthy();
       expect(within(side).queryByTestId('guild-raid')).toBeNull();
