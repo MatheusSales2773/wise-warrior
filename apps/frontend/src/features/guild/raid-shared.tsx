@@ -1,5 +1,4 @@
 import { Link } from 'expo-router';
-import { useEffect, useState } from 'react';
 import { Platform, StyleSheet, Text, View, type ViewStyle } from 'react-native';
 import { ProgressBar, WiseButton, WiseIcon, theme } from '@/design-system';
 import { cosmeticSprite } from '@/features/character/catalog';
@@ -9,31 +8,22 @@ import { CoinMark } from '@/features/market/coin';
 import type { ActiveRaid } from './api';
 import { formatRewardCoins, formatRewardName } from './messages';
 import { bossLifePercent, formatBattleTimeLeft, formatFocusHours, raidWeekGrid, type WeekDay } from './raid-battle';
+import { useRaidTimeLeft } from './use-raid-clock';
 
 /* Pieces shared by the Raid battle screen and the Raid card of the Guilda screen (Figma 06b and 06c). */
 
 const REWARD_RULE_CAPTION = 'Para todos que contribuírem';
 
-export function useNow(intervalMs: number): number {
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    const timer = setInterval(() => setNow(Date.now()), intervalMs);
-    return () => clearInterval(timer);
-  }, [intervalMs]);
-  return now;
-}
-
-export function TimePill({ compact, raid }: { compact: boolean; raid: ActiveRaid }) {
-  const now = useNow(30_000);
-  const left = new Date(raid.endsAt).getTime() - now;
+export function TimePill({ compact, raid, testID = 'raid-time-left' }: { compact: boolean; raid: ActiveRaid; testID?: string }) {
+  const left = useRaidTimeLeft(raid);
   return <View style={[styles.glass, styles.timePill, compact && styles.timePillCompact]}>
     <WiseIcon color="textPrimary" name="time-outline" size="xsmall" />
-    <Text style={[styles.timeText, compact && styles.timeTextCompact]} testID="raid-time-left">{formatBattleTimeLeft(left, { long: !compact })}</Text>
+    <Text style={[styles.timeText, compact && styles.timeTextCompact]} testID={testID}>{formatBattleTimeLeft(left, { long: !compact })}</Text>
   </View>;
 }
 
 /** The goal grows by what the Fúria gave back, so "foco coletivo" is what the Meta batida really takes. */
-function lifeLabel(raid: ActiveRaid): { percent: number; label: string; needed: string } {
+function bossLifeView(raid: ActiveRaid): { percent: number; label: string; needed: string } {
   const percent = bossLifePercent(raid.healthXp, raid.goalXp, raid.goalReachedAt !== null);
   const needed = formatFocusHours(raid.goalXp + raid.regeneratedXp);
   return { percent, label: `Vida do dragão: ${percent}%. ${formatFocusHours(raid.progressXp)} de ${needed} de foco coletivo.`, needed };
@@ -45,7 +35,7 @@ function LifeBar({ percent, label }: { percent: number; label: string }) {
 
 /** Desktop: painel sobre a cena, no canto superior direito. */
 export function BossLifePanel({ raid }: { raid: ActiveRaid }) {
-  const { percent, label, needed } = lifeLabel(raid);
+  const { percent, label, needed } = bossLifeView(raid);
   return <View style={[styles.glass, styles.lifePanel]}>
     <View style={styles.spread}>
       <Text style={styles.lifeTitle}>Vida do dragão</Text>
@@ -58,7 +48,7 @@ export function BossLifePanel({ raid }: { raid: ActiveRaid }) {
 
 /** Celular: linha sob a cena. */
 export function BossLifeRow({ raid }: { raid: ActiveRaid }) {
-  const { percent, label, needed } = lifeLabel(raid);
+  const { percent, label, needed } = bossLifeView(raid);
   return <View style={styles.lifeRow}>
     <View style={styles.spread}>
       <Text style={styles.lifeTitle}>Vida do dragão</Text>
@@ -103,13 +93,13 @@ export function WeekGrid({ raid }: { raid: ActiveRaid }) {
 }
 
 /** What the Raid gives, for the screen readers: every item, then the Moedas. */
-export function rewardsLabel(raid: ActiveRaid): string {
+function rewardsLabel(raid: ActiveRaid): string {
   return [...raid.rewards.map(formatRewardName), formatRewardCoins(raid.coins)].join(', ');
 }
 
 export function AttackButton({ raid }: { raid: ActiveRaid }) {
-  const now = useNow(30_000);
-  const over = raid.status !== 'active' || new Date(raid.endsAt).getTime() <= now;
+  const timeLeft = useRaidTimeLeft(raid);
+  const over = raid.status !== 'active' || timeLeft <= 0;
   return <Link asChild href="/sessao?modo=guilda">
     <WiseButton
       accessibilityLabel={`Atacar com foco: abrir a Forja com uma sessão de guilda para a Raid ${raid.mission.name}`}
@@ -134,6 +124,10 @@ export function RewardList({ raid }: { raid: ActiveRaid }) {
     </View>
     <Text style={styles.rewardCaption}>{REWARD_RULE_CAPTION}</Text>
   </View>;
+}
+
+export function JoinRaidButton({ loading, onPress }: { loading: boolean; onPress: () => void }) {
+  return <WiseButton label="Participar" loading={loading} onPress={onPress} testID="guild-raid-join" />;
 }
 
 export function RewardChips({ raid }: { raid: ActiveRaid }) {

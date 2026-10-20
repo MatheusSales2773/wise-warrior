@@ -14,7 +14,8 @@ import { profileQueryOptions } from '@/features/dashboard/queries';
 import { useGuildChat } from './guild-chat';
 import { GuildTabs, MuralAnnouncer, MuralPanel, OnlineIndicator, PresenceDot, type GuildTab } from './guild-mural';
 import { RaidScene } from './raid-scene';
-import { useNow } from './raid-shared';
+import { JoinRaidButton } from './raid-shared';
+import { useRaidTimeLeft } from './use-raid-clock';
 import { RAID_SCENE_HEIGHT, RAID_SCENE_WIDTH } from './raid-scene-sprites';
 import { GUILD_NAME_MAX_LENGTH, normalizeGuildName, validateGuildName } from './validation';
 
@@ -139,7 +140,7 @@ function RaidParticipation({ guildId, raid }: { guildId: string; raid: ActiveRai
   return (
     <View accessibilityLiveRegion="polite" style={styles.stack}>
       {join.isError ? <FeedbackMessage message={joinRaidErrorMessage(join.error)} testID="guild-raid-join-error" title="Participação não confirmada" variant="error" /> : null}
-      <WiseButton label="Participar" loading={join.isPending} onPress={() => { if (!join.isPending) { join.reset(); join.mutate(); } }} testID="guild-raid-join" />
+      <JoinRaidButton loading={join.isPending} onPress={() => { if (!join.isPending) { join.reset(); join.mutate(); } }} />
     </View>
   );
 }
@@ -162,7 +163,7 @@ function RaidThumbnail() {
 }
 
 function RaidDetails({ guildId, raid }: { guildId: string; raid: ActiveRaid }) {
-  const now = useNow(30_000);
+  const timeLeft = useRaidTimeLeft(raid);
   // The Meta batida takes the goal plus what the Fúria gave back to the boss.
   const neededXp = raid.goalXp + raid.regeneratedXp;
   const percent = raidProgressPercent(raid.progressXp, neededXp);
@@ -186,7 +187,7 @@ function RaidDetails({ guildId, raid }: { guildId: string; raid: ActiveRaid }) {
           </WiseText>
         ) : null}
       </View>
-      <WiseText color="textSecondary" testID="guild-raid-time-left" variant="body">{formatRaidTimeLeft(new Date(raid.endsAt).getTime() - now)}</WiseText>
+      <WiseText color="textSecondary" testID="guild-raid-time-left" variant="body">{formatRaidTimeLeft(timeLeft)}</WiseText>
       <View style={styles.stack} testID="guild-raid-reward">
         <WiseText color="accentPrimary" variant="caption">RECOMPENSA DE RAID</WiseText>
         {raid.rewards.map((reward) => <View key={reward.itemId}>

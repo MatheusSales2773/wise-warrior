@@ -325,7 +325,5 @@ const styles = StyleSheet.create({
   strikeNameMe: { color: theme.color.accentHighlight },
   strikeHours: { fontFamily: mono, fontSize: 11, lineHeight: 15, color: theme.color.textSecondary },
 
-
-
   ctaBar: { paddingHorizontal: MOBILE_GUTTER, paddingVertical: 12, borderTopWidth: theme.border.standard, borderTopColor: theme.color.borderGhost, backgroundColor: theme.color.backgroundRaised },
 });
