@@ -156,7 +156,9 @@ function MuralComposer({ canWrite, send }: { canWrite: boolean; send: GuildChat[
     <View style={styles.composer}>
       <View style={styles.composerField}>
         <TextInput
+          accessibilityHint={sendError ?? undefined}
           accessibilityLabel="Mensagem para a guilda"
+          aria-invalid={sendError !== null}
           editable={canWrite && !sending}
           multiline
           nativeID="guild-mural-input"

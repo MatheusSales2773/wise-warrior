@@ -284,6 +284,10 @@ describe('Mural', () => {
     await fireEvent.press(screen.getByTestId('guild-mural-send'));
     expect(await screen.findByTestId('guild-mural-send-error')).toBeOnTheScreen();
     expect(screen.getByTestId('guild-mural-messages')).toBeOnTheScreen();
+    // A screen reader hears the refusal with the field, not only as a separate message.
+    const input = screen.getByLabelText('Mensagem para a guilda');
+    expect(input).toHaveProp('accessibilityHint', 'Escreva algo antes de enviar.');
+    expect(input).toHaveProp('aria-invalid', true);
   });
 
   it('marks the send button busy and disabled while a message is on its way', async () => {
