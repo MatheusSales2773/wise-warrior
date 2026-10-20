@@ -119,6 +119,11 @@ export const itemSprites = {
     palette: ['#0a0a12', '#f3ead4', '#7a4a2a'],
     rows: ['.aaaaaa.', 'abbbbbba', '.abccba.', '.abbbba.', '.abccba.', '.abbbba.', 'abbbbbba', '.aaaaaa.'],
   },
+  /** The Guild coin of the Figma 06c, a proposal: not an item of the catalog. */
+  moedaDaGuilda: {
+    palette: ['#3a2a10', '#f0c97a', '#b8863a', '#fff6dc'],
+    rows: ['..aaaa..', '.abbbca.', 'abbdbbca', 'abdbbbca', 'abbbbbca', 'abbbbcca', '.acccca.', '..aaaa..'],
+  },
   mestreDaAurora: {
     palette: ['#0a0a12', '#f0c97a', '#c44545'],
     rows: ['.aaaaaa.', 'abbbbbba', '.abccba.', '.abbbba.', '.abccba.', '.abbbba.', 'abbbbbba', '.aaaaaa.'],

@@ -370,10 +370,42 @@ describe('GuildScreen', () => {
       expect(bar.props.accessibilityValue).toMatchObject({ min: 0, max: 1000, now: 250 });
       expect(screen.getByText('250 / 1000 XP')).toBeTruthy();
       expect(screen.getByTestId('guild-raid-time-left').props.children).toBe('2 d 3 h restantes');
-      expect(screen.getByText('Marcador do Grimório')).toBeTruthy();
-      expect(screen.getByText(/Badge/)).toBeTruthy();
-      expect(screen.getByText(/contribua com ao menos uma sessão de guilda/)).toBeTruthy();
+      expect(within(screen.getByTestId('guild-raid-reward')).getByText('Marcador do Grimório e +50 Moedas')).toBeTruthy();
       expect(screen.queryByTestId('guild-raid-goal-reached')).toBeNull();
+    });
+
+    describe('"Ao derrotar" card', () => {
+      it('lists each reward with its kind, the Moedas for every Participante and the rule', async () => {
+        mockedRaid.mockResolvedValue(raid({ rewards: [{ itemId: 'i1', name: 'Caçador de Dragões', category: 'title' }, { itemId: 'i2', name: 'Escama Rubra', category: 'accessory' }] }));
+        await renderGuild();
+
+        await screen.findByTestId('guild-reward-i1');
+        const card = screen.getByTestId('guild-rewards');
+        expect(within(screen.getByTestId('guild-reward-i1')).getByText('Título “Caçador de Dragões”')).toBeTruthy();
+        expect(within(screen.getByTestId('guild-reward-i1')).getByText('Título')).toBeTruthy();
+        expect(within(screen.getByTestId('guild-reward-i2')).getByText('Escama Rubra')).toBeTruthy();
+        expect(within(screen.getByTestId('guild-reward-i2')).getByText('Acessório')).toBeTruthy();
+        expect(within(screen.getByTestId('guild-reward-coins')).getByText('+50 Moedas')).toBeTruthy();
+        expect(within(screen.getByTestId('guild-reward-coins')).getByText('Para cada Participante')).toBeTruthy();
+        expect(within(card).getByText(/contribua com ao menos uma sessão de guilda/)).toBeTruthy();
+        expect(within(screen.getByTestId('guild-raid-reward')).getByText('Título “Caçador de Dragões”, Escama Rubra e +50 Moedas')).toBeTruthy();
+      });
+
+      it('says there is no Raid this week instead of listing rewards', async () => {
+        mockedRaid.mockResolvedValue(null);
+        await renderGuild();
+
+        expect(await screen.findByTestId('guild-rewards-empty')).toBeTruthy();
+        expect(screen.queryByTestId('guild-reward-coins')).toBeNull();
+      });
+
+      it('reports the Raid failing to load and leaves the retry to the Raid card', async () => {
+        mockedRaid.mockRejectedValue(new Error('boom'));
+        await renderGuild();
+
+        expect(await screen.findByTestId('guild-rewards-error')).toBeTruthy();
+        expect(screen.getAllByText('Tentar novamente')).toHaveLength(1);
+      });
     });
 
     it('shows "Meta batida" once the goal is reached, with the progress past the goal', async () => {
@@ -574,12 +606,14 @@ describe('GuildScreen', () => {
       }
     });
 
-    it('keeps the Raid ranking with the Raid tab on a phone', async () => {
+    it('keeps the Raid ranking and the rewards with the Raid tab on a phone', async () => {
       mockedRanking.mockResolvedValue({ items: [], nextCursor: null });
       await renderGuild();
       expect(await screen.findByTestId('guild-ranking')).toBeTruthy();
+      expect(await screen.findByTestId('guild-rewards')).toBeTruthy();
       await openTab('mural');
       expect(screen.queryByTestId('guild-ranking')).toBeNull();
+      expect(screen.queryByTestId('guild-rewards')).toBeNull();
     });
 
     it('uses two columns on desktop with no tabs: Raid, ranking and history on the left, Mural and members on the right', async () => {
@@ -597,6 +631,7 @@ describe('GuildScreen', () => {
       expect(within(main).getByTestId('guild-past-raids')).toBeTruthy();
       expect(within(side).getByTestId('guild-mural')).toBeTruthy();
       expect(within(side).getByTestId('guild-members')).toBeTruthy();
+      expect(within(side).getByTestId('guild-rewards')).toBeTruthy();
       expect(within(side).queryByTestId('guild-raid')).toBeNull();
     });
 

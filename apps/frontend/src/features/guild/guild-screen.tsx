@@ -2,11 +2,11 @@ import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tansta
 import { Link } from 'expo-router';
 import { useState } from 'react';
 import { Platform, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
-import { FeedbackMessage, ProgressBar, Screen, WiseButton, WiseCard, WiseField, WiseText, isDesktopLayout, theme } from '@/design-system';
+import { FeedbackMessage, ProgressBar, Screen, WiseButton, WiseCard, WiseField, WiseIcon, WiseText, isDesktopLayout, theme } from '@/design-system';
 import { isApiError } from '@/core/api/api-error';
 import { createGuild, joinGuild, joinRaid, leaveGuild, type ActiveRaid, type GuildMember, type GuildSummary, type MyGuild } from './api';
 import {
-  RAID_GOAL_REACHED, RAID_REWARD_RULE, createGuildErrorMessage, formatGuildRole, formatGuildRoleSeal, formatGuildStats, formatMyContribution, formatMyPosition, formatMemberCount, formatRaidTimeLeft, formatRewardCategory, formatRewardCoins,
+  RAID_GOAL_REACHED, createGuildErrorMessage, formatGuildRole, formatGuildRoleSeal, formatGuildStats, formatMyContribution, formatMyPosition, formatMemberCount, formatRaidTimeLeft, formatRewardSummary,
   joinGuildErrorMessage, joinRaidErrorMessage, leaveGuildErrorMessage, raidProgressPercent,
 } from './messages';
 import { activeRaidQueryOptions, guildDirectoryQueryOptions, guildKeys, guildMembersQueryOptions, myGuildQueryOptions } from './queries';
@@ -18,6 +18,7 @@ import { HeroAvatar } from './hero-avatar';
 import { GuildEmblem } from './guild-emblem';
 import { PastRaidsCard } from './guild-past-raids';
 import { RankingCard } from './guild-ranking';
+import { RewardsCard } from './guild-rewards';
 import { RaidScene } from './raid-scene';
 import { RAID_SCENE_HEIGHT, RAID_SCENE_WIDTH } from './raid-scene-sprites';
 import { JoinRaidButton } from './raid-shared';
@@ -204,14 +205,9 @@ function RaidDetails({ guildId, raid }: { guildId: string; raid: ActiveRaid }) {
         ) : null}
       </View>
       <WiseText color="textSecondary" testID="guild-raid-time-left" variant="body">{formatRaidTimeLeft(timeLeft)}</WiseText>
-      <View style={styles.stack} testID="guild-raid-reward">
-        <WiseText color="accentPrimary" variant="caption">RECOMPENSA DE RAID</WiseText>
-        {raid.rewards.map((reward) => <View key={reward.itemId}>
-          <WiseText variant="label">{reward.name}</WiseText>
-          <WiseText color="textSecondary" variant="body">{formatRewardCategory(reward.category)}</WiseText>
-        </View>)}
-        <WiseText color="textSecondary" variant="body">{formatRewardCoins(raid.coins)}</WiseText>
-        <WiseText color="textSecondary" variant="caption">{RAID_REWARD_RULE}</WiseText>
+      <View style={styles.rewardSummary} testID="guild-raid-reward">
+        <WiseIcon color="accentPrimary" name="sparkles" size="xsmall" />
+        <WiseText color="textSecondary" style={styles.rewardSummaryText} variant="caption">{formatRewardSummary(raid)}</WiseText>
       </View>
       <RaidParticipation guildId={guildId} raid={raid} />
       <Link asChild href="/guilda/raid">
@@ -389,6 +385,7 @@ function MemberGuild({ mine, desktop, onLeft, onConflict }: { mine: MyGuild; des
     </View>
   );
   const raid = <RaidSection compact={!desktop} guildId={guild.id} />;
+  const rewards = <RewardsCard guildId={guild.id} />;
   const mural = <MuralPanel chat={chat} />;
   const members = <MembersCard guildId={guild.id} memberCount={guild.memberCount} onlineUserIds={chat.onlineUserIds} />;
   const pastRaids = <PastRaidsCard compact={!desktop} guildId={guild.id} level={guild.level} />;
@@ -398,12 +395,13 @@ function MemberGuild({ mine, desktop, onLeft, onConflict }: { mine: MyGuild; des
       {header}
       <View style={styles.desktopGrid}>
         <View style={[styles.columnMain, styles.stack]} testID="guild-column-main">{raid}{pastRaids}</View>
-        <View style={[styles.columnSide, styles.stack]} testID="guild-column-side">{mural}{members}</View>
+        <View style={[styles.columnSide, styles.stack]} testID="guild-column-side">{mural}{members}{rewards}</View>
       </View>
       {announcer}
     </View>;
   }
-  const content = { raid, members, history: pastRaids }[tab as Exclude<GuildTab, 'mural'>];
+  // The phone has no "Ao derrotar" frame of its own: the rewards close the Raid tab.
+  const content = { raid: <>{raid}{rewards}</>, members, history: pastRaids }[tab as Exclude<GuildTab, 'mural'>];
   // The Mural stays mounted and is only hidden, so the unsent draft and the scroll position survive a tab change.
   return <View style={[styles.stack, styles.grow]} testID="guild-layout-tabs">
     {header}
@@ -484,6 +482,8 @@ const styles = StyleSheet.create({
   statsRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', columnGap: theme.space.stackTight, rowGap: theme.space.inlineHairline },
   rolePill: { paddingVertical: theme.space.inlineHairline, paddingHorizontal: theme.space.inlineTight, borderRadius: theme.radius.pill, borderWidth: theme.border.standard, borderColor: theme.color.borderSubtle, backgroundColor: theme.color.surfaceInset },
   rolePillLeader: { borderColor: theme.color.accentPrimary },
+  rewardSummary: { flexDirection: 'row', alignItems: 'center', gap: theme.space.inlineTight },
+  rewardSummaryText: { flex: 1, letterSpacing: 0 },
   raidImage: { height: 160, overflow: 'hidden', borderRadius: theme.radius.card, backgroundColor: theme.color.surfaceInset },
 
   cardContent: { padding: theme.space.cardInset, gap: theme.space.stackTight },

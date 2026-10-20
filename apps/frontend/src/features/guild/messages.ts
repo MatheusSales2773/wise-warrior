@@ -1,4 +1,5 @@
 import { isApiError } from '@/core/api/api-error';
+import type { RaidRewardCategory } from './api';
 import type { ChatAckError } from './guild-chat';
 import { formatFocusHours } from './focus-hours';
 
@@ -56,16 +57,27 @@ export function leaveGuildErrorMessage(error: unknown): string {
 
 const RAID_REWARD_CATEGORY_LABELS = { avatar: 'Avatar', badge: 'Badge', title: 'Título', accessory: 'Acessório' } as const;
 
-export function formatRewardCategory(category: keyof typeof RAID_REWARD_CATEGORY_LABELS): string {
+export function formatRewardCategory(category: RaidRewardCategory): string {
   return RAID_REWARD_CATEGORY_LABELS[category];
 }
 
 /** A reward item as named on the Raid screens: a Título is quoted, the rest by name. */
-export function formatRewardName(reward: { name: string; category: keyof typeof RAID_REWARD_CATEGORY_LABELS }): string {
+export function formatRewardName(reward: { name: string; category: RaidRewardCategory }): string {
   return reward.category === 'title' ? `Título “${reward.name}”` : reward.name;
 }
 
 export const formatRewardCoins = (coins: number) => `+${coins} Moedas`;
+
+/** "Título “X”, Escama Rubra e +50 Moedas": the one-line summary on the Raid card. */
+export function formatRewardSummary({ rewards, coins }: { rewards: { name: string; category: RaidRewardCategory }[]; coins: number }): string {
+  const parts = [...rewards.map(formatRewardName), formatRewardCoins(coins)];
+  return parts.length > 1 ? `${parts.slice(0, -1).join(', ')} e ${parts[parts.length - 1]}` : parts.join('');
+}
+
+export const REWARDS_LOADING = 'Carregando as recompensas…';
+export const REWARDS_ERROR = 'Não foi possível carregar as recompensas da Raid.';
+export const REWARDS_EMPTY = 'Sem Raid nesta semana. As recompensas aparecem quando a próxima começar.';
+export const REWARD_COINS_DETAIL = 'Para cada Participante';
 
 export const RAID_REWARD_RULE = 'Para receber o item, contribua com ao menos uma sessão de guilda e ajude a bater a meta até o fim da semana.';
 
