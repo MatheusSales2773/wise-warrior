@@ -31,7 +31,7 @@ Resources:
     Type: AWS::EC2::Instance
     Properties:
       ImageId: !Ref LatestAmiId
-      InstanceType: t4g.nano
+      InstanceType: t4g.micro
       SubnetId: !ImportValue
         Fn::Sub: "${NetworkStackName}-PublicSubnetAId"
       SecurityGroupIds:
