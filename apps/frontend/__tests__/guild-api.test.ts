@@ -1,7 +1,7 @@
 import { getAuthenticatedHttpClient } from '@/core/api/api-client';
 import { ApiError } from '@/core/api/api-error';
 import { createGuild, getActiveRaid, getMyGuild, getRaidRanking, joinGuild, leaveGuild, listGuildMembers, listGuilds, listPastRaids, joinRaid } from '@/features/guild/api';
-import { formatGuildRole, formatMemberCount, formatMyPosition, formatPastRaidMine, formatPastRaidOutcome, formatRaidWeek } from '@/features/guild/messages';
+import { formatGuildRole, formatMemberCount, formatMyPosition, formatPastRaidMine, formatPastRaidOutcome, formatPastRaidPeriod, formatPastRaidSeal, formatRaidWeek, formatWonRaids } from '@/features/guild/messages';
 import { rankingEntryLabel } from '@/features/guild/raid-battle';
 import { validateGuildName } from '@/features/guild/validation';
 
@@ -130,7 +130,15 @@ describe('past raid helpers', () => {
     expect(formatPastRaidOutcome('completed')).toMatch(/Meta batida/);
     expect(formatPastRaidOutcome('expired')).toBe('Meta não batida');
     expect(formatPastRaidMine({ participated: false, contributionXp: 0, position: null })).toBe('Você não participou');
-    expect(formatPastRaidMine({ participated: true, contributionXp: 0, position: 3 })).toBe('Você: 3º · 0 XP');
+    expect(formatPastRaidMine({ participated: true, contributionXp: 5640, position: 3 })).toBe('Você: 9,4h · 3º');
+    expect(formatPastRaidMine({ participated: true, contributionXp: 600, position: null })).toBe('Você: 1,0h');
+    expect(formatPastRaidSeal('completed')).toBe('VENCIDA');
+    expect(formatPastRaidSeal('expired')).toBe('NÃO VENCIDA');
+    expect(formatPastRaidPeriod('2026-10-05T03:00:00.000Z', '2026-10-12T02:59:59.000Z')).toBe('05–11 OUT');
+    expect(formatPastRaidPeriod('2026-09-28T03:00:00.000Z', '2026-10-05T02:59:59.000Z')).toBe('28 SET–04 OUT');
+    expect(formatWonRaids(1)).toBe('nenhuma vencida');
+    expect(formatWonRaids(2)).toBe('1 vencida');
+    expect(formatWonRaids(7)).toBe('6 vencidas');
   });
 });
 

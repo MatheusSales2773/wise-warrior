@@ -1,5 +1,6 @@
 import { isApiError } from '@/core/api/api-error';
 import type { ChatAckError } from './guild-chat';
+import { formatFocusHours } from './raid-battle';
 
 /** The UI owns the public text; the backend `detail` never reaches the screen. */
 export function createGuildErrorMessage(error: unknown): string {
@@ -113,9 +114,40 @@ export function formatPastRaidOutcome(status: 'completed' | 'expired'): string {
   return status === 'completed' ? 'Meta batida · a guilda subiu de nível' : 'Meta não batida';
 }
 
+/** The seal on a closed Raid: won or not, as in Figma 06c. */
+export function formatPastRaidSeal(status: 'completed' | 'expired'): string {
+  return status === 'completed' ? 'VENCIDA' : 'NÃO VENCIDA';
+}
+
+const RAID_MONTHS = ['JAN', 'FEV', 'MAR', 'ABR', 'MAI', 'JUN', 'JUL', 'AGO', 'SET', 'OUT', 'NOV', 'DEZ'];
+const RAID_DAY_PARTS = new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: 'numeric', timeZone: 'America/Sao_Paulo' });
+
+function raidDay(iso: string): { day: string; month: string } {
+  const parts = RAID_DAY_PARTS.formatToParts(new Date(iso));
+  const day = parts.find((part) => part.type === 'day')?.value ?? '';
+  const month = RAID_MONTHS[Number(parts.find((part) => part.type === 'month')?.value) - 1] ?? '';
+  return { day, month };
+}
+
+/** The closed Raid week in the Figma 06c form: "06–12 OUT", or "29 SET–05 OUT" when it crosses a month. */
+export function formatPastRaidPeriod(startsAt: string, endsAt: string): string {
+  const start = raidDay(startsAt);
+  const end = raidDay(endsAt);
+  return start.month === end.month ? `${start.day}–${end.day} ${end.month}` : `${start.day} ${start.month}–${end.day} ${end.month}`;
+}
+
+/** "Raids vencidas" of the list header: Level − 1, or a plain "nenhuma vencida" while the Guild is still on Level 1. */
+export function formatWonRaids(level: number): string {
+  const won = level - 1;
+  if (won <= 0) return 'nenhuma vencida';
+  return `${won} ${won === 1 ? 'vencida' : 'vencidas'}`;
+}
+
+/** The own result in hours of focus, like the Ranking interno: "Você: 9,4h · 3º". */
 export function formatPastRaidMine(me: { participated: boolean; contributionXp: number; position: number | null }): string {
   if (!me.participated) return 'Você não participou';
-  return me.position === null ? `Você: ${me.contributionXp} XP` : `Você: ${formatPosition(me.position)} · ${me.contributionXp} XP`;
+  const hours = formatFocusHours(me.contributionXp, { precise: true });
+  return me.position === null ? `Você: ${hours}` : `Você: ${hours} · ${formatPosition(me.position)}`;
 }
 
 /** The UI owns the public text: the ack code picks it, the server message never reaches the screen. */
