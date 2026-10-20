@@ -105,4 +105,23 @@ test.describe('Guilda web', () => {
       await memberContext.close();
     }
   });
+
+  test('no celular: funda a guilda na aba Fundar, com contador e dica do nome', async ({ page }) => {
+    await registerThroughUi(page, undefined, 'Carla Fundar');
+    // O cadastro espera a barra lateral do desktop; a tela encolhe para o celular depois.
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.getByRole('link', { name: 'Guilda' }).first().click();
+
+    await page.getByRole('tab', { name: 'Fundar' }).click();
+    await expect(page.getByRole('tab', { name: 'Fundar' })).toHaveAttribute('aria-selected', 'true');
+    await expect(page.getByTestId('guild-how-it-works')).toBeVisible();
+    await expect(page.getByText('3 a 60 caracteres')).toBeVisible();
+    await expect(page.getByText('0 / 60')).toBeVisible();
+
+    const name = `Fundar E2E ${Date.now()}`;
+    await page.getByLabel('Nome da guilda').fill(name);
+    await expect(page.getByText(`${name.length} / 60`)).toBeVisible();
+    await page.getByRole('button', { name: 'Fundar guilda' }).click();
+    await expect(page.getByTestId('guild-mine')).toBeVisible();
+  });
 });
