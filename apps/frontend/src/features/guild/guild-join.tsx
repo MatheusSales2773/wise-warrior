@@ -1,5 +1,5 @@
 import { useInfiniteQuery, useMutation, type InfiniteData, type UseInfiniteQueryResult } from '@tanstack/react-query';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { FeedbackMessage, WiseButton, WiseCard, WiseField, WiseIcon, theme, type WiseIconName } from '@/design-system';
 import { CoinMark } from '@/features/market/coin';
@@ -98,10 +98,17 @@ function DirectoryItem({ busy, first, guild, onJoin }: { busy: boolean; first: b
   );
 }
 
-/** The name field; the search runs on the keyboard's own submit, and the desktop (Figma 06d) adds a "Buscar" button. */
+/** Pause after the last keystroke before the search runs by itself. */
+const SEARCH_DEBOUNCE_MS = 300;
+
+/** The name field; it searches while the user types, right away on the keyboard's own submit, and the desktop (Figma 06d) adds a "Buscar" button. */
 function DirectorySearch({ desktop, onSearch }: { desktop: boolean; onSearch: (name: string) => void }) {
   const [draft, setDraft] = useState('');
   const run = () => onSearch(draft.trim());
+  useEffect(() => {
+    const timer = setTimeout(() => onSearch(draft.trim()), SEARCH_DEBOUNCE_MS);
+    return () => clearTimeout(timer);
+  }, [draft, onSearch]);
   return (
     <View style={styles.searchRow}>
       <View style={styles.searchField}>

@@ -314,6 +314,22 @@ describe('GuildScreen', () => {
       await waitFor(() => expect(mockedList).toHaveBeenLastCalledWith(expect.objectContaining({ search: 'beta' })));
     });
 
+    it('searches by itself after the user stops typing, with no submit', async () => {
+      mockedMine.mockResolvedValue(null);
+      mockedList.mockResolvedValue(page(['Alfa']));
+      await renderGuild();
+      await screen.findByTestId('guild-directory-item-id-Alfa');
+      mockedList.mockClear();
+
+      mockedList.mockResolvedValue(page(['Beta']));
+      await fireEvent.changeText(screen.getByLabelText('Buscar por nome'), 'b');
+      await fireEvent.changeText(screen.getByLabelText('Buscar por nome'), ' be ');
+      expect(mockedList).not.toHaveBeenCalled();
+      expect(await screen.findByTestId('guild-directory-item-id-Beta')).toBeTruthy();
+      expect(mockedList).toHaveBeenCalledTimes(1);
+      expect(mockedList).toHaveBeenLastCalledWith(expect.objectContaining({ search: 'be' }));
+    });
+
     it('states the name rule from the validation constants and counts the typed characters', async () => {
       mockedMine.mockResolvedValue(null);
       mockedList.mockResolvedValue(page([]));
