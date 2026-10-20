@@ -137,7 +137,7 @@ describe('ranking helpers', () => {
   it('describes the own place and each row for screen readers', () => {
     expect(formatMyPosition(null)).toBeNull();
     expect(formatMyPosition(3)).toBe('Sua posição: 3º no Ranking interno');
-    expect(rankingEntryLabel({ position: 1, displayName: 'Ana', level: 5, title: null, contributionXp: 0, isMe: true })).toBe('Posição 1: Ana (você), nível 5, 0 XP');
+    expect(rankingEntryLabel({ position: 1, displayName: 'Ana', level: 5, title: null, contributionXp: 0, isMe: true })).toBe('Posição 1: Ana (você), nível 5, 0,0h de foco');
   });
 });
 

@@ -1,5 +1,6 @@
 import { isApiError } from '@/core/api/api-error';
 import type { ChatAckError } from './guild-chat';
+import { formatFocusHours } from './raid-battle';
 
 /** The UI owns the public text; the backend `detail` never reaches the screen. */
 export function createGuildErrorMessage(error: unknown): string {
@@ -93,7 +94,7 @@ export function formatMyPosition(position: number | null): string | null {
 /** One sentence per row for screen readers: the position, the member and the Contribution, plus who "you" are. */
 export function rankingEntryLabel(entry: { position: number; displayName: string; level: number; title: string | null; contributionXp: number; isMe: boolean }): string {
   const who = [`${entry.displayName}${entry.isMe ? ' (você)' : ''}`, `nível ${entry.level}`, entry.title].filter(Boolean).join(', ');
-  return `Posição ${entry.position}: ${who}, ${entry.contributionXp} XP`;
+  return `Posição ${entry.position}: ${who}, ${formatFocusHours(entry.contributionXp, { precise: true })} de foco`;
 }
 
 const RAID_WEEK_DAY = new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: '2-digit', timeZone: 'America/Sao_Paulo' });
