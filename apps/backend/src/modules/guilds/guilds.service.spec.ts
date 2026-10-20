@@ -6,6 +6,7 @@ import { GuildMembership } from './entities/guild-membership.entity';
 import { RaidsService } from '../raids/raids.service';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
 import { GuildsService } from './guilds.service';
+import { UsersService } from '../users/users.service';
 
 const manager = {
   create: jest.fn((_entity: unknown, data: object) => ({ ...data })),
@@ -60,6 +61,7 @@ describe('GuildsService', () => {
         { provide: getRepositoryToken(GuildMembership), useValue: mockMemberships },
         { provide: RaidsService, useValue: mockRaids },
         { provide: RealtimeGateway, useValue: { syncGuildRoom: jest.fn() } },
+        { provide: UsersService, useValue: { findEquippedAppearance: jest.fn().mockResolvedValue(new Map()) } },
       ],
     }).compile();
     service = module.get(GuildsService);

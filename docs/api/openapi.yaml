@@ -1727,7 +1727,7 @@ components:
 
     GuildMember:
       type: object
-      required: [userId, displayName, level, title, role, joinedAt]
+      required: [userId, displayName, level, title, avatar, accessory, role, joinedAt]
       properties:
         userId: { type: string, format: uuid }
         displayName: { type: string }
@@ -1735,6 +1735,8 @@ components:
         title:
           type: [string, "null"]
           description: Nome do Título equipado pelo membro (ADR-010), ou null.
+        avatar: { $ref: "#/components/schemas/EquippedAppearanceItem" }
+        accessory: { $ref: "#/components/schemas/EquippedAppearanceItem" }
         role: { type: string, enum: [leader, member] }
         joinedAt: { type: string, format: date-time }
 

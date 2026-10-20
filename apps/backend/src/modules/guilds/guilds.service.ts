@@ -15,6 +15,7 @@ import { Character } from '../progression/entities/character.entity';
 import { CosmeticItem } from '../users/entities/cosmetic-item.entity';
 import { UserCosmeticItem } from '../users/entities/user-cosmetic-item.entity';
 import { User } from '../users/entities/user.entity';
+import { UsersService, type EquippedAppearance } from '../users/users.service';
 import { Guild } from './entities/guild.entity';
 import { GuildMembership, type GuildRole } from './entities/guild-membership.entity';
 import { CreateGuildDto } from './dto/create-guild.dto';
@@ -49,6 +50,8 @@ export interface GuildMember {
   displayName: string;
   level: number;
   title: string | null;
+  avatar: EquippedAppearance['avatar'];
+  accessory: EquippedAppearance['accessory'];
   role: GuildRole;
   joinedAt: Date;
 }
@@ -97,6 +100,8 @@ export class GuildsService {
     private readonly raids: RaidsService,
     @Inject(forwardRef(() => RealtimeGateway))
     private readonly realtime: RealtimeGateway,
+    @Inject(forwardRef(() => UsersService))
+    private readonly users: UsersService,
   ) {}
 
   async create(userId: string, dto: CreateGuildDto): Promise<Guild> {
@@ -212,12 +217,16 @@ export class GuildsService {
     }>();
     const page = rows.slice(0, limit);
     const last = page[page.length - 1];
+    // One lookup for the whole page, through the module that owns the cosmetic inventory (ADR-001).
+    const appearance = await this.users.findEquippedAppearance(page.map((row) => row.userId));
     return {
       items: page.map((row) => ({
         userId: row.userId,
         displayName: row.displayName,
         level: Number(row.level ?? 1),
         title: row.title ?? null,
+        avatar: appearance.get(row.userId)?.avatar ?? null,
+        accessory: appearance.get(row.userId)?.accessory ?? null,
         role: row.role,
         joinedAt: row.joinedAt,
       })),
