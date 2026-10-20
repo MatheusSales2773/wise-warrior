@@ -11,6 +11,7 @@ import {
   type StudySessionTransitionResult,
 } from '@/features/study-session/api';
 import { clearCompletionIntent } from '@/features/study-session/completion-intent';
+import { playSessionSound } from '@/features/study-session/sounds';
 import { useStudySessionAppActive } from '@/features/study-session/use-study-session-app-active';
 
 // The day history and the week chart have their own tests (forge-history.test.tsx).
@@ -21,6 +22,7 @@ jest.mock('@/features/guild/api', () => ({
   joinRaid: jest.fn(),
 }));
 
+jest.mock('@/features/study-session/sounds', () => ({ playSessionSound: jest.fn(), releaseSessionSounds: jest.fn() }));
 jest.mock('@/features/study-session/api', () => ({
   STUDY_SESSION_PRESETS: [900, 1500, 3000],
   completeStudySession: jest.fn(),
@@ -214,4 +216,26 @@ it('drops the break when a session is started on another device', async () => {
   expect(view.getByTestId('study-session-pause')).toBeTruthy();
   expect(view.queryByTestId('study-session-break')).toBeNull();
   expect(client.getQueryData(['study-session', 'break'])).toBeUndefined();
+});
+
+it('rings the focus cue on completion and the break cue when the break runs out', async () => {
+  const view = await renderCompletedFocus(inCycle(1));
+  expect(playSessionSound).toHaveBeenCalledTimes(1);
+  expect(playSessionSound).toHaveBeenLastCalledWith('focusEnd');
+
+  await fireEvent.press(await view.findByRole('button', { name: 'Iniciar pausa curta' }));
+  await advance(299);
+  expect(playSessionSound).toHaveBeenCalledTimes(1);
+  await advance(1);
+
+  expect(playSessionSound).toHaveBeenCalledTimes(2);
+  expect(playSessionSound).toHaveBeenLastCalledWith('breakEnd');
+});
+
+it('rings nothing when a break is skipped', async () => {
+  const view = await renderCompletedFocus(inCycle(1));
+  await fireEvent.press(await view.findByRole('button', { name: 'Iniciar pausa curta' }));
+  await fireEvent.press(view.getByTestId('study-session-break-skip'));
+
+  expect(playSessionSound).toHaveBeenCalledTimes(1);
 });

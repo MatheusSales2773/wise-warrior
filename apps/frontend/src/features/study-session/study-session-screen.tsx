@@ -20,7 +20,7 @@ import {
 } from './api';
 import { activeStudySessionQueryKey, invalidateStudySessionResult, recentStudySessionSubjectsQueryKey, useActiveStudySession, useFocusCycle, useRecentStudySessionSubjects } from './queries';
 import { BREAK_SECONDS, breakRemainingSeconds, clearBreak, currentBreak, startBreak, type BreakKind, type BreakRun } from './pomodoro-break';
-import { playSessionSound } from './sounds';
+import { useSessionEndSounds } from './use-session-end-sounds';
 import { formatRemainingTime, remainingStudySeconds } from './timer';
 import { MAX_SUBJECT_LENGTH, validateSubject, type SubjectValidation } from './subject';
 import { FeedbackMessage } from '@/design-system/components/FeedbackMessage';
@@ -683,21 +683,10 @@ export function StudySessionScreen({ initialMode = 'solo' }: { initialMode?: Ses
     return () => clearInterval(interval);
   }, [breakRun, applicationActive]);
 
-  const breakRemaining = breakRun ? breakRemainingSeconds(breakRun, breakNow) : null;
-  const previousBreakRemaining = useRef<number | null>(null);
-  // Only a break that runs out while this screen watches it rings, not one that already ended before mounting.
-  useEffect(() => {
-    if (breakRemaining === 0 && previousBreakRemaining.current !== null && previousBreakRemaining.current > 0) playSessionSound('breakEnd');
-    previousBreakRemaining.current = breakRemaining;
-  }, [breakRemaining]);
-
-  const completedSessionId = displayedTerminalResult?.state === 'completed' ? displayedTerminalResult.id : null;
-  const soundedSessionId = useRef<string | null>(null);
-  useEffect(() => {
-    if (!completedSessionId || soundedSessionId.current === completedSessionId) return;
-    soundedSessionId.current = completedSessionId;
-    playSessionSound('focusEnd');
-  }, [completedSessionId]);
+  useSessionEndSounds({
+    breakRemaining: breakRun ? breakRemainingSeconds(breakRun, breakNow) : null,
+    completedSessionId: displayedTerminalResult?.state === 'completed' ? displayedTerminalResult.id : null,
+  });
 
   const projectedRemaining = snapshot
     ? now === 0 ? snapshot.remainingSeconds : remainingStudySeconds(snapshot, now, clockOffset)
