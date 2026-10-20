@@ -1,6 +1,6 @@
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { Platform, StyleSheet, View, useWindowDimensions } from 'react-native';
 import { FeedbackMessage, ProgressBar, Screen, WiseButton, WiseCard, WiseField, WiseText, isDesktopLayout, theme } from '@/design-system';
 import { isApiError } from '@/core/api/api-error';
@@ -14,6 +14,7 @@ import { profileQueryOptions } from '@/features/dashboard/queries';
 import { useGuildChat } from './guild-chat';
 import { GuildTabs, MuralAnnouncer, MuralPanel, OnlineIndicator, PresenceDot, type GuildTab } from './guild-mural';
 import { RaidScene } from './raid-scene';
+import { useNow } from './raid-shared';
 import { RAID_SCENE_HEIGHT, RAID_SCENE_WIDTH } from './raid-scene-sprites';
 import { GUILD_NAME_MAX_LENGTH, normalizeGuildName, validateGuildName } from './validation';
 
@@ -103,15 +104,6 @@ function GuildCard({ mine, onlineUserIds }: { mine: MyGuild; onlineUserIds: Read
       </View>
     </WiseCard>
   );
-}
-
-function useNow(intervalMs: number): number {
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    const timer = setInterval(() => setNow(Date.now()), intervalMs);
-    return () => clearInterval(timer);
-  }, [intervalMs]);
-  return now;
 }
 
 function RaidParticipation({ guildId, raid }: { guildId: string; raid: ActiveRaid }) {
