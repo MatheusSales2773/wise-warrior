@@ -61,7 +61,7 @@ describe('GuildsService', () => {
         { provide: getRepositoryToken(GuildMembership), useValue: mockMemberships },
         { provide: RaidsService, useValue: mockRaids },
         { provide: RealtimeGateway, useValue: { syncGuildRoom: jest.fn() } },
-        { provide: UsersService, useValue: { findEquippedAppearance: jest.fn().mockResolvedValue(new Map()) } },
+        { provide: UsersService, useValue: { findEquippedAppearance: jest.fn().mockResolvedValue(new Map()), findEquippedTitles: jest.fn().mockResolvedValue(new Map()) } },
       ],
     }).compile();
     service = module.get(GuildsService);

@@ -12,8 +12,6 @@ import { EntityManager, Repository } from 'typeorm';
 import { RaidsService } from '../raids/raids.service';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
 import { Character } from '../progression/entities/character.entity';
-import { CosmeticItem } from '../users/entities/cosmetic-item.entity';
-import { UserCosmeticItem } from '../users/entities/user-cosmetic-item.entity';
 import { User } from '../users/entities/user.entity';
 import { UsersService, type EquippedAppearance } from '../users/users.service';
 import { Guild } from './entities/guild.entity';
@@ -45,13 +43,11 @@ export interface GuildPage {
   nextCursor: string | null;
 }
 
-export interface GuildMember {
+export interface GuildMember extends EquippedAppearance {
   userId: string;
   displayName: string;
   level: number;
   title: string | null;
-  avatar: EquippedAppearance['avatar'];
-  accessory: EquippedAppearance['accessory'];
   role: GuildRole;
   joinedAt: Date;
 }
@@ -172,23 +168,10 @@ export class GuildsService {
       .createQueryBuilder('membership')
       .innerJoin(User, 'member', 'member.id = membership.userId')
       .leftJoin(Character, 'character', 'character.userId = membership.userId')
-      // ADR-010: o Título exibido é o Cosmetic Item de categoria Título equipado.
-      .leftJoin(
-        (sub) => sub
-          .select('equippedRow.userId', 'userId')
-          .addSelect('equippedItem.name', 'name')
-          .from(UserCosmeticItem, 'equippedRow')
-          .innerJoin(CosmeticItem, 'equippedItem', 'equippedItem.id = equippedRow.cosmeticItemId')
-          .where('equippedRow.equipped = 1')
-          .andWhere("equippedItem.category = 'title'"),
-        'equippedTitle',
-        'equippedTitle.userId = membership.userId',
-      )
       .select('membership.id', 'membershipId')
       .addSelect('membership.userId', 'userId')
       .addSelect('member.displayName', 'displayName')
       .addSelect('character.level', 'level')
-      .addSelect('equippedTitle.name', 'title')
       .addSelect('membership.role', 'role')
       .addSelect('membership.joinedAt', 'joinedAt')
       .addSelect("DATE_FORMAT(membership.joinedAt, '%Y-%m-%d %H:%i:%s.%f')", 'joinedAtText')
@@ -210,26 +193,32 @@ export class GuildsService {
       userId: string;
       displayName: string;
       level: number | string | null;
-      title: string | null;
       role: GuildRole;
       joinedAt: Date;
       joinedAtText: string;
     }>();
     const page = rows.slice(0, limit);
     const last = page[page.length - 1];
-    // One lookup for the whole page, through the module that owns the cosmetic inventory (ADR-001).
-    const appearance = await this.users.findEquippedAppearance(page.map((row) => row.userId));
+    // One lookup per kind for the whole page, through the module that owns the cosmetic inventory (ADR-001, ADR-010).
+    const userIds = page.map((row) => row.userId);
+    const [appearance, titles] = await Promise.all([
+      this.users.findEquippedAppearance(userIds),
+      this.users.findEquippedTitles(userIds),
+    ]);
     return {
-      items: page.map((row) => ({
-        userId: row.userId,
-        displayName: row.displayName,
-        level: Number(row.level ?? 1),
-        title: row.title ?? null,
-        avatar: appearance.get(row.userId)?.avatar ?? null,
-        accessory: appearance.get(row.userId)?.accessory ?? null,
-        role: row.role,
-        joinedAt: row.joinedAt,
-      })),
+      items: page.map((row) => {
+        const look = appearance.get(row.userId);
+        return {
+          userId: row.userId,
+          displayName: row.displayName,
+          level: Number(row.level ?? 1),
+          title: titles.get(row.userId) ?? null,
+          avatar: look?.avatar ?? null,
+          accessory: look?.accessory ?? null,
+          role: row.role,
+          joinedAt: row.joinedAt,
+        };
+      }),
       nextCursor: rows.length > limit && last ? encodeDatetimeCursor(last.joinedAtText, last.membershipId) : null,
     };
   }
