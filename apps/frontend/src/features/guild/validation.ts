@@ -1,5 +1,7 @@
 export const GUILD_NAME_MIN_LENGTH = 3;
 export const GUILD_NAME_MAX_LENGTH = 60;
+/** The rule as the creation form states it. */
+export const GUILD_NAME_RULE = `${GUILD_NAME_MIN_LENGTH} a ${GUILD_NAME_MAX_LENGTH} caracteres`;
 
 /** Names are compared and sent without outer whitespace, matching the API's 3 to 60 character rule. */
 export function normalizeGuildName(value: string): string {

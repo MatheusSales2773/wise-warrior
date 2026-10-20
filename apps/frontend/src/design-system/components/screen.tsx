@@ -33,6 +33,8 @@ export type ScreenProps = ScreenRefreshProps & {
   style?: StyleProp<ViewStyle>;
   testID?: string;
   title: string;
+  /** The screen draws its own heading, so the shared title is left out. */
+  titleHidden?: boolean;
   titleVariant?: WiseTextVariant;
 };
 
@@ -54,6 +56,7 @@ export function Screen({
   style,
   testID,
   title,
+  titleHidden = false,
   titleVariant = 'title',
 }: ScreenProps) {
   const { width } = useWindowDimensions();
@@ -64,9 +67,11 @@ export function Screen({
       testID={testID ? `${testID}-content` : 'screen-content'}
       style={[styles.content, { paddingHorizontal: horizontalGutter }, contentStyle]}
     >
-      <WiseText accessibilityRole="header" style={styles.title} testID={testID ? `${testID}-title` : 'screen-title'} variant={titleVariant}>
-        {title}
-      </WiseText>
+      {titleHidden ? null : (
+        <WiseText accessibilityRole="header" style={styles.title} testID={testID ? `${testID}-title` : 'screen-title'} variant={titleVariant}>
+          {title}
+        </WiseText>
+      )}
       {children}
     </View>
   );

@@ -14,7 +14,7 @@ test.describe('Mural da Guilda web', () => {
       await registerThroughUi(ana, undefined, 'Ana Mural');
       await ana.getByTestId('web-sidebar').getByRole('link', { name: 'Guilda' }).click();
       await ana.getByLabel('Nome da guilda').fill(guildName);
-      await ana.getByRole('button', { name: 'Criar guilda' }).click();
+      await ana.getByRole('button', { name: 'Fundar guilda' }).click();
       await expect(ana.getByTestId('guild-online-count')).toHaveText('1 online');
       // No desktop o Mural fica na coluna lateral, sem abas.
       await expect(ana.getByTestId('guild-mural-empty')).toBeVisible();
@@ -52,8 +52,10 @@ test.describe('Mural da Guilda web', () => {
       await registerThroughUi(page, undefined, 'Ana Mobile');
       await page.setViewportSize({ width: 390, height: 844 });
       await page.getByRole('link', { name: 'Guilda' }).first().click();
+      // No celular a tela sem guilda abre em "Procurar": a fundação fica na aba "Fundar".
+      await page.getByRole('tab', { name: 'Fundar' }).click();
       await page.getByLabel('Nome da guilda').fill(`Abas E2E ${Date.now()}`);
-      await page.getByRole('button', { name: 'Criar guilda' }).click();
+      await page.getByRole('button', { name: 'Fundar guilda' }).click();
       await expect(page.getByTestId('guild-online-count')).toHaveText('1 online');
 
       await expect(page.getByRole('tab', { name: 'Raid' })).toHaveAttribute('aria-selected', 'true');
