@@ -77,6 +77,10 @@ async function renderGuild() {
   return Object.assign(view, { client });
 }
 
+async function openTab(id: 'raid' | 'mural' | 'members' | 'history') {
+  await fireEvent.press(await screen.findByTestId(`guild-tab-${id}`));
+}
+
 beforeEach(() => {
   Object.defineProperty(Platform, 'OS', { configurable: true, writable: true, value: 'web' });
   Dimensions.set({ window: { width: 390, height: 844, scale: 1, fontScale: 1 } });
@@ -105,6 +109,7 @@ describe('GuildScreen', () => {
     mockedMine.mockResolvedValue(mine);
     mockedMembers.mockResolvedValueOnce(members(['Ana', 'Bruno'], 'next'));
     await renderGuild();
+    await openTab('members');
 
     expect(await screen.findByTestId('guild-member-u-Ana')).toBeTruthy();
     expect(screen.getByText('Nível 2 · Aprendiz')).toBeTruthy();
@@ -120,6 +125,7 @@ describe('GuildScreen', () => {
     mockedMine.mockResolvedValue(mine);
     mockedMembers.mockRejectedValue(new ApiError('server', { status: 500 }));
     await renderGuild();
+    await openTab('members');
 
     expect(await screen.findByTestId('guild-members-error')).toBeTruthy();
     expect(screen.getByTestId('guild-mine')).toBeTruthy();
@@ -454,7 +460,7 @@ describe('GuildScreen', () => {
       mockedRaid.mockRejectedValueOnce(new ApiError('server', { status: 500 }));
       await renderGuild();
       expect(await screen.findByTestId('guild-raid-error')).toBeTruthy();
-      expect(screen.getByTestId('guild-members')).toBeTruthy();
+      expect(screen.getByTestId('guild-tabs')).toBeTruthy();
 
       await fireEvent.press(screen.getByText('Tentar novamente'));
       expect(await screen.findByText('Cerco ao Grimório')).toBeTruthy();
@@ -471,30 +477,65 @@ describe('GuildScreen', () => {
       expect(screen.getByText('Cerco ao Grimório')).toBeTruthy();
     });
 
-    it('stacks everything on a phone: guild, Raid, Raids anteriores, members, then leave', async () => {
+    it('shows one section at a time on a phone: Raid | Mural | Membros | Histórico, opening on the Raid', async () => {
       await renderGuild();
       await screen.findByText('Cerco ao Grimório');
-      expect(screen.getByTestId('guild-layout-stacked')).toBeTruthy();
+      expect(screen.getByTestId('guild-layout-tabs')).toBeTruthy();
       expect(screen.queryByTestId('guild-column-main')).toBeNull();
-      const order = ['guild-mine', 'guild-raid', 'guild-past-raids', 'guild-members', 'guild-leave-section'];
-      const tree = JSON.stringify(screen.toJSON());
-      const positions = order.map((id) => tree.indexOf(`"testID":"${id}"`));
-      expect(positions.every((position) => position >= 0)).toBe(true);
-      expect([...positions].sort((a, b) => a - b)).toEqual(positions);
+      expect(within(screen.getByTestId('guild-tabs')).getAllByRole('tab').map((tab) => tab.props.testID))
+        .toEqual(['guild-tab-raid', 'guild-tab-mural', 'guild-tab-members', 'guild-tab-history']);
+      expect(screen.getByTestId('guild-tab-raid')).toBeSelected();
+      expect(screen.getByTestId('guild-mine')).toBeTruthy();
+      expect(screen.getByTestId('guild-leave-section')).toBeTruthy();
+
+      const sections = { raid: 'guild-raid', mural: 'guild-mural', members: 'guild-members', history: 'guild-past-raids' } as const;
+      for (const [tab, visible] of Object.entries(sections) as [keyof typeof sections, string][]) {
+        await openTab(tab);
+        expect(screen.getByTestId(`guild-tab-${tab}`)).toBeSelected();
+        expect(await screen.findByTestId(visible)).toBeTruthy();
+        for (const hidden of Object.values(sections).filter((id) => id !== visible)) expect(screen.queryByTestId(hidden)).toBeNull();
+        // The guild header stays above every tab.
+        expect(screen.getByTestId('guild-mine')).toBeTruthy();
+      }
     });
 
-    it('uses two columns on desktop: guild and Raid on the left, members and leave on the right', async () => {
+    it('lets the open tab fill the screen below the tabs, from the top, whichever tab is open', async () => {
+      await renderGuild();
+      await screen.findByText('Cerco ao Grimório');
+      const grows = (id: string) => expect(StyleSheet.flatten(screen.getByTestId(id).props.style)).toMatchObject({ flexGrow: 1 });
+
+      grows('guild-content');
+      grows('guild-layout-tabs');
+      expect(StyleSheet.flatten(screen.getByTestId('guild-scroll').props.contentContainerStyle)).toMatchObject({ justifyContent: 'flex-start' });
+      for (const tab of ['raid', 'mural', 'members', 'history'] as const) {
+        await openTab(tab);
+        grows('guild-tab-content');
+      }
+    });
+
+    it('keeps the Raid ranking with the Raid tab on a phone', async () => {
+      mockedRanking.mockResolvedValue({ items: [], nextCursor: null });
+      await renderGuild();
+      expect(await screen.findByTestId('guild-ranking')).toBeTruthy();
+      await openTab('mural');
+      expect(screen.queryByTestId('guild-ranking')).toBeNull();
+    });
+
+    it('uses two columns on desktop with no tabs: Raid, ranking and history on the left, Mural and members on the right', async () => {
       Dimensions.set({ window: { width: 1280, height: 800, scale: 1, fontScale: 1 } });
       await renderGuild();
       await screen.findByText('Cerco ao Grimório');
 
+      expect(screen.queryByTestId('guild-tabs')).toBeNull();
+      expect(within(screen.getByTestId('guild-header')).getByTestId('guild-mine')).toBeTruthy();
+      expect(within(screen.getByTestId('guild-header')).getByTestId('guild-leave-section')).toBeTruthy();
       const main = screen.getByTestId('guild-column-main');
       const side = screen.getByTestId('guild-column-side');
-      expect(within(main).getByTestId('guild-mine')).toBeTruthy();
       expect(within(main).getByTestId('guild-raid')).toBeTruthy();
-      expect(within(side).getByTestId('guild-past-raids')).toBeTruthy();
+      expect(within(main).getByTestId('guild-ranking')).toBeTruthy();
+      expect(within(main).getByTestId('guild-past-raids')).toBeTruthy();
+      expect(within(side).getByTestId('guild-mural')).toBeTruthy();
       expect(within(side).getByTestId('guild-members')).toBeTruthy();
-      expect(within(side).getByTestId('guild-leave-section')).toBeTruthy();
       expect(within(side).queryByTestId('guild-raid')).toBeNull();
     });
 
@@ -633,6 +674,7 @@ describe('Raids anteriores', () => {
       nextCursor: null,
     });
     await renderGuild();
+    await openTab('history');
 
     const won = await screen.findByTestId('guild-past-raid-p1');
     expect(within(won).getByText('Cerco ao Grimório')).toBeTruthy();
@@ -648,6 +690,7 @@ describe('Raids anteriores', () => {
 
   it('explains when no Raid has closed yet', async () => {
     await renderGuild();
+    await openTab('history');
 
     expect(await screen.findByTestId('guild-past-raids-empty')).toBeTruthy();
   });
@@ -655,6 +698,7 @@ describe('Raids anteriores', () => {
   it('shows a retryable error without hiding the rest of the Guild', async () => {
     mockedPast.mockRejectedValueOnce(new ApiError('server', { status: 500 }));
     await renderGuild();
+    await openTab('history');
 
     expect(await screen.findByTestId('guild-past-raids-error')).toBeTruthy();
     expect(screen.getByTestId('guild-mine')).toBeTruthy();
@@ -667,6 +711,7 @@ describe('Raids anteriores', () => {
   it('loads older Raids with the cursor', async () => {
     mockedPast.mockResolvedValueOnce({ items: [past('p1')], nextCursor: 'older' });
     await renderGuild();
+    await openTab('history');
     await screen.findByTestId('guild-past-raid-p1');
 
     mockedPast.mockResolvedValueOnce({ items: [past('p0', { startsAt: '2026-09-28T03:00:00.000Z' })], nextCursor: null });

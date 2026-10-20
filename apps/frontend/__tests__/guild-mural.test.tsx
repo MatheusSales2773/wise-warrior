@@ -107,6 +107,7 @@ describe('Guild presence', () => {
 
   it('marks who is online in the member list', async () => {
     await renderGuild();
+    await fireEvent.press(await screen.findByTestId('guild-tab-members'));
     expect(await screen.findByTestId('guild-member-online-u1')).toBeOnTheScreen();
     expect(screen.getByTestId('guild-member-offline-u3')).toBeOnTheScreen();
     await gateway.emit('member:online', { guildId: 'g1', userId: 'u3', online: true });
@@ -140,6 +141,25 @@ describe('Mural', () => {
     expect(within(list).getByText('Mensagem 1')).toBeOnTheScreen();
     expect(within(list).getByText('Bruno')).toBeOnTheScreen();
     expect(screen.getByTestId('guild-mural-message-m2')).toHaveProp('accessibilityLabel', 'Bruno, 14:02: Mensagem 2');
+  });
+
+  it('keeps the Mural connection while the tabs change', async () => {
+    await openMural();
+    const joins = () => gateway.requests.filter((request) => request.event === 'chat:join').length;
+    const before = joins();
+    for (const tab of ['members', 'history', 'raid', 'mural']) await fireEvent.press(screen.getByTestId(`guild-tab-${tab}`));
+    expect(await screen.findByTestId('guild-mural-messages')).toBeOnTheScreen();
+    expect(joins()).toBe(before);
+    expect(screen.getByTestId('guild-online-count')).toBeOnTheScreen();
+  });
+
+  it('keeps the unsent draft when the member visits another tab and comes back', async () => {
+    await openMural();
+    await fireEvent.changeText(screen.getByLabelText('Mensagem para a guilda'), 'Rascunho que não enviei');
+    await fireEvent.press(screen.getByTestId('guild-tab-members'));
+    expect(screen.queryByTestId('guild-mural')).toBeNull();
+    await fireEvent.press(screen.getByTestId('guild-tab-mural'));
+    expect(screen.getByLabelText('Mensagem para a guilda')).toHaveDisplayValue('Rascunho que não enviei');
   });
 
   it('loads older messages', async () => {
