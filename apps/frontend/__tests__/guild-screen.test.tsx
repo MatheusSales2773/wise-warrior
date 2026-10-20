@@ -244,6 +244,9 @@ describe('GuildScreen', () => {
       expect(screen.getByRole('tab', { name: 'Fundar' }).props.accessibilityState).toEqual(expect.objectContaining({ selected: false }));
       expect(await screen.findByTestId('guild-directory-item-id-Alfa')).toBeTruthy();
       expect(screen.getByTestId('guild-directory-item-id-Beta')).toBeTruthy();
+      for (const id of ['id-Alfa', 'id-Beta']) {
+        expect(within(screen.getByTestId(`guild-directory-item-${id}`)).getByTestId('guild-emblem', { includeHiddenElements: true })).toBeTruthy();
+      }
       expect(screen.queryByTestId('guild-create')).toBeNull();
       expect(screen.queryByTestId('guild-how-it-works')).toBeNull();
     });
