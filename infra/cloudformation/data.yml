@@ -1,0 +1,43 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: Banco de dados do ambiente (RDS MySQL)
+
+Parameters:
+  NetworkStackName:
+    Type: String
+    Default: wise-warrior-network
+  SecurityStackName:
+    Type: String
+    Default: wise-warrior-security
+
+Resources:
+  DbSubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupDescription: Subnets de dados do RDS
+      SubnetIds:
+        - !ImportValue
+          Fn::Sub: "${NetworkStackName}-DataSubnetAId"
+        - !ImportValue
+          Fn::Sub: "${NetworkStackName}-DataSubnetBId"
+
+  Database:
+    Type: AWS::RDS::DBInstance
+    DeletionPolicy: Snapshot
+    UpdateReplacePolicy: Snapshot
+    Properties:
+      Engine: mysql
+      EngineVersion: 8.4.9
+      DBInstanceClass: db.t4g.micro
+      AllocatedStorage: 20
+      StorageType: gp3
+      StorageEncrypted: true
+      MultiAZ: false
+      PubliclyAccessible: false
+      DBSubnetGroupName: !Ref DbSubnetGroup
+      VPCSecurityGroups:
+        - !ImportValue 
+          Fn::Sub: "${SecurityStackName}-RdsSecurityGroupId"
+      MasterUsername: wise
+      ManageMasterUserPassword: true
+      BackupRetentionPeriod: 1
+      DBName: wise
