@@ -217,6 +217,18 @@ export class UsersService {
     return appearance;
   }
 
+  /** Nome do Título equipado de cada usuário (ADR-010), para quem lista os outros membros. Só voltam os ids com Título equipado. */
+  async findEquippedTitles(ids: string[]): Promise<Map<string, string>> {
+    const titles = new Map<string, string>();
+    if (ids.length === 0) return titles;
+    const rows = await this.userCosmetics.find({
+      where: { userId: In(ids), equipped: true, cosmeticItem: { category: 'title' } },
+      relations: ['cosmeticItem'],
+    });
+    for (const { userId, cosmeticItem } of rows) titles.set(userId, cosmeticItem.name);
+    return titles;
+  }
+
   /** Nomes de exibição, para quem precisa mostrar o dono de algo (ex.: a Missão escolhida pelo Líder). */
   async findDisplayNames(ids: string[]): Promise<Array<{ id: string; displayName: string }>> {
     if (ids.length === 0) return [];
