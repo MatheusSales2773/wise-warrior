@@ -1,0 +1,169 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: Rotina que liga e desliga o ambiente (RDS, NAT e app) para economizar credito
+
+Parameters:
+  ComputeStackName:
+    Type: String
+    Default: wise-warrior-compute
+  DataStackName:
+    Type: String
+    Default: wise-warrior-data
+  ActiveDays:
+    Type: String
+    Default: MON-FRI
+    Description: Dias da semana ativos, no formato do cron (ex. MON-FRI ou "*")
+
+Resources:
+  SchedulerRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: scheduler.amazonaws.com
+            Action: sts:AssumeRole
+            Condition:
+              StringEquals:
+                aws:SourceAccount: !Ref AWS::AccountId
+      Policies:
+        - PolicyName: start-stop-environment
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - ec2:StartInstances
+                  - ec2:StopInstances
+                Resource:
+                  - !Sub
+                    - "arn:${AWS::Partition}:ec2:${AWS::Region}:${AWS::AccountId}:instance/${InstanceId}"
+                    - InstanceId:
+                        Fn::ImportValue: !Sub "${ComputeStackName}-AppInstanceId"
+                  - !Sub
+                    - "arn:${AWS::Partition}:ec2:${AWS::Region}:${AWS::AccountId}:instance/${InstanceId}"
+                    - InstanceId:
+                        Fn::ImportValue: !Sub "${ComputeStackName}-NatInstanceId"
+              - Effect: Allow
+                Action:
+                  - rds:StartDBInstance
+                  - rds:StopDBInstance
+                Resource: !Sub
+                  - "arn:${AWS::Partition}:rds:${AWS::Region}:${AWS::AccountId}:db:${DbInstanceId}"
+                  - DbInstanceId:
+                      Fn::ImportValue: !Sub "${DataStackName}-DbInstanceId"
+
+  StartDatabase:
+    Type: AWS::Scheduler::Schedule
+    Properties:
+      Description: Liga o RDS primeiro, porque ele demora a ficar disponivel
+      ScheduleExpression: !Sub "cron(45 9 ? * ${ActiveDays} *)"
+      ScheduleExpressionTimezone: America/Sao_Paulo
+      FlexibleTimeWindow:
+        Mode: "OFF"
+      Target:
+        Arn: arn:aws:scheduler:::aws-sdk:rds:startDBInstance
+        RoleArn: !GetAtt SchedulerRole.Arn
+        Input: !Sub
+          - '{"DbInstanceIdentifier":"${DbInstanceId}"}'
+          - DbInstanceId:
+              Fn::ImportValue: !Sub "${DataStackName}-DbInstanceId"
+        RetryPolicy:
+          MaximumRetryAttempts: 5
+          MaximumEventAgeInSeconds: 3600
+
+  StartNat:
+    Type: AWS::Scheduler::Schedule
+    Properties:
+      Description: Liga a NAT antes do app, que precisa de internet para subir
+      ScheduleExpression: !Sub "cron(50 9 ? * ${ActiveDays} *)"
+      ScheduleExpressionTimezone: America/Sao_Paulo
+      FlexibleTimeWindow:
+        Mode: "OFF"
+      Target:
+        Arn: arn:aws:scheduler:::aws-sdk:ec2:startInstances
+        RoleArn: !GetAtt SchedulerRole.Arn
+        Input: !Sub
+          - '{"InstanceIds":["${InstanceId}"]}'
+          - InstanceId:
+              Fn::ImportValue: !Sub "${ComputeStackName}-NatInstanceId"
+        RetryPolicy:
+          MaximumRetryAttempts: 5
+          MaximumEventAgeInSeconds: 3600
+
+  StartApp:
+    Type: AWS::Scheduler::Schedule
+    Properties:
+      Description: Liga a EC2 do app
+      ScheduleExpression: !Sub "cron(55 9 ? * ${ActiveDays} *)"
+      ScheduleExpressionTimezone: America/Sao_Paulo
+      FlexibleTimeWindow:
+        Mode: "OFF"
+      Target:
+        Arn: arn:aws:scheduler:::aws-sdk:ec2:startInstances
+        RoleArn: !GetAtt SchedulerRole.Arn
+        Input: !Sub
+          - '{"InstanceIds":["${InstanceId}"]}'
+          - InstanceId:
+              Fn::ImportValue: !Sub "${ComputeStackName}-AppInstanceId"
+        RetryPolicy:
+          MaximumRetryAttempts: 5
+          MaximumEventAgeInSeconds: 3600
+
+  StopApp:
+    Type: AWS::Scheduler::Schedule
+    Properties:
+      Description: Desliga o app primeiro
+      ScheduleExpression: !Sub "cron(0 18 ? * ${ActiveDays} *)"
+      ScheduleExpressionTimezone: America/Sao_Paulo
+      FlexibleTimeWindow:
+        Mode: "OFF"
+      Target:
+        Arn: arn:aws:scheduler:::aws-sdk:ec2:stopInstances
+        RoleArn: !GetAtt SchedulerRole.Arn
+        Input: !Sub
+          - '{"InstanceIds":["${InstanceId}"]}'
+          - InstanceId:
+              Fn::ImportValue: !Sub "${ComputeStackName}-AppInstanceId"
+        RetryPolicy:
+          MaximumRetryAttempts: 5
+          MaximumEventAgeInSeconds: 3600
+
+  StopNat:
+    Type: AWS::Scheduler::Schedule
+    Properties:
+      Description: Desliga a NAT depois do app
+      ScheduleExpression: !Sub "cron(5 18 ? * ${ActiveDays} *)"
+      ScheduleExpressionTimezone: America/Sao_Paulo
+      FlexibleTimeWindow:
+        Mode: "OFF"
+      Target:
+        Arn: arn:aws:scheduler:::aws-sdk:ec2:stopInstances
+        RoleArn: !GetAtt SchedulerRole.Arn
+        Input: !Sub
+          - '{"InstanceIds":["${InstanceId}"]}'
+          - InstanceId:
+              Fn::ImportValue: !Sub "${ComputeStackName}-NatInstanceId"
+        RetryPolicy:
+          MaximumRetryAttempts: 5
+          MaximumEventAgeInSeconds: 3600
+
+  StopDatabase:
+    Type: AWS::Scheduler::Schedule
+    Properties:
+      Description: Desliga o RDS por ultimo
+      ScheduleExpression: !Sub "cron(10 18 ? * ${ActiveDays} *)"
+      ScheduleExpressionTimezone: America/Sao_Paulo
+      FlexibleTimeWindow:
+        Mode: "OFF"
+      Target:
+        Arn: arn:aws:scheduler:::aws-sdk:rds:stopDBInstance
+        RoleArn: !GetAtt SchedulerRole.Arn
+        Input: !Sub
+          - '{"DbInstanceIdentifier":"${DbInstanceId}"}'
+          - DbInstanceId:
+              Fn::ImportValue: !Sub "${DataStackName}-DbInstanceId"
+        RetryPolicy:
+          MaximumRetryAttempts: 5
+          MaximumEventAgeInSeconds: 3600
