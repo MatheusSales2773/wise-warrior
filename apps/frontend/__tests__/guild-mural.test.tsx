@@ -143,6 +143,15 @@ describe('Mural', () => {
     expect(screen.getByTestId('guild-mural-message-m2')).toHaveProp('accessibilityLabel', 'Bruno, 14:02: Mensagem 2');
   });
 
+  it('keeps the draft when the user leaves the Mural tab and comes back', async () => {
+    await openMural();
+    await fireEvent.changeText(screen.getByLabelText('Mensagem para a guilda'), 'Rascunho');
+    await fireEvent.press(screen.getByTestId('guild-tab-members'));
+    expect(screen.queryByTestId('guild-mural')).toBeNull();
+    await fireEvent.press(screen.getByTestId('guild-tab-mural'));
+    expect(screen.getByLabelText('Mensagem para a guilda')).toHaveProp('value', 'Rascunho');
+  });
+
   it('loads older messages', async () => {
     gateway.handlers['chat:history'] = ({ before }) => (before === undefined
       ? { ok: true, messages: [message(5)], nextBefore: 5 }

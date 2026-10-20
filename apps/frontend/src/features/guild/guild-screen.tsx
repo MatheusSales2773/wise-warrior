@@ -508,7 +508,8 @@ function MemberGuild({ mine, desktop, onLeft, onConflict }: { mine: MyGuild; des
       {header}
       <GuildTabs onSelect={setTab} selected={tab} />
       {tab === 'raid' ? raid : null}
-      {tab === 'mural' ? mural : null}
+      {/* Kept mounted and only hidden, so the draft and the scroll position survive a tab change. */}
+      <View style={tab === 'mural' ? undefined : styles.hidden}>{mural}</View>
       {tab === 'members' ? <>{members}{leave}</> : null}
       {tab === 'history' ? pastRaids : null}
       {announcer}
@@ -566,9 +567,10 @@ const styles = StyleSheet.create({
   grid: { gap: theme.space.stackDefault },
   desktopGrid: { flexDirection: 'row', alignItems: 'flex-start', gap: theme.space.stackDefault },
   column: { flex: 1 },
-  // The 06c proportion: 680 px of Raid next to 392 px of Mural and Membros.
-  mainColumn: { flex: 680 },
-  sideColumn: { flex: 392 },
+  // The 06c widths: up to 680 px of Raid next to 392 px of Mural and Membros.
+  mainColumn: { flex: 1, minWidth: 0, maxWidth: 680 },
+  sideColumn: { width: 392, flexShrink: 1 },
+  hidden: { display: 'none' },
   raidImage: { height: 160, overflow: 'hidden', borderRadius: theme.radius.card, backgroundColor: theme.color.surfaceInset },
   rankingItem: { flexDirection: 'row', alignItems: 'center', gap: theme.space.stackTight, paddingVertical: theme.space.inlineTight, paddingHorizontal: theme.space.inlineTight, borderRadius: theme.radius.control, borderWidth: theme.border.standard, borderColor: 'transparent' },
   // The own row is marked by a border and a "(você)" label as well as by the fill, never by color alone.

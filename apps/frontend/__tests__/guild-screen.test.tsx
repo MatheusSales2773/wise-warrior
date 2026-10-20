@@ -505,6 +505,27 @@ describe('GuildScreen', () => {
       expect(screen.getByTestId('guild-raid')).toBeTruthy();
     });
 
+    it('leaves the guild from the Membros tab on a phone, and not from the Raid tab', async () => {
+      Dimensions.set({ window: { width: 390, height: 844, scale: 1, fontScale: 1 } });
+      mockedLeave.mockResolvedValue(undefined);
+      await renderGuild();
+      await screen.findByText('Cerco ao Grimório');
+      expect(screen.queryByTestId('guild-leave')).toBeNull();
+      await fireEvent.press(screen.getByTestId('guild-tab-members'));
+      await fireEvent.press(await screen.findByTestId('guild-leave'));
+      await fireEvent.press(screen.getByTestId('guild-leave-confirm-button'));
+      await waitFor(() => expect(mockedLeave).toHaveBeenCalledWith('g1'));
+    });
+
+    it('shows the Raid empty state on the Raid tab of a phone when the Guild has no Raid', async () => {
+      Dimensions.set({ window: { width: 390, height: 844, scale: 1, fontScale: 1 } });
+      mockedRaid.mockResolvedValue(null);
+      await renderGuild();
+      expect(await screen.findByTestId('guild-raid-empty')).toBeTruthy();
+      expect(screen.queryByTestId('guild-ranking')).toBeNull();
+      expect(screen.getByTestId('guild-tab-raid')).toBeSelected();
+    });
+
     it('keeps the Mural announcer mounted on every tab', async () => {
       Dimensions.set({ window: { width: 390, height: 844, scale: 1, fontScale: 1 } });
       await renderGuild();
