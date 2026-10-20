@@ -51,6 +51,26 @@ export function guildEmblemFor(guildId: string): GuildEmblemLook {
   };
 }
 
+function EmblemMark({ look, size }: { look: GuildEmblemLook; size: number }) {
+  const { color, shield, charge } = look;
+  return (
+    <Svg height={size} viewBox="0 0 42 42" width={size}>
+      <Path d={shield} fill={color} fillOpacity={0.06} stroke={color} strokeLinejoin="round" strokeWidth={0.84} />
+      <Path d={charge} fill="none" stroke={color} strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.26} />
+    </Svg>
+  );
+}
+
+/** The Figma GuildSigil: the neutral gold shield for places that show "a guild" without a specific one. */
+export function GuildSigil({ size = 42 }: { size?: number }) {
+  const look = { color: EMBLEM_COLORS[0], shield: EMBLEM_SHIELDS[0], charge: EMBLEM_CHARGES[0] };
+  return (
+    <View accessibilityElementsHidden aria-hidden importantForAccessibility="no-hide-descendants">
+      <EmblemMark look={look} size={size} />
+    </View>
+  );
+}
+
 export type GuildEmblemProps = {
   guildId: string;
   name: string;
@@ -60,16 +80,12 @@ export type GuildEmblemProps = {
 };
 
 export function GuildEmblem({ guildId, name, size = 42, decorative = false }: GuildEmblemProps) {
-  const { color, shield, charge } = guildEmblemFor(guildId);
   const a11yProps = decorative
     ? ({ accessible: false, 'aria-hidden': true, accessibilityElementsHidden: true, importantForAccessibility: 'no-hide-descendants' } as const)
     : ({ accessible: true, accessibilityRole: 'image', accessibilityLabel: `Emblema da guilda ${name}` } as const);
   return (
     <View {...a11yProps} testID="guild-emblem">
-      <Svg height={size} viewBox="0 0 42 42" width={size}>
-        <Path d={shield} fill={color} fillOpacity={0.06} stroke={color} strokeLinejoin="round" strokeWidth={0.84} />
-        <Path d={charge} fill="none" stroke={color} strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.26} />
-      </Svg>
+      <EmblemMark look={guildEmblemFor(guildId)} size={size} />
     </View>
   );
 }
