@@ -1,6 +1,6 @@
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'expo-router';
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useState } from 'react';
 import { Platform, StyleSheet, View, useWindowDimensions } from 'react-native';
 import { FeedbackMessage, ProgressBar, Screen, WiseButton, WiseCard, WiseField, WiseText, isDesktopLayout, theme } from '@/design-system';
 import { isApiError } from '@/core/api/api-error';
@@ -16,10 +16,6 @@ import { GuildTabs, MuralAnnouncer, MuralPanel, OnlineIndicator, PresenceDot, ty
 import { RaidScene } from './raid-scene';
 import { RAID_SCENE_HEIGHT, RAID_SCENE_WIDTH } from './raid-scene-sprites';
 import { GUILD_NAME_MAX_LENGTH, normalizeGuildName, validateGuildName } from './validation';
-
-// The 06c widths of the desktop columns.
-const DESKTOP_MAIN_COLUMN_MAX_WIDTH = 680;
-const DESKTOP_SIDE_COLUMN_WIDTH = 392;
 
 /** The smallest whole scale that fills the card width; the scene is cropped at the sides instead of letterboxed. */
 function thumbnailScale(width: number): number {
@@ -483,38 +479,42 @@ function MemberGuild({ mine, desktop, onLeft, onConflict }: { mine: MyGuild; des
   const { guild, role } = mine;
   const profile = useQuery(profileQueryOptions());
   const chat = useGuildChat(guild.id, profile.data?.id);
+  // The tab is screen state, not a route: the Mural connection above lives in this component and is never remounted.
   const [tab, setTab] = useState<GuildTab>('raid');
-  const header = <GuildCard mine={mine} onlineUserIds={chat.onlineUserIds} />;
-  const raid = <RaidSection guildId={guild.id} />;
-  const mural = <MuralPanel chat={chat} />;
-  const pastRaids = <PastRaidsCard guildId={guild.id} />;
-  // Leaving the Guild belongs with the Membros wherever they are shown.
-  const membersAndLeave = <>
-    <MembersCard guildId={guild.id} onlineUserIds={chat.onlineUserIds} />
-    <View testID="guild-leave-section">
-      <LeaveGuildAction guildId={guild.id} isLeader={role === 'leader'} onConflict={onConflict} onLeft={onLeft} />
-    </View>
-  </>;
-  // The Mural is not here: it stays mounted on a phone, hidden instead of replaced.
-  const tabPanels: Record<Exclude<GuildTab, 'mural'>, ReactNode> = { raid, members: membersAndLeave, 'past-raids': pastRaids };
-
-  return (
-    <View style={styles.stack} testID={desktop ? 'guild-layout-desktop' : 'guild-layout-tabs'}>
-      {header}
-      {desktop
-        ? <View style={styles.desktopGrid}>
-          <View style={[styles.mainColumn, styles.stack]} testID="guild-column-main">{raid}{pastRaids}</View>
-          <View style={[styles.sideColumn, styles.stack]} testID="guild-column-side">{mural}{membersAndLeave}</View>
-        </View>
-        : <>
-          <GuildTabs onSelect={setTab} selected={tab} />
-          {tab === 'mural' ? null : tabPanels[tab]}
-          {/* Kept mounted and only hidden, so the draft and the scroll position survive a tab change. */}
-          <View style={tab === 'mural' ? undefined : styles.hidden}>{mural}</View>
-        </>}
-      <MuralAnnouncer arrival={chat.arrival} />
+  const header = (
+    <View style={[styles.stack, desktop && styles.headerRow]} testID="guild-header">
+      <View style={desktop ? styles.column : undefined}><GuildCard mine={mine} onlineUserIds={chat.onlineUserIds} /></View>
+      <View testID="guild-leave-section">
+        <LeaveGuildAction guildId={guild.id} isLeader={role === 'leader'} onConflict={onConflict} onLeft={onLeft} />
+      </View>
     </View>
   );
+  const raid = <RaidSection guildId={guild.id} />;
+  const mural = <MuralPanel chat={chat} />;
+  const members = <MembersCard guildId={guild.id} onlineUserIds={chat.onlineUserIds} />;
+  const pastRaids = <PastRaidsCard guildId={guild.id} />;
+  const announcer = <MuralAnnouncer arrival={chat.arrival} />;
+  if (desktop) {
+    return <View style={styles.stack} testID="guild-layout-desktop">
+      {header}
+      <View style={styles.desktopGrid}>
+        <View style={[styles.columnMain, styles.stack]} testID="guild-column-main">{raid}{pastRaids}</View>
+        <View style={[styles.columnSide, styles.stack]} testID="guild-column-side">{mural}{members}</View>
+      </View>
+      {announcer}
+    </View>;
+  }
+  const content = { raid, members, history: pastRaids }[tab as Exclude<GuildTab, 'mural'>];
+  // The Mural stays mounted and is only hidden, so the unsent draft and the scroll position survive a tab change.
+  return <View style={[styles.stack, styles.grow]} testID="guild-layout-tabs">
+    {header}
+    <GuildTabs onSelect={setTab} selected={tab} />
+    <View style={[styles.stack, styles.grow]} testID="guild-tab-content">
+      <View style={tab === 'mural' ? undefined : styles.hidden}>{mural}</View>
+      {tab === 'mural' ? null : content}
+    </View>
+    {announcer}
+  </View>;
 }
 
 export function GuildScreen() {
@@ -550,7 +550,7 @@ export function GuildScreen() {
 
   const desktop = isDesktopLayout(Platform.OS, width);
   return (
-    <Screen safeAreaEdges={[]} testID="guild" title="Guilda">
+    <Screen contentContainerStyle={mine.data ? styles.fromTop : undefined} contentStyle={mine.data ? styles.grow : undefined} safeAreaEdges={[]} testID="guild" title="Guilda">
       {mine.isError ? <FeedbackMessage message="Não foi possível atualizar sua guilda." testID="guild-refresh-error" title="Dados desatualizados" variant="error" /> : null}
       {mine.data
         ? <MemberGuild key={mine.data.guild.id} desktop={desktop} mine={mine.data} onConflict={refreshOnConflict} onLeft={() => void refreshGuild()} />
@@ -567,9 +567,14 @@ const styles = StyleSheet.create({
   grid: { gap: theme.space.stackDefault },
   desktopGrid: { flexDirection: 'row', alignItems: 'flex-start', gap: theme.space.stackDefault },
   column: { flex: 1 },
-  mainColumn: { flex: 1, minWidth: 0, maxWidth: DESKTOP_MAIN_COLUMN_MAX_WIDTH },
-  sideColumn: { width: DESKTOP_SIDE_COLUMN_WIDTH, flexShrink: 1 },
   hidden: { display: 'none' },
+  grow: { flexGrow: 1 },
+  // The Screen centers its content; a guild screen starts at the top and its open tab runs down to the bottom.
+  fromTop: { justifyContent: 'flex-start' },
+  // Figma 06c desktop: a 680 px main column and a 392 px side column.
+  columnMain: { flex: 680 },
+  columnSide: { flex: 392 },
+  headerRow: { flexDirection: 'row', alignItems: 'flex-start' },
   raidImage: { height: 160, overflow: 'hidden', borderRadius: theme.radius.card, backgroundColor: theme.color.surfaceInset },
   rankingItem: { flexDirection: 'row', alignItems: 'center', gap: theme.space.stackTight, paddingVertical: theme.space.inlineTight, paddingHorizontal: theme.space.inlineTight, borderRadius: theme.radius.control, borderWidth: theme.border.standard, borderColor: 'transparent' },
   // The own row is marked by a border and a "(você)" label as well as by the fill, never by color alone.
