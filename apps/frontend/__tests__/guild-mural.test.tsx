@@ -127,6 +127,7 @@ describe('Guild presence', () => {
     await renderGuild();
     expect(await screen.findByTestId('guild-mine')).toBeOnTheScreen();
     expect(screen.queryByTestId('guild-online-count')).toBeNull();
+    expect(screen.queryByTestId('guild-mural-online')).toBeNull();
   });
 });
 
@@ -275,6 +276,38 @@ describe('Mural', () => {
     await fireEvent.press(screen.getByTestId('guild-mural-send'));
     expect(await screen.findByText('Você enviou muitas mensagens seguidas. Espere 5 s e tente de novo.')).toBeOnTheScreen();
     expect(screen.getByLabelText('Mensagem para a guilda')).toHaveProp('value', 'oi');
+  });
+
+  it('shows the send error under the field, not as a Mural failure', async () => {
+    gateway.handlers['chat:send'] = () => ({ ok: false, error: { code: 'EMPTY', message: 'EMPTY' } });
+    await openMural();
+    await fireEvent.press(screen.getByTestId('guild-mural-send'));
+    expect(await screen.findByTestId('guild-mural-send-error')).toBeOnTheScreen();
+    expect(screen.getByTestId('guild-mural-messages')).toBeOnTheScreen();
+  });
+
+  it('marks the send button busy and disabled while a message is on its way', async () => {
+    let answerSend!: () => void;
+    const original = gateway.request.bind(gateway);
+    gateway.request = ((event: string, payload: unknown) => (event === 'chat:send'
+      ? new Promise((resolve) => { answerSend = () => resolve({ ok: true, message: message(3, { body: (payload as { body: string }).body }) } as never); })
+      : original(event, payload))) as typeof gateway.request;
+    await openMural();
+    await fireEvent.changeText(screen.getByLabelText('Mensagem para a guilda'), 'Bora');
+    await fireEvent.press(screen.getByTestId('guild-mural-send'));
+    expect(screen.getByTestId('guild-mural-send')).toBeDisabled();
+    expect(screen.getByTestId('guild-mural-send')).toHaveProp('accessibilityState', expect.objectContaining({ busy: true }));
+    await act(async () => { answerSend(); });
+    expect(await screen.findByText('Bora')).toBeOnTheScreen();
+    expect(screen.getByTestId('guild-mural-send')).not.toBeDisabled();
+  });
+
+  it('draws a portrait on a message but none on an Aviso', async () => {
+    await openMural();
+    await gateway.emit('chat:message', message(3, { userId: 'u2', displayName: 'Bruno', body: 'Cheguei' }));
+    await gateway.emit('chat:message', message(4, { kind: 'raid_hit', userId: 'u2', displayName: 'Bruno', xp: 10, body: '' }));
+    expect(within(screen.getByTestId('guild-mural-notice-m4')).queryByTestId('hero-avatar', { includeHiddenElements: true })).toBeNull();
+    expect(within(screen.getByTestId('guild-mural-message-m3')).getByTestId('hero-avatar', { includeHiddenElements: true })).toBeTruthy();
   });
 
   it('recovers missed messages after a reconnection without duplicates', async () => {

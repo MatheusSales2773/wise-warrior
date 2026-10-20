@@ -1,9 +1,10 @@
 import { useRef, useState } from 'react';
-import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View, type NativeScrollEvent, type NativeSyntheticEvent } from 'react-native';
+import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View, type NativeScrollEvent, type NativeSyntheticEvent } from 'react-native';
 import { controlStyles } from '@/design-system/components/control-styles';
 import { FeedbackMessage, WiseButton, WiseCard, WiseIcon, WiseText, theme } from '@/design-system';
 import { SectionHeader } from '@/features/character/character-parts';
 import { raidHitText, type ChatMessage, type GuildChat } from './guild-chat';
+import { CARD_GAP, CARD_PADDING, FRAME_RADIUS, INSET_RADIUS, cardText } from './guild-card-style';
 import { HeroAvatar } from './hero-avatar';
 
 export type GuildTab = 'raid' | 'mural' | 'members' | 'history';
@@ -89,7 +90,7 @@ function NoticeItem({ message }: { message: ChatMessage }) {
     <View accessibilityLabel={`Aviso, ${time}: ${text}`} accessible style={styles.notice} testID={`guild-mural-notice-${message.id}`}>
       <WiseIcon color="accentPrimary" name="flame" size="xsmall" />
       <Text style={styles.noticeText}>{text}</Text>
-      <Text style={styles.time}>{time}</Text>
+      <Text style={cardText.meta}>{time}</Text>
     </View>
   );
 }
@@ -100,13 +101,13 @@ function MessageItem({ message }: { message: ChatMessage }) {
   return (
     <View accessibilityLabel={`${message.displayName}, ${time}: ${message.body}`} accessible style={styles.message} testID={`guild-mural-message-${message.id}`}>
       {/* The chat gateway does not send the member's look yet, so the portrait is the default hero. */}
-      <HeroAvatar entry={{ avatar: null }} style={styles.portrait} />
+      <HeroAvatar style={styles.portrait} />
       <View style={styles.messageMain}>
         <View style={styles.messageMeta}>
-          <Text style={styles.author}>{message.displayName}</Text>
-          <Text style={styles.time}>{time}</Text>
+          <Text style={cardText.name}>{message.displayName}</Text>
+          <Text style={cardText.meta}>{time}</Text>
         </View>
-        <Text selectable style={styles.messageBody}>{message.body}</Text>
+        <Text selectable style={cardText.body}>{message.body}</Text>
       </View>
     </View>
   );
@@ -127,8 +128,9 @@ export function MuralAnnouncer({ arrival }: { arrival: ChatMessage | null }) {
   );
 }
 
-const CARD_PADDING = 20;
-const CARD_GAP = 14;
+/** The Figma 06c portrait and send button are 28 px; the gap between a portrait and its text, and the Aviso's side padding, are 10 px. */
+const PORTRAIT_SIZE = 28;
+const MESSAGE_GAP = 10;
 /** How close to the top of the list a scroll has to get before the previous page loads. */
 const NEAR_TOP_PX = 48;
 /** Room for the app header above the Mural when the iOS keyboard pushes it up. */
@@ -152,7 +154,7 @@ function MuralComposer({ canWrite, send }: { canWrite: boolean; send: GuildChat[
 
   return (
     <View style={styles.composer}>
-      <View style={styles.field}>
+      <View style={styles.composerField}>
         <TextInput
           accessibilityLabel="Mensagem para a guilda"
           editable={canWrite && !sending}
@@ -172,10 +174,12 @@ function MuralComposer({ canWrite, send }: { canWrite: boolean; send: GuildChat[
           accessibilityState={{ disabled: !canWrite || sending, busy: sending }}
           disabled={!canWrite || sending}
           onPress={() => void submit()}
-          style={[styles.send, (!canWrite || sending) && styles.sendDisabled]}
+          style={[styles.sendButton, (!canWrite || sending) && styles.sendButtonDisabled]}
           testID="guild-mural-send"
         >
-          <WiseIcon color={canWrite ? 'textPrimary' : 'textDisabled'} name="play" size="small" />
+          {sending
+            ? <ActivityIndicator color={theme.color.textPrimary} size="small" />
+            : <WiseIcon color={canWrite ? 'textPrimary' : 'textDisabled'} name="play" size="small" />}
         </Pressable>
       </View>
       {sendError ? <FeedbackMessage message={sendError} testID="guild-mural-send-error" title="Mensagem não enviada" variant="error" /> : null}
@@ -278,7 +282,7 @@ export function MuralPanel({ chat }: { chat: GuildChat }) {
         keyboardVerticalOffset={KEYBOARD_OFFSET_PX}
         style={styles.cardContent}
       >
-        <SectionHeader aside={chat.onlineUserIds ? <Text style={styles.onlineAside} testID="guild-mural-online">{formatOnlineCount(chat.onlineUserIds.size)}</Text> : null}>Mural</SectionHeader>
+        <SectionHeader aside={chat.onlineUserIds ? <Text style={styles.onlineCount} testID="guild-mural-online">{formatOnlineCount(chat.onlineUserIds.size)}</Text> : null}>Mural</SectionHeader>
         {body}
         <MuralComposer canWrite={canWrite} send={chat.send} />
       </KeyboardAvoidingView>
@@ -305,28 +309,25 @@ const styles = StyleSheet.create({
   scroll: { maxHeight: 420, minHeight: 160 },
   messages: { gap: CARD_GAP },
   start: { textAlign: 'center' },
-  message: { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
-  portrait: { width: 28, height: 28 },
+  message: { flexDirection: 'row', alignItems: 'flex-start', gap: MESSAGE_GAP },
+  portrait: { width: PORTRAIT_SIZE, height: PORTRAIT_SIZE },
   messageMain: { flex: 1, minWidth: 0, gap: 3 },
   messageMeta: { flexDirection: 'row', alignItems: 'baseline', gap: 6 },
-  author: { fontFamily: theme.type.label.fontFamily, fontSize: 13, lineHeight: 16, color: theme.color.textPrimary },
-  time: { fontFamily: theme.type.mono.fontFamily, fontSize: 10, color: theme.color.textTertiary },
-  messageBody: { fontFamily: theme.type.body.fontFamily, fontSize: 12, lineHeight: 17, color: theme.color.textSecondary },
   notice: {
     flexDirection: 'row', alignItems: 'center', gap: theme.space.inlineTight,
-    paddingVertical: 8, paddingHorizontal: 10,
-    borderRadius: 6, borderWidth: theme.border.standard, borderColor: theme.color.borderGhost, backgroundColor: theme.color.surfaceInset,
+    paddingVertical: theme.space.inlineTight, paddingHorizontal: MESSAGE_GAP,
+    borderRadius: INSET_RADIUS, borderWidth: theme.border.standard, borderColor: theme.color.borderGhost, backgroundColor: theme.color.surfaceInset,
   },
-  noticeText: { flex: 1, fontFamily: theme.type.body.fontFamily, fontSize: 12, lineHeight: 17, color: theme.color.accentPrimary },
-  onlineAside: { fontFamily: theme.type.mono.fontFamily, fontSize: 10, lineHeight: 13, letterSpacing: 0.8, color: theme.color.textTertiary },
+  noticeText: { flex: 1, fontFamily: cardText.body.fontFamily, fontSize: cardText.body.fontSize, lineHeight: cardText.body.lineHeight, color: theme.color.accentPrimary },
+  onlineCount: { ...cardText.meta, letterSpacing: 0.8 },
   composer: { gap: theme.space.inlineTight, alignItems: 'stretch' },
-  field: {
+  composerField: {
     flexDirection: 'row', alignItems: 'center', gap: theme.space.inlineTight,
-    paddingVertical: 6, paddingLeft: 12, paddingRight: 6,
-    borderRadius: 6, borderWidth: theme.border.standard, borderColor: theme.color.borderSubtle, backgroundColor: theme.color.surfaceInset,
+    paddingVertical: 6, paddingLeft: theme.space.stackTight, paddingRight: 6,
+    borderRadius: INSET_RADIUS, borderWidth: theme.border.standard, borderColor: theme.color.borderSubtle, backgroundColor: theme.color.surfaceInset,
   },
-  input: { flex: 1, minWidth: 0, maxHeight: 96, paddingVertical: 4, fontFamily: theme.type.body.fontFamily, fontSize: 12, lineHeight: 17, color: theme.color.textPrimary },
-  send: { width: 28, height: 28, alignItems: 'center', justifyContent: 'center', borderRadius: 4, borderWidth: theme.border.standard, borderColor: theme.color.borderSubtle, backgroundColor: theme.color.surfaceElevated },
-  sendDisabled: { opacity: 0.5 },
+  input: { flex: 1, minWidth: 0, maxHeight: 96, paddingVertical: theme.space.inlineHairline, fontFamily: cardText.body.fontFamily, fontSize: cardText.body.fontSize, lineHeight: cardText.body.lineHeight, color: theme.color.textPrimary },
+  sendButton: { width: PORTRAIT_SIZE, height: PORTRAIT_SIZE, alignItems: 'center', justifyContent: 'center', borderRadius: FRAME_RADIUS, borderWidth: theme.border.standard, borderColor: theme.color.borderSubtle, backgroundColor: theme.color.surfaceElevated },
+  sendButtonDisabled: { opacity: 0.5 },
   announcement: { position: 'absolute', width: 1, height: 1, overflow: 'hidden', opacity: 0 },
 });

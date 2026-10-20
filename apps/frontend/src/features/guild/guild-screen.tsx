@@ -205,7 +205,7 @@ function RaidDetails({ guildId, raid }: { guildId: string; raid: ActiveRaid }) {
       <WiseText color="textSecondary" testID="guild-raid-time-left" variant="body">{formatRaidTimeLeft(new Date(raid.endsAt).getTime() - now)}</WiseText>
       <View style={styles.rewardSummary} testID="guild-raid-reward">
         <WiseIcon color="accentPrimary" name="sparkles" size="xsmall" />
-        <WiseText color="textSecondary" style={styles.rewardSummaryText} variant="caption">{formatRewardSummary(raid.rewards, raid.coins)}</WiseText>
+        <WiseText color="textSecondary" style={styles.rewardSummaryText} variant="caption">{formatRewardSummary(raid)}</WiseText>
       </View>
       <RaidParticipation guildId={guildId} raid={raid} />
       <Link asChild href="/guilda/raid">
@@ -309,7 +309,6 @@ function RaidSection({ compact, guildId }: { compact: boolean; guildId: string }
     <View style={styles.stack}>
       <RaidCard guildId={guildId} />
       {raid.data ? <RankingCard compact={compact} guildId={guildId} key={raid.data.id} raidId={raid.data.id} /> : null}
-      {compact ? <RewardsCard guildId={guildId} /> : null}
     </View>
   );
 }
@@ -441,6 +440,7 @@ function MemberGuild({ mine, desktop, onLeft, onConflict }: { mine: MyGuild; des
     </View>
   );
   const raid = <RaidSection compact={!desktop} guildId={guild.id} />;
+  const rewards = <RewardsCard guildId={guild.id} />;
   const mural = <MuralPanel chat={chat} />;
   const members = <MembersCard guildId={guild.id} onlineUserIds={chat.onlineUserIds} />;
   const pastRaids = <PastRaidsCard guildId={guild.id} />;
@@ -450,12 +450,13 @@ function MemberGuild({ mine, desktop, onLeft, onConflict }: { mine: MyGuild; des
       {header}
       <View style={styles.desktopGrid}>
         <View style={[styles.columnMain, styles.stack]} testID="guild-column-main">{raid}{pastRaids}</View>
-        <View style={[styles.columnSide, styles.stack]} testID="guild-column-side">{mural}{members}<RewardsCard guildId={guild.id} /></View>
+        <View style={[styles.columnSide, styles.stack]} testID="guild-column-side">{mural}{members}{rewards}</View>
       </View>
       {announcer}
     </View>;
   }
-  const content = { raid, members, history: pastRaids }[tab as Exclude<GuildTab, 'mural'>];
+  // The phone has no "Ao derrotar" frame of its own: the rewards close the Raid tab.
+  const content = { raid: <>{raid}{rewards}</>, members, history: pastRaids }[tab as Exclude<GuildTab, 'mural'>];
   // The Mural stays mounted and is only hidden, so the unsent draft and the scroll position survive a tab change.
   return <View style={[styles.stack, styles.grow]} testID="guild-layout-tabs">
     {header}
