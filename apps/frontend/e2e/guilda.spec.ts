@@ -21,7 +21,8 @@ test.describe('Guilda web', () => {
 
     // 2. Ver a Raid: sem Participantes, o ranking convida a participar.
     await expect(page.getByTestId('guild-raid')).toBeVisible();
-    await expect(page.getByTestId('guild-raid-progress')).toHaveAttribute('aria-label', /Progresso da Raid: 0 de \d+ XP/);
+    await expect(page.getByTestId('guild-raid-boss-life')).toHaveAttribute('aria-label', /^Vida do dragão: 100%\./);
+    await expect(page.getByTestId('guild-raid-join')).toBeVisible();
     await expect(page.getByTestId('guild-ranking-empty')).toBeVisible();
 
     // 3. "Participar e iniciar" na Forja, com uma sessão de guilda.
@@ -43,10 +44,9 @@ test.describe('Guilda web', () => {
 
     // 5. Voltar à Guilda: progresso, posição e Ranking interno refletem a Contribuição.
     await sidebar.getByRole('link', { name: 'Guilda' }).click();
-    await expect(page.getByTestId('guild-raid-participating')).toBeVisible();
-    await expect(page.getByTestId('guild-raid-my-contribution')).toHaveText(`Sua contribuição: ${stopped.xpAwarded} XP`);
-    await expect(page.getByTestId('guild-raid-progress')).toHaveAttribute('aria-label', new RegExp(`Progresso da Raid: ${stopped.xpAwarded} de \\d+ XP`));
-    await expect(page.getByTestId('guild-raid-my-position')).toHaveText('Sua posição: 1º no Ranking interno');
+    await expect(page.getByTestId('guild-raid-attack')).toBeVisible();
+    await expect(page.getByTestId('guild-raid-my-contribution')).toHaveText(/^\d+,\dh · 1º lugar$/);
+    await expect(page.getByTestId('guild-raid-boss-life')).toHaveAttribute('aria-label', /^Vida do dragão: \d+%\./);
 
     const rows = page.locator('[data-testid^="guild-ranking-item-"]');
     await expect(rows).toHaveCount(1);

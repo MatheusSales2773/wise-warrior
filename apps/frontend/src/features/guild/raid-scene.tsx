@@ -69,9 +69,11 @@ const HIT_SLOT_WIDTH = 220;
  * fora dela. `overlay` recebe os painéis que ficam por cima (tempo, vida do chefe); `hit`, o Golpe mais recente, que fica
  * diante do chefe e acompanha a escala e o corte da cena, fora da parte escondida dos leitores de tela.
  */
-export function RaidScene({ art = defaultRaidSceneArt, hit, overlay, party, scale, showTags, viewportWidth }: {
+export function RaidScene({ art = defaultRaidSceneArt, framed = true, hit, overlay, party, scale, showTags, viewportWidth }: {
   /** The Missão's illustration; the default scene when omitted. */
   art?: RaidSceneArt;
+  /** Rounded corners and border; off when the scene sits flush inside a card that already draws them. */
+  framed?: boolean;
   party: readonly PartyMember[];
   scale: number;
   showTags: boolean;
@@ -84,7 +86,7 @@ export function RaidScene({ art = defaultRaidSceneArt, hit, overlay, party, scal
   const height = RAID_SCENE_HEIGHT * scale;
   const visibleWidth = Math.min(viewportWidth, width);
   const canvasLeft = (visibleWidth - width) / 2;
-  return <View style={[styles.frame, { width: visibleWidth, height }]} testID="raid-scene">
+  return <View style={[styles.frame, framed && styles.framed, { width: visibleWidth, height }]} testID="raid-scene">
     <View accessibilityElementsHidden aria-hidden importantForAccessibility="no-hide-descendants" style={[styles.canvas, { width, height, left: canvasLeft }]}>
       <PixelSprite scale={scale} sprite={art.background} style={styles.layerOrigin} testID="raid-scene-background" />
       {party.map((member, index) => <PartyHeroFigure index={index} key={member.userId} member={member} scale={scale} />)}
@@ -92,7 +94,7 @@ export function RaidScene({ art = defaultRaidSceneArt, hit, overlay, party, scal
       {showTags ? party.map((member, index) => <PartyTag index={index} key={member.userId} member={member} scale={scale} />) : null}
     </View>
     {/* Drawn over the pixels so the border does not crop the scene. */}
-    <View pointerEvents="none" style={[StyleSheet.absoluteFill, styles.frameBorder]} />
+    {framed ? <View pointerEvents="none" style={[StyleSheet.absoluteFill, styles.frameBorder]} /> : null}
     {hit ? <View
       pointerEvents="none"
       style={[styles.hitSlot, { left: canvasLeft + RAID_SCENE_HIT_ANCHOR.x * scale - HIT_SLOT_WIDTH / 2, top: RAID_SCENE_HIT_ANCHOR.y * scale }]}
@@ -102,7 +104,8 @@ export function RaidScene({ art = defaultRaidSceneArt, hit, overlay, party, scal
 }
 
 const styles = StyleSheet.create({
-  frame: { alignSelf: 'center', overflow: 'hidden', borderRadius: theme.radius.card, backgroundColor: theme.color.surfaceInset },
+  frame: { alignSelf: 'center', overflow: 'hidden', backgroundColor: theme.color.surfaceInset },
+  framed: { borderRadius: theme.radius.card },
   frameBorder: { borderRadius: theme.radius.card, borderWidth: theme.border.standard, borderColor: theme.color.borderEmphasis },
   canvas: { position: 'absolute', top: 0 },
   layer: { position: 'absolute' },

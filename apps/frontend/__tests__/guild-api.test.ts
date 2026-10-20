@@ -1,7 +1,7 @@
 import { getAuthenticatedHttpClient } from '@/core/api/api-client';
 import { ApiError } from '@/core/api/api-error';
 import { createGuild, getActiveRaid, getMyGuild, getRaidRanking, joinGuild, leaveGuild, listGuildMembers, listGuilds, listPastRaids, joinRaid } from '@/features/guild/api';
-import { formatGuildRole, formatMemberCount, formatMyPosition, formatPastRaidMine, formatPastRaidOutcome, formatPastRaidPeriod, formatPastRaidSeal, formatPastRaidTotals, formatRaidWeek, formatWonRaids } from '@/features/guild/messages';
+import { formatGuildRole, formatMemberCount, formatMyPosition, formatPastRaidMine, formatPastRaidOutcome, formatPastRaidPeriod, formatPastRaidSeal, formatPastRaidTotals, formatRaidEnds, formatRaidWeek, formatWonRaids } from '@/features/guild/messages';
 import { rankingEntryLabel } from '@/features/guild/raid-battle';
 import { validateGuildName } from '@/features/guild/validation';
 
@@ -167,5 +167,11 @@ describe('guild helpers', () => {
     expect(formatMemberCount(3)).toBe('3 membros');
     expect(formatGuildRole('leader')).toBe('Líder');
     expect(formatGuildRole('member')).toBe('Membro');
+  });
+});
+
+describe('Raid card messages', () => {
+  it('reads the end of the Raid week in São Paulo time', () => {
+    expect(formatRaidEnds('2026-10-12T02:59:59.000Z')).toBe('Termina domingo · 23:59');
   });
 });

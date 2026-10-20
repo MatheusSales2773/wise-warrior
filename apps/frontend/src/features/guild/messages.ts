@@ -81,27 +81,8 @@ export const REWARD_COINS_DETAIL = 'Para cada Participante';
 
 export const RAID_REWARD_RULE = 'Para receber o item, contribua com ao menos uma sessão de guilda e ajude a bater a meta até o fim da semana.';
 
-/** Remaining time shown on the Raid card; at zero the week is over and the next refetch brings the new Raid. */
-export function formatRaidTimeLeft(milliseconds: number): string {
-  const minutes = Math.floor(milliseconds / 60_000);
-  if (minutes <= 0) return 'Encerrando…';
-  const days = Math.floor(minutes / 1440);
-  const hours = Math.floor((minutes % 1440) / 60);
-  if (days > 0) return `${days} d ${hours} h restantes`;
-  if (hours > 0) return `${hours} h ${minutes % 60} min restantes`;
-  return `${minutes} min restantes`;
-}
-
 /** Shown once the progress reached the goal; Contributions keep adding until the end of the week. */
 export const RAID_GOAL_REACHED = 'Meta batida! As sessões de guilda continuam contando até o fim da semana.';
-
-export function formatMyContribution(xp: number): string {
-  return xp > 0 ? `Sua contribuição: ${xp} XP` : 'Sua contribuição: 0 XP. Conclua uma sessão de guilda na Forja para somar.';
-}
-
-export function raidProgressPercent(progressXp: number, goalXp: number): number {
-  return goalXp > 0 ? Math.min(100, Math.floor((progressXp / goalXp) * 100)) : 0;
-}
 
 export function joinRaidErrorMessage(error: unknown): string {
   if (isApiError(error)) {
@@ -122,6 +103,14 @@ export function formatMyPosition(position: number | null): string | null {
 
 /** The Raid week is Monday to Sunday in São Paulo. */
 const RAID_TIME_ZONE = 'America/Sao_Paulo';
+const RAID_END = new Intl.DateTimeFormat('pt-BR', { weekday: 'long', hour: '2-digit', minute: '2-digit', hourCycle: 'h23', timeZone: RAID_TIME_ZONE });
+
+/** "Termina domingo · 23:59": the end of the Raid week as São Paulo reads it. */
+export function formatRaidEnds(endsAt: string): string {
+  const parts = Object.fromEntries(RAID_END.formatToParts(new Date(endsAt)).map((part) => [part.type, part.value]));
+  return `Termina ${parts.weekday} · ${parts.hour}:${parts.minute}`;
+}
+
 const RAID_WEEK_DAY = new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: '2-digit', timeZone: RAID_TIME_ZONE });
 
 /** The Raid week as São Paulo reads it: Monday to Sunday. */
