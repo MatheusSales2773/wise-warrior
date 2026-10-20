@@ -62,7 +62,7 @@ export type GuildEmblemProps = {
 export function GuildEmblem({ guildId, name, size = 42, decorative = false }: GuildEmblemProps) {
   const { color, shield, charge } = guildEmblemFor(guildId);
   const a11yProps = decorative
-    ? ({ accessible: false, accessibilityElementsHidden: true, importantForAccessibility: 'no-hide-descendants' } as const)
+    ? ({ accessible: false, 'aria-hidden': true, accessibilityElementsHidden: true, importantForAccessibility: 'no-hide-descendants' } as const)
     : ({ accessible: true, accessibilityRole: 'image', accessibilityLabel: `Emblema da guilda ${name}` } as const);
   return (
     <View {...a11yProps} testID="guild-emblem">
