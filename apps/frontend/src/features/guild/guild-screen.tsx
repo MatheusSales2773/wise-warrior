@@ -1,13 +1,12 @@
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Link } from 'expo-router';
 import { useState } from 'react';
 import { Platform, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { FeedbackMessage, ProgressBar, Screen, WiseButton, WiseCard, WiseField, WiseText, isDesktopLayout, theme } from '@/design-system';
 import { isApiError } from '@/core/api/api-error';
-import { createGuild, joinGuild, joinRaid, leaveGuild, type ActiveRaid, type GuildMember, type GuildSummary, type MyGuild, type PastRaid } from './api';
+import { createGuild, joinGuild, leaveGuild, type GuildMember, type GuildSummary, type MyGuild, type PastRaid } from './api';
 import {
-  RAID_GOAL_REACHED, RAID_REWARD_RULE, createGuildErrorMessage, formatPastRaidMine, formatPastRaidOutcome, formatRaidWeek, formatGuildRole, formatGuildRoleSeal, formatGuildStats, formatMyContribution, formatMyPosition, formatMemberCount, formatRaidTimeLeft, formatRewardCategory, formatRewardCoins,
-  joinGuildErrorMessage, joinRaidErrorMessage, leaveGuildErrorMessage, raidProgressPercent,
+  createGuildErrorMessage, formatPastRaidMine, formatPastRaidOutcome, formatRaidWeek, formatGuildRole, formatGuildRoleSeal, formatGuildStats, formatMemberCount,
+  joinGuildErrorMessage, leaveGuildErrorMessage,
 } from './messages';
 import { activeRaidQueryOptions, guildDirectoryQueryOptions, guildKeys, guildMembersQueryOptions, myGuildQueryOptions, pastRaidsQueryOptions } from './queries';
 import { profileQueryOptions } from '@/features/dashboard/queries';
@@ -17,16 +16,8 @@ import { GuildTabs, MuralAnnouncer, MuralPanel, OnlineIndicator, PresenceDot, fo
 import { HeroAvatar } from './hero-avatar';
 import { GuildEmblem } from './guild-emblem';
 import { RankingCard } from './guild-ranking';
-import { RaidScene } from './raid-scene';
-import { RAID_SCENE_HEIGHT, RAID_SCENE_WIDTH } from './raid-scene-sprites';
-import { JoinRaidButton } from './raid-shared';
-import { useRaidTimeLeft } from './use-raid-clock';
+import { RaidCard } from './guild-raid-card';
 import { GUILD_NAME_MAX_LENGTH, normalizeGuildName, validateGuildName } from './validation';
-
-/** The smallest whole scale that fills the card width; the scene is cropped at the sides instead of letterboxed. */
-function thumbnailScale(width: number): number {
-  return Math.min(6, Math.max(2, Math.ceil(width / RAID_SCENE_WIDTH)));
-}
 
 function MemberItem({ member, online }: { member: GuildMember; online: boolean | null }) {
   const presence = online === null ? '' : online ? ', online' : ', offline';
@@ -122,134 +113,6 @@ function GuildCard({ mine, onlineUserIds, desktop }: { mine: MyGuild; onlineUser
   );
 }
 
-function RaidParticipation({ guildId, raid }: { guildId: string; raid: ActiveRaid }) {
-  const queryClient = useQueryClient();
-  const join = useMutation({
-    mutationFn: () => joinRaid(raid.id),
-    onSuccess: () => {
-      queryClient.setQueryData<ActiveRaid | null>(
-        guildKeys.raid(guildId),
-        (current) => (current ? { ...current, me: { ...current.me, participating: true } } : current),
-      );
-      // The new Participant enters the Ranking interno with 0 XP. The Raid itself is not refetched.
-      void queryClient.invalidateQueries({ queryKey: guildKeys.raidRanking(guildId, raid.id) });
-    },
-    // The Raid ended (409) or is gone: show the Raid that is current now.
-    onError: (error) => {
-      if (isApiError(error) && (error.category === 'conflict' || error.status === 404)) {
-        void queryClient.invalidateQueries({ queryKey: guildKeys.raid(guildId) });
-      }
-    },
-  });
-
-  if (raid.me.participating) {
-    return (
-      <View style={styles.stack}>
-        <WiseText accessibilityLiveRegion="polite" color="accentPrimary" testID="guild-raid-participating" variant="label">Você está nesta Raid</WiseText>
-        <WiseText testID="guild-raid-my-contribution" variant="body">{formatMyContribution(raid.me.contributionXp)}</WiseText>
-        {formatMyPosition(raid.me.position) ? <WiseText testID="guild-raid-my-position" variant="body">{formatMyPosition(raid.me.position)}</WiseText> : null}
-      </View>
-    );
-  }
-  if (raid.status === 'expired') return null;
-  return (
-    <View accessibilityLiveRegion="polite" style={styles.stack}>
-      {join.isError ? <FeedbackMessage message={joinRaidErrorMessage(join.error)} testID="guild-raid-join-error" title="Participação não confirmada" variant="error" /> : null}
-      <JoinRaidButton loading={join.isPending} onPress={() => { if (!join.isPending) { join.reset(); join.mutate(); } }} testID="guild-raid-join" />
-    </View>
-  );
-}
-
-/** The Raid scene without the party, cropped to the card. Decorative: the card text says everything it shows. */
-function RaidThumbnail() {
-  const [width, setWidth] = useState(0);
-  return (
-    <View
-      accessibilityElementsHidden
-      aria-hidden
-      importantForAccessibility="no-hide-descendants"
-      onLayout={(event) => setWidth(event.nativeEvent.layout.width)}
-      style={[styles.raidImage, width > 0 && { height: RAID_SCENE_HEIGHT * thumbnailScale(width) }]}
-      testID="guild-raid-image"
-    >
-      {width > 0 ? <RaidScene party={[]} scale={thumbnailScale(width)} showTags={false} viewportWidth={width} /> : null}
-    </View>
-  );
-}
-
-function RaidDetails({ guildId, raid }: { guildId: string; raid: ActiveRaid }) {
-  const timeLeft = useRaidTimeLeft(raid);
-  // The Meta batida takes the goal plus what the Fúria gave back to the boss.
-  const neededXp = raid.goalXp + raid.regeneratedXp;
-  const percent = raidProgressPercent(raid.progressXp, neededXp);
-  return (
-    <>
-      <RaidThumbnail />
-      <WiseText accessibilityRole="header" aria-level={3} variant="label">{raid.mission.name}</WiseText>
-      <WiseText color="textSecondary" variant="body">{raid.mission.description}</WiseText>
-      <View style={styles.stack}>
-        <ProgressBar
-          accessibilityLabel={`Progresso da Raid: ${raid.progressXp} de ${neededXp} XP, ${percent}%`}
-          maximumValue={neededXp}
-          size="tall"
-          testID="guild-raid-progress"
-          value={Math.min(raid.progressXp, neededXp)}
-        />
-        <WiseText variant="body">{raid.progressXp} / {neededXp} XP</WiseText>
-        {raid.goalReachedAt ? (
-          <WiseText accessibilityLiveRegion="polite" color="accentPrimary" testID="guild-raid-goal-reached" variant="label">
-            {RAID_GOAL_REACHED}
-          </WiseText>
-        ) : null}
-      </View>
-      <WiseText color="textSecondary" testID="guild-raid-time-left" variant="body">{formatRaidTimeLeft(timeLeft)}</WiseText>
-      <View style={styles.stack} testID="guild-raid-reward">
-        <WiseText color="accentPrimary" variant="caption">RECOMPENSA DE RAID</WiseText>
-        {raid.rewards.map((reward) => <View key={reward.itemId}>
-          <WiseText variant="label">{reward.name}</WiseText>
-          <WiseText color="textSecondary" variant="body">{formatRewardCategory(reward.category)}</WiseText>
-        </View>)}
-        <WiseText color="textSecondary" variant="body">{formatRewardCoins(raid.coins)}</WiseText>
-        <WiseText color="textSecondary" variant="caption">{RAID_REWARD_RULE}</WiseText>
-      </View>
-      <RaidParticipation guildId={guildId} raid={raid} />
-      <Link asChild href="/guilda/raid">
-        <WiseButton accessibilityLabel={`Ver a batalha da Raid ${raid.mission.name}`} label="Ver batalha" testID="guild-raid-battle" variant="secondary" />
-      </Link>
-    </>
-  );
-}
-
-function RaidCard({ guildId }: { guildId: string }) {
-  const raid = useQuery(activeRaidQueryOptions(guildId));
-
-  const body = (() => {
-    if (raid.isPending) return <WiseText color="textSecondary" testID="guild-raid-loading" variant="body">Carregando a Raid da semana…</WiseText>;
-    if (raid.isError && raid.data === undefined) {
-      return <View style={styles.stack} testID="guild-raid-error">
-        <FeedbackMessage message="Não foi possível carregar a Raid da semana." title="Raid indisponível" variant="error" />
-        <WiseButton label="Tentar novamente" loading={raid.isRefetching} onPress={() => void raid.refetch()} variant="secondary" />
-      </View>;
-    }
-    if (!raid.data) {
-      return <WiseText color="textSecondary" testID="guild-raid-empty" variant="body">Sua guilda ainda não tem uma Raid nesta semana. Volte em breve.</WiseText>;
-    }
-    return <>
-      {raid.isError ? <FeedbackMessage message="Não foi possível atualizar a Raid." testID="guild-raid-stale" title="Dados desatualizados" variant="error" /> : null}
-      <RaidDetails guildId={guildId} raid={raid.data} />
-    </>;
-  })();
-
-  return (
-    <WiseCard accessibilityLabel="Raid da semana" role="region" testID="guild-raid">
-      <View style={styles.cardContent}>
-        <WiseText accessibilityRole="header" aria-level={2} variant="subtitle">Raid da semana</WiseText>
-        {body}
-      </View>
-    </WiseCard>
-  );
-}
-
 function PastRaidItem({ raid }: { raid: PastRaid }) {
   const week = formatRaidWeek(raid.startsAt, raid.endsAt);
   const outcome = formatPastRaidOutcome(raid.status);
@@ -312,7 +175,7 @@ function RaidSection({ compact, guildId }: { compact: boolean; guildId: string }
   const raid = useQuery(activeRaidQueryOptions(guildId));
   return (
     <View style={styles.stack}>
-      <RaidCard guildId={guildId} />
+      <RaidCard desktop={!compact} guildId={guildId} />
       {raid.data ? <RankingCard compact={compact} guildId={guildId} key={raid.data.id} raidId={raid.data.id} /> : null}
     </View>
   );
@@ -540,8 +403,7 @@ const styles = StyleSheet.create({
   statsRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', columnGap: theme.space.stackTight, rowGap: theme.space.inlineHairline },
   rolePill: { paddingVertical: theme.space.inlineHairline, paddingHorizontal: theme.space.inlineTight, borderRadius: theme.radius.pill, borderWidth: theme.border.standard, borderColor: theme.color.borderSubtle, backgroundColor: theme.color.surfaceInset },
   rolePillLeader: { borderColor: theme.color.accentPrimary },
-  raidImage: { height: 160, overflow: 'hidden', borderRadius: theme.radius.card, backgroundColor: theme.color.surfaceInset },
-  pastRaidItem: { gap: theme.space.inlineHairline, paddingVertical: theme.space.inlineTight, borderTopWidth: theme.border.standard, borderTopColor: theme.color.borderSubtle },
+    pastRaidItem: { gap: theme.space.inlineHairline, paddingVertical: theme.space.inlineTight, borderTopWidth: theme.border.standard, borderTopColor: theme.color.borderSubtle },
 
   cardContent: { padding: theme.space.cardInset, gap: theme.space.stackTight },
   directoryItem: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: theme.space.stackTight },

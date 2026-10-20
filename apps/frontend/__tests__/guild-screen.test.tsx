@@ -348,78 +348,108 @@ describe('GuildScreen', () => {
       mockedMembers.mockResolvedValue(members(['Ana']));
     });
 
-    it('counts what the Fúria gave back in the goal of the progress bar', async () => {
+    it('counts what the Fúria gave back in the goal of the boss life', async () => {
       mockedRaid.mockResolvedValue(raid({ progressXp: 250, regeneratedXp: 100, healthXp: 850 }));
       await renderGuild();
 
-      const bar = await screen.findByTestId('guild-raid-progress');
-      expect(bar.props.accessibilityLabel).toBe('Progresso da Raid: 250 de 1100 XP, 22%');
-      expect(screen.getByText('250 / 1100 XP')).toBeTruthy();
+      const bar = await screen.findByTestId('guild-raid-boss-life');
+      expect(bar.props.accessibilityLabel).toBe('Vida do dragão: 85%. 0,4h de 1,8h de foco coletivo.');
+      expect(screen.getByTestId('guild-raid-boss-life-percent')).toHaveTextContent('85%');
+      expect(screen.getByTestId('guild-raid-focus-hours')).toHaveTextContent('1,4h de vida · 0,4h de 1,8h de foco coletivo');
     });
 
-    it('shows the Missão, the collective goal with an accessible progress bar, the time left and the reward', async () => {
+    it('shows the Missão, the boss life with an accessible bar, the time left and the reward summary on a phone', async () => {
       await renderGuild();
 
       expect(await screen.findByText('Cerco ao Grimório')).toBeTruthy();
-      expect(screen.getByText('Cerque os capítulos mais difíceis.')).toBeTruthy();
       expect(mockedRaid).toHaveBeenCalledWith('g1', expect.anything());
+      // The Figma hides the description, the scene chip and the Golpe on the phone; the countdown moves to the header.
+      expect(screen.queryByText('Cerque os capítulos mais difíceis.')).toBeNull();
+      expect(screen.queryByTestId('guild-raid-last-hit')).toBeNull();
+      expect(screen.queryByTestId('guild-raid-ends')).toBeNull();
 
-      const bar = screen.getByTestId('guild-raid-progress');
+      const bar = screen.getByTestId('guild-raid-boss-life');
       expect(bar.props.accessibilityRole).toBe('progressbar');
-      expect(bar.props.accessibilityLabel).toBe('Progresso da Raid: 250 de 1000 XP, 25%');
-      expect(bar.props.accessibilityValue).toMatchObject({ min: 0, max: 1000, now: 250 });
-      expect(screen.getByText('250 / 1000 XP')).toBeTruthy();
-      expect(screen.getByTestId('guild-raid-time-left').props.children).toBe('2 d 3 h restantes');
-      expect(screen.getByText('Marcador do Grimório')).toBeTruthy();
-      expect(screen.getByText(/Badge/)).toBeTruthy();
-      expect(screen.getByText(/contribua com ao menos uma sessão de guilda/)).toBeTruthy();
+      expect(bar.props.accessibilityValue).toMatchObject({ min: 0, max: 100, now: 0 });
+      expect(screen.getByTestId('guild-raid-boss-life-percent')).toHaveTextContent('0%');
+      expect(screen.getByTestId('guild-raid-time-left').props.children).toBe('2d 3h restantes');
+      expect(within(screen.getByTestId('guild-raid-reward')).getByText('Marcador do Grimório e +50 moedas')).toBeTruthy();
       expect(screen.queryByTestId('guild-raid-goal-reached')).toBeNull();
     });
 
-    it('shows "Meta batida" once the goal is reached, with the progress past the goal', async () => {
+    it('shows the description, the end of the week, the Golpe mais recente and the scene on desktop', async () => {
+      Dimensions.set({ window: { width: 1280, height: 800, scale: 1, fontScale: 1 } });
+      mockedRaid.mockResolvedValue(raid({
+        lastHit: { userId: 'u2', displayName: 'Eldoria', xp: 75, focusMinutes: 25, at: new Date().toISOString() },
+      }));
+      await renderGuild();
+
+      expect(await screen.findByText('Cerque os capítulos mais difíceis.')).toBeTruthy();
+      expect(screen.getByTestId('guild-raid-ends')).toHaveTextContent(/^Termina .+ · \d{2}:\d{2}$/);
+      expect(screen.getByTestId('guild-raid-last-hit')).toHaveTextContent('ÚLTIMO GOLPE−75 · Eldoria · 25 min');
+      expect(screen.getByTestId('guild-raid-time-left')).toHaveTextContent('2d 3h restantes');
+      expect(screen.getByTestId('guild-raid-image')).toBeTruthy();
+    });
+
+    it('draws the week of the Sequência and the streak of the Guild', async () => {
+      mockedRaid.mockResolvedValue(raid({ studyDays: ['2026-10-05', '2026-10-06'], streak: 2 }));
+      await renderGuild();
+
+      expect(await screen.findByTestId('guild-raid-streak')).toHaveTextContent('2 dias sem falhar');
+      expect(screen.getAllByTestId('raid-week-day-studied')).toHaveLength(2);
+      expect(screen.getAllByTestId('raid-week-day-today')).toHaveLength(1);
+    });
+
+    it('shows "Meta batida" once the goal is reached, with the boss life at zero', async () => {
       mockedRaid.mockResolvedValue(raid({ progressXp: 1250, goalReachedAt: new Date(Date.now() - DAY).toISOString() }));
       await renderGuild();
 
       expect(await screen.findByTestId('guild-raid-goal-reached')).toHaveTextContent(/Meta batida!/);
-      expect(screen.getByText('1250 / 1000 XP')).toBeTruthy();
-      expect(screen.getByTestId('guild-raid-progress').props.accessibilityLabel).toBe('Progresso da Raid: 1250 de 1000 XP, 100%');
+      expect(screen.getByTestId('guild-raid-boss-life-percent')).toHaveTextContent('0%');
     });
 
     describe('participation', () => {
-      it('offers "Participar" and, once confirmed, shows "Você está nesta Raid" without a refetch', async () => {
+      it('offers "Participar da Raid" and, once confirmed, swaps it for "Atacar com foco" without a refetch', async () => {
         mockedJoinRaid.mockResolvedValue(undefined);
         await renderGuild();
 
+        expect(await screen.findByText('Participar da Raid')).toBeTruthy();
+        expect(screen.queryByTestId('guild-raid-attack')).toBeNull();
+        expect(screen.getByTestId('guild-raid-my-contribution')).toHaveTextContent('Ainda não participa');
         fireEvent.press(await screen.findByTestId('guild-raid-join'));
 
-        expect(await screen.findByTestId('guild-raid-participating')).toBeTruthy();
-        expect(screen.getByText('Você está nesta Raid')).toBeTruthy();
+        expect(await screen.findByTestId('guild-raid-attack')).toBeTruthy();
+        expect(screen.getByTestId('guild-raid-my-contribution')).toHaveTextContent('0,0h');
         expect(screen.queryByTestId('guild-raid-join')).toBeNull();
         expect(mockedJoinRaid).toHaveBeenCalledTimes(1);
         expect(mockedJoinRaid).toHaveBeenCalledWith('r1');
         expect(mockedRaid).toHaveBeenCalledTimes(1);
       });
 
-      it('shows "Você está nesta Raid" straight away for a Participante, with no button', async () => {
+      it('shows "Atacar com foco" straight away for a Participante, with no join button', async () => {
         mockedRaid.mockResolvedValue(raid({ me: { participating: true, contributionXp: 0, position: 1 } }));
         await renderGuild();
 
-        expect(await screen.findByTestId('guild-raid-participating')).toBeTruthy();
+        const attack = await screen.findByTestId('guild-raid-attack');
+        expect(attack.props.accessibilityState).toMatchObject({ disabled: false });
         expect(screen.queryByTestId('guild-raid-join')).toBeNull();
       });
 
-      it('shows the Participante own Contribution', async () => {
-        mockedRaid.mockResolvedValue(raid({ me: { participating: true, contributionXp: 300, position: 1 } }));
+      it('shows the Participante own Contribution in hours with the place in the ranking', async () => {
+        mockedRaid.mockResolvedValue(raid({ me: { participating: true, contributionXp: 6780, position: 4 } }));
         await renderGuild();
 
-        expect(await screen.findByTestId('guild-raid-my-contribution')).toHaveTextContent('Sua contribuição: 300 XP');
+        expect(await screen.findByTestId('guild-raid-my-contribution')).toHaveTextContent('11,3h · 4º lugar');
+        expect(screen.getByTestId('guild-raid-contribution')).toHaveTextContent(/Dia inteiro sem estudo devolve 5% da vida ao dragão\.$/);
       });
 
-      it('invites a Participante without a Contribution yet to study in the Forja', async () => {
-        mockedRaid.mockResolvedValue(raid({ me: { participating: true, contributionXp: 0, position: 1 } }));
+      it('offers nothing to join once the Raid has expired', async () => {
+        mockedRaid.mockResolvedValue(raid({ status: 'expired' }));
         await renderGuild();
 
-        expect(await screen.findByTestId('guild-raid-my-contribution')).toHaveTextContent(/Sua contribuição: 0 XP.*Forja/);
+        await screen.findByTestId('guild-raid-battle');
+        expect(screen.queryByTestId('guild-raid-join')).toBeNull();
+        expect(screen.queryByTestId('guild-raid-attack')).toBeNull();
       });
 
       it('sends a single request on repeated presses while the first is in flight', async () => {
@@ -433,7 +463,7 @@ describe('GuildScreen', () => {
         fireEvent.press(screen.getByTestId('guild-raid-join'));
         expect(mockedJoinRaid).toHaveBeenCalledTimes(1);
         resolve();
-        expect(await screen.findByTestId('guild-raid-participating')).toBeTruthy();
+        expect(await screen.findByTestId('guild-raid-attack')).toBeTruthy();
       });
 
       it('explains a Raid that already ended and reloads the Raid (UC02 A01)', async () => {
@@ -479,7 +509,7 @@ describe('GuildScreen', () => {
         expect(await screen.findByText(/Verifique sua conexão/)).toBeTruthy();
         fireEvent.press(screen.getByTestId('guild-raid-join'));
 
-        expect(await screen.findByTestId('guild-raid-participating')).toBeTruthy();
+        expect(await screen.findByTestId('guild-raid-attack')).toBeTruthy();
         expect(screen.queryByTestId('guild-raid-join-error')).toBeNull();
       });
     });
@@ -488,14 +518,6 @@ describe('GuildScreen', () => {
       await renderGuild();
       const battle = await screen.findByTestId('guild-raid-battle');
       expect(battle.props.accessibilityLabel).toBe('Ver a batalha da Raid Cerco ao Grimório');
-    });
-
-    it('reserves a decorative image slot that screen readers skip', async () => {
-      await renderGuild();
-      const image = await screen.findByTestId('guild-raid-image', { includeHiddenElements: true });
-      expect(image.props['aria-hidden']).toBe(true);
-      expect(image.props.accessibilityElementsHidden).toBe(true);
-      expect(image.props.importantForAccessibility).toBe('no-hide-descendants');
     });
 
     it('says the Raid is ending once the time left reaches zero', async () => {
@@ -686,7 +708,7 @@ describe('Ranking interno', () => {
     mockedRanking.mockResolvedValue(rankingPage([row(1, 'Bruno', 300), row(2, 'Ana', 120, { isMe: true })]));
     await renderGuild();
 
-    expect(await screen.findByTestId('guild-raid-my-position')).toHaveTextContent('Sua posição: 2º no Ranking interno');
+    expect(await screen.findByTestId('guild-raid-my-contribution')).toHaveTextContent('0,2h · 2º lugar');
   });
 
   it('invites to participate when nobody has confirmed yet', async () => {
@@ -700,7 +722,7 @@ describe('Ranking interno', () => {
     await renderGuild();
 
     expect(await screen.findByTestId('guild-ranking-error')).toBeTruthy();
-    expect(screen.getByTestId('guild-raid-progress')).toBeTruthy();
+    expect(screen.getByTestId('guild-raid-boss-life')).toBeTruthy();
 
     mockedRanking.mockResolvedValue(rankingPage([row(1, 'Bruno', 300)]));
     await fireEvent.press(within(screen.getByTestId('guild-ranking-error')).getByLabelText('Tentar novamente'));

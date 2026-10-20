@@ -155,3 +155,9 @@ export function formatStreak(streak: number, { compact = false }: { compact?: bo
   if (streak === 0) return `${label}: nenhum dia ainda`;
   return `${label}: ${streak} ${streak === 1 ? 'dia' : 'dias'} sem falhar`;
 }
+
+/** The streak alone, for a card that already titles it: "4 dias sem falhar". */
+export function formatStreakDays(streak: number): string {
+  if (streak === 0) return 'Nenhum dia ainda';
+  return `${streak} ${streak === 1 ? 'dia' : 'dias'} sem falhar`;
+}

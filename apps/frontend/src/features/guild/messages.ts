@@ -1,4 +1,5 @@
 import { isApiError } from '@/core/api/api-error';
+import type { RaidRewardCategory } from './api';
 import type { ChatAckError } from './guild-chat';
 
 /** The UI owns the public text; the backend `detail` never reaches the screen. */
@@ -48,38 +49,32 @@ export function leaveGuildErrorMessage(error: unknown): string {
   return 'Não foi possível sair da guilda agora. Tente novamente.';
 }
 
-const RAID_REWARD_CATEGORY_LABELS = { avatar: 'Avatar', badge: 'Badge', title: 'Título', accessory: 'Acessório' } as const;
-
-export function formatRewardCategory(category: keyof typeof RAID_REWARD_CATEGORY_LABELS): string {
-  return RAID_REWARD_CATEGORY_LABELS[category];
-}
-
 /** A reward item as named on the Raid screens: a Título is quoted, the rest by name. */
-export function formatRewardName(reward: { name: string; category: keyof typeof RAID_REWARD_CATEGORY_LABELS }): string {
+export function formatRewardName(reward: { name: string; category: RaidRewardCategory }): string {
   return reward.category === 'title' ? `Título “${reward.name}”` : reward.name;
 }
 
 export const formatRewardCoins = (coins: number) => `+${coins} Moedas`;
 
-export const RAID_REWARD_RULE = 'Para receber o item, contribua com ao menos uma sessão de guilda e ajude a bater a meta até o fim da semana.';
-
-/** Remaining time shown on the Raid card; at zero the week is over and the next refetch brings the new Raid. */
-export function formatRaidTimeLeft(milliseconds: number): string {
-  const minutes = Math.floor(milliseconds / 60_000);
-  if (minutes <= 0) return 'Encerrando…';
-  const days = Math.floor(minutes / 1440);
-  const hours = Math.floor((minutes % 1440) / 60);
-  if (days > 0) return `${days} d ${hours} h restantes`;
-  if (hours > 0) return `${hours} h ${minutes % 60} min restantes`;
-  return `${minutes} min restantes`;
+/** One line for the Raid card: "Título “Caçador”, Escama Rubra e +50 moedas". */
+export function formatRewardSummary(rewards: readonly { name: string; category: RaidRewardCategory }[], coins: number): string {
+  const parts = [...rewards.map(formatRewardName), `+${coins} moedas`];
+  const last = parts.pop();
+  return parts.length ? `${parts.join(', ')} e ${last}` : `${last}`;
 }
+
+const RAID_END = new Intl.DateTimeFormat('pt-BR', { weekday: 'long', hour: '2-digit', minute: '2-digit', hourCycle: 'h23', timeZone: 'America/Sao_Paulo' });
+
+/** "Termina domingo · 23:59": the end of the Raid week as São Paulo reads it. */
+export function formatRaidEnds(endsAt: string): string {
+  const parts = Object.fromEntries(RAID_END.formatToParts(new Date(endsAt)).map((part) => [part.type, part.value]));
+  return `Termina ${parts.weekday} · ${parts.hour}:${parts.minute}`;
+}
+
+export const RAID_REWARD_RULE = 'Para receber o item, contribua com ao menos uma sessão de guilda e ajude a bater a meta até o fim da semana.';
 
 /** Shown once the progress reached the goal; Contributions keep adding until the end of the week. */
 export const RAID_GOAL_REACHED = 'Meta batida! As sessões de guilda continuam contando até o fim da semana.';
-
-export function formatMyContribution(xp: number): string {
-  return xp > 0 ? `Sua contribuição: ${xp} XP` : 'Sua contribuição: 0 XP. Conclua uma sessão de guilda na Forja para somar.';
-}
 
 export function raidProgressPercent(progressXp: number, goalXp: number): number {
   return goalXp > 0 ? Math.min(100, Math.floor((progressXp / goalXp) * 100)) : 0;

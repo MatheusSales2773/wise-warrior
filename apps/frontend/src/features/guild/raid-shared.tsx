@@ -23,7 +23,7 @@ export function TimePill({ compact, raid, testID = 'raid-time-left' }: { compact
 }
 
 /** The goal grows by what the Fúria gave back, so "foco coletivo" is what the Meta batida really takes. */
-function bossLifeView(raid: ActiveRaid): { percent: number; label: string; needed: string } {
+export function bossLifeView(raid: ActiveRaid): { percent: number; label: string; needed: string } {
   const percent = bossLifePercent(raid.healthXp, raid.goalXp, raid.goalReachedAt !== null);
   const needed = formatFocusHours(raid.goalXp + raid.regeneratedXp);
   return { percent, label: `Vida do dragão: ${percent}%. ${formatFocusHours(raid.progressXp)} de ${needed} de foco coletivo.`, needed };
@@ -97,7 +97,7 @@ function rewardsLabel(raid: ActiveRaid): string {
   return [...raid.rewards.map(formatRewardName), formatRewardCoins(raid.coins)].join(', ');
 }
 
-export function AttackButton({ raid }: { raid: ActiveRaid }) {
+export function AttackButton({ raid, testID = 'raid-attack' }: { raid: ActiveRaid; testID?: string }) {
   const timeLeft = useRaidTimeLeft(raid);
   const over = raid.status !== 'active' || timeLeft <= 0;
   return <Link asChild href="/sessao?modo=guilda">
@@ -106,7 +106,7 @@ export function AttackButton({ raid }: { raid: ActiveRaid }) {
       disabled={over}
       label="Atacar com foco"
       leading={<WiseIcon color={over ? 'textSecondary' : 'backgroundCanvas'} name="play" size="xsmall" />}
-      testID="raid-attack"
+      testID={testID}
     />
   </Link>;
 }

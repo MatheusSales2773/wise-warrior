@@ -1,5 +1,5 @@
 import type { RaidRankingEntry } from '@/features/guild/api';
-import { XP_PER_FOCUS_HOUR, bossLifePercent, formatBattleTimeLeft, formatFocusHours, formatStreak, heroOf, raidParty, raidWeekGrid, weeklyStrikes } from '@/features/guild/raid-battle';
+import { XP_PER_FOCUS_HOUR, bossLifePercent, formatBattleTimeLeft, formatFocusHours, formatStreak, formatStreakDays, heroOf, raidParty, raidWeekGrid, weeklyStrikes } from '@/features/guild/raid-battle';
 import { defaultRaidSceneArt, raidSceneArt } from '@/features/guild/raid-scene-art';
 import { raidSceneScale } from '@/features/guild/raid-scene';
 import { RAID_SCENE_HEIGHT, RAID_SCENE_WIDTH, raidSceneBackground, raidSceneBoss, sentinelaSprite } from '@/features/guild/raid-scene-sprites';
@@ -161,5 +161,13 @@ describe('formatStreak', () => {
     expect(formatStreak(1)).toBe('Sequência da guilda: 1 dia sem falhar');
     expect(formatStreak(4)).toBe('Sequência da guilda: 4 dias sem falhar');
     expect(formatStreak(4, { compact: true })).toBe('Guilda: 4 dias sem falhar');
+  });
+});
+
+describe('formatStreakDays', () => {
+  it('says the streak alone, for a card that already titles it', () => {
+    expect(formatStreakDays(0)).toBe('Nenhum dia ainda');
+    expect(formatStreakDays(1)).toBe('1 dia sem falhar');
+    expect(formatStreakDays(4)).toBe('4 dias sem falhar');
   });
 });
