@@ -6,13 +6,14 @@ import { FeedbackMessage, ProgressBar, Screen, WiseButton, WiseCard, WiseField, 
 import { isApiError } from '@/core/api/api-error';
 import { createGuild, joinGuild, joinRaid, leaveGuild, type ActiveRaid, type GuildMember, type GuildSummary, type MyGuild, type PastRaid, type RaidRankingEntry } from './api';
 import {
-  RAID_GOAL_REACHED, RAID_REWARD_RULE, createGuildErrorMessage, formatPastRaidMine, formatPastRaidOutcome, formatRaidWeek, formatGuildRole, formatMyContribution, formatMyPosition, formatMemberCount, formatPosition, formatRaidTimeLeft, formatRewardCategory, formatRewardCoins,
+  RAID_GOAL_REACHED, RAID_REWARD_RULE, createGuildErrorMessage, formatPastRaidMine, formatPastRaidOutcome, formatRaidWeek, formatGuildRole, formatGuildRoleSeal, formatGuildStats, formatMyContribution, formatMyPosition, formatMemberCount, formatPosition, formatRaidTimeLeft, formatRewardCategory, formatRewardCoins,
   joinGuildErrorMessage, joinRaidErrorMessage, leaveGuildErrorMessage, raidProgressPercent, rankingEntryLabel,
 } from './messages';
 import { activeRaidQueryOptions, guildDirectoryQueryOptions, guildKeys, guildMembersQueryOptions, myGuildQueryOptions, pastRaidsQueryOptions, raidRankingQueryOptions } from './queries';
 import { profileQueryOptions } from '@/features/dashboard/queries';
 import { useGuildChat } from './guild-chat';
 import { GuildTabs, MuralAnnouncer, MuralPanel, OnlineIndicator, PresenceDot, type GuildTab } from './guild-mural';
+import { GuildEmblem } from './guild-emblem';
 import { RaidScene } from './raid-scene';
 import { RAID_SCENE_HEIGHT, RAID_SCENE_WIDTH } from './raid-scene-sprites';
 import { GUILD_NAME_MAX_LENGTH, normalizeGuildName, validateGuildName } from './validation';
@@ -89,19 +90,24 @@ function LeaveGuildAction({ guildId, isLeader, onLeft, onConflict }: { guildId: 
   );
 }
 
-function GuildCard({ mine, onlineUserIds }: { mine: MyGuild; onlineUserIds: ReadonlySet<string> | null }) {
+function GuildCard({ mine, onlineUserIds, desktop }: { mine: MyGuild; onlineUserIds: ReadonlySet<string> | null; desktop: boolean }) {
   const { guild, role } = mine;
   return (
-    <WiseCard accessibilityLabel="Sua guilda" role="region" testID="guild-mine" variant="ornamented">
-      <View style={styles.cardContent}>
-        <WiseText color="accentPrimary" variant="caption">{formatGuildRole(role).toUpperCase()}</WiseText>
-        <WiseText accessibilityRole="header" aria-level={2} testID="guild-mine-name" variant="subtitle">{guild.name}</WiseText>
-        <WiseText testID="guild-mine-level" variant="body">Nível {guild.level}</WiseText>
-        <WiseText color="textSecondary" testID="guild-mine-members" variant="body">{formatMemberCount(guild.memberCount)}</WiseText>
-        <OnlineIndicator onlineUserIds={onlineUserIds} />
-        {guild.leader ? <WiseText color="textSecondary" testID="guild-mine-leader" variant="body">Líder: {guild.leader.displayName}</WiseText> : null}
+    <View accessibilityLabel="Sua guilda" accessibilityRole="summary" role="region" style={styles.identity} testID="guild-mine">
+      <GuildEmblem decorative guildId={guild.id} name={guild.name} size={desktop ? 56 : 42} />
+      <View style={styles.identityText}>
+        <View style={styles.nameRow}>
+          <WiseText accessibilityRole="header" aria-level={2} testID="guild-mine-name" variant={desktop ? 'title' : 'subtitle'}>{guild.name}</WiseText>
+          <View style={[styles.rolePill, role === 'leader' && styles.rolePillLeader]} testID="guild-mine-role">
+            <WiseText color={role === 'leader' ? 'accentPrimary' : 'textSecondary'} variant="caption">{formatGuildRoleSeal(role)}</WiseText>
+          </View>
+        </View>
+        <View style={styles.statsRow}>
+          <WiseText color="textTertiary" testID="guild-mine-stats" variant="caption">{formatGuildStats(guild.level, guild.memberCount)}</WiseText>
+          <OnlineIndicator onlineUserIds={onlineUserIds} />
+        </View>
       </View>
-    </WiseCard>
+    </View>
   );
 }
 
@@ -483,8 +489,8 @@ function MemberGuild({ mine, desktop, onLeft, onConflict }: { mine: MyGuild; des
   const [tab, setTab] = useState<GuildTab>('raid');
   const header = (
     <View style={[styles.stack, desktop && styles.headerRow]} testID="guild-header">
-      <View style={desktop ? styles.column : undefined}><GuildCard mine={mine} onlineUserIds={chat.onlineUserIds} /></View>
-      <View testID="guild-leave-section">
+      <View style={desktop ? styles.column : undefined}><GuildCard desktop={desktop} mine={mine} onlineUserIds={chat.onlineUserIds} /></View>
+      <View style={desktop ? styles.leaveDesktop : undefined} testID="guild-leave-section">
         <LeaveGuildAction guildId={guild.id} isLeader={role === 'leader'} onConflict={onConflict} onLeft={onLeft} />
       </View>
     </View>
@@ -574,7 +580,14 @@ const styles = StyleSheet.create({
   // Figma 06c desktop: a 680 px main column and a 392 px side column.
   columnMain: { flex: 680 },
   columnSide: { flex: 392 },
-  headerRow: { flexDirection: 'row', alignItems: 'flex-start' },
+  headerRow: { flexDirection: 'row', alignItems: 'center', gap: theme.space.stackDefault },
+  leaveDesktop: { width: 199 },
+  identity: { flexDirection: 'row', alignItems: 'center', gap: theme.space.stackDefault },
+  identityText: { flex: 1, gap: theme.space.inlineTight },
+  nameRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: theme.space.stackTight },
+  statsRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', columnGap: theme.space.stackTight, rowGap: theme.space.inlineHairline },
+  rolePill: { paddingVertical: theme.space.inlineHairline, paddingHorizontal: theme.space.inlineTight, borderRadius: theme.radius.pill, borderWidth: theme.border.standard, borderColor: theme.color.borderSubtle, backgroundColor: theme.color.surfaceInset },
+  rolePillLeader: { borderColor: theme.color.accentPrimary },
   raidImage: { height: 160, overflow: 'hidden', borderRadius: theme.radius.card, backgroundColor: theme.color.surfaceInset },
   rankingItem: { flexDirection: 'row', alignItems: 'center', gap: theme.space.stackTight, paddingVertical: theme.space.inlineTight, paddingHorizontal: theme.space.inlineTight, borderRadius: theme.radius.control, borderWidth: theme.border.standard, borderColor: 'transparent' },
   // The own row is marked by a border and a "(você)" label as well as by the fill, never by color alone.
