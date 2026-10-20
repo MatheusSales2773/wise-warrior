@@ -28,7 +28,7 @@
     "verify:m5": "npm run verify"
   },
   "devDependencies": {
-    "@redocly/cli": "2.53.2",
+    "@redocly/cli": "2.64.1",
     "eslint": "9.39.5",
     "react": "19.2.3",
     "react-dom": "19.2.3"
