@@ -1,4 +1,4 @@
-import { infiniteQueryOptions, queryOptions } from '@tanstack/react-query';
+import { infiniteQueryOptions, keepPreviousData, queryOptions } from '@tanstack/react-query';
 import { getActiveRaid, getMyGuild, getRaidRanking, listGuildMembers, listGuilds, listPastRaids } from './api';
 
 export const guildKeys = {
@@ -22,6 +22,8 @@ export const myGuildQueryOptions = () => queryOptions({
 
 export const guildDirectoryQueryOptions = (search: string) => infiniteQueryOptions({
   queryKey: guildKeys.directory(search),
+  // Keeps the last list on screen while a new search loads, so typing does not flash the loading state.
+  placeholderData: keepPreviousData,
   queryFn: ({ pageParam, signal }) => listGuilds({ search, cursor: pageParam, signal }),
   initialPageParam: null as string | null,
   getNextPageParam: (lastPage) => lastPage.nextCursor,

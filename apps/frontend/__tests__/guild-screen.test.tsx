@@ -244,6 +244,9 @@ describe('GuildScreen', () => {
       expect(screen.getByRole('tab', { name: 'Fundar' }).props.accessibilityState).toEqual(expect.objectContaining({ selected: false }));
       expect(await screen.findByTestId('guild-directory-item-id-Alfa')).toBeTruthy();
       expect(screen.getByTestId('guild-directory-item-id-Beta')).toBeTruthy();
+      for (const id of ['id-Alfa', 'id-Beta']) {
+        expect(within(screen.getByTestId(`guild-directory-item-${id}`)).getByTestId('guild-emblem', { includeHiddenElements: true })).toBeTruthy();
+      }
       expect(screen.queryByTestId('guild-create')).toBeNull();
       expect(screen.queryByTestId('guild-how-it-works')).toBeNull();
     });
@@ -293,22 +296,38 @@ describe('GuildScreen', () => {
       expect(await screen.findByTestId('guild-directory-item-id-Alfa')).toBeTruthy();
       expect(screen.getByTestId('guild-create')).toBeTruthy();
       expect(screen.getByTestId('guild-how-it-works')).toBeTruthy();
-      expect(screen.getByTestId('guild-directory-search-submit')).toBeTruthy();
+      await fireEvent.changeText(screen.getByLabelText('Buscar por nome'), ' beta ');
+      await fireEvent.press(screen.getByTestId('guild-directory-search-submit'));
+      await waitFor(() => expect(mockedList).toHaveBeenLastCalledWith(expect.objectContaining({ search: 'beta' })));
+      expect(within(screen.getByTestId('guild-directory-item-id-Alfa')).getByTestId('guild-emblem', { includeHiddenElements: true })).toBeTruthy();
     });
 
-    it('searches on a phone with the "Buscar" button and with the keyboard submit', async () => {
+    it('searches on a phone with the keyboard submit, with no "Buscar" button as in the Figma', async () => {
       mockedMine.mockResolvedValue(null);
       mockedList.mockResolvedValue(page(['Alfa']));
       await renderGuild();
       await screen.findByTestId('guild-directory-item-id-Alfa');
 
+      expect(screen.queryByTestId('guild-directory-search-submit')).toBeNull();
       await fireEvent.changeText(screen.getByLabelText('Buscar por nome'), ' beta ');
-      await fireEvent.press(screen.getByTestId('guild-directory-search-submit'));
-      await waitFor(() => expect(mockedList).toHaveBeenLastCalledWith(expect.objectContaining({ search: 'beta' })));
-
-      await fireEvent.changeText(screen.getByLabelText('Buscar por nome'), 'gama');
       await fireEvent(screen.getByLabelText('Buscar por nome'), 'submitEditing');
-      await waitFor(() => expect(mockedList).toHaveBeenLastCalledWith(expect.objectContaining({ search: 'gama' })));
+      await waitFor(() => expect(mockedList).toHaveBeenLastCalledWith(expect.objectContaining({ search: 'beta' })));
+    });
+
+    it('searches by itself after the user stops typing, with no submit', async () => {
+      mockedMine.mockResolvedValue(null);
+      mockedList.mockResolvedValue(page(['Alfa']));
+      await renderGuild();
+      await screen.findByTestId('guild-directory-item-id-Alfa');
+      mockedList.mockClear();
+
+      mockedList.mockResolvedValue(page(['Beta']));
+      await fireEvent.changeText(screen.getByLabelText('Buscar por nome'), 'b');
+      await fireEvent.changeText(screen.getByLabelText('Buscar por nome'), ' be ');
+      expect(mockedList).not.toHaveBeenCalled();
+      expect(await screen.findByTestId('guild-directory-item-id-Beta')).toBeTruthy();
+      expect(mockedList).toHaveBeenCalledTimes(1);
+      expect(mockedList).toHaveBeenLastCalledWith(expect.objectContaining({ search: 'be' }));
     });
 
     it('states the name rule from the validation constants and counts the typed characters', async () => {
@@ -477,7 +496,7 @@ describe('GuildScreen', () => {
 
     mockedList.mockResolvedValue(page([]));
     await fireEvent.changeText(screen.getByLabelText('Buscar por nome'), ' zzz ');
-    await fireEvent.press(screen.getByTestId('guild-directory-search-submit'));
+    await fireEvent(screen.getByLabelText('Buscar por nome'), 'submitEditing');
     expect(await screen.findByText('Nenhuma guilda encontrada para essa busca.')).toBeTruthy();
     expect(mockedList).toHaveBeenLastCalledWith(expect.objectContaining({ search: 'zzz' }));
   });
