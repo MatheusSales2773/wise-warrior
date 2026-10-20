@@ -66,6 +66,7 @@ const raid = (overrides: Partial<ActiveRaid> = {}): ActiveRaid => ({
   status: 'active',
   me: { participating: true, contributionXp: 100, position: 1 },
   lastHit: null,
+  missionOwner: null,
   ...overrides,
 });
 

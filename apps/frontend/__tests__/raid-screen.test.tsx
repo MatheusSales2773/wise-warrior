@@ -49,6 +49,7 @@ const raid = (overrides: Partial<ActiveRaid> = {}): ActiveRaid => ({
   streak: 0,
   me: { participating: true, contributionXp: 6_780, position: 4 },
   lastHit: null,
+  missionOwner: null,
   ...overrides,
 });
 function setViewport(width: number, height: number) {
@@ -70,6 +71,19 @@ beforeEach(() => {
 afterEach(() => { [mockedMine, mockedRaid, mockedRanking].forEach((mock) => mock.mockReset()); });
 
 describe('RaidBattleScreen on desktop', () => {
+  it('names whose Missão the Raid is', async () => {
+    mockedRaid.mockResolvedValue(raid({ missionOwner: { userId: 'u2', displayName: 'Bruno' } }));
+    await renderRaid();
+
+    expect(await screen.findByTestId('raid-mission-owner')).toHaveTextContent('Missão de Bruno');
+  });
+
+  it('names the rotation when nobody chose the Missão', async () => {
+    await renderRaid();
+
+    expect(await screen.findByTestId('raid-mission-owner')).toHaveTextContent('Missão do rodízio');
+  });
+
   it('shows the Mission, the time left and the boss life in focus hours', async () => {
     await renderRaid();
 

@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { Platform, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { FeedbackMessage, ProgressBar, Screen, WiseButton, WiseCard, WiseText, isDesktopLayout, theme } from '@/design-system';
 import { isApiError } from '@/core/api/api-error';
-import { leaveGuild, type GuildMember, type MyGuild } from './api';
+import { leaveGuild, type GuildMember, type GuildRole, type MyGuild } from './api';
 import {
   formatGuildRole, formatGuildRoleSeal, formatGuildStats, leaveGuildErrorMessage,
 } from './messages';
@@ -16,6 +16,7 @@ import { HeroAvatar } from './hero-avatar';
 import { GuildEmblem } from './guild-emblem';
 import { PastRaidsCard } from './guild-past-raids';
 import { RaidCard } from './guild-raid-card';
+import { NextRaidCard } from './mission-choice';
 import { RankingCard } from './guild-ranking';
 import { RewardsCard } from './guild-rewards';
 import { columnStyles } from './guild-card-style';
@@ -116,11 +117,12 @@ function GuildCard({ mine, onlineUserIds, desktop }: { mine: MyGuild; onlineUser
 }
 
 /** The Raid of the week and, below it, its Ranking interno. The ranking only exists while there is a Raid to rank. */
-function RaidSection({ compact, guildId }: { compact: boolean; guildId: string }) {
+function RaidSection({ compact, guildId, role }: { compact: boolean; guildId: string; role: GuildRole }) {
   const raid = useQuery(activeRaidQueryOptions(guildId));
   return (
     <View style={styles.stack}>
       <RaidCard desktop={!compact} guildId={guildId} />
+      <NextRaidCard desktop={!compact} guildId={guildId} raidId={raid.data?.id} role={role} />
       {raid.data ? <RankingCard compact={compact} guildId={guildId} key={raid.data.id} raidId={raid.data.id} /> : null}
     </View>
   );
@@ -140,7 +142,7 @@ function MemberGuild({ mine, desktop, onLeft, onConflict }: { mine: MyGuild; des
       </View>
     </View>
   );
-  const raid = <RaidSection compact={!desktop} guildId={guild.id} />;
+  const raid = <RaidSection compact={!desktop} guildId={guild.id} role={role} />;
   const rewards = <RewardsCard guildId={guild.id} />;
   const mural = <MuralPanel chat={chat} />;
   const members = <MembersCard guildId={guild.id} memberCount={guild.memberCount} onlineUserIds={chat.onlineUserIds} />;

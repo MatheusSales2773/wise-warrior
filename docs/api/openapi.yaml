@@ -1798,7 +1798,7 @@ components:
 
     ActiveRaid:
       type: object
-      required: [id, mission, rewards, coins, party, goalXp, progressXp, regeneratedXp, healthXp, furyPercent, goalReachedAt, startsAt, endsAt, status, weekDays, today, studyDays, streak, me, lastHit]
+      required: [id, mission, missionOwner, rewards, coins, party, goalXp, progressXp, regeneratedXp, healthXp, furyPercent, goalReachedAt, startsAt, endsAt, status, weekDays, today, studyDays, streak, me, lastHit]
       properties:
         id: { type: string, format: uuid }
         mission:
@@ -1809,6 +1809,13 @@ components:
             name: { type: string }
             description: { type: string, maxLength: 140 }
             imageUrl: { type: [string, "null"], description: Nulo enquanto a Missão não tem imagem }
+        missionOwner:
+          type: [object, "null"]
+          description: De quem é a Missão que o Líder escolheu (ADR-012), gravado quando a Raid consome a escolha. Nulo na Missão do rodízio. Segue nomeado mesmo se o dono sair da Guild.
+          required: [userId, displayName]
+          properties:
+            userId: { type: string, format: uuid }
+            displayName: { type: string }
         rewards:
           type: array
           description: Recompensa de Raid, todos os Cosmetic Items da Missão em ordem estável. Dados a quem tiver Contribuição numa Raid vencida, junto com `coins`.

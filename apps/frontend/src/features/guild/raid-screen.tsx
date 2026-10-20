@@ -10,6 +10,7 @@ import { RAID_GOAL_REACHED, formatPosition } from './messages';
 import { activeRaidQueryOptions, myGuildQueryOptions, raidRankingQueryOptions } from './queries';
 import { formatFocusHours, formatRaidHit, formatStreak, raidParty, weeklyStrikes, type Strike } from './raid-battle';
 import { HeroAvatar } from './hero-avatar';
+import { MissionOwnerSeal } from './mission-choice';
 import { AttackButton, BossLifePanel, BossLifeRow, RewardChips, RewardList, TimePill, WeekGrid } from './raid-shared';
 import { raidSceneArt } from './raid-scene-art';
 import { RaidScene, raidSceneScale } from './raid-scene';
@@ -36,6 +37,7 @@ function RaidHeading({ compact, guildName, raid }: { compact: boolean; guildName
   return <View style={styles.heading}>
     <Text style={[styles.eyebrow, compact && styles.eyebrowCompact]}>{compact ? 'Raid semanal' : `Raid semanal · ${guildName}`}</Text>
     <Text accessibilityRole="header" aria-level={1} style={[styles.title, compact && styles.titleCompact]} testID="raid-mission-name">{raid.mission.name}</Text>
+    <MissionOwnerSeal owner={raid.missionOwner} testID="raid-mission-owner" />
     <Text style={[styles.description, compact && styles.descriptionCompact]}>{raid.mission.description}</Text>
   </View>;
 }

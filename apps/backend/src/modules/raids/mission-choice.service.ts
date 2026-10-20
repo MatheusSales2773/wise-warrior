@@ -40,6 +40,12 @@ export interface NextMissionChoice {
   chosenAt: Date;
 }
 
+/** A escolha levada pela Raid que a consome: a Missão e o dono (`null` no rodízio). */
+export interface ConsumedMissionChoice {
+  mission: Mission;
+  ownerUserId: string | null;
+}
+
 const summarize = (mission: Mission): MissionSummary => ({
   id: mission.id,
   slug: mission.slug,
@@ -128,15 +134,16 @@ export class MissionChoiceService {
   }
 
   /**
-   * Chamado ao criar a Raid, na transação dela: devolve a Missão escolhida e apaga a escolha, que trava ali. Dono
-   * que saiu antes (ou escolha sem Missão) → `null`, e a Raid usa o rodízio.
+   * Chamado ao criar a Raid, na transação dela: devolve a Missão escolhida (com o dono, `null` no rodízio) e apaga a
+   * escolha, que trava ali. Dono que saiu antes (ou escolha sem Missão) → `null`, e a Raid usa o rodízio.
    */
-  async consume(manager: EntityManager, guildId: string): Promise<Mission | null> {
+  async consume(manager: EntityManager, guildId: string): Promise<ConsumedMissionChoice | null> {
     const choice = await manager.findOne(GuildMissionChoice, { where: { guildId }, lock: { mode: 'pessimistic_write' } });
     if (!choice) return null;
     await manager.delete(GuildMissionChoice, { guildId });
     if (choice.ownerUserId !== null && !(await this.guilds.isMemberIn(manager, guildId, choice.ownerUserId))) return null;
-    return manager.findOne(Mission, { where: { id: choice.missionId } });
+    const mission = await manager.findOne(Mission, { where: { id: choice.missionId } });
+    return mission ? { mission, ownerUserId: choice.ownerUserId } : null;
   }
 
   private async assertMember(guildId: string, userId: string): Promise<void> {

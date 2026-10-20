@@ -419,6 +419,7 @@ describe('Sessão de guilda on the Forja', () => {
     status: 'active',
     me: { participating: true, contributionXp: 0, position: 1 },
     lastHit: null,
+    missionOwner: null,
     ...overrides,
   });
   const guildSnapshot: StudySessionSnapshot = { ...snapshot, mode: 'guild', raidId: 'raid-1' };
