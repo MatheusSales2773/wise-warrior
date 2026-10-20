@@ -5,3 +5,8 @@ import '@testing-library/react-native';
 afterEach(() => {
   jest.useRealTimers();
 });
+
+jest.mock('expo-audio', () => ({
+  createAudioPlayer: jest.fn(() => ({ play: jest.fn(), seekTo: jest.fn(() => Promise.resolve()) })),
+  setAudioModeAsync: jest.fn(() => Promise.resolve()),
+}));

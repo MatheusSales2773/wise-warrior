@@ -38,7 +38,8 @@
         {
           "configureAndroidBackup": true
         }
-      ]
+      ],
+      "expo-audio"
     ],
     "experiments": {
       "typedRoutes": true
