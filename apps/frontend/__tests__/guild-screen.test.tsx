@@ -113,6 +113,25 @@ describe('GuildScreen', () => {
     expect(screen.getByTestId('guild-mine-stats').props.children).toBe('NÍVEL 1 · 3 MEMBROS');
   });
 
+  it('pluralises the won Raids from Level 3 on', async () => {
+    mockedMine.mockResolvedValue({ ...mine, guild: { ...mine.guild, level: 4, memberCount: 1 } });
+    mockedMembers.mockResolvedValue(members(['Ana']));
+    await renderGuild();
+
+    expect((await screen.findByTestId('guild-mine-stats')).props.children).toBe('NÍVEL 4 · 1 MEMBRO · 3 RAIDS VENCIDAS');
+  });
+
+  it('keeps the leave error messages of the header action', async () => {
+    mockedMine.mockResolvedValue({ ...mine, role: 'member' });
+    mockedMembers.mockResolvedValue(members(['Ana']));
+    mockedLeave.mockRejectedValueOnce(new ApiError('network', { status: 0 }));
+    await renderGuild();
+
+    await fireEvent.press(await screen.findByTestId('guild-leave'));
+    await fireEvent.press(screen.getByTestId('guild-leave-confirm-button'));
+    expect(await screen.findByText('Não foi possível sair da guilda. Verifique sua conexão e tente novamente.')).toBeTruthy();
+  });
+
   it('lists the members with level and title and loads further pages', async () => {
     mockedMine.mockResolvedValue(mine);
     mockedMembers.mockResolvedValueOnce(members(['Ana', 'Bruno'], 'next'));
