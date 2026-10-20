@@ -113,6 +113,7 @@ describe('Guild presence', () => {
     await gateway.emit('member:online', { guildId: 'g1', userId: 'u3', online: true });
     expect(screen.getByTestId('guild-member-online-u3')).toBeOnTheScreen();
     expect(screen.getByTestId('guild-member-u3')).toHaveProp('accessibilityLabel', expect.stringContaining('Caio, online'));
+    expect(screen.getByTestId('guild-members-count')).toHaveTextContent(/· 3 online$/);
   });
 
   it('stops showing presence while the connection is down', async () => {
