@@ -1,7 +1,7 @@
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'expo-router';
 import { useState } from 'react';
-import { Platform, StyleSheet, View, useWindowDimensions } from 'react-native';
+import { Platform, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { FeedbackMessage, ProgressBar, Screen, WiseButton, WiseCard, WiseField, WiseText, isDesktopLayout, theme } from '@/design-system';
 import { isApiError } from '@/core/api/api-error';
 import { createGuild, joinGuild, joinRaid, leaveGuild, type ActiveRaid, type GuildMember, type GuildSummary, type MyGuild, type PastRaid } from './api';
@@ -12,7 +12,9 @@ import {
 import { activeRaidQueryOptions, guildDirectoryQueryOptions, guildKeys, guildMembersQueryOptions, myGuildQueryOptions, pastRaidsQueryOptions } from './queries';
 import { profileQueryOptions } from '@/features/dashboard/queries';
 import { useGuildChat } from './guild-chat';
-import { GuildTabs, MuralAnnouncer, MuralPanel, OnlineIndicator, PresenceDot, type GuildTab } from './guild-mural';
+import { SectionHeader } from '@/features/character/character-parts';
+import { GuildTabs, MuralAnnouncer, MuralPanel, OnlineIndicator, PresenceDot, formatOnlineCount, type GuildTab } from './guild-mural';
+import { HeroAvatar } from './hero-avatar';
 import { GuildEmblem } from './guild-emblem';
 import { RankingCard } from './guild-ranking';
 import { RaidScene } from './raid-scene';
@@ -27,23 +29,27 @@ function thumbnailScale(width: number): number {
 }
 
 function MemberItem({ member, online }: { member: GuildMember; online: boolean | null }) {
-  const detail = [`Nível ${member.level}`, member.title].filter(Boolean).join(' · ');
   const presence = online === null ? '' : online ? ', online' : ', offline';
+  const detail = online === null ? `Nv ${member.level}` : `Nv ${member.level} · ${online ? 'Online' : 'Offline'}`;
   return (
-    <View accessible accessibilityLabel={`${member.displayName}${presence}, ${formatGuildRole(member.role)}. ${detail}`} style={styles.directoryItem} testID={`guild-member-${member.userId}`}>
-      <View style={styles.directoryMain}>
-        <View style={styles.memberName}>
-          {online === null ? null : <PresenceDot online={online} testID={`guild-member-${online ? 'online' : 'offline'}-${member.userId}`} />}
-          <WiseText variant="label">{member.displayName}</WiseText>
-        </View>
-        <WiseText color="textSecondary" variant="body">{detail}</WiseText>
+    <View accessible accessibilityLabel={`${member.displayName}${presence}, ${formatGuildRole(member.role)}. Nível ${member.level}`} style={styles.memberRow} testID={`guild-member-${member.userId}`}>
+      <View style={styles.memberAvatar} testID={`guild-member-portrait-${member.userId}`}>
+        {/* The API does not return the equipped Avatar yet (#214): every member gets the default portrait. */}
+        <HeroAvatar entry={{ avatar: null }} style={styles.memberPortrait} />
+        {online === null ? null : <View style={styles.memberPresence}><PresenceDot online={online} testID={`guild-member-${online ? 'online' : 'offline'}-${member.userId}`} /></View>}
       </View>
-      {member.role === 'leader' ? <WiseText color="accentPrimary" variant="caption">LÍDER</WiseText> : null}
+      <View style={styles.memberText}>
+        <Text numberOfLines={1} style={[styles.memberName, online === false && styles.memberNameOffline]}>{member.displayName}</Text>
+        <Text numberOfLines={1} style={styles.memberDetail}>{detail}</Text>
+      </View>
+      {member.role === 'leader'
+        ? <View style={[styles.rolePill, styles.rolePillLeader]} testID={`guild-member-seal-${member.userId}`}><Text style={styles.memberSeal}>LÍDER</Text></View>
+        : null}
     </View>
   );
 }
 
-function MembersCard({ guildId, onlineUserIds }: { guildId: string; onlineUserIds: ReadonlySet<string> | null }) {
+function MembersCard({ guildId, memberCount, onlineUserIds }: { guildId: string; memberCount: number; onlineUserIds: ReadonlySet<string> | null }) {
   const members = useInfiniteQuery(guildMembersQueryOptions(guildId));
   const items = members.data?.pages.flatMap((page) => page.items) ?? [];
 
@@ -55,7 +61,9 @@ function MembersCard({ guildId, onlineUserIds }: { guildId: string; onlineUserId
         <WiseButton label="Tentar novamente" loading={members.isRefetching} onPress={() => void members.refetch()} variant="secondary" />
       </View>;
     }
+    if (!items.length) return <WiseText color="textSecondary" testID="guild-members-empty" variant="body">Nenhum membro para mostrar ainda.</WiseText>;
     return <>
+      {members.isError && !members.isFetchNextPageError ? <FeedbackMessage message="Não foi possível atualizar os membros." testID="guild-members-stale" title="Dados desatualizados" variant="error" /> : null}
       {items.map((member) => <MemberItem key={member.userId} member={member} online={onlineUserIds ? onlineUserIds.has(member.userId) : null} />)}
       {members.isFetchNextPageError ? <FeedbackMessage message="Não foi possível carregar mais membros." title="Lista incompleta" variant="error" /> : null}
       {members.hasNextPage
@@ -64,13 +72,13 @@ function MembersCard({ guildId, onlineUserIds }: { guildId: string; onlineUserId
     </>;
   })();
 
+  // The count is hidden with the Presença: without a connection there is nothing to say about who is online.
+  const count = onlineUserIds ? `${memberCount} · ${formatOnlineCount(onlineUserIds.size)}` : String(memberCount);
   return (
-    <WiseCard accessibilityLabel="Membros da guilda" role="region" testID="guild-members">
-      <View style={styles.cardContent}>
-        <WiseText accessibilityRole="header" aria-level={2} variant="subtitle">Membros</WiseText>
-        {body}
-      </View>
-    </WiseCard>
+    <View accessibilityLabel="Membros da guilda" role="region" style={styles.membersBlock} testID="guild-members">
+      <SectionHeader aside={<Text style={styles.membersCount} testID="guild-members-count">{count}</Text>}>Membros</SectionHeader>
+      <WiseCard style={styles.membersCard}>{body}</WiseCard>
+    </View>
   );
 }
 
@@ -438,7 +446,7 @@ function MemberGuild({ mine, desktop, onLeft, onConflict }: { mine: MyGuild; des
   );
   const raid = <RaidSection compact={!desktop} guildId={guild.id} />;
   const mural = <MuralPanel chat={chat} />;
-  const members = <MembersCard guildId={guild.id} onlineUserIds={chat.onlineUserIds} />;
+  const members = <MembersCard guildId={guild.id} memberCount={guild.memberCount} onlineUserIds={chat.onlineUserIds} />;
   const pastRaids = <PastRaidsCard guildId={guild.id} />;
   const announcer = <MuralAnnouncer arrival={chat.arrival} />;
   if (desktop) {
@@ -509,6 +517,9 @@ export function GuildScreen() {
   );
 }
 
+const { fontFamily: mono } = theme.type.mono;
+const { fontFamily: sans } = theme.type.label;
+
 const styles = StyleSheet.create({
   stack: { gap: theme.space.stackDefault },
   grid: { gap: theme.space.stackDefault },
@@ -535,5 +546,17 @@ const styles = StyleSheet.create({
   cardContent: { padding: theme.space.cardInset, gap: theme.space.stackTight },
   directoryItem: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: theme.space.stackTight },
   directoryMain: { flex: 1, gap: theme.space.inlineHairline },
-  memberName: { flexDirection: 'row', alignItems: 'center', gap: theme.space.inlineTight },
+  // Figma 06c Membros: 30 px portrait, 9 px Presença dot on its bottom-right corner, 31 px rows.
+  membersBlock: { gap: theme.space.stackTight },
+  membersCard: { padding: theme.space.cardInset, gap: 12 },
+  membersCount: { fontFamily: mono, fontSize: 10, letterSpacing: 0.8, color: theme.color.textTertiary },
+  memberRow: { flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 31 },
+  memberAvatar: { width: 30, height: 30 },
+  memberPortrait: { width: 30, height: 30 },
+  memberPresence: { position: 'absolute', left: 23, top: 23 },
+  memberText: { flex: 1, minWidth: 0, gap: 2 },
+  memberName: { fontFamily: sans, fontSize: 13, lineHeight: 16, color: theme.color.textPrimary },
+  memberNameOffline: { color: theme.color.textSecondary },
+  memberDetail: { fontFamily: mono, fontSize: 10, lineHeight: 13, color: theme.color.textTertiary },
+  memberSeal: { fontFamily: mono, fontSize: 9, letterSpacing: 0.8, color: theme.color.accentPrimary },
 });
