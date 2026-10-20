@@ -752,7 +752,7 @@ describe('Raids anteriores', () => {
     status: 'completed',
     goalXp: 1000,
     progressXp: 1250,
-    me: { participated: true, contributionXp: 300, position: 2 },
+    me: { participated: true, contributionXp: 5640, position: 2 },
     ...overrides,
   });
 
@@ -774,14 +774,27 @@ describe('Raids anteriores', () => {
 
     const won = await screen.findByTestId('guild-past-raid-p1');
     expect(within(won).getByText('Cerco ao Grimório')).toBeTruthy();
-    expect(within(won).getByText('Semana de 05/10 a 11/10')).toBeTruthy();
-    expect(screen.getByTestId('guild-past-raid-outcome-p1')).toHaveTextContent('✦ Meta batida · a guilda subiu de nível');
-    expect(screen.getByTestId('guild-past-raid-mine-p1')).toHaveTextContent('Você: 2º · 300 XP');
-    expect(won.props.accessibilityLabel).toBe('Cerco ao Grimório. Semana de 05/10 a 11/10. Meta batida · a guilda subiu de nível. 1250 de 1000 XP. Você: 2º · 300 XP.');
+    expect(within(won).getByText('05–11 OUT · 1,6h')).toBeTruthy();
+    expect(screen.getByTestId('guild-past-raid-outcome-p1')).toHaveTextContent('VENCIDA');
+    expect(won.props.accessibilityLabel).toBe('Cerco ao Grimório. Semana de 05/10 a 11/10. Meta batida · a guilda subiu de nível. 1,6h. Você: 9,4h · 2º.');
+    // The phone frame has no own-result line; it stays in the accessible label.
+    expect(screen.queryByTestId('guild-past-raid-mine-p1')).toBeNull();
+    expect(screen.getByTestId('guild-past-raids-won')).toHaveTextContent('1 vencida');
 
-    expect(screen.getByTestId('guild-past-raid-outcome-p2')).toHaveTextContent('Meta não batida');
-    expect(screen.getByTestId('guild-past-raid-mine-p2')).toHaveTextContent('Você não participou');
+    const lost = screen.getByTestId('guild-past-raid-p2');
+    expect(within(lost).getByText('28 SET–04 OUT · 0,3h de 1,6h')).toBeTruthy();
+    expect(screen.getByTestId('guild-past-raid-outcome-p2')).toHaveTextContent('NÃO VENCIDA');
     expect(mockedPast).toHaveBeenCalledWith('g1', expect.objectContaining({ cursor: null }));
+  });
+
+  it('shows the own result and the Guild Level on each row of the desktop column', async () => {
+    Dimensions.set({ window: { width: 1280, height: 800, scale: 1, fontScale: 1 } });
+    mockedPast.mockResolvedValue({ items: [past('p1'), past('p2', { status: 'expired', me: { participated: false, contributionXp: 0, position: null } })], nextCursor: null });
+    await renderGuild();
+
+    expect(await screen.findByTestId('guild-past-raid-mine-p1')).toHaveTextContent('Você: 9,4h · 2º');
+    expect(screen.getByTestId('guild-past-raid-mine-p2')).toHaveTextContent('Você não participou');
+    expect(screen.getByTestId('guild-past-raids-won')).toHaveTextContent('Nível 2 · 1 vencida');
   });
 
   it('explains when no Raid has closed yet', async () => {
