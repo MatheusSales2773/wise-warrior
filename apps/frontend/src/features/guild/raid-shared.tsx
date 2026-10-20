@@ -111,7 +111,7 @@ export function AttackButton({ raid }: { raid: ActiveRaid }) {
   </Link>;
 }
 
-/** The reward list of the battle screen card: every item, the Moedas and the rule caption. */
+/** The reward list as a vertical card body: every item, the Moedas and the rule caption. */
 export function RewardList({ raid }: { raid: ActiveRaid }) {
   return <View accessible accessibilityLabel={`${rewardsLabel(raid)}. ${REWARD_RULE_CAPTION}.`} style={styles.rewardList} testID="raid-reward">
     {raid.rewards.map((reward) => <View key={reward.itemId} style={styles.reward} testID={`raid-reward-${reward.itemId}`}>
@@ -126,8 +126,8 @@ export function RewardList({ raid }: { raid: ActiveRaid }) {
   </View>;
 }
 
-export function JoinRaidButton({ loading, onPress }: { loading: boolean; onPress: () => void }) {
-  return <WiseButton label="Participar" loading={loading} onPress={onPress} testID="guild-raid-join" />;
+export function JoinRaidButton({ label = 'Participar', loading, onPress, testID }: { label?: string; loading: boolean; onPress: () => void; testID: string }) {
+  return <WiseButton label={label} loading={loading} onPress={onPress} testID={testID} />;
 }
 
 export function RewardChips({ raid }: { raid: ActiveRaid }) {

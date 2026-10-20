@@ -14,9 +14,9 @@ import { profileQueryOptions } from '@/features/dashboard/queries';
 import { useGuildChat } from './guild-chat';
 import { GuildTabs, MuralAnnouncer, MuralPanel, OnlineIndicator, PresenceDot, type GuildTab } from './guild-mural';
 import { RaidScene } from './raid-scene';
+import { RAID_SCENE_HEIGHT, RAID_SCENE_WIDTH } from './raid-scene-sprites';
 import { JoinRaidButton } from './raid-shared';
 import { useRaidTimeLeft } from './use-raid-clock';
-import { RAID_SCENE_HEIGHT, RAID_SCENE_WIDTH } from './raid-scene-sprites';
 import { GUILD_NAME_MAX_LENGTH, normalizeGuildName, validateGuildName } from './validation';
 
 /** The smallest whole scale that fills the card width; the scene is cropped at the sides instead of letterboxed. */
@@ -140,7 +140,7 @@ function RaidParticipation({ guildId, raid }: { guildId: string; raid: ActiveRai
   return (
     <View accessibilityLiveRegion="polite" style={styles.stack}>
       {join.isError ? <FeedbackMessage message={joinRaidErrorMessage(join.error)} testID="guild-raid-join-error" title="Participação não confirmada" variant="error" /> : null}
-      <JoinRaidButton loading={join.isPending} onPress={() => { if (!join.isPending) { join.reset(); join.mutate(); } }} />
+      <JoinRaidButton loading={join.isPending} onPress={() => { if (!join.isPending) { join.reset(); join.mutate(); } }} testID="guild-raid-join" />
     </View>
   );
 }
