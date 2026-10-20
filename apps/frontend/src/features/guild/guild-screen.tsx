@@ -4,18 +4,19 @@ import { useState } from 'react';
 import { Platform, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { FeedbackMessage, ProgressBar, Screen, WiseButton, WiseCard, WiseField, WiseIcon, WiseText, isDesktopLayout, theme } from '@/design-system';
 import { isApiError } from '@/core/api/api-error';
-import { createGuild, joinGuild, joinRaid, leaveGuild, type ActiveRaid, type GuildMember, type GuildSummary, type MyGuild, type PastRaid } from './api';
+import { createGuild, joinGuild, joinRaid, leaveGuild, type ActiveRaid, type GuildMember, type GuildSummary, type MyGuild } from './api';
 import {
-  RAID_GOAL_REACHED, createGuildErrorMessage, formatPastRaidMine, formatPastRaidOutcome, formatRaidWeek, formatGuildRole, formatGuildRoleSeal, formatGuildStats, formatMyContribution, formatMyPosition, formatMemberCount, formatRaidTimeLeft, formatRewardSummary,
+  RAID_GOAL_REACHED, createGuildErrorMessage, formatGuildRole, formatGuildRoleSeal, formatGuildStats, formatMyContribution, formatMyPosition, formatMemberCount, formatRaidTimeLeft, formatRewardSummary,
   joinGuildErrorMessage, joinRaidErrorMessage, leaveGuildErrorMessage, raidProgressPercent,
 } from './messages';
-import { activeRaidQueryOptions, guildDirectoryQueryOptions, guildKeys, guildMembersQueryOptions, myGuildQueryOptions, pastRaidsQueryOptions } from './queries';
+import { activeRaidQueryOptions, guildDirectoryQueryOptions, guildKeys, guildMembersQueryOptions, myGuildQueryOptions } from './queries';
 import { profileQueryOptions } from '@/features/dashboard/queries';
 import { useGuildChat } from './guild-chat';
 import { SectionHeader } from '@/features/character/character-parts';
 import { GuildTabs, MuralAnnouncer, MuralPanel, OnlineIndicator, PresenceDot, formatOnlineCount, type GuildTab } from './guild-mural';
 import { HeroAvatar } from './hero-avatar';
 import { GuildEmblem } from './guild-emblem';
+import { PastRaidsCard } from './guild-past-raids';
 import { RankingCard } from './guild-ranking';
 import { RewardsCard } from './guild-rewards';
 import { RaidScene } from './raid-scene';
@@ -246,63 +247,6 @@ function RaidCard({ guildId }: { guildId: string }) {
   );
 }
 
-function PastRaidItem({ raid }: { raid: PastRaid }) {
-  const week = formatRaidWeek(raid.startsAt, raid.endsAt);
-  const outcome = formatPastRaidOutcome(raid.status);
-  const mine = formatPastRaidMine(raid.me);
-  return (
-    <View
-      accessible
-      accessibilityLabel={`${raid.mission.name}. ${week}. ${outcome}. ${raid.progressXp} de ${raid.goalXp} XP. ${mine}.`}
-      style={styles.pastRaidItem}
-      testID={`guild-past-raid-${raid.id}`}
-    >
-      <WiseText variant="label">{raid.mission.name}</WiseText>
-      <WiseText color="textSecondary" variant="body">{week}</WiseText>
-      <WiseText color={raid.status === 'completed' ? 'accentPrimary' : 'textSecondary'} testID={`guild-past-raid-outcome-${raid.id}`} variant="body">
-        {raid.status === 'completed' ? '✦ ' : ''}{outcome}
-      </WiseText>
-      <WiseText color="textSecondary" variant="body">{raid.progressXp} / {raid.goalXp} XP</WiseText>
-      <WiseText testID={`guild-past-raid-mine-${raid.id}`} variant="body">{mine}</WiseText>
-    </View>
-  );
-}
-
-function PastRaidsCard({ guildId }: { guildId: string }) {
-  const past = useInfiniteQuery(pastRaidsQueryOptions(guildId));
-  const raids = past.data?.pages.flatMap((page) => page.items) ?? [];
-
-  const body = (() => {
-    if (past.isPending) return <WiseText color="textSecondary" testID="guild-past-raids-loading" variant="body">Carregando as Raids anteriores…</WiseText>;
-    if (past.isError && !past.data) {
-      return <View style={styles.stack} testID="guild-past-raids-error">
-        <FeedbackMessage message="Não foi possível carregar as Raids anteriores." title="Histórico indisponível" variant="error" />
-        <WiseButton label="Tentar novamente" loading={past.isRefetching} onPress={() => void past.refetch()} variant="secondary" />
-      </View>;
-    }
-    if (!raids.length) {
-      return <WiseText color="textSecondary" testID="guild-past-raids-empty" variant="body">Nenhuma Raid encerrada ainda. A primeira fecha no fim desta semana.</WiseText>;
-    }
-    return <>
-      {past.isError ? <FeedbackMessage message="Não foi possível atualizar o histórico." testID="guild-past-raids-stale" title="Dados desatualizados" variant="error" /> : null}
-      {raids.map((raid) => <PastRaidItem key={raid.id} raid={raid} />)}
-      {past.isFetchNextPageError ? <FeedbackMessage message="Não foi possível carregar mais Raids." title="Lista incompleta" variant="error" /> : null}
-      {past.hasNextPage
-        ? <WiseButton label="Carregar mais" loading={past.isFetchingNextPage} onPress={() => void past.fetchNextPage()} testID="guild-past-raids-more" variant="ghost" />
-        : null}
-    </>;
-  })();
-
-  return (
-    <WiseCard accessibilityLabel="Raids anteriores" role="region" testID="guild-past-raids">
-      <View style={styles.cardContent}>
-        <WiseText accessibilityRole="header" aria-level={2} variant="subtitle">Raids anteriores</WiseText>
-        {body}
-      </View>
-    </WiseCard>
-  );
-}
-
 /** The Raid of the week and, below it, its Ranking interno. The ranking only exists while there is a Raid to rank. */
 function RaidSection({ compact, guildId }: { compact: boolean; guildId: string }) {
   const raid = useQuery(activeRaidQueryOptions(guildId));
@@ -444,7 +388,7 @@ function MemberGuild({ mine, desktop, onLeft, onConflict }: { mine: MyGuild; des
   const rewards = <RewardsCard guildId={guild.id} />;
   const mural = <MuralPanel chat={chat} />;
   const members = <MembersCard guildId={guild.id} memberCount={guild.memberCount} onlineUserIds={chat.onlineUserIds} />;
-  const pastRaids = <PastRaidsCard guildId={guild.id} />;
+  const pastRaids = <PastRaidsCard compact={!desktop} guildId={guild.id} level={guild.level} />;
   const announcer = <MuralAnnouncer arrival={chat.arrival} />;
   if (desktop) {
     return <View style={styles.stack} testID="guild-layout-desktop">
@@ -541,7 +485,6 @@ const styles = StyleSheet.create({
   rewardSummary: { flexDirection: 'row', alignItems: 'center', gap: theme.space.inlineTight },
   rewardSummaryText: { flex: 1, letterSpacing: 0 },
   raidImage: { height: 160, overflow: 'hidden', borderRadius: theme.radius.card, backgroundColor: theme.color.surfaceInset },
-  pastRaidItem: { gap: theme.space.inlineHairline, paddingVertical: theme.space.inlineTight, borderTopWidth: theme.border.standard, borderTopColor: theme.color.borderSubtle },
 
   cardContent: { padding: theme.space.cardInset, gap: theme.space.stackTight },
   directoryItem: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: theme.space.stackTight },
