@@ -28,6 +28,18 @@ export function formatGuildRole(role: 'leader' | 'member'): string {
   return role === 'leader' ? 'Líder' : 'Membro';
 }
 
+export function formatGuildRoleSeal(role: 'leader' | 'member'): string {
+  return role === 'leader' ? 'VOCÊ É LÍDER' : 'MEMBRO';
+}
+
+/** The Header line: Level and size, plus the Raids already won (Level − 1) once there is any. */
+export function formatGuildStats(level: number, memberCount: number): string {
+  const won = level - 1;
+  const parts = [`Nível ${level}`, formatMemberCount(memberCount)];
+  if (won > 0) parts.push(`${won} ${won === 1 ? 'Raid vencida' : 'Raids vencidas'}`);
+  return parts.join(' · ').toUpperCase();
+}
+
 export function leaveGuildErrorMessage(error: unknown): string {
   if (isApiError(error)) {
     if (error.status === 404) return 'Você já não participa dessa guilda. Atualize a tela.';
@@ -88,12 +100,6 @@ export function formatPosition(position: number): string {
 
 export function formatMyPosition(position: number | null): string | null {
   return position === null ? null : `Sua posição: ${formatPosition(position)} no Ranking interno`;
-}
-
-/** One sentence per row for screen readers: the position, the member and the Contribution, plus who "you" are. */
-export function rankingEntryLabel(entry: { position: number; displayName: string; level: number; title: string | null; contributionXp: number; isMe: boolean }): string {
-  const who = [`${entry.displayName}${entry.isMe ? ' (você)' : ''}`, `nível ${entry.level}`, entry.title].filter(Boolean).join(', ');
-  return `Posição ${entry.position}: ${who}, ${entry.contributionXp} XP`;
 }
 
 const RAID_WEEK_DAY = new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: '2-digit', timeZone: 'America/Sao_Paulo' });

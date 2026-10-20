@@ -4,15 +4,17 @@ import { useState } from 'react';
 import { Platform, StyleSheet, View, useWindowDimensions } from 'react-native';
 import { FeedbackMessage, ProgressBar, Screen, WiseButton, WiseCard, WiseField, WiseText, isDesktopLayout, theme } from '@/design-system';
 import { isApiError } from '@/core/api/api-error';
-import { createGuild, joinGuild, joinRaid, leaveGuild, type ActiveRaid, type GuildMember, type GuildSummary, type MyGuild, type PastRaid, type RaidRankingEntry } from './api';
+import { createGuild, joinGuild, joinRaid, leaveGuild, type ActiveRaid, type GuildMember, type GuildSummary, type MyGuild, type PastRaid } from './api';
 import {
-  RAID_GOAL_REACHED, RAID_REWARD_RULE, createGuildErrorMessage, formatPastRaidMine, formatPastRaidOutcome, formatRaidWeek, formatGuildRole, formatMyContribution, formatMyPosition, formatMemberCount, formatPosition, formatRaidTimeLeft, formatRewardCategory, formatRewardCoins,
-  joinGuildErrorMessage, joinRaidErrorMessage, leaveGuildErrorMessage, raidProgressPercent, rankingEntryLabel,
+  RAID_GOAL_REACHED, RAID_REWARD_RULE, createGuildErrorMessage, formatPastRaidMine, formatPastRaidOutcome, formatRaidWeek, formatGuildRole, formatGuildRoleSeal, formatGuildStats, formatMyContribution, formatMyPosition, formatMemberCount, formatRaidTimeLeft, formatRewardCategory, formatRewardCoins,
+  joinGuildErrorMessage, joinRaidErrorMessage, leaveGuildErrorMessage, raidProgressPercent,
 } from './messages';
-import { activeRaidQueryOptions, guildDirectoryQueryOptions, guildKeys, guildMembersQueryOptions, myGuildQueryOptions, pastRaidsQueryOptions, raidRankingQueryOptions } from './queries';
+import { activeRaidQueryOptions, guildDirectoryQueryOptions, guildKeys, guildMembersQueryOptions, myGuildQueryOptions, pastRaidsQueryOptions } from './queries';
 import { profileQueryOptions } from '@/features/dashboard/queries';
 import { useGuildChat } from './guild-chat';
 import { GuildTabs, MuralAnnouncer, MuralPanel, OnlineIndicator, PresenceDot, type GuildTab } from './guild-mural';
+import { GuildEmblem } from './guild-emblem';
+import { RankingCard } from './guild-ranking';
 import { RaidScene } from './raid-scene';
 import { RAID_SCENE_HEIGHT, RAID_SCENE_WIDTH } from './raid-scene-sprites';
 import { JoinRaidButton } from './raid-shared';
@@ -91,19 +93,24 @@ function LeaveGuildAction({ guildId, isLeader, onLeft, onConflict }: { guildId: 
   );
 }
 
-function GuildCard({ mine, onlineUserIds }: { mine: MyGuild; onlineUserIds: ReadonlySet<string> | null }) {
+function GuildCard({ mine, onlineUserIds, desktop }: { mine: MyGuild; onlineUserIds: ReadonlySet<string> | null; desktop: boolean }) {
   const { guild, role } = mine;
   return (
-    <WiseCard accessibilityLabel="Sua guilda" role="region" testID="guild-mine" variant="ornamented">
-      <View style={styles.cardContent}>
-        <WiseText color="accentPrimary" variant="caption">{formatGuildRole(role).toUpperCase()}</WiseText>
-        <WiseText accessibilityRole="header" aria-level={2} testID="guild-mine-name" variant="subtitle">{guild.name}</WiseText>
-        <WiseText testID="guild-mine-level" variant="body">Nível {guild.level}</WiseText>
-        <WiseText color="textSecondary" testID="guild-mine-members" variant="body">{formatMemberCount(guild.memberCount)}</WiseText>
-        <OnlineIndicator onlineUserIds={onlineUserIds} />
-        {guild.leader ? <WiseText color="textSecondary" testID="guild-mine-leader" variant="body">Líder: {guild.leader.displayName}</WiseText> : null}
+    <View accessibilityLabel="Sua guilda" accessibilityRole="summary" role="region" style={styles.identity} testID="guild-mine">
+      <GuildEmblem decorative guildId={guild.id} name={guild.name} size={desktop ? 56 : 42} />
+      <View style={styles.identityText}>
+        <View style={styles.nameRow}>
+          <WiseText accessibilityRole="header" aria-level={2} testID="guild-mine-name" variant={desktop ? 'title' : 'subtitle'}>{guild.name}</WiseText>
+          <View style={[styles.rolePill, role === 'leader' && styles.rolePillLeader]} testID="guild-mine-role">
+            <WiseText color={role === 'leader' ? 'accentPrimary' : 'textSecondary'} variant="caption">{formatGuildRoleSeal(role)}</WiseText>
+          </View>
+        </View>
+        <View style={styles.statsRow}>
+          <WiseText color="textTertiary" testID="guild-mine-stats" variant="caption">{formatGuildStats(guild.level, guild.memberCount)}</WiseText>
+          <OnlineIndicator onlineUserIds={onlineUserIds} />
+        </View>
       </View>
-    </WiseCard>
+    </View>
   );
 }
 
@@ -235,59 +242,6 @@ function RaidCard({ guildId }: { guildId: string }) {
   );
 }
 
-function RankingItem({ entry }: { entry: RaidRankingEntry }) {
-  return (
-    <View
-      accessible
-      accessibilityLabel={rankingEntryLabel(entry)}
-      style={[styles.rankingItem, entry.isMe && styles.rankingItemMe]}
-      testID={`guild-ranking-item-${entry.userId}`}
-    >
-      <WiseText color={entry.position === 1 ? 'accentPrimary' : 'textSecondary'} style={styles.rankingPosition} variant="label">{formatPosition(entry.position)}</WiseText>
-      <View style={styles.directoryMain}>
-        <WiseText variant="label">{entry.displayName}{entry.isMe ? ' (você)' : ''}</WiseText>
-        <WiseText color="textSecondary" variant="body">{[`Nível ${entry.level}`, entry.title].filter(Boolean).join(' · ')}</WiseText>
-      </View>
-      <WiseText color={entry.contributionXp > 0 ? 'textPrimary' : 'textSecondary'} variant="label">{entry.contributionXp} XP</WiseText>
-    </View>
-  );
-}
-
-function RankingCard({ guildId, raidId }: { guildId: string; raidId: string }) {
-  const ranking = useInfiniteQuery(raidRankingQueryOptions(guildId, raidId));
-  const entries = ranking.data?.pages.flatMap((page) => page.items) ?? [];
-
-  const body = (() => {
-    if (ranking.isPending) return <WiseText color="textSecondary" testID="guild-ranking-loading" variant="body">Carregando o ranking…</WiseText>;
-    if (ranking.isError && !ranking.data) {
-      return <View style={styles.stack} testID="guild-ranking-error">
-        <FeedbackMessage message="Não foi possível carregar o Ranking interno." title="Ranking indisponível" variant="error" />
-        <WiseButton label="Tentar novamente" loading={ranking.isRefetching} onPress={() => void ranking.refetch()} variant="secondary" />
-      </View>;
-    }
-    if (!entries.length) {
-      return <WiseText color="textSecondary" testID="guild-ranking-empty" variant="body">Ninguém confirmou participação ainda. Participe para abrir o ranking.</WiseText>;
-    }
-    return <>
-      {ranking.isError ? <FeedbackMessage message="Não foi possível atualizar o ranking." testID="guild-ranking-stale" title="Dados desatualizados" variant="error" /> : null}
-      {entries.map((entry) => <RankingItem entry={entry} key={entry.userId} />)}
-      {ranking.isFetchNextPageError ? <FeedbackMessage message="Não foi possível carregar mais linhas." title="Lista incompleta" variant="error" /> : null}
-      {ranking.hasNextPage
-        ? <WiseButton label="Carregar mais" loading={ranking.isFetchingNextPage} onPress={() => void ranking.fetchNextPage()} testID="guild-ranking-more" variant="ghost" />
-        : null}
-    </>;
-  })();
-
-  return (
-    <WiseCard accessibilityLabel="Ranking interno" role="region" testID="guild-ranking">
-      <View style={styles.cardContent}>
-        <WiseText accessibilityRole="header" aria-level={2} variant="subtitle">Ranking interno</WiseText>
-        {body}
-      </View>
-    </WiseCard>
-  );
-}
-
 function PastRaidItem({ raid }: { raid: PastRaid }) {
   const week = formatRaidWeek(raid.startsAt, raid.endsAt);
   const outcome = formatPastRaidOutcome(raid.status);
@@ -346,12 +300,12 @@ function PastRaidsCard({ guildId }: { guildId: string }) {
 }
 
 /** The Raid of the week and, below it, its Ranking interno. The ranking only exists while there is a Raid to rank. */
-function RaidSection({ guildId }: { guildId: string }) {
+function RaidSection({ compact, guildId }: { compact: boolean; guildId: string }) {
   const raid = useQuery(activeRaidQueryOptions(guildId));
   return (
     <View style={styles.stack}>
       <RaidCard guildId={guildId} />
-      {raid.data ? <RankingCard guildId={guildId} key={raid.data.id} raidId={raid.data.id} /> : null}
+      {raid.data ? <RankingCard compact={compact} guildId={guildId} key={raid.data.id} raidId={raid.data.id} /> : null}
     </View>
   );
 }
@@ -476,13 +430,13 @@ function MemberGuild({ mine, desktop, onLeft, onConflict }: { mine: MyGuild; des
   const [tab, setTab] = useState<GuildTab>('raid');
   const header = (
     <View style={[styles.stack, desktop && styles.headerRow]} testID="guild-header">
-      <View style={desktop ? styles.column : undefined}><GuildCard mine={mine} onlineUserIds={chat.onlineUserIds} /></View>
-      <View testID="guild-leave-section">
+      <View style={desktop ? styles.column : undefined}><GuildCard desktop={desktop} mine={mine} onlineUserIds={chat.onlineUserIds} /></View>
+      <View style={desktop ? styles.leaveDesktop : undefined} testID="guild-leave-section">
         <LeaveGuildAction guildId={guild.id} isLeader={role === 'leader'} onConflict={onConflict} onLeft={onLeft} />
       </View>
     </View>
   );
-  const raid = <RaidSection guildId={guild.id} />;
+  const raid = <RaidSection compact={!desktop} guildId={guild.id} />;
   const mural = <MuralPanel chat={chat} />;
   const members = <MembersCard guildId={guild.id} onlineUserIds={chat.onlineUserIds} />;
   const pastRaids = <PastRaidsCard guildId={guild.id} />;
@@ -567,12 +521,15 @@ const styles = StyleSheet.create({
   // Figma 06c desktop: a 680 px main column and a 392 px side column.
   columnMain: { flex: 680 },
   columnSide: { flex: 392 },
-  headerRow: { flexDirection: 'row', alignItems: 'flex-start' },
+  headerRow: { flexDirection: 'row', alignItems: 'center', gap: theme.space.stackDefault },
+  leaveDesktop: { width: 199 },
+  identity: { flexDirection: 'row', alignItems: 'center', gap: theme.space.stackDefault },
+  identityText: { flex: 1, gap: theme.space.inlineTight },
+  nameRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: theme.space.stackTight },
+  statsRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', columnGap: theme.space.stackTight, rowGap: theme.space.inlineHairline },
+  rolePill: { paddingVertical: theme.space.inlineHairline, paddingHorizontal: theme.space.inlineTight, borderRadius: theme.radius.pill, borderWidth: theme.border.standard, borderColor: theme.color.borderSubtle, backgroundColor: theme.color.surfaceInset },
+  rolePillLeader: { borderColor: theme.color.accentPrimary },
   raidImage: { height: 160, overflow: 'hidden', borderRadius: theme.radius.card, backgroundColor: theme.color.surfaceInset },
-  rankingItem: { flexDirection: 'row', alignItems: 'center', gap: theme.space.stackTight, paddingVertical: theme.space.inlineTight, paddingHorizontal: theme.space.inlineTight, borderRadius: theme.radius.control, borderWidth: theme.border.standard, borderColor: 'transparent' },
-  // The own row is marked by a border and a "(você)" label as well as by the fill, never by color alone.
-  rankingItemMe: { backgroundColor: theme.color.surfaceCardActive, borderColor: theme.color.accentPrimary },
-  rankingPosition: { width: 36 },
   pastRaidItem: { gap: theme.space.inlineHairline, paddingVertical: theme.space.inlineTight, borderTopWidth: theme.border.standard, borderTopColor: theme.color.borderSubtle },
 
   cardContent: { padding: theme.space.cardInset, gap: theme.space.stackTight },
