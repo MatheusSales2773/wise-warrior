@@ -2,11 +2,11 @@ import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tansta
 import { Link } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { Platform, StyleSheet, View, useWindowDimensions } from 'react-native';
-import { FeedbackMessage, ProgressBar, Screen, WiseButton, WiseCard, WiseField, WiseText, isDesktopLayout, theme } from '@/design-system';
+import { FeedbackMessage, ProgressBar, Screen, WiseButton, WiseCard, WiseField, WiseIcon, WiseText, isDesktopLayout, theme } from '@/design-system';
 import { isApiError } from '@/core/api/api-error';
 import { createGuild, joinGuild, joinRaid, leaveGuild, type ActiveRaid, type GuildMember, type GuildSummary, type MyGuild, type PastRaid } from './api';
 import {
-  RAID_GOAL_REACHED, RAID_REWARD_RULE, createGuildErrorMessage, formatPastRaidMine, formatPastRaidOutcome, formatRaidWeek, formatGuildRole, formatGuildRoleSeal, formatGuildStats, formatMyContribution, formatMyPosition, formatMemberCount, formatRaidTimeLeft, formatRewardCategory, formatRewardCoins,
+  RAID_GOAL_REACHED, createGuildErrorMessage, formatPastRaidMine, formatPastRaidOutcome, formatRaidWeek, formatGuildRole, formatGuildRoleSeal, formatGuildStats, formatMyContribution, formatMyPosition, formatMemberCount, formatRaidTimeLeft, formatRewardSummary,
   joinGuildErrorMessage, joinRaidErrorMessage, leaveGuildErrorMessage, raidProgressPercent,
 } from './messages';
 import { activeRaidQueryOptions, guildDirectoryQueryOptions, guildKeys, guildMembersQueryOptions, myGuildQueryOptions, pastRaidsQueryOptions } from './queries';
@@ -15,6 +15,7 @@ import { useGuildChat } from './guild-chat';
 import { GuildTabs, MuralAnnouncer, MuralPanel, OnlineIndicator, PresenceDot, type GuildTab } from './guild-mural';
 import { GuildEmblem } from './guild-emblem';
 import { RankingCard } from './guild-ranking';
+import { RewardsCard } from './guild-rewards';
 import { RaidScene } from './raid-scene';
 import { RAID_SCENE_HEIGHT, RAID_SCENE_WIDTH } from './raid-scene-sprites';
 import { GUILD_NAME_MAX_LENGTH, normalizeGuildName, validateGuildName } from './validation';
@@ -202,14 +203,9 @@ function RaidDetails({ guildId, raid }: { guildId: string; raid: ActiveRaid }) {
         ) : null}
       </View>
       <WiseText color="textSecondary" testID="guild-raid-time-left" variant="body">{formatRaidTimeLeft(new Date(raid.endsAt).getTime() - now)}</WiseText>
-      <View style={styles.stack} testID="guild-raid-reward">
-        <WiseText color="accentPrimary" variant="caption">RECOMPENSA DE RAID</WiseText>
-        {raid.rewards.map((reward) => <View key={reward.itemId}>
-          <WiseText variant="label">{reward.name}</WiseText>
-          <WiseText color="textSecondary" variant="body">{formatRewardCategory(reward.category)}</WiseText>
-        </View>)}
-        <WiseText color="textSecondary" variant="body">{formatRewardCoins(raid.coins)}</WiseText>
-        <WiseText color="textSecondary" variant="caption">{RAID_REWARD_RULE}</WiseText>
+      <View style={styles.rewardSummary} testID="guild-raid-reward">
+        <WiseIcon color="accentPrimary" name="sparkles" size="xsmall" />
+        <WiseText color="textSecondary" style={styles.rewardSummaryText} variant="caption">{formatRewardSummary(raid.rewards, raid.coins)}</WiseText>
       </View>
       <RaidParticipation guildId={guildId} raid={raid} />
       <Link asChild href="/guilda/raid">
@@ -313,6 +309,7 @@ function RaidSection({ compact, guildId }: { compact: boolean; guildId: string }
     <View style={styles.stack}>
       <RaidCard guildId={guildId} />
       {raid.data ? <RankingCard compact={compact} guildId={guildId} key={raid.data.id} raidId={raid.data.id} /> : null}
+      {compact ? <RewardsCard guildId={guildId} /> : null}
     </View>
   );
 }
@@ -453,7 +450,7 @@ function MemberGuild({ mine, desktop, onLeft, onConflict }: { mine: MyGuild; des
       {header}
       <View style={styles.desktopGrid}>
         <View style={[styles.columnMain, styles.stack]} testID="guild-column-main">{raid}{pastRaids}</View>
-        <View style={[styles.columnSide, styles.stack]} testID="guild-column-side">{mural}{members}</View>
+        <View style={[styles.columnSide, styles.stack]} testID="guild-column-side">{mural}{members}<RewardsCard guildId={guild.id} /></View>
       </View>
       {announcer}
     </View>;
@@ -536,6 +533,8 @@ const styles = StyleSheet.create({
   statsRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', columnGap: theme.space.stackTight, rowGap: theme.space.inlineHairline },
   rolePill: { paddingVertical: theme.space.inlineHairline, paddingHorizontal: theme.space.inlineTight, borderRadius: theme.radius.pill, borderWidth: theme.border.standard, borderColor: theme.color.borderSubtle, backgroundColor: theme.color.surfaceInset },
   rolePillLeader: { borderColor: theme.color.accentPrimary },
+  rewardSummary: { flexDirection: 'row', alignItems: 'center', gap: theme.space.inlineTight },
+  rewardSummaryText: { flex: 1, letterSpacing: 0 },
   raidImage: { height: 160, overflow: 'hidden', borderRadius: theme.radius.card, backgroundColor: theme.color.surfaceInset },
   pastRaidItem: { gap: theme.space.inlineHairline, paddingVertical: theme.space.inlineTight, borderTopWidth: theme.border.standard, borderTopColor: theme.color.borderSubtle },
 

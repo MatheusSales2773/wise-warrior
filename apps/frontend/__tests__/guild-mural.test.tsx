@@ -202,6 +202,7 @@ describe('Mural', () => {
     await openMural();
     await gateway.emit('chat:message', message(3, { kind: 'raid_hit', userId: 'u2', displayName: 'Ravenstone', xp: 75, body: '' }));
     const notice = screen.getByTestId('guild-mural-notice-m3');
+    expect(screen.getByTestId('guild-mural-online')).toHaveTextContent(/online$/);
     expect(within(notice).getByText('Ravenstone causou 75 de dano')).toBeOnTheScreen();
     expect(notice).toHaveProp('accessibilityLabel', 'Aviso, 14:03: Ravenstone causou 75 de dano');
     expect(screen.queryByTestId('guild-mural-message-m3')).toBeNull();
@@ -286,7 +287,7 @@ describe('Mural', () => {
     expect(await screen.findByText('Perdida')).toBeOnTheScreen();
     expect(gateway.sent('chat:sync')[0]?.payload).toEqual({ guildId: 'g1', afterSeq: 2 });
     expect(screen.getAllByText('Mensagem 2')).toHaveLength(1);
-    expect(screen.getByText('1 online')).toBeOnTheScreen();
+    expect(screen.getByTestId('guild-online-count')).toHaveTextContent('1 online');
     expect(gateway.sent('chat:join')).toHaveLength(1);
   });
 

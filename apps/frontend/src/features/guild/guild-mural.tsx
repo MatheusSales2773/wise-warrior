@@ -1,8 +1,10 @@
 import { useRef, useState } from 'react';
-import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, View, type NativeScrollEvent, type NativeSyntheticEvent } from 'react-native';
+import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View, type NativeScrollEvent, type NativeSyntheticEvent } from 'react-native';
 import { controlStyles } from '@/design-system/components/control-styles';
-import { FeedbackMessage, WiseButton, WiseCard, WiseField, WiseText, theme } from '@/design-system';
+import { FeedbackMessage, WiseButton, WiseCard, WiseIcon, WiseText, theme } from '@/design-system';
+import { SectionHeader } from '@/features/character/character-parts';
 import { raidHitText, type ChatMessage, type GuildChat } from './guild-chat';
+import { HeroAvatar } from './hero-avatar';
 
 export type GuildTab = 'raid' | 'mural' | 'members' | 'history';
 
@@ -79,15 +81,15 @@ export function PresenceDot({ online, testID }: { online: boolean; testID?: stri
   return <View style={[styles.dot, online ? styles.dotOnline : styles.dotOffline]} testID={testID} />;
 }
 
-/** An Aviso do Mural: one centered line with a mark, no avatar and no author line. */
+/** An Aviso do Mural: a boxed line with a flame, no avatar and no author line. */
 function NoticeItem({ message }: { message: ChatMessage }) {
   const time = formatMessageTime(message.sentAt);
   const text = raidHitText(message);
   return (
     <View accessibilityLabel={`Aviso, ${time}: ${text}`} accessible style={styles.notice} testID={`guild-mural-notice-${message.id}`}>
-      <WiseText color="accentHighlight" variant="label">◈</WiseText>
-      <WiseText color="textSecondary" variant="body">{text}</WiseText>
-      <WiseText color="textTertiary" variant="body">{time}</WiseText>
+      <WiseIcon color="accentPrimary" name="flame" size="xsmall" />
+      <Text style={styles.noticeText}>{text}</Text>
+      <Text style={styles.time}>{time}</Text>
     </View>
   );
 }
@@ -97,11 +99,15 @@ function MessageItem({ message }: { message: ChatMessage }) {
   const time = formatMessageTime(message.sentAt);
   return (
     <View accessibilityLabel={`${message.displayName}, ${time}: ${message.body}`} accessible style={styles.message} testID={`guild-mural-message-${message.id}`}>
-      <View style={styles.messageMeta}>
-        <WiseText color="accentPrimary" variant="label">{message.displayName}</WiseText>
-        <WiseText color="textTertiary" variant="body">{time}</WiseText>
+      {/* The chat gateway does not send the member's look yet, so the portrait is the default hero. */}
+      <HeroAvatar entry={{ avatar: null }} style={styles.portrait} />
+      <View style={styles.messageMain}>
+        <View style={styles.messageMeta}>
+          <Text style={styles.author}>{message.displayName}</Text>
+          <Text style={styles.time}>{time}</Text>
+        </View>
+        <Text selectable style={styles.messageBody}>{message.body}</Text>
       </View>
-      <WiseText selectable variant="body">{message.body}</WiseText>
     </View>
   );
 }
@@ -121,6 +127,8 @@ export function MuralAnnouncer({ arrival }: { arrival: ChatMessage | null }) {
   );
 }
 
+const CARD_PADDING = 20;
+const CARD_GAP = 14;
 /** How close to the top of the list a scroll has to get before the previous page loads. */
 const NEAR_TOP_PX = 48;
 /** Room for the app header above the Mural when the iOS keyboard pushes it up. */
@@ -144,19 +152,33 @@ function MuralComposer({ canWrite, send }: { canWrite: boolean; send: GuildChat[
 
   return (
     <View style={styles.composer}>
-      <WiseField
-        editable={canWrite && !sending}
-        error={sendError ?? undefined}
-        label="Mensagem para a guilda"
-        multiline
-        nativeID="guild-mural-input"
-        onChangeText={(text) => { setDraft(text); if (sendError) setSendError(null); }}
-        onSubmitEditing={() => void submit()}
-        placeholder="Conte o que está estudando"
-        submitBehavior="submit"
-        value={draft}
-      />
-      <WiseButton disabled={!canWrite} label="Enviar" loading={sending} onPress={() => void submit()} testID="guild-mural-send" />
+      <View style={styles.field}>
+        <TextInput
+          accessibilityLabel="Mensagem para a guilda"
+          editable={canWrite && !sending}
+          multiline
+          nativeID="guild-mural-input"
+          onChangeText={(text) => { setDraft(text); if (sendError) setSendError(null); }}
+          onSubmitEditing={() => void submit()}
+          placeholder="Escreva para a guilda…"
+          placeholderTextColor={theme.color.textTertiary}
+          style={styles.input}
+          submitBehavior="submit"
+          value={draft}
+        />
+        <Pressable
+          accessibilityLabel="Enviar"
+          accessibilityRole="button"
+          accessibilityState={{ disabled: !canWrite || sending, busy: sending }}
+          disabled={!canWrite || sending}
+          onPress={() => void submit()}
+          style={[styles.send, (!canWrite || sending) && styles.sendDisabled]}
+          testID="guild-mural-send"
+        >
+          <WiseIcon color={canWrite ? 'textPrimary' : 'textDisabled'} name="play" size="small" />
+        </Pressable>
+      </View>
+      {sendError ? <FeedbackMessage message={sendError} testID="guild-mural-send-error" title="Mensagem não enviada" variant="error" /> : null}
     </View>
   );
 }
@@ -256,7 +278,7 @@ export function MuralPanel({ chat }: { chat: GuildChat }) {
         keyboardVerticalOffset={KEYBOARD_OFFSET_PX}
         style={styles.cardContent}
       >
-        <WiseText accessibilityRole="header" aria-level={2} variant="subtitle">Mural</WiseText>
+        <SectionHeader aside={chat.onlineUserIds ? <Text style={styles.onlineAside} testID="guild-mural-online">{formatOnlineCount(chat.onlineUserIds.size)}</Text> : null}>Mural</SectionHeader>
         {body}
         <MuralComposer canWrite={canWrite} send={chat.send} />
       </KeyboardAvoidingView>
@@ -266,7 +288,8 @@ export function MuralPanel({ chat }: { chat: GuildChat }) {
 
 const styles = StyleSheet.create({
   stack: { gap: theme.space.stackDefault },
-  cardContent: { padding: theme.space.cardInset, gap: theme.space.stackTight },
+  // Figma 06c: 20 px of padding and 14 px between the card's blocks, values the spacing scale has no step for.
+  cardContent: { padding: CARD_PADDING, gap: CARD_GAP },
   onlinePill: {
     flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', gap: theme.space.inlineTight,
     paddingVertical: theme.space.inlineHairline, paddingHorizontal: theme.space.stackTight,
@@ -279,16 +302,31 @@ const styles = StyleSheet.create({
   tab: { paddingVertical: theme.space.inlineTight, paddingHorizontal: theme.space.controlInset, borderBottomWidth: 2, borderBottomColor: 'transparent', marginBottom: -1 },
   // Selected is marked by the underline and the brighter label, never by color alone.
   tabActive: { borderBottomColor: theme.color.accentPrimary },
-  scroll: { maxHeight: 420, minHeight: 160, borderRadius: theme.radius.control, backgroundColor: theme.color.surfaceInset },
-  messages: { padding: theme.space.stackTight, gap: theme.space.inlineTight },
+  scroll: { maxHeight: 420, minHeight: 160 },
+  messages: { gap: CARD_GAP },
   start: { textAlign: 'center' },
-  message: { gap: theme.space.inlineHairline, paddingTop: theme.space.inlineTight, paddingLeft: theme.space.stackTight, borderLeftWidth: 2, borderLeftColor: theme.color.borderEmphasis },
+  message: { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
+  portrait: { width: 28, height: 28 },
+  messageMain: { flex: 1, minWidth: 0, gap: 3 },
+  messageMeta: { flexDirection: 'row', alignItems: 'baseline', gap: 6 },
+  author: { fontFamily: theme.type.label.fontFamily, fontSize: 13, lineHeight: 16, color: theme.color.textPrimary },
+  time: { fontFamily: theme.type.mono.fontFamily, fontSize: 10, color: theme.color.textTertiary },
+  messageBody: { fontFamily: theme.type.body.fontFamily, fontSize: 12, lineHeight: 17, color: theme.color.textSecondary },
   notice: {
-    flexDirection: 'row', flexWrap: 'wrap', alignItems: 'baseline', justifyContent: 'center', gap: theme.space.inlineTight,
-    paddingVertical: theme.space.inlineTight, paddingHorizontal: theme.space.stackTight,
-    borderRadius: theme.radius.control, borderWidth: theme.border.standard, borderColor: theme.color.borderSubtle,
+    flexDirection: 'row', alignItems: 'center', gap: theme.space.inlineTight,
+    paddingVertical: 8, paddingHorizontal: 10,
+    borderRadius: 6, borderWidth: theme.border.standard, borderColor: theme.color.borderGhost, backgroundColor: theme.color.surfaceInset,
   },
-  messageMeta: { flexDirection: 'row', alignItems: 'baseline', gap: theme.space.inlineTight },
+  noticeText: { flex: 1, fontFamily: theme.type.body.fontFamily, fontSize: 12, lineHeight: 17, color: theme.color.accentPrimary },
+  onlineAside: { fontFamily: theme.type.mono.fontFamily, fontSize: 10, lineHeight: 13, letterSpacing: 0.8, color: theme.color.textTertiary },
   composer: { gap: theme.space.inlineTight, alignItems: 'stretch' },
+  field: {
+    flexDirection: 'row', alignItems: 'center', gap: theme.space.inlineTight,
+    paddingVertical: 6, paddingLeft: 12, paddingRight: 6,
+    borderRadius: 6, borderWidth: theme.border.standard, borderColor: theme.color.borderSubtle, backgroundColor: theme.color.surfaceInset,
+  },
+  input: { flex: 1, minWidth: 0, maxHeight: 96, paddingVertical: 4, fontFamily: theme.type.body.fontFamily, fontSize: 12, lineHeight: 17, color: theme.color.textPrimary },
+  send: { width: 28, height: 28, alignItems: 'center', justifyContent: 'center', borderRadius: 4, borderWidth: theme.border.standard, borderColor: theme.color.borderSubtle, backgroundColor: theme.color.surfaceElevated },
+  sendDisabled: { opacity: 0.5 },
   announcement: { position: 'absolute', width: 1, height: 1, overflow: 'hidden', opacity: 0 },
 });

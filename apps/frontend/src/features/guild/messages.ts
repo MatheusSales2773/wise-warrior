@@ -59,6 +59,13 @@ export function formatRewardName(reward: { name: string; category: keyof typeof 
   return reward.category === 'title' ? `Título “${reward.name}”` : reward.name;
 }
 
+/** "Título “X”, Escama Rubra e +50 Moedas": the one-line summary on the Raid card. */
+export function formatRewardSummary(rewards: { name: string; category: keyof typeof RAID_REWARD_CATEGORY_LABELS }[], coins: number): string {
+  const parts = [...rewards.map(formatRewardName), formatRewardCoins(coins)];
+  const last = parts.pop() as string;
+  return parts.length ? `${parts.join(', ')} e ${last}` : last;
+}
+
 export const formatRewardCoins = (coins: number) => `+${coins} Moedas`;
 
 export const RAID_REWARD_RULE = 'Para receber o item, contribua com ao menos uma sessão de guilda e ajude a bater a meta até o fim da semana.';
