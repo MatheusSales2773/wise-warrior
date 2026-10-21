@@ -1,5 +1,5 @@
 import { render, screen } from '@testing-library/react-native';
-import { cosmeticSprite, equippedItems, optionsFor } from '@/features/character/catalog';
+import { cosmeticSprite, equipmentCategoryById, equippedItems, optionsFor } from '@/features/character/catalog';
 import { formatCompactXp, formatDeviceSummary } from '@/features/character/formatters';
 import type { CatalogCosmeticItem } from '@/features/profile/api';
 import { cosmeticItemState, describeDevice, describeNextUnlock } from '@/features/profile/formatters';
@@ -18,6 +18,13 @@ describe('character catalog', () => {
     item('Estudante Crepuscular', 'title', { type: 'level', level: 5 }, { unlocked: true, equipped: true }),
     item('Sábio', 'title', { type: 'level', level: 30 }),
   ];
+
+  it('knows the Arma category, so a Loja item or an equipped Arma never reaches an undefined definition', () => {
+    expect(equipmentCategoryById.weapon.label).toBe('Arma');
+    expect(equippedItems({ equipped: [{ category: 'weapon', itemId: 'sword', name: 'Espada' }] }).weapon)
+      .toMatchObject({ itemId: 'sword', name: 'Espada' });
+    expect(equippedItems({ equipped: [] }).weapon).toBeNull();
+  });
 
   it('orders the drawer as equipped, owned, premium and locked, with readable captions', () => {
     expect(optionsFor(titles, 'title', 'free').map((option) => [option.item.name, option.availability.kind, option.caption])).toEqual([

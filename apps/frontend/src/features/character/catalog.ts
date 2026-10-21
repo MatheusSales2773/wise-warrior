@@ -17,6 +17,7 @@ export type EquipmentCategoryDefinition = { id: EquipmentCategory; label: string
 
 export const equipmentCategoryById: Record<EquipmentCategory, EquipmentCategoryDefinition> = {
   avatar: { id: 'avatar', label: 'Avatar', slotLabel: 'AVATAR', noun: 'avatar', description: 'Veste seu herói em todo o app' },
+  weapon: { id: 'weapon', label: 'Arma', slotLabel: 'ARMA', noun: 'arma', description: 'Empunhada pelo seu herói' },
   badge: { id: 'badge', label: 'Badge', slotLabel: 'BADGE', noun: 'badge', description: 'Aparece ao lado do seu nome na guilda' },
   title: { id: 'title', label: 'Título', slotLabel: 'TÍTULO', noun: 'título', description: 'Aparece abaixo do seu nome em todo o app' },
   accessory: { id: 'accessory', label: 'Acessório', slotLabel: 'ACESSÓRIO', noun: 'acessório', description: 'Completa o visual do seu herói' },
@@ -57,6 +58,8 @@ const spriteByName: Record<string, ItemSpriteName> = {
 
 const spriteByCategory: Record<EquipmentCategory, ItemSpriteName> = {
   avatar: 'capuzDoErudito',
+  // Placeholder until the Arma art lands (ADR-013, frontend slice).
+  weapon: 'cristalDaAurora',
   badge: 'madrugadorV',
   title: 'estudanteCrepuscular',
   accessory: 'cristalDaAurora',
@@ -74,7 +77,7 @@ export function equippedItems(profile: Pick<UserProfile, 'equipped'>): EquippedI
     const item = profile.equipped.find((entry) => entry.category === category);
     return item ? { itemId: item.itemId, name: item.name, sprite: cosmeticSprite(item) } : null;
   };
-  return { avatar: slot('avatar'), badge: slot('badge'), title: slot('title'), accessory: slot('accessory') };
+  return { avatar: slot('avatar'), weapon: slot('weapon'), badge: slot('badge'), title: slot('title'), accessory: slot('accessory') };
 }
 
 export type CosmeticAvailability = { kind: 'owned' } | { kind: 'premium' } | { kind: 'locked' };
