@@ -169,12 +169,12 @@ describe('Cosmetic Item unlock on level-up through the Study Session API', () =>
 
   it('unlocks Madrugador when completing a Study Session takes the Character to level 3', async () => {
     await seedCharacterAt(2_500, 2);
-    expect(await unlockedNames()).toEqual(['Aprendiz', 'Capuz do Erudito']);
+    expect(await unlockedNames()).toEqual(['Aprendiz', 'Capuz do Erudito', 'Espada']);
 
     const completed = await (await startSession(900, 'level-3')).complete();
 
     expect(completed.status).toBe(200);
-    expect(await unlockedNames()).toEqual(['Aprendiz', 'Capuz do Erudito', 'Madrugador']);
+    expect(await unlockedNames()).toEqual(['Aprendiz', 'Capuz do Erudito', 'Espada', 'Madrugador']);
   });
 
   it('unlocks the items of every level reached by a gain that skips levels, without equipping them', async () => {
@@ -192,9 +192,9 @@ describe('Cosmetic Item unlock on level-up through the Study Session API', () =>
     expect(character.level).toBe(5);
     const catalog = await (await send('GET', '/users/me/cosmetics')).json() as CatalogCosmeticItem[];
     expect(catalog.filter((item) => item.unlocked).map((item) => item.name).sort())
-      .toEqual(['Aprendiz', 'Capuz do Erudito', 'Estudante Crepuscular', 'Madrugador']);
+      .toEqual(['Aprendiz', 'Capuz do Erudito', 'Espada', 'Estudante Crepuscular', 'Madrugador']);
     expect(catalog.filter((item) => item.equipped).map((item) => item.name).sort())
-      .toEqual(['Aprendiz', 'Capuz do Erudito']);
+      .toEqual(['Aprendiz', 'Capuz do Erudito', 'Espada']);
   });
 
   it('does not duplicate Inventory rows when the completion is replayed or the rule runs again', async () => {
@@ -205,7 +205,7 @@ describe('Cosmetic Item unlock on level-up through the Study Session API', () =>
 
     await dataSource!.transaction((manager) => users.unlockCosmeticItems(manager, userId, 3));
 
-    expect(await dataSource!.getRepository(UserCosmeticItem).count({ where: { userId } })).toBe(3);
+    expect(await dataSource!.getRepository(UserCosmeticItem).count({ where: { userId } })).toBe(4);
   });
 
   it('unlocks nothing and keeps the level when the XP transaction fails', async () => {
@@ -216,7 +216,7 @@ describe('Cosmetic Item unlock on level-up through the Study Session API', () =>
     const completed = await (await startSession(900, 'rollback')).complete();
 
     expect(completed.status).toBe(500);
-    expect(await unlockedNames()).toEqual(['Aprendiz', 'Capuz do Erudito']);
+    expect(await unlockedNames()).toEqual(['Aprendiz', 'Capuz do Erudito', 'Espada']);
     const character = await dataSource!.getRepository(Character).findOneByOrFail({ userId });
     expect({ level: character.level, xpTotal: character.xpTotal }).toEqual({ level: 2, xpTotal: 2_500 });
   });

@@ -6,6 +6,7 @@ import { AppModule } from '../../app.module';
 import { configureApp } from '../../app.setup';
 import { createIntegrationDatabase, type IntegrationDatabase } from '../../test/integration-database';
 import { CosmeticItem } from '../users/entities/cosmetic-item.entity';
+import { SWORD_ID } from '../../migrations/1788460440000-add-weapon-category';
 
 type ShopItem = { id: string; category: string; name: string; price: number; state: string; missing: number };
 type Account = { accessToken: string; userId: string };
@@ -145,6 +146,9 @@ describe('Loja: Compra de Cosmetic Items À venda over HTTP against MySQL, with 
       ['Lanterna do Vigia', 180, 'insufficient', 80],
       ['Arquimago dos Prazos', 240, 'insufficient', 140],
       ['Manto Estelar', 300, 'insufficient', 200],
+      // The Armas À venda (#257).
+      ['Cajado', 90, 'purchasable', 0],
+      ['Besta', 150, 'insufficient', 50],
     ].sort());
     expect(items.find((item) => item.id === CAPA)).toMatchObject({ category: 'avatar' });
   });
@@ -172,6 +176,41 @@ describe('Loja: Compra de Cosmetic Items À venda over HTTP against MySQL, with 
     };
     expect(statement.items[0]).toMatchObject({ amount: -120, origin: { type: 'purchase' } });
     expect((await listItems(account)).find((item) => item.id === CAPA)).toMatchObject({ state: 'owned', missing: 0 });
+  });
+
+  it('sells an Arma: the Espada stays equipped until the bought Arma is equipped, one Arma at a time', async () => {
+    const account = await newAccount(150);
+    const equippedWeapons = async () => (await (await request('GET', '/users/me', account.accessToken)).json() as {
+      equipped: Array<{ category: string; name: string }>;
+    }).equipped.filter((item) => item.category === 'weapon').map((item) => item.name);
+    const cajado = (await listItems(account)).find((item) => item.name === 'Cajado')!;
+    expect(cajado).toMatchObject({ category: 'weapon', price: 90 });
+
+    expect((await purchase(account, cajado.id)).status).toBe(201);
+    expect((await purchase(account, cajado.id)).status).toBe(409);
+    expect(await equippedWeapons()).toEqual(['Espada']);
+
+    expect((await request('PATCH', `/users/me/cosmetics/${cajado.id}`, account.accessToken)).status).toBe(204);
+    expect(await equippedWeapons()).toEqual(['Cajado']);
+
+    expect((await request('DELETE', `/users/me/cosmetics/${cajado.id}/equipped`, account.accessToken)).status).toBe(204);
+    expect(await equippedWeapons()).toEqual([]);
+  });
+
+  it('refuses to sell the Espada, the starter Arma every Character already owns', async () => {
+    const account = await newAccount(300);
+    expect((await purchase(account, SWORD_ID)).status).toBe(404);
+    expect(await balanceOf(account)).toBe(300);
+  });
+
+  it('refuses an Arma without enough Moedas with 422, leaving the Inventário untouched', async () => {
+    const account = await newAccount(100);
+    const besta = (await listItems(account)).find((item) => item.name === 'Besta')!;
+    const response = await purchase(account, besta.id);
+    expect(response.status).toBe(422);
+    expect(await response.json()).toMatchObject({ status: 422, missing: 50 });
+    expect(await balanceOf(account)).toBe(100);
+    expect(await inventoryOf(account)).not.toContain(besta.id);
   });
 
   it('refuses an item the user already owns with 409 and keeps the balance', async () => {

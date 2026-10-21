@@ -33,7 +33,7 @@ describe('Cosmetic Item À venda (ADR-012)', () => {
     expect(forSaleViolation({ ...sellable, category: 'badge' })).not.toBeNull();
   });
 
-  it.each(['avatar', 'title', 'accessory'] as const)('accepts a %s À venda', (category) => {
+  it.each(['avatar', 'title', 'accessory', 'weapon'] as const)('accepts a %s À venda', (category) => {
     expect(forSaleViolation({ ...sellable, category })).toBeNull();
   });
 

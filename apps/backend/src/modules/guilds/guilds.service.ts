@@ -13,7 +13,7 @@ import { RaidsService } from '../raids/raids.service';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
 import { Character } from '../progression/entities/character.entity';
 import { User } from '../users/entities/user.entity';
-import { UsersService, type EquippedAppearance } from '../users/users.service';
+import { EMPTY_APPEARANCE, UsersService, type EquippedAppearance } from '../users/users.service';
 import { Guild } from './entities/guild.entity';
 import { GuildMembership, type GuildRole } from './entities/guild-membership.entity';
 import { CreateGuildDto } from './dto/create-guild.dto';
@@ -207,14 +207,12 @@ export class GuildsService {
     ]);
     return {
       items: page.map((row) => {
-        const look = appearance.get(row.userId);
         return {
           userId: row.userId,
           displayName: row.displayName,
           level: Number(row.level ?? 1),
           title: titles.get(row.userId) ?? null,
-          avatar: look?.avatar ?? null,
-          accessory: look?.accessory ?? null,
+          ...(appearance.get(row.userId) ?? EMPTY_APPEARANCE),
           role: row.role,
           joinedAt: row.joinedAt,
         };
