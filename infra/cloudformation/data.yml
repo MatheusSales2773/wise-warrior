@@ -47,3 +47,11 @@ Outputs:
     Value: !Ref Database
     Export:
       Name: !Sub "${AWS::StackName}-DbInstanceId"
+  DbEndpoint:
+    Value: !GetAtt Database.Endpoint.Address
+    Export:
+      Name: !Sub "${AWS::StackName}-DbEndpoint"
+  DbSecretArn:
+    Value: !GetAtt Database.MasterUserSecret.SecretArn
+    Export:
+      Name: !Sub "${AWS::StackName}-DbSecretArn"

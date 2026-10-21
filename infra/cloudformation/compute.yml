@@ -21,6 +21,9 @@ Parameters:
     Type: String
     Default: ""
     Description: ARN do certificado ACM. Vazio publica so HTTP.
+  DataStackName:
+    Type: String
+    Default: wise-warrior-data
 
 Conditions:
   HasCertificate: !Not [!Equals [!Ref CertificateArn, ""]]
@@ -74,6 +77,21 @@ Resources:
       ManagedPolicyArns:
         - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
         - arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly
+      Policies:
+        - PolicyName: read-app-config
+          PolicyDocument: 
+              Version: '2012-10-17'
+              Statement:
+                - Effect: Allow
+                  Action:
+                    - ssm:GetParameter
+                    - ssm:GetParameters
+                  Resource: !Sub "arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/wise-warrior/hmg/*"
+                - Effect: Allow
+                  Action: secretsmanager:GetSecretValue
+                  Resource: !ImportValue
+                    Fn::Sub: "${DataStackName}-DbSecretArn"
+            
       Tags:
         - Key: Name
           Value: wise-warrior-app-role
