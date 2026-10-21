@@ -98,6 +98,91 @@ export const heroSprites = {
   },
 } as const satisfies Record<string, PixelSpriteData>;
 
+/**
+ * The layered Herói (ADR-013): one neutral body plus an Avatar and an Acessório layer, all on the 16 × 24 grid of the body.
+ * The body keeps the face and hands of the initial class and wears plain cloth; layers are drawn over it and leave
+ * the skin transparent, so the face and hands always come from the body.
+ */
+const heroBodyRows = [
+  '................',
+  '................',
+  '................',
+  '................',
+  '......aaaa......',
+  '.....aeeeea.....',
+  '....aefeefea....',
+  '....aeeggeea....',
+  '.....aeeeea.....',
+  '......aeea......',
+  '....aabbbbaa....',
+  '...abbbbbbbba...',
+  '...abccbbbbba...',
+  '.aeabbbbbbbbaea.',
+  '.aeabbbbbbbbaea.',
+  '..aabbbbbbbbaa..',
+  '...abbbbbbbba...',
+  '...abbddddbba...',
+  '...abba..abba...',
+  '...abba..abba...',
+  '...abba..abba...',
+  '...abba..abba...',
+  '..aaaa....aaaa..',
+  '................',
+] as const;
+
+export const heroBody: PixelSpriteData = {
+  palette: ['#0a0a12', '#6b7086', '#8d93a8', '#4a4e60', '#e8b48a', '#07070c', '#b97d5b'],
+  rows: heroBodyRows,
+};
+
+const FACE_ROWS = [5, 6, 7, 8];
+const HAND_ROWS = [13, 14];
+
+/** An Avatar layer cut from a full-body sprite: its face and hands (skin `e`, eyes `f`, shade `g`) become transparent. */
+function avatarLayerFrom(sprite: PixelSpriteData): PixelSpriteData {
+  return {
+    palette: sprite.palette,
+    rows: sprite.rows.map((row, y) => {
+      if (FACE_ROWS.includes(y)) return row.replace(/[efg]/g, '.');
+      if (HAND_ROWS.includes(y)) return row.replace(/e/g, '.');
+      return row;
+    }),
+  };
+}
+
+/** The initial Avatar's layer, drawn when the slot is empty or the equipped Avatar has no art of its own yet. */
+export const initialAvatarLayer: PixelSpriteData = avatarLayerFrom(heroSprites.erudito);
+
+/** Avatar layers by Catalog name. */
+export const avatarLayers: Readonly<Record<string, PixelSpriteData>> = {
+  'Capuz do Erudito': initialAvatarLayer,
+  'Manto Estelar': avatarLayerFrom(heroSprites.arcanista),
+};
+
+/** Acessório layers by Catalog name; an Acessório without one is only shown in its slot. */
+export const accessoryLayers: Readonly<Record<string, PixelSpriteData>> = {
+  'Selo dos Madrugadores': {
+    palette: ['#0a0a12', '#c44545', '#d4a85a'],
+    rows: [
+      ...Array<string>(11).fill('................'),
+      '.........aba....',
+      '.........bcb....',
+      '.........aba....',
+      ...Array<string>(10).fill('................'),
+    ],
+  },
+  'Pena do Escriba': {
+    palette: ['#0a0a12', '#f3ead4', '#d4a85a'],
+    rows: [
+      '................',
+      '.............aa.',
+      '............abba',
+      '...........abba.',
+      ...Array<string>(20).fill('................'),
+    ],
+  },
+};
+
 export const itemSprites = {
   capuzDoErudito: {
     palette: ['#0a0a12', '#5b3fa0', '#8a5bc4', '#e8b48a'],
