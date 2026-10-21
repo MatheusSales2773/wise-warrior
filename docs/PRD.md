@@ -43,6 +43,12 @@
 | Ganho e gasto de Moedas | 1 Moeda a cada 2 min de foco válido, +50 por Raid vencida, 90 no cadastro; Missões de 90 a 480, itens de 30 a 300; Badge nunca à venda | ADR-012 (Aceito) |
 | Fúria do dragão | Chefe recupera 5% da meta por dia inteiro sem Contribuição, até a Meta batida, que passa a ser vida zero | ADR-012 (Aceito, emenda #145) |
 
+### Registro de decisões fechadas em 21/10/2026
+
+| Ponto aberto | Decisão | ADR |
+|---|---|---|
+| Como o Avatar aparece no Herói | Corpo base único com camadas de Avatar, Arma e Acessório; sem classe; Arma é nova categoria de Cosmetic Item | ADR-013 (Aceito) |
+
 > Este documento consolida e substitui as lacunas dos documentos orientadores (Documento de Visão, Documento de Arquitetura, Documentação de Interface, Pitch e Casos de Uso UC01–UC04), resolvendo inconsistências entre eles e propondo um caminho técnico único para a Fase 1 de desenvolvimento.
 
 ---
@@ -331,6 +337,14 @@ fazem parte desse primeiro corte.
 4. **Missões e escolha do Líder:** as Missões do rodízio são grátis, ficam fora da Loja e podem ser escolhidas pelo Líder. A escolha trava quando a Raid começa; se o dono sai antes, a escolha é anulada e vale o rodízio. A mesma Missão pode se repetir; itens que o Participante já tem são pulados. O dono não ganha nada quando sua Missão é usada.
 5. **Fúria do dragão:** a cada dia (`America/Sao_Paulo`) sem nenhuma Contribuição da Guild, o chefe recupera `RAID_FURY_REGEN_PERCENT`% do `goalXp` (padrão `5`), sem passar da vida cheia. Para quando a Meta é batida. *Emenda de 16/10/2026 (#145):* a Meta batida passa a ser a Vida do chefe chegar a zero (`progress >= goal + regenerado`), não mais `progress >= goal`; sem isso a Fúria seria só visual. Regeneram apenas os dias inteiros da Raid que não foram Dia de estudo: o dia em que a Raid começou no meio e o último dia (fechado pelo fechamento semanal no mesmo instante) não contam. Dias perdidos com a aplicação fora do ar são aplicados na volta, uma vez por Raid e dia.
 **Consequência:** a #160 implementa Moeda, Extrato e Loja (Missões e itens); a #145 implementa a Fúria e paga a Recompensa de Raid pelo Service da Moeda (ADR-001); a #148 implementa as telas. O tesouro, o mercado e o quadro de missões da versão anterior da #145 ficam descartados. Glossário em `CONTEXT.md`.
+
+### ADR-013: Herói em camadas, sem classe, com a categoria Arma
+**Status:** Aceito em 21/10/2026. **Contexto:** a issue #178 apontou que equipar um Avatar não muda a arte do Herói. A Raid já trocava o sprite inteiro por Avatar (#192), e o Personagem desenhava só a classe, um sprite com roupa embutida. **Alternativas:** (a) sprite inteiro por Avatar; (b) troca de paleta da classe; (c) corpo base único com camadas de Avatar, Arma e Acessório, como no Habitica. **Decisão:** (c).
+1. **Herói:** é o corpo base único mais as camadas do Avatar, da Arma e do Acessório equipados, todas na grade 16 × 24 do corpo. Sem Avatar, ou com um Avatar sem arte própria, vale o visual do Avatar inicial.
+2. **Sem classe:** a seleção de classe (Erudito, Guerreira, Arcanista, Paladino), seus desbloqueios por nível e por plano e o painel "Trocar herói" saem. A variedade visual vem só dos Cosmetic Items.
+3. **Arma:** nova categoria de Cosmetic Item, só visual, sem efeito em XP, Raid ou Moedas. A Espada é o Item inicial; Cajado e Besta são as primeiras Armas À venda, com preço definido pelo PO. Desequipada, o Herói aparece sem arma. Aparece em Personagem, Prévia e Raid, e fora do retrato de 32 px da Guild. A aparência de Raid e Guild passa a expor Arma além de Avatar e Acessório.
+4. **Prévia:** segue só para itens do Inventário e compõe todas as camadas.
+**Consequência:** o mapa nome do Avatar → classe da Raid e a arma derivada da classe são substituídos. O trabalho se divide em backend e API da Arma, Herói em camadas no frontend e a arte de cada Avatar. Glossário em `CONTEXT.md`.
 
 ### 8.1 Diagrama de arquitetura (implementado em `dev/phase-1`)
 
