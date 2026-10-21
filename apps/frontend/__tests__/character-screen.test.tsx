@@ -325,6 +325,19 @@ describe('CharacterScreen', () => {
       expect(mockedEquip).not.toHaveBeenCalled();
     });
 
+    it('previews an Avatar on the Herói and names it in the text without saving anything', async () => {
+      mockedCatalog.mockResolvedValue([...catalog, cosmetic('Manto Estelar', 'avatar', { type: 'level', level: 10 }, { unlocked: true })]);
+      await renderCharacter();
+
+      await fireEvent.press(screen.getByTestId('character-slot-avatar'));
+      await fireEvent.press(await screen.findByRole('radio', { name: /^Manto Estelar,/ }));
+
+      expect(screen.getByTestId('character-hero-layer-avatar', { includeHiddenElements: true })).toBeTruthy();
+      expect(identity().getByText('✦ Nível 14 · Manto Estelar')).toBeTruthy();
+      expect(screen.getByTestId('character-preview')).toBeTruthy();
+      expect(mockedEquip).not.toHaveBeenCalled();
+    });
+
     it('drops the Prévia when the drawer closes or the category changes', async () => {
       await renderCharacter();
       await openTitles();
@@ -466,6 +479,15 @@ describe('CharacterScreen', () => {
       expect(within(screen.getByTestId('character-slot-title')).getByText('TÍTULO')).toBeTruthy();
       expect(within(screen.getByTestId('character-slot-title')).queryByText('Estudante Crepuscular')).toBeNull();
       expect(screen.getByText('Gerenciar')).toBeTruthy();
+    });
+
+    it('draws the body, Avatar and Acessório layers on the phone too', async () => {
+      await renderCharacter({ equipped: [...profile.equipped, { category: 'accessory', itemId: 'item-Selo dos Madrugadores', name: 'Selo dos Madrugadores' }] });
+
+      for (const layer of ['body', 'avatar', 'accessory']) {
+        expect(screen.getByTestId(`character-hero-layer-${layer}`, { includeHiddenElements: true })).toBeTruthy();
+      }
+      expect(identity().getByText('✦ Nível 14 · Capuz do Erudito · Selo dos Madrugadores')).toBeTruthy();
     });
 
     it('has no hero carousel or swap button', async () => {
