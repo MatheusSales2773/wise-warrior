@@ -24,9 +24,9 @@ export function SectionHeader({ aside, children }: PropsWithChildren<{ aside?: R
   </View>;
 }
 
-/** The eyebrow under the Herói, which also names the equipped Avatar and Acessório for screen readers (the art is decorative). */
-export function describeHero(level: number, equipped: Pick<EquippedItems, 'avatar' | 'accessory'>): string {
-  return ['✦ Nível ' + level, equipped.avatar?.name, equipped.accessory?.name].filter(Boolean).join(' · ');
+/** The eyebrow under the Herói, which also names the equipped Avatar, Arma and Acessório for screen readers (the art is decorative). */
+export function describeHero(level: number, equipped: Pick<EquippedItems, 'avatar' | 'weapon' | 'accessory'>): string {
+  return ['✦ Nível ' + level, equipped.avatar?.name, equipped.weapon?.name, equipped.accessory?.name].filter(Boolean).join(' · ');
 }
 
 /** Shown under the title while the equipment drawer previews an item. */

@@ -99,7 +99,7 @@ export const heroSprites = {
 } as const satisfies Record<string, PixelSpriteData>;
 
 /**
- * The layered Herói (ADR-013): one neutral body plus an Avatar and an Acessório layer, all on the 16 × 24 grid of the body.
+ * The layered Herói (ADR-013): one neutral body plus Avatar, Arma and Acessório layers, all on the 16 × 24 grid of the body.
  * The body keeps the face and hands of the initial class and wears plain cloth; layers are drawn over it and leave
  * the skin transparent, so the face and hands always come from the body.
  */
@@ -134,6 +134,9 @@ export const heroBody: PixelSpriteData = {
   palette: ['#0a0a12', '#6b7086', '#8d93a8', '#4a4e60', '#e8b48a', '#07070c', '#b97d5b'],
   rows: heroBodyRows,
 };
+
+export const GRID_WIDTH = 16;
+export const GRID_HEIGHT = 24;
 
 const FACE_ROWS = [5, 6, 7, 8];
 const HAND_ROWS = [13, 14];
@@ -180,6 +183,42 @@ export const accessoryLayers: Readonly<Record<string, PixelSpriteData>> = {
       '...........abba.',
       ...Array<string>(20).fill('................'),
     ],
+  },
+};
+
+/** Builds a 16 × 24 layer from rows placed by `[y, x, pixels]`, so an Arma is drawn where the hand holds it. */
+function layerAt(placements: readonly (readonly [number, number, string])[]): readonly string[] {
+  const rows = Array<string>(GRID_HEIGHT).fill('.'.repeat(GRID_WIDTH));
+  for (const [y, x, pixels] of placements) rows[y] = rows[y]!.slice(0, x) + pixels + rows[y]!.slice(x + pixels.length);
+  return rows;
+}
+
+/**
+ * Arma layers by Catalog name (ADR-013). Each is a full 16 × 24 layer: the sprite itself says where the Arma sits,
+ * gripped in the right hand of the body (column 13, rows 13 and 14), where each Arma paints only the hand pixels. An Arma without one leaves the Herói unarmed.
+ */
+export const weaponLayers: Readonly<Record<string, PixelSpriteData>> = {
+  Espada: {
+    palette: ['#0a0a12', '#c9d1e0', '#d4a85a', '#7a5f28'],
+    rows: layerAt([
+      [3, 12, '.a.'], [4, 12, 'aba'], [5, 12, 'aba'], [6, 12, 'aba'], [7, 12, 'aba'], [8, 12, 'aba'], [9, 12, 'aba'],
+      [10, 11, 'accca'], [11, 12, 'ada'], [12, 12, 'ada'], [13, 13, 'd'], [14, 13, 'd'],
+    ]),
+  },
+  Cajado: {
+    palette: ['#0a0a12', '#8a5a2b', '#6fd0ff', '#e0f6ff'],
+    rows: layerAt([
+      [0, 12, '.a.'], [1, 12, 'aca'], [2, 12, 'cdc'], [3, 12, 'aca'],
+      ...[4, 5, 6, 7, 8, 9, 10, 11, 12, 15, 16, 17, 18, 19, 20].map((y) => [y, 12, 'aba'] as const),
+      [13, 13, 'b'], [14, 13, 'b'], [21, 13, 'a'],
+    ]),
+  },
+  Besta: {
+    palette: ['#0a0a12', '#8a5a2b', '#f3ead4', '#c9d1e0'],
+    rows: layerAt([
+      [6, 13, 'd'], [7, 13, 'd'], [8, 11, 'abbba'], [9, 11, 'acdca'],
+      [10, 12, 'aba'], [11, 12, 'aba'], [12, 12, 'aba'], [13, 13, 'b'], [14, 13, 'b'],
+    ]),
   },
 };
 
@@ -248,6 +287,18 @@ export const itemSprites = {
   cacadorDeMonstros: {
     palette: ['#0a0a12', '#b3a98e', '#c44545'],
     rows: ['.aaaaaa.', 'abbbbbba', '.abccba.', '.abbbba.', '.abccba.', '.abbbba.', 'abbbbbba', '.aaaaaa.'],
+  },
+  espada: {
+    palette: ['#0a0a12', '#c9d1e0', '#d4a85a', '#7a5f28'],
+    rows: ['......aa', '.....aba', '....aba.', 'a..aba..', 'acaba...', '.acca...', '.adca...', 'aa.aa...'],
+  },
+  cajado: {
+    palette: ['#0a0a12', '#8a5a2b', '#6fd0ff', '#e0f6ff'],
+    rows: ['....aaa.', '...acda.', '...acca.', '....aaa.', '...ab...', '..ab....', '.ab.....', 'aa......'],
+  },
+  besta: {
+    palette: ['#0a0a12', '#8a5a2b', '#f3ead4', '#c9d1e0'],
+    rows: ['...aa...', '...ad...', 'aaabbaaa', 'acbddbca', '.aabbaa.', '...ab...', '...ab...', '...aa...'],
   },
   cristalDaAurora: {
     palette: ['#0a0a12', '#a9e0ff', '#5b9fc4'],
