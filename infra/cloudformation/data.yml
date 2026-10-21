@@ -20,6 +20,14 @@ Resources:
         - !ImportValue
           Fn::Sub: "${NetworkStackName}-DataSubnetBId"
 
+  DbParameterGroup:
+    Type: AWS::RDS::DBParameterGroup
+    Properties:
+      Description: MySQL 8.4 com triggers e funcoes permitidos sem SUPER
+      Family: mysql8.4
+      Parameters:
+        log_bin_trust_function_creators: "1"
+
   Database:
     Type: AWS::RDS::DBInstance
     DeletionPolicy: Snapshot
@@ -34,6 +42,7 @@ Resources:
       MultiAZ: false
       PubliclyAccessible: false
       DBSubnetGroupName: !Ref DbSubnetGroup
+      DBParameterGroupName: !Ref DbParameterGroup
       VPCSecurityGroups:
         - !ImportValue 
           Fn::Sub: "${SecurityStackName}-RdsSecurityGroupId"
