@@ -17,7 +17,7 @@ import { Raid } from './entities/raid.entity';
 import { RAID_CLOCK, type RaidClock } from './raid-clock';
 import { bossHealthXp, furyDaysDue, furyRegenXp, getRaidFuryRegenPercent } from './domain/dragon-fury';
 import { missionIndexForWeek, proportionalGoalXp, raidWeekAt, raidWeekDayKeys, studyDaysOf, studyStreak, zonedDayKey } from './domain/raid-week';
-import { UsersService, type EquippedAppearance } from '../users/users.service';
+import { EMPTY_APPEARANCE, UsersService, type EquippedAppearance } from '../users/users.service';
 import { EconomyService } from '../economy/economy.service';
 import { getRaidWinCoins } from '../economy/domain/coin-config';
 import type { CoinMovementResult } from '../economy/domain/coin-origin';
@@ -824,9 +824,7 @@ export class RaidsService {
         title: row.title ?? null,
         contributionXp: Number(row.contribution_xp),
         isMe: row.user_id === userId,
-        avatar: appearance.get(row.user_id)?.avatar ?? null,
-        weapon: appearance.get(row.user_id)?.weapon ?? null,
-        accessory: appearance.get(row.user_id)?.accessory ?? null,
+        ...(appearance.get(row.user_id) ?? EMPTY_APPEARANCE),
       })),
       nextCursor: rows.length > limit && last ? encodeRankingCursor(Number(last.rank_position)) : null,
     };

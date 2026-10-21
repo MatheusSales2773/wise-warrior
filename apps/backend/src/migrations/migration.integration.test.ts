@@ -31,7 +31,7 @@ import { AddGuildMissionChoice1788460020000 } from './1788460020000-add-guild-mi
 import { KeepBadgesOffSale1788460080000 } from './1788460080000-keep-badges-off-sale';
 import { SeedCosmeticItemsForSale1788460140000 } from './1788460140000-seed-cosmetic-items-for-sale';
 import { SeedMissionsForSale1788460200000 } from './1788460200000-seed-missions-for-sale';
-import { AddWeaponCategory1788460440000 } from './1788460440000-add-weapon-category';
+import { AddWeaponCategory1788460440000, STAFF_ID } from './1788460440000-add-weapon-category';
 import { raidWeekAt } from '../modules/raids/domain/raid-week';
 
 const ITEMS_FOR_SALE = [
@@ -1539,6 +1539,22 @@ describe('TypeORM migrations against an empty MySQL schema', () => {
         [`${id}-character`, id],
       );
     }
+    // A Character that already equips another Arma keeps it: the Espada is granted but stays in the Inventário.
+    await database.admin.query(
+      `INSERT INTO ${database.identifier}.users (id, email, password_hash, display_name, plan_tier)
+       VALUES ('armed', 'armed@example.com', 'hash', 'armed', 'free')`,
+    );
+    await database.admin.query(
+      `INSERT INTO ${database.identifier}.characters (id, user_id, level, xp_total) VALUES ('armed-character', 'armed', 1, 0)`,
+    );
+    await database.admin.query(
+      `INSERT INTO ${database.identifier}.cosmetic_items (id, category, name, unlock_condition, requires_premium)
+       VALUES ('legacy-weapon', 'weapon', 'Machado', 'raid:legacy', 0)`,
+    );
+    await database.admin.query(
+      `INSERT INTO ${database.identifier}.user_cosmetic_items (id, user_id, cosmetic_item_id, equipped)
+       VALUES ('armed-row', 'armed', 'legacy-weapon', 1)`,
+    );
     await initialDataSource.destroy();
     initialDataSource = undefined;
 
@@ -1557,9 +1573,10 @@ describe('TypeORM migrations against an empty MySQL schema', () => {
        JOIN ${database!.identifier}.cosmetic_items ci ON ci.id = uci.cosmetic_item_id
        WHERE ci.category = 'weapon' ORDER BY uci.user_id, ci.name`,
     )).map((row) => [row.user_id, row.name, Number(row.equipped)]);
-    const expectedWeapons = [['Besta', 'purchase', 150, 1], ['Cajado', 'purchase', 90, 1], ['Espada', 'level:1', null, 0]];
+    const expectedWeapons = [['Besta', 'purchase', 150, 1], ['Cajado', 'purchase', 90, 1], ['Espada', 'level:1', null, 0], ['Machado', 'raid:legacy', null, 0]];
     expect(await weapons()).toEqual(expectedWeapons);
-    expect(await inventory()).toEqual([['newcomer', 'Espada', 1], ['veteran', 'Espada', 1]]);
+    const armed = [['armed', 'Espada', 0], ['armed', 'Machado', 1]];
+    expect(await inventory()).toEqual([...armed, ['newcomer', 'Espada', 1], ['veteran', 'Espada', 1]]);
 
     // Running it again duplicates nothing and keeps a choice made since: the veteran swapped to the Cajado.
     await database.admin.query(
@@ -1567,7 +1584,8 @@ describe('TypeORM migrations against an empty MySQL schema', () => {
     );
     await database.admin.query(
       `INSERT INTO ${database.identifier}.user_cosmetic_items (id, user_id, cosmetic_item_id, equipped)
-       VALUES ('veteran-cajado', 'veteran', 'c05e71c0-0000-4000-8000-000000000302', 1)`,
+       VALUES ('veteran-cajado', 'veteran', ?, 1)`,
+      [STAFF_ID],
     );
     const runner = dataSource.createQueryRunner();
     try {
@@ -1577,14 +1595,15 @@ describe('TypeORM migrations against an empty MySQL schema', () => {
     }
     expect(await weapons()).toEqual(expectedWeapons);
     expect(await inventory()).toEqual([
+      ...armed,
       ['newcomer', 'Espada', 1],
       ['veteran', 'Cajado', 1],
       ['veteran', 'Espada', 0],
     ]);
 
     await revertThrough(dataSource, AddWeaponCategory1788460440000);
-    expect(await weapons()).toEqual([]);
-    expect(await inventory()).toEqual([]);
+    expect(await weapons()).toEqual([['Machado', 'raid:legacy', null, 0]]);
+    expect(await inventory()).toEqual([['armed', 'Machado', 1]]);
 
     await dataSource.runMigrations();
     expect(await weapons()).toEqual(expectedWeapons);

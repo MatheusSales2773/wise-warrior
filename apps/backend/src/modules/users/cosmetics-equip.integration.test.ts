@@ -15,6 +15,7 @@ import { User } from './entities/user.entity';
 import { UserCosmeticItem } from './entities/user-cosmetic-item.entity';
 import { UsersController } from './users.controller';
 import { UsersService } from './users.service';
+import { SWORD_ID as ESPADA } from '../../migrations/1788460440000-add-weapon-category';
 import type { RealtimeGateway } from '../realtime/realtime.gateway';
 
 const ITEM = (n: number) => `c05e71c0-0000-4000-8000-00000000000${n}`;
@@ -22,7 +23,6 @@ const APRENDIZ = ITEM(2);
 const CREPUSCULAR = ITEM(4);
 const MESTRE_DA_AURORA = ITEM(8);
 const SELO = ITEM(7);
-const ESPADA = 'c05e71c0-0000-4000-8000-000000000301';
 
 describe('Equipping Cosmetic Items against MySQL', () => {
   jest.setTimeout(30_000);

@@ -21,6 +21,7 @@ import { CosmeticItem } from './entities/cosmetic-item.entity';
 import { User } from './entities/user.entity';
 import { UserCosmeticItem } from './entities/user-cosmetic-item.entity';
 import { UsersController } from './users.controller';
+import { SWORD_ID } from '../../migrations/1788460440000-add-weapon-category';
 import { UsersService, type CatalogCosmeticItem } from './users.service';
 
 describe('Cosmetics Catalog HTTP contract against MySQL', () => {
@@ -204,7 +205,7 @@ describe('Cosmetics Catalog HTTP contract against MySQL', () => {
     expect(starter.equipped).toEqual(expect.arrayContaining([
       { category: 'avatar', itemId: 'c05e71c0-0000-4000-8000-000000000001', name: 'Capuz do Erudito' },
       { category: 'title', itemId: 'c05e71c0-0000-4000-8000-000000000002', name: 'Aprendiz' },
-      { category: 'weapon', itemId: 'c05e71c0-0000-4000-8000-000000000301', name: 'Espada' },
+      { category: 'weapon', itemId: SWORD_ID, name: 'Espada' },
     ]));
     expect(starter.equipped).toHaveLength(3);
 
