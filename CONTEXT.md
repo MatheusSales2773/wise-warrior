@@ -7,12 +7,20 @@ Plataforma de produtividade gamificada: o estudante faz Study Sessions, ganha XP
 ### Personagem e cosméticos
 
 **Character** (Personagem):
-A representação RPG do usuário, com nível, XP acumulado e os Cosmetic Items que ele equipou.
-_Avoid_: Perfil (quando se refere ao personagem), herói, avatar (para o personagem inteiro)
+A representação RPG do usuário, com nível, XP acumulado e os Cosmetic Items que ele equipou. Seu desenho é o Herói.
+_Avoid_: Perfil (quando se refere ao personagem), herói (para o Character em si), avatar (para o personagem inteiro)
+
+**Herói**:
+A figura desenhada do Character, composta por um corpo base único mais as camadas do Avatar, da Arma e do Acessório equipados. Sem Avatar equipado, ou com um Avatar sem arte própria, vale o visual do Avatar inicial. Não existe seleção de classe: a variedade visual vem só dos Cosmetic Items.
+_Avoid_: classe, personagem inteiro
 
 **Cosmetic Item**:
-Um item visual do Character, de uma das categorias Avatar, Badge, Título ou Acessório.
+Um item visual do Character, de uma das categorias Avatar, Badge, Título, Acessório ou Arma.
 _Avoid_: item, recompensa, skin
+
+**Arma**:
+A categoria de Cosmetic Item desenhada na mão do Herói. É só visual: não altera XP, Raid nem Moedas. Todo Character tem uma Arma como Item inicial; desequipada, o Herói aparece sem arma.
+_Avoid_: equipamento, item de combate
 
 **Catálogo**:
 O conjunto de todos os Cosmetic Items que existem na plataforma, desbloqueados ou não pelo usuário.
