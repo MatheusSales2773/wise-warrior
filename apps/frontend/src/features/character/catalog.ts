@@ -4,54 +4,12 @@ import { describeUnlockCondition, orderCategoryItems } from '@/features/profile/
 import type { HeroSpriteName, ItemSpriteName } from './sprites';
 
 /*
- * Heroes are a static roster: the API has no hero selection yet, so availability is derived from level and plan.
+ * The Herói is the neutral body plus the equipped Avatar and Acessório layers (ADR-013); there is no class to choose.
  * Cosmetics come from the real Catalog (`GET /users/me/cosmetics`); this module only adds the pixel art and wording.
  */
 
-export type HeroId = HeroSpriteName;
-
-export type HeroDefinition = {
-  id: HeroId;
-  name: string;
-  unlock: { kind: 'initial' } | { kind: 'level'; level: number } | { kind: 'premium' };
-};
-
-export const heroById: Record<HeroId, HeroDefinition> = {
-  erudito: { id: 'erudito', name: 'Erudito', unlock: { kind: 'initial' } },
-  guerreira: { id: 'guerreira', name: 'Guerreira', unlock: { kind: 'level', level: 10 } },
-  arcanista: { id: 'arcanista', name: 'Arcanista', unlock: { kind: 'level', level: 20 } },
-  paladino: { id: 'paladino', name: 'Paladino', unlock: { kind: 'premium' } },
-};
-
-export const heroes: readonly HeroDefinition[] = Object.values(heroById);
-
-/** Every hero starts as the initial class until hero selection is persisted by the API. */
-export const DEFAULT_HERO_ID: HeroId = 'erudito';
-
-export type HeroStatus = 'equipped' | 'unlocked' | 'level-locked' | 'premium-locked';
-
-type Progress = Pick<UserProfile, 'level' | 'planTier'>;
-
-export function heroStatus(hero: HeroDefinition, progress: Progress, equippedHeroId: HeroId): HeroStatus {
-  if (hero.id === equippedHeroId) return 'equipped';
-  switch (hero.unlock.kind) {
-    case 'initial': return 'unlocked';
-    case 'level': return progress.level >= hero.unlock.level ? 'unlocked' : 'level-locked';
-    case 'premium': return progress.planTier === 'premium' ? 'unlocked' : 'premium-locked';
-  }
-}
-
-export function heroCaption(hero: HeroDefinition, status: HeroStatus): string {
-  switch (hero.unlock.kind) {
-    case 'initial': return 'Classe inicial';
-    case 'level': return status === 'level-locked' ? `Libera no nível ${hero.unlock.level}` : `Liberada no nível ${hero.unlock.level}`;
-    case 'premium': return 'Plano premium';
-  }
-}
-
-export function isHeroAvailable(status: HeroStatus): boolean {
-  return status === 'equipped' || status === 'unlocked';
-}
+/** The Raid and the Loja still draw the initial class sprite until they move to the layered Herói. */
+export const DEFAULT_HERO_ID: HeroSpriteName = 'erudito';
 
 export type EquipmentCategory = EquippedCosmeticItem['category'];
 
