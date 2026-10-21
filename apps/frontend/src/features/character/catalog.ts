@@ -92,6 +92,9 @@ const spriteByName: Record<string, ItemSpriteName> = {
   'Medalhão do Lobo': 'medalhaoDoLobo',
   'Caçador de Monstros': 'cacadorDeMonstros',
   'Armadura do Lobo': 'armaduraDoLobo',
+  'Marcador do Grimório': 'marcadorDoGrimorio',
+  'Lanterna do Silêncio': 'lanternaDoSilencio',
+  'Brasão da Forja': 'brasaoDaForja',
 };
 
 const spriteByCategory: Record<EquipmentCategory, ItemSpriteName> = {
