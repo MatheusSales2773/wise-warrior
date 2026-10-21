@@ -1,10 +1,7 @@
 import { StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
 import type { EquippedItems } from './catalog';
 import { PixelSprite } from './PixelSprite';
-import { accessoryLayers, avatarLayers, heroBody, initialAvatarLayer, weaponLayers } from './sprites';
-
-const GRID_WIDTH = 16;
-const GRID_HEIGHT = 24;
+import { GRID_HEIGHT, GRID_WIDTH, accessoryLayers, avatarLayers, heroBody, initialAvatarLayer, weaponLayers } from './sprites';
 
 /** The layer drawn for the equipped Avatar: its own art, or the initial Avatar's when it has none or the slot is empty. */
 export function avatarLayerFor(equipped: Pick<EquippedItems, 'avatar'>) {

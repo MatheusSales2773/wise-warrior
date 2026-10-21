@@ -371,6 +371,19 @@ describe('CharacterScreen', () => {
         expect(mockedEquip).not.toHaveBeenCalled();
       });
 
+      it('previews an Arma together with the equipped Avatar and Acessório', async () => {
+        mockedCatalog.mockResolvedValue([...catalog, sword, staff]);
+        await renderCharacter({ equipped: [...profile.equipped, swordEquipped, { category: 'accessory', itemId: 'item-Selo dos Madrugadores', name: 'Selo dos Madrugadores' }] });
+
+        await fireEvent.press(screen.getByTestId('character-slot-weapon'));
+        await fireEvent.press(await screen.findByRole('radio', { name: /^Cajado,/ }));
+
+        for (const layer of ['body', 'avatar', 'weapon', 'accessory']) {
+          expect(screen.getByTestId(`character-hero-layer-${layer}`, { includeHiddenElements: true })).toBeTruthy();
+        }
+        expect(mockedEquip).not.toHaveBeenCalled();
+      });
+
       it('removes the Arma layer when the Arma is unequipped', async () => {
         mockedUnequip.mockImplementation(async () => {
           mockedProfile.mockResolvedValue(profile);

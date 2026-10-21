@@ -135,8 +135,8 @@ export const heroBody: PixelSpriteData = {
   rows: heroBodyRows,
 };
 
-const GRID_WIDTH = 16;
-const GRID_HEIGHT = 24;
+export const GRID_WIDTH = 16;
+export const GRID_HEIGHT = 24;
 
 const FACE_ROWS = [5, 6, 7, 8];
 const HAND_ROWS = [13, 14];
@@ -186,7 +186,7 @@ export const accessoryLayers: Readonly<Record<string, PixelSpriteData>> = {
   },
 };
 
-/** Builds a 16 × 24 layer from rows placed by `[y, x, pixels]`, so a Arma is drawn where the hand holds it. */
+/** Builds a 16 × 24 layer from rows placed by `[y, x, pixels]`, so an Arma is drawn where the hand holds it. */
 function layerAt(placements: readonly (readonly [number, number, string])[]): readonly string[] {
   const rows = Array<string>(GRID_HEIGHT).fill('.'.repeat(GRID_WIDTH));
   for (const [y, x, pixels] of placements) rows[y] = rows[y]!.slice(0, x) + pixels + rows[y]!.slice(x + pixels.length);
@@ -195,14 +195,14 @@ function layerAt(placements: readonly (readonly [number, number, string])[]): re
 
 /**
  * Arma layers by Catalog name (ADR-013). Each is a full 16 × 24 layer: the sprite itself says where the Arma sits,
- * gripped in the right hand of the body (column 13, rows 13 and 14). An Arma without one leaves the Herói unarmed.
+ * gripped in the right hand of the body (column 13, rows 13 and 14), where each Arma paints only the hand pixels. An Arma without one leaves the Herói unarmed.
  */
 export const weaponLayers: Readonly<Record<string, PixelSpriteData>> = {
   Espada: {
     palette: ['#0a0a12', '#c9d1e0', '#d4a85a', '#7a5f28'],
     rows: layerAt([
       [3, 12, '.a.'], [4, 12, 'aba'], [5, 12, 'aba'], [6, 12, 'aba'], [7, 12, 'aba'], [8, 12, 'aba'], [9, 12, 'aba'],
-      [10, 11, 'accca'], [11, 12, 'ada'], [12, 12, 'ada'], [13, 13, 'd'], [14, 12, 'aca'],
+      [10, 11, 'accca'], [11, 12, 'ada'], [12, 12, 'ada'], [13, 13, 'd'], [14, 13, 'd'],
     ]),
   },
   Cajado: {
@@ -217,7 +217,7 @@ export const weaponLayers: Readonly<Record<string, PixelSpriteData>> = {
     palette: ['#0a0a12', '#8a5a2b', '#f3ead4', '#c9d1e0'],
     rows: layerAt([
       [6, 13, 'd'], [7, 13, 'd'], [8, 11, 'abbba'], [9, 11, 'acdca'],
-      [10, 12, 'aba'], [11, 12, 'aba'], [12, 12, 'aba'], [13, 13, 'b'], [14, 12, 'aba'],
+      [10, 12, 'aba'], [11, 12, 'aba'], [12, 12, 'aba'], [13, 13, 'b'], [14, 13, 'b'],
     ]),
   },
 };
