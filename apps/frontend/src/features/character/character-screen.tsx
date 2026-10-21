@@ -9,41 +9,23 @@ import { profileQueryOptions, sessionMetricsQueryOptions } from '@/features/dash
 import { profileWithEquipped } from '@/features/profile/equipment';
 import { cosmeticsCatalogQueryOptions, deviceSessionsQueryOptions } from '@/features/profile/queries';
 import { useCosmeticEquipment } from '@/features/profile/use-cosmetic-equipment';
-import {
-  DEFAULT_HERO_ID,
-  equipmentCategories,
-  equippedItems,
-  heroById,
-  heroCaption,
-  heroes,
-  heroStatus,
-  isHeroAvailable,
-  type EquipmentCategory,
-  type EquipmentCategoryDefinition,
-  type EquippedItems,
-  type HeroDefinition,
-  type HeroId,
-  type HeroStatus,
-} from './catalog';
+import { equipmentCategories, equippedItems, type EquipmentCategory, type EquipmentCategoryDefinition, type EquippedItems } from './catalog';
 import { GroundShadow, HeroGlow } from './character-art';
 import { MobileCharacter } from './character-mobile';
-import { HeroPill, LevelProgress, PreviewMark, SectionHeader, SummaryRow, describeDevices, useFocusRing, type DevicesState } from './character-parts';
+import { LevelProgress, PreviewMark, describeHero, SectionHeader, SummaryRow, describeDevices, useFocusRing, type DevicesState } from './character-parts';
 import { DevicesPanel } from './devices-panel';
 import { EquipmentDrawer } from './equipment-drawer';
+import { LayeredHero } from './layered-hero';
 import { PixelSprite } from './PixelSprite';
-import { companionSprites, heroSprites, itemSprites } from './sprites';
-
-const HERO_SWAP_NOTICE = 'A troca de herói chega em breve. Seu progresso continua contando para todos eles.';
+import { companionSprites, itemSprites } from './sprites';
 
 /* ---------- Painel do herói ---------- */
 
-function HeroPanel({ desktop, hero, metrics, notice, onSwapHero, previewing, user }: {
+function HeroPanel({ desktop, equipped, metrics, previewing, user }: {
   desktop: boolean;
+  equipped: EquippedItems;
   previewing: boolean;
-  hero: HeroDefinition;
   metrics: SessionMetrics | undefined;
-  notice: string | null;
-  onSwapHero: () => void;
   user: UserProfile;
 }) {
   return <View style={[styles.heroPanel, desktop && styles.heroPanelDesktop]} testID="character-hero-panel">
@@ -52,28 +34,16 @@ function HeroPanel({ desktop, hero, metrics, notice, onSwapHero, previewing, use
     <View style={styles.heroStage} testID="character-hero-stage">
       <HeroGlow height={480} opacity={0.24} style={styles.heroStageGlow} width={520} />
       <GroundShadow height={27} style={styles.heroStageShadow} width={168} />
-      <PixelSprite scale={12} sprite={heroSprites[hero.id]} testID="character-hero-sprite" />
+      <LayeredHero equipped={equipped} scale={12} testID="character-hero-sprite" />
     </View>
     <View style={styles.identity} testID="character-identity">
-      <Text style={styles.identityEyebrow}>✦ Nível {user.level} · {hero.name}</Text>
+      <Text style={styles.identityEyebrow}>{describeHero(user.level, equipped)}</Text>
       <Text style={styles.identityTitle}>{user.title?.trim() || user.displayName}</Text>
       {previewing ? <PreviewMark /> : null}
       <Text style={styles.identitySubtitle}>{user.title?.trim() ? user.displayName : user.email}</Text>
       <LevelProgress user={user} />
     </View>
     <View style={styles.summaryWrap}><SummaryRow metrics={metrics} user={user} /></View>
-    <View style={styles.swapHero}>
-      <WiseButton
-        leading={<WiseIcon color="textPrimary" name="swap-horizontal-outline" size="xsmall" />}
-        label="Trocar herói"
-        onPress={onSwapHero}
-        testID="character-swap-hero"
-        variant="secondary"
-      />
-    </View>
-    <View accessibilityLiveRegion="polite" aria-live="polite" style={styles.notice} testID="character-notice">
-      {notice ? <Text style={styles.noticeText}>{notice}</Text> : null}
-    </View>
   </View>;
 }
 
@@ -116,46 +86,6 @@ function GearSection({ equipped, onOpen }: { equipped: EquippedItems; onOpen: (c
     </Pressable>}>Equipados</SectionHeader>
     <View style={styles.row}>
       {equipmentCategories.map((category) => <EquipmentSlot category={category} equipped={equipped} key={category.id} onPress={() => onOpen(category.id)} />)}
-    </View>
-  </View>;
-}
-
-/* ---------- Heróis ---------- */
-
-function HeroCard({ hero, onEquip, status }: { hero: HeroDefinition; onEquip: () => void; status: HeroStatus }) {
-  const available = isHeroAvailable(status);
-  const caption = heroCaption(hero, status);
-  const { focusProps, focusStyle } = useFocusRing();
-  const pillContent = <HeroPill hero={hero} status={status} />;
-
-  return <View
-    accessibilityLabel={`${hero.name}, ${caption}${status === 'equipped' ? ', equipado' : ''}`}
-    role="group"
-    style={[styles.heroCard, styles[`heroCard_${status === 'equipped' ? 'equipped' : status === 'unlocked' ? 'unlocked' : 'locked'}`]]}
-    testID={`character-hero-${hero.id}`}
-  >
-    <View style={styles.heroCardStage}>
-      {status === 'equipped' ? <HeroGlow height={130} opacity={0.3} style={styles.heroCardGlow} width={140} /> : null}
-      <GroundShadow height={10} style={styles.heroCardShadow} width={60} />
-      <PixelSprite opacity={available ? 1 : 0.2} scale={5} sprite={heroSprites[hero.id]} style={styles.heroCardSprite} />
-      {status === 'level-locked' ? <WiseIcon color="textSecondary" name="lock-closed" size="emblem" style={styles.heroCardBadge} /> : null}
-      {status === 'premium-locked' ? <WiseIcon color="accentPrimary" name="sparkles" size="emblem" style={styles.heroCardBadge} /> : null}
-    </View>
-    <Text style={[styles.heroCardName, !available && styles.heroCardNameLocked]}>{hero.name}</Text>
-    <Text style={styles.heroCardCaption}>{caption}</Text>
-    {status === 'unlocked'
-      ? <Pressable {...focusProps} accessibilityLabel={`Equipar ${hero.name}`} accessibilityRole="button" hitSlop={10} onPress={onEquip} style={focusStyle}>{pillContent}</Pressable>
-      : pillContent}
-  </View>;
-}
-
-function HeroesSection({ equippedHeroId, onEquip, user }: { equippedHeroId: HeroId; onEquip: () => void; user: UserProfile }) {
-  const statuses = heroes.map((hero) => ({ hero, status: heroStatus(hero, user, equippedHeroId) }));
-  const unlocked = statuses.filter(({ status }) => isHeroAvailable(status)).length;
-  return <View accessibilityLabel="Heróis" role="region" style={styles.section} testID="character-heroes">
-    <SectionHeader aside={<Text style={styles.sectionMeta}>{unlocked} de {heroes.length} desbloqueados</Text>}>Heróis</SectionHeader>
-    <View style={styles.row}>
-      {statuses.map(({ hero, status }) => <HeroCard hero={hero} key={hero.id} onEquip={onEquip} status={status} />)}
     </View>
   </View>;
 }
@@ -211,7 +141,6 @@ export function CharacterScreen() {
   const { width } = useWindowDimensions();
   const [drawerCategory, setDrawerCategory] = useState<EquipmentCategory | null>(null);
   const [devicesOpen, setDevicesOpen] = useState(false);
-  const [notice, setNotice] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const { cancel } = equipment;
   const closeDrawer = useCallback(() => {
@@ -220,7 +149,6 @@ export function CharacterScreen() {
   }, [cancel]);
   const closeDevices = useCallback(() => setDevicesOpen(false), []);
   const openDevices = useCallback(() => setDevicesOpen(true), []);
-  const showHeroNotice = useCallback(() => setNotice(HERO_SWAP_NOTICE), []);
   const refresh = async () => {
     setRefreshing(true);
     try {
@@ -254,8 +182,8 @@ export function CharacterScreen() {
   const shown: UserProfile = previewed ? profileWithEquipped(user, previewed) : user;
   const desktop = isDesktopLayout(Platform.OS, width);
   const variant = desktop ? 'drawer' : 'sheet';
-  const hero = heroById[DEFAULT_HERO_ID];
   const equipped = equippedItems(user);
+  const shownEquipped = equippedItems(shown);
   const devices: DevicesState = { count: deviceSessions.data?.length ?? null, failed: deviceSessions.isError };
   const statusMessages = [
     ...(equipment.notice ? [{ key: 'equipment', ...equipment.notice }] : []),
@@ -264,11 +192,10 @@ export function CharacterScreen() {
   // Touch platforms refresh by pulling down; web relies on the queries refetching on their own.
   const refreshControl = Platform.OS === 'web' ? undefined
     : <RefreshControl colors={[theme.color.accentPrimary]} onRefresh={() => { void refresh(); }} progressBackgroundColor={theme.color.surfaceCard} refreshing={refreshing} tintColor={theme.color.accentPrimary} />;
-  const panel = <HeroPanel desktop={desktop} hero={hero} metrics={metrics.data} notice={notice} onSwapHero={showHeroNotice} previewing={Boolean(previewed)} user={shown} />;
+  const panel = <HeroPanel desktop={desktop} equipped={shownEquipped} metrics={metrics.data} previewing={Boolean(previewed)} user={shown} />;
   const content = <View style={[styles.content, desktop && styles.contentDesktop]} testID="character-content">
     <StatusMessages messages={statusMessages} />
-    <GearSection equipped={equippedItems(shown)} onOpen={setDrawerCategory} />
-    <HeroesSection equippedHeroId={hero.id} onEquip={showHeroNotice} user={user} />
+    <GearSection equipped={shownEquipped} onOpen={setDrawerCategory} />
     <MoreSection devices={devices} onOpenDevices={openDevices} />
   </View>;
 
@@ -281,14 +208,10 @@ export function CharacterScreen() {
       </View>
       : <MobileCharacter
         devices={devices}
-        equipped={equippedItems(shown)}
-        hero={hero}
+        equipped={shownEquipped}
         metrics={metrics.data}
-        notice={notice}
-        onEquipHero={showHeroNotice}
         onOpenDevices={openDevices}
         onOpenEquipment={setDrawerCategory}
-        onSwapHero={showHeroNotice}
         previewing={Boolean(previewed)}
         refreshControl={refreshControl}
         status={<StatusMessages messages={statusMessages} />}
@@ -322,9 +245,6 @@ const styles = StyleSheet.create({
   identityTitle: { fontFamily: cinzel, fontSize: 26, lineHeight: 34, textAlign: 'center', color: theme.color.textPrimary },
   identitySubtitle: { fontFamily: 'Inter-Regular', fontSize: 13, lineHeight: 16, textAlign: 'center', color: theme.color.textSecondary },
   summaryWrap: { width: '100%', maxWidth: 380, marginTop: 42 },
-  swapHero: { width: '100%', maxWidth: 380, marginTop: 30 },
-  notice: { width: '100%', maxWidth: 380, minHeight: 16, marginTop: theme.space.stackTight },
-  noticeText: { fontFamily: 'Inter-Regular', fontSize: 12, lineHeight: 16, textAlign: 'center', color: theme.color.textSecondary },
 
   content: { gap: 36, padding: theme.space.cardInset },
   contentDesktop: { padding: 48 },
@@ -343,19 +263,6 @@ const styles = StyleSheet.create({
   slotLabel: { fontFamily: mono, fontSize: 10, lineHeight: 13, letterSpacing: 1, color: theme.color.textTertiary },
   slotName: { fontFamily: 'Inter-SemiBold', fontSize: 13, lineHeight: 16, color: theme.color.textPrimary },
   slotNameEmpty: { color: theme.color.accentPrimary },
-
-  heroCard: { flex: 1, minWidth: 0, alignItems: 'center', gap: theme.space.inlineTight, paddingVertical: 16, paddingHorizontal: 12, borderRadius: theme.radius.card, borderWidth: theme.border.standard },
-  heroCard_equipped: { borderColor: theme.color.accentPrimary, backgroundColor: theme.color.surfaceElevated, boxShadow: '0px 0px 18px -6px rgba(212, 168, 90, 0.3)' },
-  heroCard_unlocked: { borderColor: theme.color.borderEmphasis, backgroundColor: theme.color.surfaceCard },
-  heroCard_locked: { borderColor: theme.color.borderGhost, backgroundColor: theme.color.surfaceCard },
-  heroCardStage: { width: 96, height: 124, overflow: 'hidden' },
-  heroCardGlow: { position: 'absolute', top: -4, left: -22 },
-  heroCardShadow: { position: 'absolute', top: 114, left: 18 },
-  heroCardSprite: { position: 'absolute', top: 0, left: 8 },
-  heroCardBadge: { position: 'absolute', top: 48, left: 37 },
-  heroCardName: { fontFamily: cinzel, fontSize: 14, lineHeight: 19, color: theme.color.textPrimary },
-  heroCardNameLocked: { color: theme.color.textTertiary },
-  heroCardCaption: { fontFamily: 'Inter-Regular', fontSize: 12, lineHeight: 15, textAlign: 'center', color: theme.color.textSecondary },
 
   moreRow: { flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: 14, padding: 14, borderRadius: theme.radius.card, borderWidth: theme.border.standard, borderColor: theme.color.borderSubtle, backgroundColor: theme.color.surfaceCard },
   moreIcon: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center', borderRadius: theme.radius.detail, borderWidth: theme.border.standard, borderColor: theme.color.borderSubtle, backgroundColor: theme.color.surfaceInset },

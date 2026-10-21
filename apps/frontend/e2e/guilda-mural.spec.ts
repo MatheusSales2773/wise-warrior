@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { registerThroughUi } from './helpers/auth';
+import { foundGuildThroughUi, openGuildOnPhone } from './helpers/guild';
 
 test.describe('Mural da Guilda web', () => {
   test('dois membros: um envia, o outro recebe em tempo real e vê o "N online" mudar', async ({ browser }) => {
@@ -13,8 +14,7 @@ test.describe('Mural da Guilda web', () => {
       // 1. Ana funda a Guild e abre o Mural: só ela está online.
       await registerThroughUi(ana, undefined, 'Ana Mural');
       await ana.getByTestId('web-sidebar').getByRole('link', { name: 'Guilda' }).click();
-      await ana.getByLabel('Nome da guilda').fill(guildName);
-      await ana.getByRole('button', { name: 'Criar guilda' }).click();
+      await foundGuildThroughUi(ana, guildName);
       await expect(ana.getByTestId('guild-online-count')).toHaveText('1 online');
       // No desktop o Mural fica na coluna lateral, sem abas.
       await expect(ana.getByTestId('guild-mural-empty')).toBeVisible();
@@ -48,12 +48,11 @@ test.describe('Mural da Guilda web', () => {
     const context = await browser.newContext();
     const page = await context.newPage();
     try {
-      // O cadastro espera a barra lateral do desktop; a tela encolhe para o celular depois.
       await registerThroughUi(page, undefined, 'Ana Mobile');
-      await page.setViewportSize({ width: 390, height: 844 });
-      await page.getByRole('link', { name: 'Guilda' }).first().click();
-      await page.getByLabel('Nome da guilda').fill(`Abas E2E ${Date.now()}`);
-      await page.getByRole('button', { name: 'Criar guilda' }).click();
+      await openGuildOnPhone(page);
+      // No celular a tela sem guilda abre em "Procurar": a fundação fica na aba "Fundar".
+      await page.getByRole('tab', { name: 'Fundar' }).click();
+      await foundGuildThroughUi(page, `Abas E2E ${Date.now()}`);
       await expect(page.getByTestId('guild-online-count')).toHaveText('1 online');
 
       await expect(page.getByRole('tab', { name: 'Raid' })).toHaveAttribute('aria-selected', 'true');

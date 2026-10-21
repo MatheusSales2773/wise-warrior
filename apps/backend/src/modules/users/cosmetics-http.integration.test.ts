@@ -21,6 +21,7 @@ import { CosmeticItem } from './entities/cosmetic-item.entity';
 import { User } from './entities/user.entity';
 import { UserCosmeticItem } from './entities/user-cosmetic-item.entity';
 import { UsersController } from './users.controller';
+import { SWORD_ID } from '../../migrations/1788460440000-add-weapon-category';
 import { UsersService, type CatalogCosmeticItem } from './users.service';
 
 describe('Cosmetics Catalog HTTP contract against MySQL', () => {
@@ -121,7 +122,7 @@ describe('Cosmetics Catalog HTTP contract against MySQL', () => {
     expect((await getCatalog(null)).status).toBe(401);
   });
 
-  it('gives a new user both starter items, equipped, and shows the rest of the Catalog locked', async () => {
+  it('gives a new user the three starter items, equipped, and shows the rest of the Catalog locked', async () => {
     await auth.register({ email: 'novata@example.com', password: 'senha-forte-123', displayName: 'Novata' }, {});
     const { id } = await dataSource!.getRepository(User).findOneByOrFail({ email: 'novata@example.com' });
 
@@ -135,11 +136,14 @@ describe('Cosmetics Catalog HTTP contract against MySQL', () => {
       ['Aprendiz', true, true],
       ['Armadura do Lobo', false, false],
       ['Arquimago dos Prazos', false, false],
+      ['Besta', false, false],
       ['Brasão da Forja', false, false],
       ['Caçador de Monstros', false, false],
+      ['Cajado', false, false],
       ['Capuz do Erudito', true, true],
       ['Cem Sessões', false, false],
       ['Chave da Torre', false, false],
+      ['Espada', true, true],
       ['Estudante Crepuscular', false, false],
       ['Guardião das Páginas', false, false],
       ['Lanterna do Silêncio', false, false],
@@ -201,8 +205,9 @@ describe('Cosmetics Catalog HTTP contract against MySQL', () => {
     expect(starter.equipped).toEqual(expect.arrayContaining([
       { category: 'avatar', itemId: 'c05e71c0-0000-4000-8000-000000000001', name: 'Capuz do Erudito' },
       { category: 'title', itemId: 'c05e71c0-0000-4000-8000-000000000002', name: 'Aprendiz' },
+      { category: 'weapon', itemId: SWORD_ID, name: 'Espada' },
     ]));
-    expect(starter.equipped).toHaveLength(2);
+    expect(starter.equipped).toHaveLength(3);
 
     await dataSource!.transaction((manager) => users.unlockCosmeticItems(manager, id, 5));
     expect((await fetch(`${baseUrl}/api/v1/users/me/cosmetics/c05e71c0-0000-4000-8000-000000000004`, {
@@ -227,7 +232,7 @@ describe('Cosmetics Catalog HTTP contract against MySQL', () => {
 
     expect(response.status).toBe(200);
     const catalog = await response.json() as CatalogCosmeticItem[];
-    expect(catalog).toHaveLength(27); // the 11 level and Raid items, the 8 items À venda (#174) and the 8 Recompensas das Missões à venda (#177)
+    expect(catalog).toHaveLength(30); // the 12 level and Raid items (with the Espada), the 8 items À venda (#174), the 2 Armas À venda (#257) and the 8 Recompensas das Missões à venda (#177)
     expect(catalog.map((item) => item.name)).not.toContain('Quebrado');
   });
 
@@ -248,11 +253,14 @@ describe('Cosmetics Catalog HTTP contract against MySQL', () => {
       ['Aprendiz', true, false],
       ['Armadura do Lobo', false, false],
       ['Arquimago dos Prazos', false, false],
+      ['Besta', false, false],
       ['Brasão da Forja', false, false],
       ['Caçador de Monstros', false, false],
+      ['Cajado', false, false],
       ['Capuz do Erudito', true, false],
       ['Cem Sessões', true, false],
       ['Chave da Torre', false, false],
+      ['Espada', true, false],
       ['Estudante Crepuscular', true, false],
       ['Guardião das Páginas', false, false],
       ['Lanterna do Silêncio', false, false],
@@ -271,7 +279,7 @@ describe('Cosmetics Catalog HTTP contract against MySQL', () => {
       ['Sino da Torre', false, false],
       ['Túnica do Viajante', false, false],
     ]);
-    expect(await dataSource!.getRepository(UserCosmeticItem).count({ where: { userId: veteran } })).toBe(6);
+    expect(await dataSource!.getRepository(UserCosmeticItem).count({ where: { userId: veteran } })).toBe(7);
 
     // Tolerating the repeated (user + item) row must not hide other failures, such as an unknown user.
     await expect(dataSource!.transaction((manager) => users.unlockCosmeticItems(

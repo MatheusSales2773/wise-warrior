@@ -186,7 +186,7 @@ describe('Mercado on a phone', () => {
     await renderMarket();
 
     const chip = await screen.findByTestId('market-purse');
-    expect(chip.props.accessibilityLabel).toBe('132 Moedas na bolsa');
+    await waitFor(() => expect(screen.getByTestId('market-purse').props.accessibilityLabel).toBe('132 Moedas na bolsa'));
     expect(chip.props.accessibilityRole).toBe('link');
     expect(screen.getByTestId('market-layout-mobile')).toBeTruthy();
   });

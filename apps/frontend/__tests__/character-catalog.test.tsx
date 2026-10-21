@@ -1,27 +1,13 @@
 import { render, screen } from '@testing-library/react-native';
-import { cosmeticSprite, equippedItems, heroById, heroCaption, heroStatus, optionsFor } from '@/features/character/catalog';
+import { cosmeticSprite, equipmentCategoryById, equippedItems, optionsFor } from '@/features/character/catalog';
 import { formatCompactXp, formatDeviceSummary } from '@/features/character/formatters';
 import type { CatalogCosmeticItem } from '@/features/profile/api';
 import { cosmeticItemState, describeDevice, describeNextUnlock } from '@/features/profile/formatters';
+import { avatarLayerFor } from '@/features/character/layered-hero';
 import { PixelSprite } from '@/features/character/PixelSprite';
-import { heroSprites, itemSprites, companionSprites, type PixelSpriteData } from '@/features/character/sprites';
+import { accessoryLayers, avatarLayers, heroBody, heroSprites, itemSprites, companionSprites, initialAvatarLayer, type PixelSpriteData } from '@/features/character/sprites';
 
 describe('character catalog', () => {
-  it.each([
-    [{ level: 1, planTier: 'free' }, 'guerreira', 'level-locked'],
-    [{ level: 10, planTier: 'free' }, 'guerreira', 'unlocked'],
-    [{ level: 30, planTier: 'free' }, 'paladino', 'premium-locked'],
-    [{ level: 1, planTier: 'premium' }, 'paladino', 'unlocked'],
-    [{ level: 1, planTier: 'free' }, 'erudito', 'equipped'],
-  ] as const)('resolves %o for %s as %s', (progress, heroId, status) => {
-    expect(heroStatus(heroById[heroId], progress, 'erudito')).toBe(status);
-  });
-
-  it('words level captions by whether the hero is already unlocked', () => {
-    expect(heroCaption(heroById.arcanista, 'level-locked')).toBe('Libera no nível 20');
-    expect(heroCaption(heroById.arcanista, 'unlocked')).toBe('Liberada no nível 20');
-  });
-
   const item = (name: string, category: CatalogCosmeticItem['category'], unlockCondition: CatalogCosmeticItem['unlockCondition'], state: Partial<Pick<CatalogCosmeticItem, 'unlocked' | 'equipped' | 'requiresPremium' | 'forSale'>> = {}): CatalogCosmeticItem => ({
     id: `item-${name}`, category, name, unlockCondition, requiresPremium: false, unlocked: false, equipped: false, forSale: false, ...state,
   });
@@ -32,6 +18,13 @@ describe('character catalog', () => {
     item('Estudante Crepuscular', 'title', { type: 'level', level: 5 }, { unlocked: true, equipped: true }),
     item('Sábio', 'title', { type: 'level', level: 30 }),
   ];
+
+  it('knows the Arma category, so a Loja item or an equipped Arma never reaches an undefined definition', () => {
+    expect(equipmentCategoryById.weapon.label).toBe('Arma');
+    expect(equippedItems({ equipped: [{ category: 'weapon', itemId: 'sword', name: 'Espada' }] }).weapon)
+      .toMatchObject({ itemId: 'sword', name: 'Espada' });
+    expect(equippedItems({ equipped: [] }).weapon).toBeNull();
+  });
 
   it('orders the drawer as equipped, owned, premium and locked, with readable captions', () => {
     expect(optionsFor(titles, 'title', 'free').map((option) => [option.item.name, option.availability.kind, option.caption])).toEqual([
@@ -139,7 +132,7 @@ describe('profile formatters', () => {
 });
 
 describe('pixel sprites', () => {
-  const all = { ...heroSprites, ...itemSprites, ...companionSprites } as Record<string, PixelSpriteData>;
+  const all = { ...heroSprites, ...itemSprites, ...companionSprites, heroBody, ...avatarLayers, ...accessoryLayers } as Record<string, PixelSpriteData>;
 
   it.each(Object.entries(all))('%s has a rectangular grid whose keys exist in its palette', (_, sprite) => {
     const width = sprite.rows[0]?.length;
@@ -149,10 +142,28 @@ describe('pixel sprites', () => {
     }
   });
 
-  it('keeps hero sprites at the Figma 16×24 grid', () => {
-    for (const sprite of Object.values(heroSprites)) {
+  it('keeps hero sprites, the body and every layer at the Figma 16×24 grid', () => {
+    for (const sprite of [...Object.values(heroSprites), heroBody, ...Object.values(avatarLayers), ...Object.values(accessoryLayers)]) {
       expect(sprite.rows).toHaveLength(24);
       expect(sprite.rows[0]).toHaveLength(16);
+    }
+  });
+
+  it('falls back to the initial Avatar layer without an Avatar or without art for it', () => {
+    expect(avatarLayerFor({ avatar: null })).toBe(initialAvatarLayer);
+    expect(avatarLayerFor({ avatar: { itemId: 'i', name: 'Armadura do Lobo', sprite: 'armaduraDoLobo' } })).toBe(initialAvatarLayer);
+    expect(avatarLayerFor({ avatar: { itemId: 'i', name: 'Manto Estelar', sprite: 'mantoEstelar' } })).toBe(avatarLayers['Manto Estelar']);
+  });
+
+  it('composes the initial Avatar over the body into the initial class sprite', () => {
+    const paint = (sprite: PixelSpriteData, y: number, x: number) => {
+      const key = sprite.rows[y]?.charAt(x);
+      return key && key !== '.' ? sprite.palette[key.charCodeAt(0) - 97] : undefined;
+    };
+    for (let y = 0; y < 24; y += 1) {
+      for (let x = 0; x < 16; x += 1) {
+        expect(paint(initialAvatarLayer, y, x) ?? paint(heroBody, y, x)).toBe(paint(heroSprites.erudito, y, x));
+      }
     }
   });
 

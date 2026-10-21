@@ -1,34 +1,41 @@
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { Platform, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
-import { FeedbackMessage, ProgressBar, Screen, WiseButton, WiseCard, WiseField, WiseText, isDesktopLayout, theme } from '@/design-system';
+import { FeedbackMessage, ProgressBar, Screen, WiseButton, WiseCard, WiseText, isDesktopLayout, theme } from '@/design-system';
 import { isApiError } from '@/core/api/api-error';
-import { createGuild, joinGuild, leaveGuild, type GuildMember, type GuildSummary, type MyGuild } from './api';
+import { leaveGuild, type GuildMember, type GuildRole, type MyGuild } from './api';
 import {
-  createGuildErrorMessage, formatGuildRole, formatGuildRoleSeal, formatGuildStats, formatMemberCount,
-  joinGuildErrorMessage, leaveGuildErrorMessage,
+  formatGuildRole, formatGuildRoleSeal, formatGuildStats, leaveGuildErrorMessage,
 } from './messages';
-import { activeRaidQueryOptions, guildDirectoryQueryOptions, guildKeys, guildMembersQueryOptions, myGuildQueryOptions } from './queries';
+import { activeRaidQueryOptions, guildKeys, guildMembersQueryOptions, myGuildQueryOptions } from './queries';
 import { profileQueryOptions } from '@/features/dashboard/queries';
 import { useGuildChat } from './guild-chat';
 import { SectionHeader } from '@/features/character/character-parts';
 import { GuildTabs, MuralAnnouncer, MuralPanel, OnlineIndicator, PresenceDot, formatOnlineCount, type GuildTab } from './guild-mural';
+import { PixelSprite } from '@/features/character/PixelSprite';
+import { itemSprites } from '@/features/character/sprites';
 import { HeroAvatar } from './hero-avatar';
+import { accessorySpriteOf } from './raid-battle';
 import { GuildEmblem } from './guild-emblem';
 import { PastRaidsCard } from './guild-past-raids';
 import { RaidCard } from './guild-raid-card';
+import { NextRaidCard } from './mission-choice';
 import { RankingCard } from './guild-ranking';
 import { RewardsCard } from './guild-rewards';
-import { GUILD_NAME_MAX_LENGTH, normalizeGuildName, validateGuildName } from './validation';
+import { columnStyles } from './guild-card-style';
+import { JoinGuild } from './guild-join';
 
 function MemberItem({ member, online }: { member: GuildMember; online: boolean | null }) {
+  const accessory = accessorySpriteOf(member.accessory);
   const presence = online === null ? '' : online ? ', online' : ', offline';
   const detail = online === null ? `Nv ${member.level}` : `Nv ${member.level} · ${online ? 'Online' : 'Offline'}`;
   return (
     <View accessible accessibilityLabel={`${member.displayName}${presence}, ${formatGuildRole(member.role)}. Nível ${member.level}`} style={styles.memberRow} testID={`guild-member-${member.userId}`}>
       <View style={styles.memberAvatar} testID={`guild-member-portrait-${member.userId}`}>
-        {/* The API does not return the equipped Avatar yet (#214): every member gets the default portrait. */}
-        <HeroAvatar entry={{ avatar: null }} style={styles.memberPortrait} />
+        <HeroAvatar entry={member} style={styles.memberPortrait} />
+        {accessory
+          ? <View aria-hidden pointerEvents="none" style={styles.memberAccessory}><PixelSprite scale={1} sprite={itemSprites[accessory]} testID={`guild-member-accessory-${member.userId}`} /></View>
+          : null}
         {online === null ? null : <View style={styles.memberPresence}><PresenceDot online={online} testID={`guild-member-${online ? 'online' : 'offline'}-${member.userId}`} /></View>}
       </View>
       <View style={styles.memberText}>
@@ -116,125 +123,14 @@ function GuildCard({ mine, onlineUserIds, desktop }: { mine: MyGuild; onlineUser
 }
 
 /** The Raid of the week and, below it, its Ranking interno. The ranking only exists while there is a Raid to rank. */
-function RaidSection({ compact, guildId }: { compact: boolean; guildId: string }) {
+function RaidSection({ compact, guildId, role }: { compact: boolean; guildId: string; role: GuildRole }) {
   const raid = useQuery(activeRaidQueryOptions(guildId));
   return (
     <View style={styles.stack}>
       <RaidCard desktop={!compact} guildId={guildId} />
+      <NextRaidCard desktop={!compact} guildId={guildId} raidId={raid.data?.id} role={role} />
       {raid.data ? <RankingCard compact={compact} guildId={guildId} key={raid.data.id} raidId={raid.data.id} /> : null}
     </View>
-  );
-}
-
-type GuildActionCallbacks = { onConflict: (error: unknown) => void };
-
-function CreateGuildCard({ onCreated, onConflict }: { onCreated: () => void } & GuildActionCallbacks) {
-  const [name, setName] = useState('');
-  const [fieldError, setFieldError] = useState<string | undefined>();
-  const create = useMutation({ mutationFn: createGuild, onSuccess: onCreated, onError: onConflict });
-
-  const submit = () => {
-    if (create.isPending) return;
-    const error = validateGuildName(name);
-    setFieldError(error);
-    if (error) return;
-    create.reset();
-    create.mutate(normalizeGuildName(name));
-  };
-
-  return (
-    <WiseCard accessibilityLabel="Criar guilda" role="region" testID="guild-create">
-      <View aria-busy={create.isPending} style={styles.cardContent}>
-        <WiseText accessibilityRole="header" aria-level={2} variant="subtitle">Funde sua guilda</WiseText>
-        <WiseText color="textSecondary" variant="body">Você será o líder e outros aventureiros poderão encontrá-la.</WiseText>
-        <WiseField
-          autoCapitalize="words"
-          editable={!create.isPending}
-          error={fieldError}
-          label="Nome da guilda"
-          maxLength={GUILD_NAME_MAX_LENGTH}
-          nativeID="guild-create-name"
-          onChangeText={setName}
-          onSubmitEditing={submit}
-          returnKeyType="done"
-          value={name}
-        />
-        {create.isError ? <FeedbackMessage message={createGuildErrorMessage(create.error)} testID="guild-create-error" title="Guilda não criada" variant="error" /> : null}
-        <WiseButton label="Criar guilda" loading={create.isPending} onPress={submit} testID="guild-create-submit" />
-      </View>
-    </WiseCard>
-  );
-}
-
-function DirectoryItem({ busy, guild, onJoin }: { busy: boolean; guild: GuildSummary; onJoin: () => void }) {
-  return (
-    <View style={styles.directoryItem} testID={`guild-directory-item-${guild.id}`}>
-      <View style={styles.directoryMain}>
-        <WiseText variant="label">{guild.name}</WiseText>
-        <WiseText color="textSecondary" variant="body">Nível {guild.level} · {formatMemberCount(guild.memberCount)}</WiseText>
-      </View>
-      <WiseButton accessibilityLabel={`Entrar na guilda ${guild.name}`} label="Entrar" loading={busy} onPress={onJoin} testID={`guild-join-${guild.id}`} variant="secondary" />
-    </View>
-  );
-}
-
-function DirectoryCard({ onJoined, onConflict }: { onJoined: () => void } & GuildActionCallbacks) {
-  const [draft, setDraft] = useState('');
-  const [search, setSearch] = useState('');
-  const directory = useInfiniteQuery(guildDirectoryQueryOptions(search));
-  const join = useMutation({ mutationFn: joinGuild, onSuccess: onJoined, onError: onConflict });
-  const guilds = directory.data?.pages.flatMap((page) => page.items) ?? [];
-
-  const runSearch = () => setSearch(draft.trim());
-
-  const body = (() => {
-    if (directory.isPending) return <WiseText color="textSecondary" testID="guild-directory-loading" variant="body">Procurando guildas…</WiseText>;
-    if (directory.isError && !directory.data) {
-      return <View style={styles.stack} testID="guild-directory-error">
-        <FeedbackMessage message="Não foi possível carregar as guildas." title="Guildas indisponíveis" variant="error" />
-        <WiseButton label="Tentar novamente" loading={directory.isRefetching} onPress={() => void directory.refetch()} variant="secondary" />
-      </View>;
-    }
-    if (!guilds.length) {
-      return <WiseText color="textSecondary" testID="guild-directory-empty" variant="body">
-        {search ? 'Nenhuma guilda encontrada para essa busca.' : 'Ainda não há guildas. Funde a primeira!'}
-      </WiseText>;
-    }
-    return <>
-      {guilds.map((guild) => (
-        <DirectoryItem
-          busy={join.isPending && join.variables === guild.id}
-          guild={guild}
-          key={guild.id}
-          onJoin={() => { if (!join.isPending) { join.reset(); join.mutate(guild.id); } }}
-        />
-      ))}
-      {directory.isFetchNextPageError ? <FeedbackMessage message="Não foi possível carregar mais guildas." title="Lista incompleta" variant="error" /> : null}
-      {directory.hasNextPage
-        ? <WiseButton label="Carregar mais" loading={directory.isFetchingNextPage} onPress={() => void directory.fetchNextPage()} testID="guild-directory-more" variant="ghost" />
-        : null}
-    </>;
-  })();
-
-  return (
-    <WiseCard accessibilityLabel="Encontrar guilda" role="region" testID="guild-directory">
-      <View style={styles.cardContent}>
-        <WiseText accessibilityRole="header" aria-level={2} variant="subtitle">Junte-se a uma guilda</WiseText>
-        <WiseField
-          autoCapitalize="none"
-          label="Buscar por nome"
-          maxLength={GUILD_NAME_MAX_LENGTH}
-          nativeID="guild-directory-search"
-          onChangeText={setDraft}
-          onSubmitEditing={runSearch}
-          returnKeyType="search"
-          value={draft}
-        />
-        <WiseButton label="Buscar" onPress={runSearch} testID="guild-directory-search-submit" variant="secondary" />
-        {join.isError ? <FeedbackMessage message={joinGuildErrorMessage(join.error)} testID="guild-join-error" title="Não foi possível entrar" variant="error" /> : null}
-        {body}
-      </View>
-    </WiseCard>
   );
 }
 
@@ -252,7 +148,7 @@ function MemberGuild({ mine, desktop, onLeft, onConflict }: { mine: MyGuild; des
       </View>
     </View>
   );
-  const raid = <RaidSection compact={!desktop} guildId={guild.id} />;
+  const raid = <RaidSection compact={!desktop} guildId={guild.id} role={role} />;
   const rewards = <RewardsCard guildId={guild.id} />;
   const mural = <MuralPanel chat={chat} />;
   const members = <MembersCard guildId={guild.id} memberCount={guild.memberCount} onlineUserIds={chat.onlineUserIds} />;
@@ -262,8 +158,8 @@ function MemberGuild({ mine, desktop, onLeft, onConflict }: { mine: MyGuild; des
     return <View style={styles.stack} testID="guild-layout-desktop">
       {header}
       <View style={styles.desktopGrid}>
-        <View style={[styles.columnMain, styles.stack]} testID="guild-column-main">{raid}{pastRaids}</View>
-        <View style={[styles.columnSide, styles.stack]} testID="guild-column-side">{mural}{members}{rewards}</View>
+        <View style={[columnStyles.main, styles.stack]} testID="guild-column-main">{raid}{pastRaids}</View>
+        <View style={[columnStyles.side, styles.stack]} testID="guild-column-side">{mural}{members}{rewards}</View>
       </View>
       {announcer}
     </View>;
@@ -315,14 +211,11 @@ export function GuildScreen() {
 
   const desktop = isDesktopLayout(Platform.OS, width);
   return (
-    <Screen contentContainerStyle={mine.data ? styles.fromTop : undefined} contentStyle={mine.data ? styles.grow : undefined} safeAreaEdges={[]} testID="guild" title="Guilda">
+    <Screen contentContainerStyle={styles.fromTop} contentStyle={mine.data ? styles.grow : undefined} safeAreaEdges={[]} testID="guild" title="Guilda" titleHidden={mine.data === null}>
       {mine.isError ? <FeedbackMessage message="Não foi possível atualizar sua guilda." testID="guild-refresh-error" title="Dados desatualizados" variant="error" /> : null}
       {mine.data
         ? <MemberGuild key={mine.data.guild.id} desktop={desktop} mine={mine.data} onConflict={refreshOnConflict} onLeft={() => void refreshGuild()} />
-        : <View style={[styles.grid, desktop && styles.desktopGrid]}>
-          <View style={styles.column}><CreateGuildCard onConflict={refreshOnConflict} onCreated={() => void refreshGuild()} /></View>
-          <View style={styles.column}><DirectoryCard onConflict={refreshOnConflict} onJoined={() => void refreshGuild()} /></View>
-        </View>}
+        : <JoinGuild desktop={desktop} onChanged={() => void refreshGuild()} onConflict={refreshOnConflict} />}
     </Screen>
   );
 }
@@ -332,16 +225,12 @@ const { fontFamily: sans } = theme.type.label;
 
 const styles = StyleSheet.create({
   stack: { gap: theme.space.stackDefault },
-  grid: { gap: theme.space.stackDefault },
   desktopGrid: { flexDirection: 'row', alignItems: 'flex-start', gap: theme.space.stackDefault },
   column: { flex: 1 },
   hidden: { display: 'none' },
   grow: { flexGrow: 1 },
   // The Screen centers its content; a guild screen starts at the top and its open tab runs down to the bottom.
   fromTop: { justifyContent: 'flex-start' },
-  // Figma 06c desktop: a 680 px main column and a 392 px side column.
-  columnMain: { flex: 680 },
-  columnSide: { flex: 392 },
   headerRow: { flexDirection: 'row', alignItems: 'center', gap: theme.space.stackDefault },
   leaveDesktop: { width: 199 },
   identity: { flexDirection: 'row', alignItems: 'center', gap: theme.space.stackDefault },
@@ -351,9 +240,6 @@ const styles = StyleSheet.create({
   rolePill: { paddingVertical: theme.space.inlineHairline, paddingHorizontal: theme.space.inlineTight, borderRadius: theme.radius.pill, borderWidth: theme.border.standard, borderColor: theme.color.borderSubtle, backgroundColor: theme.color.surfaceInset },
   rolePillLeader: { borderColor: theme.color.accentPrimary },
 
-  cardContent: { padding: theme.space.cardInset, gap: theme.space.stackTight },
-  directoryItem: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: theme.space.stackTight },
-  directoryMain: { flex: 1, gap: theme.space.inlineHairline },
   // Figma 06c Membros: 30 px portrait, 9 px Presença dot on its bottom-right corner, 31 px rows.
   membersBlock: { gap: theme.space.stackTight },
   membersCard: { padding: theme.space.cardInset, gap: 12 },
@@ -361,6 +247,8 @@ const styles = StyleSheet.create({
   memberRow: { flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 31 },
   memberAvatar: { width: 30, height: 30 },
   memberPortrait: { width: 30, height: 30 },
+  /** Figma 06c has no Acessório on the member row: the 8 px sprite sits at the portrait's bottom-left, mirroring the presence dot. */
+  memberAccessory: { position: 'absolute', left: -2, top: 22 },
   memberPresence: { position: 'absolute', left: 23, top: 23 },
   memberText: { flex: 1, minWidth: 0, gap: 2 },
   memberName: { fontFamily: sans, fontSize: 13, lineHeight: 16, color: theme.color.textPrimary },

@@ -17,7 +17,7 @@ import { Raid } from './entities/raid.entity';
 import { RAID_CLOCK, type RaidClock } from './raid-clock';
 import { bossHealthXp, furyDaysDue, furyRegenXp, getRaidFuryRegenPercent } from './domain/dragon-fury';
 import { missionIndexForWeek, proportionalGoalXp, raidWeekAt, raidWeekDayKeys, studyDaysOf, studyStreak, zonedDayKey } from './domain/raid-week';
-import { UsersService, type EquippedAppearance } from '../users/users.service';
+import { EMPTY_APPEARANCE, UsersService, type EquippedAppearance } from '../users/users.service';
 import { EconomyService } from '../economy/economy.service';
 import { getRaidWinCoins } from '../economy/domain/coin-config';
 import type { CoinMovementResult } from '../economy/domain/coin-origin';
@@ -45,6 +45,8 @@ export interface ActiveRaid {
   mission: { slug: string; name: string; description: string; imageUrl: string | null };
   /** Every Cosmetic Item the Missão gives, in a stable order. */
   rewards: Array<{ itemId: string; name: string; category: string }>;
+  /** De quem é a Missão que o Líder escolheu; `null` na Missão do rodízio. Segue nomeado mesmo se o dono sair da Guild. */
+  missionOwner: { userId: string; displayName: string } | null;
   /** The Moedas each rewarded Participant also gets (`RAID_WIN_COINS`). */
   coins: number;
   /** The first five of the Ranking interno, with their equipped look, for the Raid scene. */
@@ -308,7 +310,7 @@ export class RaidsService {
     // A escolha do Líder vale uma vez; sem ela, ou com o dono fora da Guild, vale o rodízio.
     const chosen = (await this.missionChoice?.consume(manager, guildId)) ?? null;
     const catalog = chosen ? [] : await manager.find(Mission, { where: { price: IsNull() }, order: { rotationOrder: 'ASC' } });
-    const mission = chosen ?? catalog[missionIndexForWeek(week.number, catalog.length)];
+    const mission = chosen?.mission ?? catalog[missionIndexForWeek(week.number, catalog.length)];
     if (!mission) {
       throw new Error('Catálogo de Missões vazio');
     }
@@ -316,6 +318,7 @@ export class RaidsService {
       manager.create(Raid, {
         guildId,
         missionId: mission.id,
+        missionOwnerUserId: chosen?.ownerUserId ?? null,
         goalXp: proportionalGoalXp(memberCount, week, now),
         progressXp: 0,
         openedAt: now,
@@ -352,6 +355,7 @@ export class RaidsService {
     if (rewardItemIds.length === 0 || rewards.length !== rewardItemIds.length) {
       throw new Error(`Recompensa da Missão ${raid.mission.slug} não encontrada`);
     }
+    const [owner] = raid.missionOwnerUserId ? await this.users.findDisplayNames([raid.missionOwnerUserId]) : [];
     const studyDays = await this.studyDaysOfRaid(raid.id);
     const week = raidWeekAt(raid.startsAt);
     const { items: party } = await this.rankingPage(raid.id, requesterId, RAID_PARTY_SIZE, 0);
@@ -364,6 +368,7 @@ export class RaidsService {
         imageUrl: raid.mission.imageUrl,
       },
       rewards: rewards.map((item) => ({ itemId: item.id, name: item.name, category: item.category })),
+      missionOwner: owner ? { userId: owner.id, displayName: owner.displayName } : null,
       coins: getRaidWinCoins(),
       party,
       goalXp: raid.goalXp,
@@ -819,8 +824,7 @@ export class RaidsService {
         title: row.title ?? null,
         contributionXp: Number(row.contribution_xp),
         isMe: row.user_id === userId,
-        avatar: appearance.get(row.user_id)?.avatar ?? null,
-        accessory: appearance.get(row.user_id)?.accessory ?? null,
+        ...(appearance.get(row.user_id) ?? EMPTY_APPEARANCE),
       })),
       nextCursor: rows.length > limit && last ? encodeRankingCursor(Number(last.rank_position)) : null,
     };

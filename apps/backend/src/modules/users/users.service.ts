@@ -43,13 +43,19 @@ export interface EquippedCosmeticItem {
   name: string;
 }
 
-/** The Avatar and Acessório a user has equipped, as shown on other people's screens (e.g. the Raid scene). */
-const APPEARANCE_CATEGORIES = ['avatar', 'accessory'] as const;
+/** The Avatar, Arma and Acessório a user has equipped, as shown on other people's screens (e.g. the Raid scene). */
+const APPEARANCE_CATEGORIES = ['avatar', 'weapon', 'accessory'] as const;
+
+export type EquippedAppearanceItem = { itemId: string; name: string } | null;
 
 export interface EquippedAppearance {
-  avatar: { itemId: string; name: string } | null;
-  accessory: { itemId: string; name: string } | null;
+  avatar: EquippedAppearanceItem;
+  weapon: EquippedAppearanceItem;
+  accessory: EquippedAppearanceItem;
 }
+
+/** Aparência sem nada equipado: o valor de quem não aparece no resultado de `findEquippedAppearance`. */
+export const EMPTY_APPEARANCE: Readonly<EquippedAppearance> = { avatar: null, weapon: null, accessory: null };
 
 export interface ShopCosmeticItem {
   id: string;
@@ -200,9 +206,9 @@ export class UsersService {
     return items.map(({ id, name, category }) => ({ id, name, category }));
   }
 
-  /** Avatar e Acessório equipados de cada usuário, para quem desenha os outros membros. Todos os ids voltam, vazios ou não. */
+  /** Avatar, Arma e Acessório equipados de cada usuário, para quem desenha os outros membros. Todos os ids voltam, vazios ou não. */
   async findEquippedAppearance(ids: string[]): Promise<Map<string, EquippedAppearance>> {
-    const appearance = new Map<string, EquippedAppearance>(ids.map((id) => [id, { avatar: null, accessory: null }]));
+    const appearance = new Map<string, EquippedAppearance>(ids.map((id) => [id, { ...EMPTY_APPEARANCE }]));
     if (ids.length === 0) return appearance;
     const rows = await this.userCosmetics.find({
       where: { userId: In(ids), equipped: true, cosmeticItem: { category: In<CosmeticCategory>([...APPEARANCE_CATEGORIES]) } },
@@ -215,6 +221,18 @@ export class UsersService {
       slot[category] = { itemId: cosmeticItem.id, name: cosmeticItem.name };
     }
     return appearance;
+  }
+
+  /** Nome do Título equipado de cada usuário (ADR-010), para quem lista os outros membros. Só voltam os ids com Título equipado. */
+  async findEquippedTitles(ids: string[]): Promise<Map<string, string>> {
+    const titles = new Map<string, string>();
+    if (ids.length === 0) return titles;
+    const rows = await this.userCosmetics.find({
+      where: { userId: In(ids), equipped: true, cosmeticItem: { category: 'title' } },
+      relations: ['cosmeticItem'],
+    });
+    for (const { userId, cosmeticItem } of rows) titles.set(userId, cosmeticItem.name);
+    return titles;
   }
 
   /** Nomes de exibição, para quem precisa mostrar o dono de algo (ex.: a Missão escolhida pelo Líder). */

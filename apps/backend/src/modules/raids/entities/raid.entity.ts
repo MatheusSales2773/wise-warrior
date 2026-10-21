@@ -32,6 +32,10 @@ export class Raid {
   @Column({ name: 'mission_id', type: 'varchar', length: '36' })
   missionId: string;
 
+  /** Dono da Missão escolhida pelo Líder (ADR-012); nulo na Missão do rodízio. Sem FK: o dono pode sair da Guild. */
+  @Column({ name: 'mission_owner_user_id', type: 'varchar', length: '36', nullable: true })
+  missionOwnerUserId: string | null;
+
   @Column({ name: 'goal_xp' })
   goalXp: number;
 

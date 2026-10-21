@@ -173,7 +173,7 @@ describe('CharacterScreen', () => {
       await renderCharacter();
 
       expect(screen.getByRole('header', { name: 'Personagem' })).toBeTruthy();
-      expect(identity().getByText('✦ Nível 14 · Erudito')).toBeTruthy();
+      expect(identity().getByText('✦ Nível 14 · Capuz do Erudito')).toBeTruthy();
       expect(identity().getByText('Estudante Crepuscular')).toBeTruthy();
       expect(identity().getByText('Membro da Ordem dos Madrugadores')).toBeTruthy();
       expect(identity().getByText('1.950 / 3.000 XP')).toBeTruthy();
@@ -205,31 +205,29 @@ describe('CharacterScreen', () => {
       expect(color(screen.getByText('Equipar acessório'))).toBe(theme.color.accentPrimary);
     });
 
-    it('derives the hero roster from level and plan', async () => {
+    it('draws the Herói as the base body, the Avatar layer and no Acessório layer when none is equipped', async () => {
       await renderCharacter();
 
-      expect(screen.getByText('2 de 4 desbloqueados')).toBeTruthy();
-      expect(within(screen.getByTestId('character-hero-erudito')).getByText('EQUIPADO')).toBeTruthy();
-      expect(screen.getByRole('button', { name: 'Equipar Guerreira' })).toBeTruthy();
-      expect(within(screen.getByTestId('character-hero-arcanista')).getByText('Libera no nível 20')).toBeTruthy();
-      expect(within(screen.getByTestId('character-hero-arcanista')).getByText('NÍVEL 20')).toBeTruthy();
-      expect(color(within(screen.getByTestId('character-hero-arcanista')).getByText('Arcanista'))).toBe(theme.color.textTertiary);
-      expect(within(screen.getByTestId('character-hero-paladino')).getByText('✦ PREMIUM')).toBeTruthy();
+      const hero = within(screen.getByTestId('character-hero-sprite', { includeHiddenElements: true }));
+      expect(hero.getByTestId('character-hero-layer-body', { includeHiddenElements: true })).toBeTruthy();
+      expect(hero.getByTestId('character-hero-layer-avatar', { includeHiddenElements: true })).toBeTruthy();
+      expect(hero.queryByTestId('character-hero-layer-accessory', { includeHiddenElements: true })).toBeNull();
     });
 
-    it('keeps level-gated heroes locked below their level and opens premium heroes for premium plans', async () => {
-      await renderCharacter({ level: 9, planTier: 'premium' });
+    it('adds the Acessório layer when an Acessório with art is equipped', async () => {
+      await renderCharacter({ equipped: [...profile.equipped, { category: 'accessory', itemId: 'item-Selo dos Madrugadores', name: 'Selo dos Madrugadores' }] });
 
-      expect(screen.getByText('2 de 4 desbloqueados')).toBeTruthy();
-      expect(within(screen.getByTestId('character-hero-guerreira')).getByText('NÍVEL 10')).toBeTruthy();
-      expect(screen.getByRole('button', { name: 'Equipar Paladino' })).toBeTruthy();
+      expect(screen.getByTestId('character-hero-layer-accessory', { includeHiddenElements: true })).toBeTruthy();
+      expect(identity().getByText('✦ Nível 14 · Capuz do Erudito · Selo dos Madrugadores')).toBeTruthy();
     });
 
-    it('explains that hero swapping is not available yet instead of pretending to switch', async () => {
+    it('has no class selection, hero swap panel or unlocks', async () => {
       await renderCharacter();
 
-      await fireEvent.press(screen.getByRole('button', { name: 'Trocar herói' }));
-      expect(within(screen.getByTestId('character-notice')).getByText(/A troca de herói chega em breve/)).toBeTruthy();
+      expect(screen.queryByRole('button', { name: 'Trocar herói' })).toBeNull();
+      expect(screen.queryByTestId('character-heroes')).toBeNull();
+      expect(screen.queryByText(/desbloqueados/)).toBeNull();
+      expect(screen.queryByRole('button', { name: /^Equipar (Guerreira|Paladino)/ })).toBeNull();
     });
 
     it('summarizes the connected devices', async () => {
@@ -311,6 +309,107 @@ describe('CharacterScreen', () => {
       expect(identity().getByText('Aprendiz')).toBeTruthy();
       expect(screen.getByTestId('character-preview')).toBeTruthy();
       expect(screen.getByRole('button', { name: 'Título: Aprendiz' })).toBeTruthy();
+      expect(mockedEquip).not.toHaveBeenCalled();
+    });
+
+    it('previews an Acessório as a layer on the Herói without saving anything', async () => {
+      mockedCatalog.mockResolvedValue([...catalog, cosmetic('Pena do Escriba', 'accessory', { type: 'purchase' }, { unlocked: true })]);
+      await renderCharacter();
+      expect(screen.queryByTestId('character-hero-layer-accessory', { includeHiddenElements: true })).toBeNull();
+
+      await fireEvent.press(screen.getByTestId('character-slot-accessory'));
+      await fireEvent.press(await screen.findByRole('radio', { name: /^Pena do Escriba,/ }));
+
+      expect(screen.getByTestId('character-hero-layer-accessory', { includeHiddenElements: true })).toBeTruthy();
+      expect(screen.getByTestId('character-preview')).toBeTruthy();
+      expect(mockedEquip).not.toHaveBeenCalled();
+    });
+
+    describe('Arma', () => {
+      const sword = cosmetic('Espada', 'weapon', { type: 'level', level: 1 }, { equipped: true });
+      const staff = cosmetic('Cajado', 'weapon', { type: 'purchase' }, { unlocked: true });
+      const swordEquipped = { category: 'weapon' as const, itemId: 'item-Espada', name: 'Espada' };
+
+      it('lists the Armas of the Catálogo in the drawer with state and the usual actions', async () => {
+        mockedCatalog.mockResolvedValue([...catalog, sword, staff, cosmetic('Besta', 'weapon', { type: 'purchase' })]);
+        await renderCharacter({ equipped: [...profile.equipped, swordEquipped] });
+
+        await fireEvent.press(screen.getByTestId('character-slot-weapon'));
+
+        expect(await screen.findByRole('radio', { name: 'Espada, Equipado agora' })).toBeTruthy();
+        expect(screen.getByRole('radio', { name: /^Cajado,/ })).toBeTruthy();
+        expect(screen.getByRole('radio', { name: /^Besta,.*bloqueado/ })).toBeTruthy();
+        expect(screen.getByRole('button', { name: 'Desequipar Espada' })).toBeTruthy();
+        expect(screen.getByRole('button', { name: 'Equipar arma' })).toBeTruthy();
+      });
+
+      it('leaves the Herói unarmed when no Arma is equipped', async () => {
+        await renderCharacter();
+
+        expect(screen.getByTestId('character-hero-layer-body', { includeHiddenElements: true })).toBeTruthy();
+        expect(screen.queryByTestId('character-hero-layer-weapon', { includeHiddenElements: true })).toBeNull();
+      });
+
+      it('draws the Arma layer when an Arma with art is equipped', async () => {
+        mockedCatalog.mockResolvedValue([...catalog, sword]);
+        await renderCharacter({ equipped: [...profile.equipped, swordEquipped] });
+
+        expect(screen.getByTestId('character-hero-layer-weapon', { includeHiddenElements: true })).toBeTruthy();
+        expect(identity().getByText('✦ Nível 14 · Capuz do Erudito · Espada')).toBeTruthy();
+      });
+
+      it('previews an Arma on the Herói without saving anything', async () => {
+        mockedCatalog.mockResolvedValue([...catalog, sword, staff]);
+        await renderCharacter({ equipped: [...profile.equipped, swordEquipped] });
+
+        await fireEvent.press(screen.getByTestId('character-slot-weapon'));
+        await fireEvent.press(await screen.findByRole('radio', { name: /^Cajado,/ }));
+
+        expect(screen.getByTestId('character-hero-layer-weapon', { includeHiddenElements: true })).toBeTruthy();
+        expect(identity().getByText('✦ Nível 14 · Capuz do Erudito · Cajado')).toBeTruthy();
+        expect(screen.getByTestId('character-preview')).toBeTruthy();
+        expect(mockedEquip).not.toHaveBeenCalled();
+      });
+
+      it('previews an Arma together with the equipped Avatar and Acessório', async () => {
+        mockedCatalog.mockResolvedValue([...catalog, sword, staff]);
+        await renderCharacter({ equipped: [...profile.equipped, swordEquipped, { category: 'accessory', itemId: 'item-Selo dos Madrugadores', name: 'Selo dos Madrugadores' }] });
+
+        await fireEvent.press(screen.getByTestId('character-slot-weapon'));
+        await fireEvent.press(await screen.findByRole('radio', { name: /^Cajado,/ }));
+
+        for (const layer of ['body', 'avatar', 'weapon', 'accessory']) {
+          expect(screen.getByTestId(`character-hero-layer-${layer}`, { includeHiddenElements: true })).toBeTruthy();
+        }
+        expect(mockedEquip).not.toHaveBeenCalled();
+      });
+
+      it('removes the Arma layer when the Arma is unequipped', async () => {
+        mockedUnequip.mockImplementation(async () => {
+          mockedProfile.mockResolvedValue(profile);
+          mockedCatalog.mockResolvedValue([...catalog, { ...sword, equipped: false }]);
+        });
+        mockedCatalog.mockResolvedValue([...catalog, sword]);
+        await renderCharacter({ equipped: [...profile.equipped, swordEquipped] });
+
+        await fireEvent.press(screen.getByTestId('character-slot-weapon'));
+        await fireEvent.press(await screen.findByRole('button', { name: 'Desequipar Espada' }));
+
+        await waitFor(() => expect(mockedUnequip).toHaveBeenCalledWith('item-Espada'));
+        expect(screen.queryByTestId('character-hero-layer-weapon', { includeHiddenElements: true })).toBeNull();
+      });
+    });
+
+    it('previews an Avatar on the Herói and names it in the text without saving anything', async () => {
+      mockedCatalog.mockResolvedValue([...catalog, cosmetic('Manto Estelar', 'avatar', { type: 'level', level: 10 }, { unlocked: true })]);
+      await renderCharacter();
+
+      await fireEvent.press(screen.getByTestId('character-slot-avatar'));
+      await fireEvent.press(await screen.findByRole('radio', { name: /^Manto Estelar,/ }));
+
+      expect(screen.getByTestId('character-hero-layer-avatar', { includeHiddenElements: true })).toBeTruthy();
+      expect(identity().getByText('✦ Nível 14 · Manto Estelar')).toBeTruthy();
+      expect(screen.getByTestId('character-preview')).toBeTruthy();
       expect(mockedEquip).not.toHaveBeenCalled();
     });
 
@@ -435,13 +534,13 @@ describe('CharacterScreen', () => {
       expect(screen.getByTestId('character-scroll')).toBeTruthy();
       expect(screen.queryByTestId('character-desktop')).toBeNull();
       expect(StyleSheet.flatten(screen.getByTestId('character-hero-panel').props.style)).toMatchObject({ height: 352 });
-      expect(screen.getByTestId('character-hero-sprite', { includeHiddenElements: true }).props).toMatchObject({ width: 144, height: 216 });
+      expect(StyleSheet.flatten(screen.getByTestId('character-hero-sprite', { includeHiddenElements: true }).props.style)).toMatchObject({ width: 144, height: 216 });
     });
 
     it('shows level and title with progress, without the desktop name subtitle', async () => {
       await renderCharacter();
 
-      expect(identity().getByText('✦ Nível 14 · Erudito')).toBeTruthy();
+      expect(identity().getByText('✦ Nível 14 · Capuz do Erudito')).toBeTruthy();
       expect(identity().getByText('Estudante Crepuscular')).toBeTruthy();
       expect(identity().getByText('1.950 / 3.000 XP')).toBeTruthy();
       expect(screen.queryByText('Membro da Ordem dos Madrugadores')).toBeNull();
@@ -457,14 +556,20 @@ describe('CharacterScreen', () => {
       expect(screen.getByText('Gerenciar')).toBeTruthy();
     });
 
-    it('scrolls the hero cards horizontally and counts what is unlocked', async () => {
+    it('draws the body, Avatar and Acessório layers on the phone too', async () => {
+      await renderCharacter({ equipped: [...profile.equipped, { category: 'accessory', itemId: 'item-Selo dos Madrugadores', name: 'Selo dos Madrugadores' }] });
+
+      for (const layer of ['body', 'avatar', 'accessory']) {
+        expect(screen.getByTestId(`character-hero-layer-${layer}`, { includeHiddenElements: true })).toBeTruthy();
+      }
+      expect(identity().getByText('✦ Nível 14 · Capuz do Erudito · Selo dos Madrugadores')).toBeTruthy();
+    });
+
+    it('has no hero carousel or swap button', async () => {
       await renderCharacter();
 
-      expect(screen.getByTestId('character-hero-carousel').props.horizontal).toBe(true);
-      expect(screen.getByLabelText('2 de 4 heróis desbloqueados')).toBeTruthy();
-      expect(screen.getByRole('group', { name: 'Arcanista, Libera no nível 20' })).toBeTruthy();
-      await fireEvent.press(screen.getByRole('button', { name: 'Equipar Guerreira' }));
-      expect(within(screen.getByTestId('character-notice')).getByText(/A troca de herói chega em breve/)).toBeTruthy();
+      expect(screen.queryByTestId('character-hero-carousel')).toBeNull();
+      expect(screen.queryByRole('button', { name: 'Trocar herói' })).toBeNull();
     });
 
     it('words the device row for mobile and counts the sessions', async () => {

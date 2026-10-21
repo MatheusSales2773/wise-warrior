@@ -8,7 +8,7 @@ export type DeviceSession = {
   lastUsedAt: string;
 };
 
-export type CosmeticCategory = 'avatar' | 'badge' | 'title' | 'accessory';
+export type CosmeticCategory = 'avatar' | 'badge' | 'title' | 'accessory' | 'weapon';
 
 /** `slug` `*` vale para qualquer Raid. */
 export type UnlockCondition = { type: 'level'; level: number } | { type: 'raid'; slug: string } | { type: 'purchase' };

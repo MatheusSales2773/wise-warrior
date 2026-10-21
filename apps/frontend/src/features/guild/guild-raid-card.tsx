@@ -9,6 +9,7 @@ import { joinRaid, type ActiveRaid } from './api';
 import { RAID_GOAL_REACHED, formatPosition, formatRaidEnds, formatRewardSummary, joinRaidErrorMessage } from './messages';
 import { activeRaidQueryOptions, guildKeys } from './queries';
 import { formatBattleTimeLeft, formatFocusHours, formatRaidHit, formatStreakDays, raidParty } from './raid-battle';
+import { MissionOwnerSeal } from './mission-choice';
 import { RaidScene } from './raid-scene';
 import { raidSceneArt } from './raid-scene-art';
 import { RAID_SCENE_HEIGHT, RAID_SCENE_WIDTH } from './raid-scene-sprites';
@@ -137,6 +138,7 @@ function RaidBody({ desktop, guildId, raid }: { desktop: boolean; guildId: strin
       <RaidCardScene desktop={desktop} raid={raid} />
       <View style={[styles.body, desktop && styles.bodyDesktop]}>
         <Text accessibilityRole="header" aria-level={3} style={[styles.title, desktop && styles.titleDesktop]} testID="guild-raid-mission-name">{raid.mission.name}</Text>
+        <MissionOwnerSeal owner={raid.missionOwner} testID="guild-raid-mission-owner" />
         {desktop ? <Text style={styles.description}>{raid.mission.description}</Text> : null}
         <BossLife raid={raid} />
         <View style={[styles.sequenceRow, desktop && styles.sequenceRowDesktop]}>

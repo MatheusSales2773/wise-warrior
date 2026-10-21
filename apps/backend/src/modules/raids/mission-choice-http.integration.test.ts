@@ -268,6 +268,34 @@ describe('Escolha da Missão pelo Líder against MySQL', () => {
     expect(await rotationIds()).toContain((await nextRaid(guildId)).missionId);
   });
 
+  it('tells the owner of the chosen Missão on the active Raid, and null for the rotation', async () => {
+    const guildId = await guildWith(bruno);
+    await own(bruno);
+    await choose(guildId, ana, { missionId: PRICED_ID, ownerId: bruno });
+    now = JUST_AFTER_W;
+    await service.runWeeklyClose(now);
+
+    const chosen = await (await call('GET', `/guilds/${guildId}/raids/active`, bruno)).json() as { missionOwner: unknown };
+    expect(chosen.missionOwner).toEqual({ userId: bruno, displayName: 'Bruno' });
+
+    now = JUST_AFTER_W1;
+    await service.runWeeklyClose(now);
+    const rotation = await (await call('GET', `/guilds/${guildId}/raids/active`, bruno)).json() as { missionOwner: unknown };
+    expect(rotation.missionOwner).toBeNull();
+  });
+
+  it('keeps naming the owner after they leave the Guild during the Raid', async () => {
+    const guildId = await guildWith(bruno);
+    await own(bruno);
+    await choose(guildId, ana, { missionId: PRICED_ID, ownerId: bruno });
+    now = JUST_AFTER_W;
+    await service.runWeeklyClose(now);
+    await call('DELETE', `/guilds/${guildId}/members/me`, bruno);
+
+    const raid = await (await call('GET', `/guilds/${guildId}/raids/active`, ana)).json() as { missionOwner: unknown };
+    expect(raid.missionOwner).toEqual({ userId: bruno, displayName: 'Bruno' });
+  });
+
   it('keeps the Raid running when the owner leaves during it', async () => {
     const guildId = await guildWith(bruno);
     await own(bruno);

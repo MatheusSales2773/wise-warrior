@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { apiUrl, registerThroughUi } from './helpers/auth';
+import { foundGuildThroughUi, openGuildOnPhone } from './helpers/guild';
 import { backdateStudySessionForE2e } from './helpers/study-session';
 
 const isApi = (path: string, method: string) => (response: { url(): string; request(): { method(): string } }) => {
@@ -15,8 +16,7 @@ test.describe('Guilda web', () => {
 
     // 1. Criar a Guild: a Raid da semana nasce com ela.
     await sidebar.getByRole('link', { name: 'Guilda' }).click();
-    await page.getByLabel('Nome da guilda').fill(`Ordem E2E ${Date.now()}`);
-    await page.getByRole('button', { name: 'Criar guilda' }).click();
+    await foundGuildThroughUi(page, `Ordem E2E ${Date.now()}`);
     await expect(page.getByTestId('guild-mine')).toBeVisible();
 
     // 2. Ver a Raid: sem Participantes, o ranking convida a participar.
@@ -64,5 +64,85 @@ test.describe('Guilda web', () => {
     await page.getByRole('button', { name: /Atacar com foco/ }).click();
     await expect(page).toHaveURL(/\/sessao\?modo=guilda$/);
     await expect(page.getByTestId('study-session-mode-guild')).toHaveAttribute('aria-checked', 'true');
+  });
+
+  test('no celular: encontra a guilda na aba Procurar, busca pelo teclado e entra', async ({ browser }) => {
+    const guildName = `Procurar E2E ${Date.now()}`;
+    const leaderContext = await browser.newContext();
+    const memberContext = await browser.newContext();
+    const leader = await leaderContext.newPage();
+    const member = await memberContext.newPage();
+    try {
+      await registerThroughUi(leader, undefined, 'Ana Procurar');
+      await leader.getByTestId('web-sidebar').getByRole('link', { name: 'Guilda' }).click();
+      await foundGuildThroughUi(leader, guildName);
+      await expect(leader.getByTestId('guild-mine')).toBeVisible();
+
+      await registerThroughUi(member, undefined, 'Bruno Procurar');
+      await openGuildOnPhone(member);
+
+      // A aba Procurar abre primeiro, com a lista, o emblema e sem o botão "Buscar" (Figma 06d).
+      await expect(member.getByRole('tab', { name: 'Procurar' })).toHaveAttribute('aria-selected', 'true');
+      await expect(member.getByTestId('guild-directory')).toBeVisible();
+      await expect(member.getByTestId('guild-directory-search-submit')).toHaveCount(0);
+      await expect(member.locator('[data-testid^="guild-directory-item-"]').first()).toBeVisible();
+
+      const search = member.getByLabel('Buscar por nome');
+      await search.fill(guildName);
+      await search.press('Enter');
+      const row = member.getByRole('button', { name: `Entrar na guilda ${guildName}` });
+      await expect(row).toBeVisible();
+      await expect(member.locator('[data-testid^="guild-directory-item-"]')).toHaveCount(1);
+      await expect(member.locator('[data-testid^="guild-directory-item-"]').first().getByTestId('guild-emblem')).toBeAttached();
+
+      await row.click();
+      await expect(member.getByTestId('guild-mine')).toBeVisible();
+    } finally {
+      await leaderContext.close();
+      await memberContext.close();
+    }
+  });
+
+  test('no celular: funda a guilda na aba Fundar, com contador e dica do nome', async ({ page }) => {
+    await registerThroughUi(page, undefined, 'Carla Fundar');
+    await openGuildOnPhone(page);
+
+    await page.getByRole('tab', { name: 'Fundar' }).click();
+    await expect(page.getByRole('tab', { name: 'Fundar' })).toHaveAttribute('aria-selected', 'true');
+    await expect(page.getByTestId('guild-how-it-works')).toBeVisible();
+    const form = page.getByTestId('guild-create');
+    await expect(form.getByText('3 a 60 caracteres')).toBeVisible();
+    await expect(form.getByText('0 / 60')).toBeVisible();
+
+    const name = `Fundar E2E ${Date.now()}`;
+    await page.getByLabel('Nome da guilda').fill(name);
+    await expect(form.getByText(`${name.length} / 60`)).toBeVisible();
+    await page.getByRole('button', { name: 'Fundar guilda' }).click();
+    await expect(page.getByTestId('guild-mine')).toBeVisible();
+  });
+
+  test('no celular: avisa quando o nome da guilda já existe, sem sair da aba Fundar', async ({ browser }) => {
+    const guildName = `Repetida E2E ${Date.now()}`;
+    const leaderContext = await browser.newContext();
+    const otherContext = await browser.newContext();
+    const leader = await leaderContext.newPage();
+    const other = await otherContext.newPage();
+    try {
+      await registerThroughUi(leader, undefined, 'Ana Repetida');
+      await leader.getByTestId('web-sidebar').getByRole('link', { name: 'Guilda' }).click();
+      await foundGuildThroughUi(leader, guildName);
+      await expect(leader.getByTestId('guild-mine')).toBeVisible();
+
+      await registerThroughUi(other, undefined, 'Bia Repetida');
+      await openGuildOnPhone(other);
+      await other.getByRole('tab', { name: 'Fundar' }).click();
+      await foundGuildThroughUi(other, guildName);
+
+      await expect(other.getByTestId('guild-create-error')).toContainText('Já existe uma guilda com esse nome');
+      await expect(other.getByRole('tab', { name: 'Fundar' })).toHaveAttribute('aria-selected', 'true');
+    } finally {
+      await leaderContext.close();
+      await otherContext.close();
+    }
   });
 });

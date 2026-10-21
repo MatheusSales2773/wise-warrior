@@ -15,7 +15,7 @@ export type UserProfile = {
 };
 
 export type EquippedCosmeticItem = {
-  category: 'avatar' | 'badge' | 'title' | 'accessory';
+  category: 'avatar' | 'badge' | 'title' | 'accessory' | 'weapon';
   itemId: string;
   name: string;
 };
