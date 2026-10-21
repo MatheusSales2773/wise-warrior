@@ -82,8 +82,8 @@ beforeEach(() => {
   (listPastRaids as jest.Mock).mockResolvedValue({ items: [], nextCursor: null });
   (listGuildMembers as jest.Mock).mockResolvedValue({
     items: [
-      { userId: 'u1', displayName: 'Ana', level: 3, title: null, role: 'leader', joinedAt: '2026-09-01T10:00:00Z' },
-      { userId: 'u3', displayName: 'Caio', level: 2, title: null, role: 'member', joinedAt: '2026-09-02T10:00:00Z' },
+      { userId: 'u1', displayName: 'Ana', level: 3, title: null, avatar: null, accessory: null, role: 'leader', joinedAt: '2026-09-01T10:00:00Z' },
+      { userId: 'u3', displayName: 'Caio', level: 2, title: null, avatar: null, accessory: null, role: 'member', joinedAt: '2026-09-02T10:00:00Z' },
     ],
     nextCursor: null,
   });

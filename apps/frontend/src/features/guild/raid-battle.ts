@@ -1,7 +1,7 @@
 import { DEFAULT_HERO_ID, cosmeticSprite } from '@/features/character/catalog';
 import type { ItemSpriteName, PixelSpriteData } from '@/features/character/sprites';
 import { heroSprites } from '@/features/character/sprites';
-import type { ActiveRaid, RaidHit, RaidRankingEntry } from './api';
+import type { ActiveRaid, EquippedAppearance, EquippedLook, RaidHit, RaidRankingEntry } from './api';
 import { XP_PER_FOCUS_HOUR, formatFocusHours } from './focus-hours';
 import { raidWeapons, sentinelaSprite } from './raid-scene-sprites';
 
@@ -71,8 +71,13 @@ const heroByAvatar: Record<string, PartyHero> = {
 };
 
 /** The hero drawn for a member, from the Avatar they have equipped. */
-export function heroOf(member: Pick<RaidRankingEntry, 'avatar'>): PartyHero {
+export function heroOf(member: Pick<EquippedAppearance, 'avatar'>): PartyHero {
   return (member.avatar && heroByAvatar[member.avatar.name]) || DEFAULT_HERO_ID;
+}
+
+/** The sprite of an equipped Acessório; `null` with the slot empty. */
+export function accessorySpriteOf(look: EquippedLook): ItemSpriteName | null {
+  return look ? cosmeticSprite({ category: 'accessory', name: look.name }) : null;
 }
 
 export type PartyMember = {
@@ -93,7 +98,7 @@ export function raidParty(party: readonly RaidRankingEntry[]): PartyMember[] {
     level: entry.level,
     isMe: entry.isMe,
     hero: heroOf(entry),
-    accessory: entry.accessory ? cosmeticSprite({ category: 'accessory', name: entry.accessory.name }) : null,
+    accessory: accessorySpriteOf(entry.accessory),
   }));
 }
 

@@ -19,13 +19,11 @@ export type MyGuild = {
   role: GuildRole;
 };
 
-export type GuildMember = {
+export type GuildMember = EquippedAppearance & {
   userId: string;
   displayName: string;
   level: number;
   title: string | null;
-  avatar: EquippedLook;
-  accessory: EquippedLook;
   role: GuildRole;
   joinedAt: string;
 };
@@ -109,15 +107,16 @@ export type RaidHit = {
 /** An equipped Cosmetic Item as shown on someone else's screen; `null` when the slot is empty. */
 export type EquippedLook = { itemId: string; name: string } | null;
 
-export type RaidRankingEntry = {
+/** What a member wears on someone else's screen: the Avatar and the Acessório. */
+export type EquippedAppearance = { avatar: EquippedLook; accessory: EquippedLook };
+
+export type RaidRankingEntry = EquippedAppearance & {
   position: number;
   userId: string;
   displayName: string;
   level: number;
   /** The equipped Título (ADR-010); `null` when the slot is empty. */
   title: string | null;
-  avatar: EquippedLook;
-  accessory: EquippedLook;
   contributionXp: number;
   isMe: boolean;
 };
