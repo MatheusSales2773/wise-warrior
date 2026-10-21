@@ -69,6 +69,7 @@ const members = (names: string[], nextCursor: string | null = null): GuildMember
   items: names.map((name, index) => ({
     userId: `u-${name}`, displayName: name, level: index + 2, title: index === 0 ? 'Aprendiz' : null,
     role: index === 0 ? 'leader' : 'member', joinedAt: '2026-09-01T10:00:00Z',
+    avatar: null, accessory: null,
   })),
   nextCursor,
 });
@@ -159,6 +160,27 @@ describe('GuildScreen', () => {
     await fireEvent.press(screen.getByTestId('guild-members-more'));
     expect(await screen.findByTestId('guild-member-u-Carla')).toBeTruthy();
     expect(mockedMembers).toHaveBeenLastCalledWith('g1', expect.objectContaining({ cursor: 'next' }));
+  });
+
+  it("shows each member's equipped Avatar and Acessório, and the default portrait without them", async () => {
+    mockedMine.mockResolvedValue(mine);
+    const [ana, bruno] = members(['Ana', 'Bruno']).items;
+    mockedMembers.mockResolvedValue({
+      items: [
+        { ...ana!, avatar: { itemId: 'i1', name: 'Manto Estelar' }, accessory: { itemId: 'i2', name: 'Cristal da Aurora' } },
+        bruno!,
+      ],
+      nextCursor: null,
+    });
+    await renderGuild();
+    await openTab('members');
+
+    const equipped = within(await screen.findByTestId('guild-member-portrait-u-Ana'));
+    expect(equipped.getByTestId('hero-avatar-sprite-arcanista', { includeHiddenElements: true })).toBeTruthy();
+    expect(equipped.getByTestId('guild-member-accessory-u-Ana', { includeHiddenElements: true })).toBeTruthy();
+    const plain = within(screen.getByTestId('guild-member-portrait-u-Bruno'));
+    expect(plain.getByTestId('hero-avatar-sprite-erudito', { includeHiddenElements: true })).toBeTruthy();
+    expect(plain.queryByTestId('guild-member-accessory-u-Bruno', { includeHiddenElements: true })).toBeNull();
   });
 
   it('marks only the Leader with the LÍDER seal and keeps the row readable', async () => {

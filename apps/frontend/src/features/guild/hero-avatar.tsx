@@ -6,9 +6,10 @@ import { heroOf, partyHeroSprites } from './raid-battle';
 
 /** The 32 px portrait of a Participante: the hero of the equipped Avatar, or the default hero without one, cropped to the frame. Decorative: the row text names the member. */
 export function HeroAvatar({ entry, style }: { entry?: Pick<RaidRankingEntry, 'avatar'>; style?: StyleProp<ViewStyle> }) {
+  const hero = heroOf(entry ?? { avatar: null });
   return (
     <View accessibilityElementsHidden aria-hidden importantForAccessibility="no-hide-descendants" style={[styles.frame, style]} testID="hero-avatar">
-      <PixelSprite scale={2} sprite={partyHeroSprites[heroOf(entry ?? { avatar: null })]} style={styles.sprite} />
+      <PixelSprite scale={2} sprite={partyHeroSprites[hero]} style={styles.sprite} testID={`hero-avatar-sprite-${hero}`} />
     </View>
   );
 }

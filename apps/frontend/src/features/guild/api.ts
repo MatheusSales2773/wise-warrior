@@ -24,6 +24,8 @@ export type GuildMember = {
   displayName: string;
   level: number;
   title: string | null;
+  avatar: EquippedLook;
+  accessory: EquippedLook;
   role: GuildRole;
   joinedAt: string;
 };
