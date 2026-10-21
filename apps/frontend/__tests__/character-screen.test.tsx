@@ -325,6 +325,68 @@ describe('CharacterScreen', () => {
       expect(mockedEquip).not.toHaveBeenCalled();
     });
 
+    describe('Arma', () => {
+      const sword = cosmetic('Espada', 'weapon', { type: 'level', level: 1 }, { equipped: true });
+      const staff = cosmetic('Cajado', 'weapon', { type: 'purchase' }, { unlocked: true });
+      const swordEquipped = { category: 'weapon' as const, itemId: 'item-Espada', name: 'Espada' };
+
+      it('lists the Armas of the Catálogo in the drawer with state and the usual actions', async () => {
+        mockedCatalog.mockResolvedValue([...catalog, sword, staff, cosmetic('Besta', 'weapon', { type: 'purchase' })]);
+        await renderCharacter({ equipped: [...profile.equipped, swordEquipped] });
+
+        await fireEvent.press(screen.getByTestId('character-slot-weapon'));
+
+        expect(await screen.findByRole('radio', { name: 'Espada, Equipado agora' })).toBeTruthy();
+        expect(screen.getByRole('radio', { name: /^Cajado,/ })).toBeTruthy();
+        expect(screen.getByRole('radio', { name: /^Besta,.*bloqueado/ })).toBeTruthy();
+        expect(screen.getByRole('button', { name: 'Desequipar Espada' })).toBeTruthy();
+        expect(screen.getByRole('button', { name: 'Equipar arma' })).toBeTruthy();
+      });
+
+      it('leaves the Herói unarmed when no Arma is equipped', async () => {
+        await renderCharacter();
+
+        expect(screen.getByTestId('character-hero-layer-body', { includeHiddenElements: true })).toBeTruthy();
+        expect(screen.queryByTestId('character-hero-layer-weapon', { includeHiddenElements: true })).toBeNull();
+      });
+
+      it('draws the Arma layer when an Arma with art is equipped', async () => {
+        mockedCatalog.mockResolvedValue([...catalog, sword]);
+        await renderCharacter({ equipped: [...profile.equipped, swordEquipped] });
+
+        expect(screen.getByTestId('character-hero-layer-weapon', { includeHiddenElements: true })).toBeTruthy();
+        expect(identity().getByText('✦ Nível 14 · Capuz do Erudito · Espada')).toBeTruthy();
+      });
+
+      it('previews an Arma on the Herói without saving anything', async () => {
+        mockedCatalog.mockResolvedValue([...catalog, sword, staff]);
+        await renderCharacter({ equipped: [...profile.equipped, swordEquipped] });
+
+        await fireEvent.press(screen.getByTestId('character-slot-weapon'));
+        await fireEvent.press(await screen.findByRole('radio', { name: /^Cajado,/ }));
+
+        expect(screen.getByTestId('character-hero-layer-weapon', { includeHiddenElements: true })).toBeTruthy();
+        expect(identity().getByText('✦ Nível 14 · Capuz do Erudito · Cajado')).toBeTruthy();
+        expect(screen.getByTestId('character-preview')).toBeTruthy();
+        expect(mockedEquip).not.toHaveBeenCalled();
+      });
+
+      it('removes the Arma layer when the Arma is unequipped', async () => {
+        mockedUnequip.mockImplementation(async () => {
+          mockedProfile.mockResolvedValue(profile);
+          mockedCatalog.mockResolvedValue([...catalog, { ...sword, equipped: false }]);
+        });
+        mockedCatalog.mockResolvedValue([...catalog, sword]);
+        await renderCharacter({ equipped: [...profile.equipped, swordEquipped] });
+
+        await fireEvent.press(screen.getByTestId('character-slot-weapon'));
+        await fireEvent.press(await screen.findByRole('button', { name: 'Desequipar Espada' }));
+
+        await waitFor(() => expect(mockedUnequip).toHaveBeenCalledWith('item-Espada'));
+        expect(screen.queryByTestId('character-hero-layer-weapon', { includeHiddenElements: true })).toBeNull();
+      });
+    });
+
     it('previews an Avatar on the Herói and names it in the text without saving anything', async () => {
       mockedCatalog.mockResolvedValue([...catalog, cosmetic('Manto Estelar', 'avatar', { type: 'level', level: 10 }, { unlocked: true })]);
       await renderCharacter();

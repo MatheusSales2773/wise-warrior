@@ -4,7 +4,7 @@ import { describeUnlockCondition, orderCategoryItems } from '@/features/profile/
 import type { HeroSpriteName, ItemSpriteName } from './sprites';
 
 /*
- * The Herói is the neutral body plus the equipped Avatar and Acessório layers (ADR-013); there is no class to choose.
+ * The Herói is the neutral body plus the equipped Avatar, Arma and Acessório layers (ADR-013); there is no class to choose.
  * Cosmetics come from the real Catalog (`GET /users/me/cosmetics`); this module only adds the pixel art and wording.
  */
 
@@ -28,6 +28,9 @@ export const equipmentCategories: readonly EquipmentCategoryDefinition[] = Objec
 /** Pixel art per Catalog item (Figma "Sprites" page); unknown items fall back to their category's art. */
 const spriteByName: Record<string, ItemSpriteName> = {
   'Capuz do Erudito': 'capuzDoErudito',
+  Espada: 'espada',
+  Cajado: 'cajado',
+  Besta: 'besta',
   'Manto da Vigília': 'mantoDaVigilia',
   Madrugador: 'madrugadorV',
   'Cem Sessões': 'cemSessoes',
@@ -58,8 +61,7 @@ const spriteByName: Record<string, ItemSpriteName> = {
 
 const spriteByCategory: Record<EquipmentCategory, ItemSpriteName> = {
   avatar: 'capuzDoErudito',
-  // Placeholder until the Arma art lands (ADR-013, frontend slice).
-  weapon: 'cristalDaAurora',
+  weapon: 'espada',
   badge: 'madrugadorV',
   title: 'estudanteCrepuscular',
   accessory: 'cristalDaAurora',
