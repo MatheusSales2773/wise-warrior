@@ -1,7 +1,7 @@
 import { BeforeInsert, BeforeUpdate, Column, Entity, PrimaryGeneratedColumn } from 'typeorm';
 import { forSaleViolation } from '../domain/for-sale';
 
-export type CosmeticCategory = 'avatar' | 'badge' | 'title' | 'accessory';
+export type CosmeticCategory = 'avatar' | 'badge' | 'title' | 'accessory' | 'weapon';
 
 @Entity('cosmetic_items')
 export class CosmeticItem {

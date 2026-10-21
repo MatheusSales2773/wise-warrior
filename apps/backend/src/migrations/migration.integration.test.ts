@@ -31,6 +31,7 @@ import { AddGuildMissionChoice1788460020000 } from './1788460020000-add-guild-mi
 import { KeepBadgesOffSale1788460080000 } from './1788460080000-keep-badges-off-sale';
 import { SeedCosmeticItemsForSale1788460140000 } from './1788460140000-seed-cosmetic-items-for-sale';
 import { SeedMissionsForSale1788460200000 } from './1788460200000-seed-missions-for-sale';
+import { AddWeaponCategory1788460440000 } from './1788460440000-add-weapon-category';
 import { raidWeekAt } from '../modules/raids/domain/raid-week';
 
 const ITEMS_FOR_SALE = [
@@ -1520,5 +1521,72 @@ describe('TypeORM migrations against an empty MySQL schema', () => {
 
     await dataSource.runMigrations();
     expect(await forSale()).toHaveLength(ITEMS_FOR_SALE.length);
+  });
+
+  it('adds the Arma category: the Espada to every existing Character, equipped once, and the Cajado and Besta À venda', async () => {
+    database = await createIntegrationDatabase('wise_migrations_test');
+    initialDataSource = new DataSource(database.options(migrationsBefore(AddWeaponCategory1788460440000)));
+    await initialDataSource.initialize();
+    await initialDataSource.runMigrations();
+    for (const id of ['veteran', 'newcomer']) {
+      await database.admin.query(
+        `INSERT INTO ${database.identifier}.users (id, email, password_hash, display_name, plan_tier)
+         VALUES (?, ?, 'hash', ?, 'free')`,
+        [id, `${id}@example.com`, id],
+      );
+      await database.admin.query(
+        `INSERT INTO ${database.identifier}.characters (id, user_id, level, xp_total) VALUES (?, ?, 1, 0)`,
+        [`${id}-character`, id],
+      );
+    }
+    await initialDataSource.destroy();
+    initialDataSource = undefined;
+
+    dataSource = new DataSource(database.options(migrationsThrough(AddWeaponCategory1788460440000)));
+    await dataSource.initialize();
+    await dataSource.runMigrations();
+
+    const weapons = async () => (await rows(
+      database!.admin,
+      `SELECT name, unlock_condition, price, for_sale FROM ${database!.identifier}.cosmetic_items
+       WHERE category = 'weapon' ORDER BY name`,
+    )).map((row) => [row.name, row.unlock_condition, row.price === null ? null : Number(row.price), Number(row.for_sale)]);
+    const inventory = async () => (await rows(
+      database!.admin,
+      `SELECT uci.user_id, ci.name, uci.equipped FROM ${database!.identifier}.user_cosmetic_items uci
+       JOIN ${database!.identifier}.cosmetic_items ci ON ci.id = uci.cosmetic_item_id
+       WHERE ci.category = 'weapon' ORDER BY uci.user_id, ci.name`,
+    )).map((row) => [row.user_id, row.name, Number(row.equipped)]);
+    const expectedWeapons = [['Besta', 'purchase', 150, 1], ['Cajado', 'purchase', 90, 1], ['Espada', 'level:1', null, 0]];
+    expect(await weapons()).toEqual(expectedWeapons);
+    expect(await inventory()).toEqual([['newcomer', 'Espada', 1], ['veteran', 'Espada', 1]]);
+
+    // Running it again duplicates nothing and keeps a choice made since: the veteran swapped to the Cajado.
+    await database.admin.query(
+      `UPDATE ${database.identifier}.user_cosmetic_items SET equipped = 0 WHERE user_id = 'veteran'`,
+    );
+    await database.admin.query(
+      `INSERT INTO ${database.identifier}.user_cosmetic_items (id, user_id, cosmetic_item_id, equipped)
+       VALUES ('veteran-cajado', 'veteran', 'c05e71c0-0000-4000-8000-000000000302', 1)`,
+    );
+    const runner = dataSource.createQueryRunner();
+    try {
+      await new AddWeaponCategory1788460440000().up(runner);
+    } finally {
+      await runner.release();
+    }
+    expect(await weapons()).toEqual(expectedWeapons);
+    expect(await inventory()).toEqual([
+      ['newcomer', 'Espada', 1],
+      ['veteran', 'Cajado', 1],
+      ['veteran', 'Espada', 0],
+    ]);
+
+    await revertThrough(dataSource, AddWeaponCategory1788460440000);
+    expect(await weapons()).toEqual([]);
+    expect(await inventory()).toEqual([]);
+
+    await dataSource.runMigrations();
+    expect(await weapons()).toEqual(expectedWeapons);
   });
 });

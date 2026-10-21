@@ -214,6 +214,7 @@ export class GuildsService {
           level: Number(row.level ?? 1),
           title: titles.get(row.userId) ?? null,
           avatar: look?.avatar ?? null,
+          weapon: look?.weapon ?? null,
           accessory: look?.accessory ?? null,
           role: row.role,
           joinedAt: row.joinedAt,

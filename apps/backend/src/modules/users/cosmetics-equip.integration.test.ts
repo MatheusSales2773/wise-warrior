@@ -22,6 +22,7 @@ const APRENDIZ = ITEM(2);
 const CREPUSCULAR = ITEM(4);
 const MESTRE_DA_AURORA = ITEM(8);
 const SELO = ITEM(7);
+const ESPADA = 'c05e71c0-0000-4000-8000-000000000301';
 
 describe('Equipping Cosmetic Items against MySQL', () => {
   jest.setTimeout(30_000);
@@ -119,7 +120,7 @@ describe('Equipping Cosmetic Items against MySQL', () => {
 
     expect((await equip(free, CREPUSCULAR)).status).toBe(204);
 
-    expect(await equippedNames(free)).toEqual(['Capuz do Erudito', 'Estudante Crepuscular']);
+    expect(await equippedNames(free)).toEqual(['Capuz do Erudito', 'Espada', 'Estudante Crepuscular']);
   });
 
   it('ends with exactly one item equipped per category when equips race in the same category', async () => {
@@ -138,7 +139,7 @@ describe('Equipping Cosmetic Items against MySQL', () => {
         relations: ['cosmeticItem'],
       });
       const perCategory = rows.map((row) => row.cosmeticItem.category).sort();
-      expect(perCategory).toEqual(['avatar', 'title']);
+      expect(perCategory).toEqual(['avatar', 'title', 'weapon']);
     }
   });
 
@@ -147,7 +148,7 @@ describe('Equipping Cosmetic Items against MySQL', () => {
 
     expect((await equip(free, CREPUSCULAR)).status).toBe(404);
     expect((await equip(free, SELO)).status).toBe(404);
-    expect(await equippedNames(free)).toEqual(['Aprendiz', 'Capuz do Erudito']);
+    expect(await equippedNames(free)).toEqual(['Aprendiz', 'Capuz do Erudito', 'Espada']);
   });
 
   it('lets a free user equip a premium item while the MVP policy releases it to everyone', async () => {
@@ -155,7 +156,7 @@ describe('Equipping Cosmetic Items against MySQL', () => {
 
     expect((await equip(free, MESTRE_DA_AURORA)).status).toBe(204);
 
-    expect(await equippedNames(free)).toEqual(['Capuz do Erudito', 'Mestre da Aurora']);
+    expect(await equippedNames(free)).toEqual(['Capuz do Erudito', 'Espada', 'Mestre da Aurora']);
   });
 
   it('answers 403 to a free user on a premium item once the policy flag is off, and keeps the equipment', async () => {
@@ -164,7 +165,7 @@ describe('Equipping Cosmetic Items against MySQL', () => {
 
     expect((await equip(free, MESTRE_DA_AURORA)).status).toBe(403);
 
-    expect(await equippedNames(free)).toEqual(['Aprendiz', 'Capuz do Erudito']);
+    expect(await equippedNames(free)).toEqual(['Aprendiz', 'Capuz do Erudito', 'Espada']);
   });
 
   it('still lets a premium user equip a premium item with the policy flag off', async () => {
@@ -174,13 +175,14 @@ describe('Equipping Cosmetic Items against MySQL', () => {
     expect((await equip(free, MESTRE_DA_AURORA)).status).toBe(204);
   });
 
-  it('unequips any category, including Avatar and Título, and is idempotent', async () => {
+  it('unequips any category, including Avatar, Título and Arma, and is idempotent', async () => {
     await seedUser(free, 1);
 
     expect((await unequip(free, APRENDIZ)).status).toBe(204);
-    expect(await equippedNames(free)).toEqual(['Capuz do Erudito']);
+    expect(await equippedNames(free)).toEqual(['Capuz do Erudito', 'Espada']);
     expect((await unequip(free, APRENDIZ)).status).toBe(204);
     expect((await unequip(free, ITEM(1))).status).toBe(204);
+    expect((await unequip(free, ESPADA)).status).toBe(204);
     expect(await equippedNames(free)).toEqual([]);
   });
 
@@ -190,7 +192,7 @@ describe('Equipping Cosmetic Items against MySQL', () => {
 
     expect((await unequip(free, CREPUSCULAR)).status).toBe(404);
     expect((await unequip(free, '00000000-0000-4000-8000-0000000000ff')).status).toBe(404);
-    expect(await equippedNames(stranger)).toEqual(['Aprendiz', 'Capuz do Erudito']);
+    expect(await equippedNames(stranger)).toEqual(['Aprendiz', 'Capuz do Erudito', 'Espada']);
   });
 
   describe('multi-device notice (character:equipmentChanged)', () => {

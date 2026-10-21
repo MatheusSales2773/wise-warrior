@@ -1295,7 +1295,7 @@ components:
       type: object
       required: [category, itemId, name]
       properties:
-        category: { type: string, enum: [avatar, badge, title, accessory] }
+        category: { type: string, enum: [avatar, badge, title, accessory, weapon] }
         itemId: { type: string, format: uuid }
         name: { type: string }
 
@@ -1307,7 +1307,7 @@ components:
       required: [id, category, name, requiresPremium, unlocked, equipped, forSale, unlockCondition]
       properties:
         id: { type: string, format: uuid }
-        category: { type: string, enum: [avatar, badge, title, accessory] }
+        category: { type: string, enum: [avatar, badge, title, accessory, weapon] }
         name: { type: string }
         requiresPremium: { type: boolean, description: "Item premium (✦), ADR-007." }
         unlocked: { type: boolean }
@@ -1339,7 +1339,7 @@ components:
       required: [id, category, name, price, state, missing]
       properties:
         id: { type: string, format: uuid }
-        category: { type: string, enum: [avatar, badge, title, accessory] }
+        category: { type: string, enum: [avatar, badge, title, accessory, weapon] }
         name: { type: string }
         price: { type: integer, minimum: 30, maximum: 300, description: Preço em Moedas }
         state: { type: string, enum: [owned, purchasable, insufficient] }
@@ -1415,7 +1415,7 @@ components:
           properties:
             id: { type: string, format: uuid }
             name: { type: string }
-            category: { type: string, enum: [avatar, badge, title, accessory] }
+            category: { type: string, enum: [avatar, badge, title, accessory, weapon] }
         state: { type: string, enum: [owned, purchasable, insufficient] }
         missing: { type: integer, minimum: 0, description: "Moedas que faltam; 0 quando já possui ou o saldo basta" }
 
@@ -1727,7 +1727,7 @@ components:
 
     GuildMember:
       type: object
-      required: [userId, displayName, level, title, avatar, accessory, role, joinedAt]
+      required: [userId, displayName, level, title, avatar, weapon, accessory, role, joinedAt]
       properties:
         userId: { type: string, format: uuid }
         displayName: { type: string }
@@ -1736,6 +1736,7 @@ components:
           type: [string, "null"]
           description: Nome do Título equipado pelo membro (ADR-010), ou null.
         avatar: { $ref: "#/components/schemas/EquippedAppearanceItem" }
+        weapon: { $ref: "#/components/schemas/EquippedAppearanceItem" }
         accessory: { $ref: "#/components/schemas/EquippedAppearanceItem" }
         role: { type: string, enum: [leader, member] }
         joinedAt: { type: string, format: date-time }
@@ -1828,7 +1829,7 @@ components:
             properties:
               itemId: { type: string, format: uuid }
               name: { type: string }
-              category: { type: string, enum: [avatar, badge, title, accessory] }
+              category: { type: string, enum: [avatar, badge, title, accessory, weapon] }
         coins: { type: integer, minimum: 0, description: "Moedas que cada premiado também recebe (`RAID_WIN_COINS`)" }
         party:
           type: array
@@ -1895,7 +1896,7 @@ components:
 
     RaidRankingEntry:
       type: object
-      required: [position, userId, displayName, level, title, avatar, accessory, contributionXp, isMe]
+      required: [position, userId, displayName, level, title, avatar, weapon, accessory, contributionXp, isMe]
       properties:
         position: { type: integer, minimum: 1 }
         userId: { type: string, format: uuid }
@@ -1903,6 +1904,7 @@ components:
         level: { type: integer, minimum: 1 }
         title: { type: [string, "null"], description: "O Título equipado (ADR-010); null com o espaço vazio" }
         avatar: { $ref: "#/components/schemas/EquippedAppearanceItem" }
+        weapon: { $ref: "#/components/schemas/EquippedAppearanceItem" }
         accessory: { $ref: "#/components/schemas/EquippedAppearanceItem" }
         contributionXp: { type: integer, minimum: 0 }
         isMe: { type: boolean, description: "Se a linha é de quem consulta" }

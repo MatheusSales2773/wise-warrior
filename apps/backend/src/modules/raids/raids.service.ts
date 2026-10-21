@@ -825,6 +825,7 @@ export class RaidsService {
         contributionXp: Number(row.contribution_xp),
         isMe: row.user_id === userId,
         avatar: appearance.get(row.user_id)?.avatar ?? null,
+        weapon: appearance.get(row.user_id)?.weapon ?? null,
         accessory: appearance.get(row.user_id)?.accessory ?? null,
       })),
       nextCursor: rows.length > limit && last ? encodeRankingCursor(Number(last.rank_position)) : null,
