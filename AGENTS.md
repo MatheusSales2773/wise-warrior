@@ -53,6 +53,11 @@ Before implementing or changing code, tests, infrastructure, or configuration:
 
 - [Redocly CLI 2.x documentation](https://redocly.com/docs/cli/)
 
+#### Dependency management
+
+- [npm package.json overrides](https://docs.npmjs.com/cli/v12/configuring-npm/package-json/#overrides)
+- [npm audit](https://docs.npmjs.com/cli/v12/commands/npm-audit/)
+
 #### Infrastructure
 
 - [Docker Compose documentation](https://docs.docker.com/compose/)
