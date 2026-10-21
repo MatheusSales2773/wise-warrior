@@ -200,6 +200,18 @@ export const itemSprites = {
     palette: ['#0a0a12', '#2a1f5e', '#f0c97a', '#5b3fa0'],
     rows: ['..aaaa..', '.abccba.', 'abbbbbba', 'abdbbdba', 'abdbbdba', 'abdbbdba', 'addbbdda', 'aaaaaaaa'],
   },
+  marcadorDoGrimorio: {
+    palette: ['#0a0a12', '#5b3fa0', '#d4a85a', '#8a5bc4'],
+    rows: ['.aaaaaa.', 'abbbbbba', 'abcbbcba', 'abbccbba', 'abbccbba', 'abbbbbba', 'abbaabba', '.aa..aa.'],
+  },
+  lanternaDoSilencio: {
+    palette: ['#0a0a12', '#5b7fc4', '#a9e0ff', '#e8f6ff'],
+    rows: ['..aaaa..', '..a..a..', '.abbbba.', 'abcddcba', 'abcddcba', 'abccccba', '.abbbba.', '..aaaa..'],
+  },
+  brasaoDaForja: {
+    palette: ['#0a0a12', '#7a4a2a', '#e8803a', '#f0c97a'],
+    rows: ['aaaaaaaa', 'abbbbbba', 'abcddcba', 'abbddbba', 'abbccbba', '.abccba.', '..abba..', '...aa...'],
+  },
 } as const satisfies Record<string, PixelSpriteData>;
 
 export const companionSprites = {
