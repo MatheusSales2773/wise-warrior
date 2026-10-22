@@ -9,7 +9,7 @@ e React Native Web (ADR-008). Para instalar e executar, veja o
 | Diretório | Responsabilidade |
 | --- | --- |
 | `app/` | Rotas do Expo Router. `(public)` reúne as telas sem login; `(app)` reúne as telas protegidas |
-| `features/` | Telas e hooks por domínio: `auth`, `dashboard`, `study-session`, `character`, `profile`, `guild`, `market` |
+| `features/` | Telas e hooks por domínio: `auth`, `dashboard`, `study-session`, `character`, `profile`, `guild`, `market`, `settings` |
 | `core/api` | Cliente Axios, token de acesso em memória e erros RFC 7807 |
 | `core/auth` | Contexto de autenticação e armazenamento do refresh token (cookie na Web, SecureStore no nativo) |
 | `core/query` | Runtime do TanStack Query e detecção de conexão |
@@ -27,7 +27,7 @@ e React Native Web (ADR-008). Para instalar e executar, veja o
 | Guilda | `/guilda` | disponível |
 | Mercado | `/mercado` | disponível |
 | Crônicas | nenhuma | “Em breve” |
-| Configuração | nenhuma | “Em breve” |
+| Configuração | `/configuracao` e uma subrota por seção | disponível |
 
 Web a partir de `900 px` usa sidebar; Web abaixo desse breakpoint, iOS e Android
 usam barra inferior e o menu local “Mais”. Destinos “Em breve” são apenas
@@ -35,9 +35,16 @@ informativos: não possuem `href`, arquivo de rota, foco ou ação. O catálogo
 imutável em `src/design-system/navigation/destinations.ts` é a fonte única para
 as duas composições.
 
+A Configuração tem uma rota por seção: `/configuracao/conta`, `/foco`,
+`/dispositivos`, `/acessibilidade` e `/plano`. No desktop, `/configuracao` abre
+em “Conta e segurança” com o menu lateral interno; no celular, mostra a lista
+agrupada, e no iOS/Android cada seção é empilhada sobre ela, de modo que o
+voltar nativo retorna à lista mesmo depois de um deep link.
+
 Para validar as rotas nas três plataformas, abra cada URL diretamente no
 navegador e, em iOS/Android, os deep links `wise://`, `wise://sessao`,
-`wise://perfil`, `wise://guilda`, `wise://mercado` e `wise://runa-inexistente`.
+`wise://perfil`, `wise://guilda`, `wise://mercado`, `wise://configuracao`,
+`wise://configuracao/foco` e `wise://runa-inexistente`.
 A rota inexistente deve mostrar “Página não encontrada” e voltar ao início pelo
 botão.
 

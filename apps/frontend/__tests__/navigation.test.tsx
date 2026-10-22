@@ -2,39 +2,23 @@ import { act } from '@testing-library/react-native';
 import { Slot } from 'expo-router';
 import { fireEvent, renderRouter, screen, waitFor } from 'expo-router/testing-library';
 import { useState } from 'react';
-import { Dimensions, Platform, Pressable, StyleSheet, Text } from 'react-native';
+import { Platform, Pressable, StyleSheet, Text } from 'react-native';
 import { AppNavigation, restoreNavigationTriggerFocus } from '@/design-system/components/AppNavigation';
 import { AppShell, AppShellFrame } from '@/design-system/components/AppShell';
 import { isDesktopLayout } from '@/design-system/tokens/layout';
 import { modalAnimationType, MoreMenu } from '@/design-system/navigation/MoreMenu';
 import { render, within } from '@testing-library/react-native';
 import { theme } from '@/design-system/tokens/theme';
+import { resetViewport, setViewport } from '../test-utils/viewport';
 import { mockAuthState } from '../test-utils/auth-context';
 
 jest.mock('@/core/auth/auth-context', () => require('../test-utils/auth-context').createAuthContextMock());
 jest.mock('@/core/realtime/realtime-runtime', () => ({ RealtimeRuntime: () => null }));
 
-const originalPlatform = Platform.OS;
-const originalWindow = Dimensions.get('window');
-const originalScreen = Dimensions.get('screen');
-
-async function setViewport(platform: 'web' | 'ios' | 'android', width: number) {
-  Object.defineProperty(Platform, 'OS', { configurable: true, value: platform });
-  await act(() => {
-    Dimensions.set({
-      window: { ...originalWindow, width },
-      screen: { ...originalScreen, width },
-    });
-  });
-}
-
 afterEach(async () => {
   mockAuthState.logout.mockReset();
   mockAuthState.logout.mockResolvedValue(undefined);
-  Object.defineProperty(Platform, 'OS', { configurable: true, value: originalPlatform });
-  await act(() => {
-    Dimensions.set({ window: originalWindow, screen: originalScreen });
-  });
+  await resetViewport();
 });
 
 describe('adaptive application navigation', () => {
@@ -71,12 +55,13 @@ describe('adaptive application navigation', () => {
     });
     expect(screen.queryByTestId('mobile-navigation')).toBeNull();
     const links = screen.getAllByRole('link');
-    expect(links).toHaveLength(5);
+    expect(links).toHaveLength(6);
     expect(screen.getByRole('link', { name: 'Mercado' })).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'Configuração' })).toBeTruthy();
     expect(links.filter((link) => link.props.accessibilityState?.selected)).toHaveLength(1);
     expect(screen.getByRole('link', { name: 'Forja' }).props.accessibilityState.selected).toBe(true);
 
-    for (const label of ['Crônicas', 'Configuração']) {
+    for (const label of ['Crônicas']) {
       const item = screen.getByLabelText(`${label}, indisponível, em breve`);
       expect(item.props.onPress).toBeUndefined();
       expect(item.props.href).toBeUndefined();
@@ -185,7 +170,7 @@ describe('adaptive application navigation', () => {
     expect(StyleSheet.flatten(screen.getByTestId('app-route-content', { includeHiddenElements: true }).props.style).pointerEvents).toBe('none');
     expect(screen.getByTestId('mobile-navigation', { includeHiddenElements: true }).props['aria-hidden']).toBe(true);
 
-    for (const label of ['Crônicas', 'Configuração']) {
+    for (const label of ['Crônicas']) {
       const item = screen.getByLabelText(`${label}, indisponível, em breve`);
       expect(item.props.accessibilityState).toEqual({ disabled: true });
       expect(item.props.onPress).toBeUndefined();
@@ -193,6 +178,7 @@ describe('adaptive application navigation', () => {
     }
 
     expect(screen.getByRole('link', { name: 'Mercado' })).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'Configuração' })).toBeTruthy();
 
     await fireEvent(screen.getByTestId('more-modal'), 'requestClose');
     await waitFor(() => expect(screen.queryByTestId('more-modal')).toBeNull());
@@ -207,7 +193,7 @@ describe('adaptive application navigation', () => {
     await waitFor(() => expect(screen.queryByTestId('more-modal')).toBeNull());
   });
 
-  it('shows Sair in the mobile Mais menu without changing future destinations', async () => {
+  it('shows Sair in the mobile Mais menu next to the remaining future destination', async () => {
     await setViewport('android', 390);
     const router = renderRouter('src/app', { initialUrl: '/guilda' });
     await router;
@@ -215,7 +201,7 @@ describe('adaptive application navigation', () => {
     await fireEvent.press(screen.getByRole('button', { name: 'Mais' }));
 
     expect(screen.getByRole('button', { name: 'Sair' })).toBeTruthy();
-    for (const label of ['Crônicas', 'Configuração']) {
+    for (const label of ['Crônicas']) {
       expect(screen.getByLabelText(`${label}, indisponível, em breve`)).toBeTruthy();
     }
   });
