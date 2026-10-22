@@ -337,3 +337,105 @@ function sessionForCompletion() {
     cappedReason: null as CappedReason | null,
   };
 }
+
+describe('Foco livre timing', () => {
+  const start = new Date('2026-09-22T12:00:00.000Z');
+  const CEILING_SECONDS = 4 * 3600;
+  const at = (seconds: number) => new Date(start.getTime() + seconds * 1000);
+  const freeSession = () => ({
+    kind: 'free' as const,
+    startedAt: start,
+    plannedDurationSeconds: null as number | null,
+    state: 'running' as const,
+    runDeadlineAt: at(CEILING_SECONDS),
+    pausedAt: null as Date | null,
+    pausedTotalSeconds: 0,
+    pausedTotalMilliseconds: 0,
+    durationValidSeconds: 0,
+    version: 1,
+    endedAt: null as Date | null,
+    terminalReason: null as StudySessionTerminalReason | null,
+    cappedReason: null as CappedReason | null,
+    xpAwarded: 0,
+  });
+
+  it('counts focus up without a planned duration', () => {
+    expect(getStudySessionTime(freeSession(), at(720))).toMatchObject({ durationValidSeconds: 720 });
+  });
+
+  it('pauses without a planned duration', () => {
+    const session = freeSession();
+    applyStudySessionTransition(session, 'pause', at(600));
+    expect(session).toMatchObject({ state: 'paused', durationValidSeconds: 600 });
+  });
+
+  it('shifts the ceiling by the paused time on resume', () => {
+    const session = freeSession();
+    applyStudySessionTransition(session, 'pause', at(600));
+    applyStudySessionTransition(session, 'resume', at(600 + 1800));
+    expect(session.runDeadlineAt).toEqual(at(CEILING_SECONDS + 1800));
+    expect(session).toMatchObject({ state: 'running', pausedTotalSeconds: 1800 });
+  });
+
+  it('recalculates the ceiling against the remaining daily balance on resume', () => {
+    const session = freeSession();
+    applyStudySessionTransition(session, 'pause', at(600));
+    // 15 h already focused today leave 1 h of balance, 10 min of which this session already used.
+    applyStudySessionTransition(session, 'resume', at(1200), 15 * 3600);
+    expect(session.runDeadlineAt).toEqual(at(1200 + 3000));
+  });
+
+  it('completes a stop with at least five minutes of focus as manual-stop', () => {
+    const session = freeSession();
+    expect(applyStudySessionStop(session, at(720))).toEqual({
+      state: 'completed',
+      durationValidSeconds: 720,
+      xpAwarded: 120,
+      cappedReason: null,
+    });
+    expect(session).toMatchObject({ state: 'completed', terminalReason: 'manual-stop', endedAt: at(720), xpAwarded: 120 });
+  });
+
+  it('cancels a stop with less than five minutes of focus', () => {
+    const session = freeSession();
+    expect(applyStudySessionStop(session, at(180))).toMatchObject({ state: 'cancelled', xpAwarded: 0 });
+  });
+
+  it('never stops a Foco livre early', () => {
+    for (const seconds of [10, 299, 300, 3600]) {
+      expect(applyStudySessionStop(freeSession(), at(seconds)).state).not.toBe('stopped_early');
+    }
+  });
+
+  it('stops a paused Foco livre', () => {
+    const session = freeSession();
+    applyStudySessionTransition(session, 'pause', at(900));
+    expect(applyStudySessionStop(session, at(4000))).toMatchObject({ state: 'completed', durationValidSeconds: 900 });
+  });
+
+  it('completes at the ceiling with the continuous-limit reason', () => {
+    const session = freeSession();
+    expect(applyStudySessionComplete(session, at(CEILING_SECONDS + 5), 0)).toEqual({
+      state: 'completed',
+      durationValidSeconds: CEILING_SECONDS,
+      xpAwarded: 2400,
+      cappedReason: 'continuous-limit',
+    });
+    expect(session).toMatchObject({ terminalReason: 'auto-complete', endedAt: at(CEILING_SECONDS), cappedReason: 'continuous-limit' });
+  });
+
+  it('completes at the ceiling with the daily-limit reason when the daily balance is the lower limit', () => {
+    const session = { ...freeSession(), runDeadlineAt: at(3600) };
+    expect(applyStudySessionComplete(session, at(3600), 15 * 3600)).toMatchObject({
+      state: 'completed',
+      durationValidSeconds: 3600,
+      cappedReason: 'daily-limit',
+    });
+  });
+
+  it('does not complete before the ceiling', () => {
+    expect(() => applyStudySessionComplete(freeSession(), at(CEILING_SECONDS - 1), 0)).toThrow(
+      expect.objectContaining({ reason: 'completion-too-early' }),
+    );
+  });
+});

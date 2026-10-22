@@ -1,8 +1,13 @@
 import { IsIn, IsOptional, IsString, ValidateIf } from 'class-validator';
 import { STUDY_SESSION_PRESETS, type StudySessionPreset } from '../domain/study-session-presets';
-import type { StudySessionMode } from '../entities/study-session.entity';
+import type { StudySessionKind, StudySessionMode } from '../entities/study-session.entity';
 
 export class StartSessionDto {
+  /** Ausente é Ciclo. O Foco livre (`free`) não aceita `plannedDurationSeconds`. */
+  @ValidateIf((_request, value) => value !== undefined)
+  @IsIn(['cycle', 'free'])
+  kind?: StudySessionKind;
+
   @ValidateIf((_request, value) => value !== undefined)
   @IsIn(STUDY_SESSION_PRESETS)
   plannedDurationSeconds?: StudySessionPreset;

@@ -32,6 +32,7 @@ import { KeepBadgesOffSale1788460080000 } from './1788460080000-keep-badges-off-
 import { SeedCosmeticItemsForSale1788460140000 } from './1788460140000-seed-cosmetic-items-for-sale';
 import { SeedMissionsForSale1788460200000 } from './1788460200000-seed-missions-for-sale';
 import { AddWeaponCategory1788460440000, STAFF_ID } from './1788460440000-add-weapon-category';
+import { AddStudySessionKind1788460500000 } from './1788460500000-add-study-session-kind';
 import { raidWeekAt } from '../modules/raids/domain/raid-week';
 
 const ITEMS_FOR_SALE = [
@@ -1607,5 +1608,36 @@ describe('TypeORM migrations against an empty MySQL schema', () => {
 
     await dataSource.runMigrations();
     expect(await weapons()).toEqual(expectedWeapons);
+  });
+
+  it('marks existing Study Sessions as Ciclo and reverts the kind column', async () => {
+    database = await createIntegrationDatabase('wise_migrations_test');
+    initialDataSource = new DataSource(database!.options(migrationsBefore(AddStudySessionKind1788460500000)));
+    await initialDataSource.initialize();
+    await initialDataSource.runMigrations();
+    await database!.admin.query(
+      `INSERT INTO ${database!.identifier}.users (id, email, password_hash, display_name, plan_tier)
+       VALUES ('kind-user', 'kind@example.com', 'hash', 'Kind', 'free')`,
+    );
+    await database!.admin.query(
+      `INSERT INTO ${database!.identifier}.study_sessions (id, user_id, subject, mode, planned_duration_seconds)
+       VALUES ('kind-legacy', 'kind-user', 'Cálculo', 'solo', NULL)`,
+    );
+    await initialDataSource.destroy();
+    initialDataSource = undefined;
+
+    dataSource = new DataSource(database!.options(migrationsThrough(AddStudySessionKind1788460500000)));
+    await dataSource.initialize();
+    await dataSource.runMigrations();
+    expect(await rows(database!.admin, `SELECT kind, planned_duration_seconds FROM ${database!.identifier}.study_sessions`))
+      .toEqual([{ kind: 'cycle', planned_duration_seconds: null }]);
+
+    await revertThrough(dataSource, AddStudySessionKind1788460500000);
+    const columns = await rows(
+      database!.admin,
+      'SELECT COLUMN_NAME FROM information_schema.columns WHERE table_schema = ? AND table_name = ? AND COLUMN_NAME = ?',
+      [database!.name, 'study_sessions', 'kind'],
+    );
+    expect(columns).toEqual([]);
   });
 });

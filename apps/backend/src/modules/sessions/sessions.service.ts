@@ -48,15 +48,15 @@ export class SessionsService {
     );
   }
 
-  /** Where the user stands in the Pomodoro cadence: only focuses completed in full advance it. */
+  /** Where the user stands in the Pomodoro cadence: only Ciclos completed in full advance it; Foco livre never does. */
   async focusCycle(userId: string): Promise<FocusCycle> {
-    const completedFocuses = await this.studySessions.count({ where: { userId, state: 'completed' } });
+    const completedFocuses = await this.studySessions.count({ where: { userId, state: 'completed', kind: 'cycle' } });
     return focusCycle(completedFocuses);
   }
 
   /**
    * Histórico do dia (#17): every Study Session that ended on a UTC day, newest first, with the place of each
-   * focus completed in full in the Pomodoro cycle. The cycle counts the same focuses as `focusCycle`.
+   * Ciclo completed in full in the Pomodoro cycle. The cycle counts the same Ciclos as `focusCycle`.
    */
   async history(userId: string, query: SessionHistoryQueryDto, now: Date = new Date()): Promise<SessionHistoryPageDto> {
     const date = query.date ?? utcDateKey(now);
@@ -69,6 +69,7 @@ export class SessionsService {
     const rows = await this.studySessions.manager.query<Array<{
       id: string;
       subject: string | null;
+      kind: StudySession['kind'];
       mode: StudySession['mode'];
       state: StudySession['state'] | null;
       started_at: Date;
@@ -80,14 +81,14 @@ export class SessionsService {
       capped_reason: RecentSessionResponseDto['cappedReason'];
       cycle_number: number | string | null;
     }>>(
-      `SELECT session.id, session.subject, session.mode, session.state, session.started_at, session.ended_at,
+      `SELECT session.id, session.subject, session.kind, session.mode, session.state, session.started_at, session.ended_at,
               DATE_FORMAT(session.ended_at, '%Y-%m-%d %H:%i:%s.%f') AS ended_at_text,
               session.duration_valid_seconds, session.xp_awarded, session.discarded_reason, session.capped_reason,
               completed.cycle_number
        FROM study_sessions session
        LEFT JOIN (
          SELECT id, ROW_NUMBER() OVER (ORDER BY ended_at, id) AS cycle_number
-         FROM study_sessions WHERE user_id = ? AND state = 'completed'
+         FROM study_sessions WHERE user_id = ? AND state = 'completed' AND kind = 'cycle'
        ) completed ON completed.id = session.id
        WHERE session.user_id = ?
          AND session.ended_at >= ? AND session.ended_at < ?
@@ -107,6 +108,7 @@ export class SessionsService {
       items: page.map((row): SessionHistoryItemDto => ({
         id: row.id,
         subject: row.subject,
+        kind: row.kind,
         mode: row.mode,
         state: row.state ?? null,
         startedAt: row.started_at,
@@ -131,6 +133,7 @@ export class SessionsService {
     return sessions.map((session) => ({
       id: session.id,
       subject: session.subject,
+      kind: session.kind,
       mode: session.mode,
       state: session.state ?? null,
       startedAt: session.startedAt,
@@ -181,6 +184,7 @@ export class SessionsService {
     const cadenceRows = await this.studySessions
       .createQueryBuilder('session')
       .select("DATE_FORMAT(session.endedAt, '%Y-%m-%d')", 'date')
+      .addSelect('session.kind', 'kind')
       .addSelect('COUNT(session.id)', 'sessionCount')
       .addSelect('COALESCE(SUM(session.durationValidSeconds), 0)', 'validSeconds')
       .where('session.userId = :userId', { userId })
@@ -189,7 +193,8 @@ export class SessionsService {
       .andWhere('session.discardedReason IS NULL')
       .andWhere("(session.state IS NULL OR session.state IN ('completed', 'stopped_early'))")
       .groupBy("DATE_FORMAT(session.endedAt, '%Y-%m-%d')")
-      .getRawMany<{ date: string; sessionCount: string; validSeconds: string }>();
+      .addGroupBy('session.kind')
+      .getRawMany<{ date: string; kind: StudySession['kind']; sessionCount: string; validSeconds: string }>();
 
     const historicalRows = await this.studySessions
       .createQueryBuilder('session')
@@ -202,23 +207,25 @@ export class SessionsService {
       .orderBy('date', 'ASC')
       .getRawMany<{ date: string }>();
 
-    const activity: SessionActivityDay[] = cadenceRows.map((row) => ({
-      date: row.date,
-      sessionCount: Number(row.sessionCount),
-      validSeconds: Number(row.validSeconds),
-    }));
+    const activity = mergeActivityDays(cadenceRows);
     const streaks = calculateStreaks(historicalRows.map((row) => row.date), today);
     const cadence = buildCadence(activity, previousDay(today, 55), today).map((day) => ({
       ...day,
       intensity: Math.min(day.sessionCount, 4) as 0 | 1 | 2 | 3 | 4,
     }));
     const todayActivity = activity.find((day) => day.date === today);
+    const todayRows = cadenceRows.filter((row) => row.date === today);
+    const todayOfKind = (kind: StudySession['kind']) => {
+      const row = todayRows.find((candidate) => candidate.kind === kind);
+      return { sessionCount: Number(row?.sessionCount ?? 0), validSeconds: Number(row?.validSeconds ?? 0) };
+    };
 
     return {
       ...streaks,
       sessionsToday: todayActivity?.sessionCount ?? 0,
       dailyGoal: 4,
       validSecondsToday: todayActivity?.validSeconds ?? 0,
+      todayByKind: { cycle: todayOfKind('cycle'), free: todayOfKind('free') },
       cadence: { windowStart, windowEnd: today, days: cadence },
     };
   }
@@ -309,6 +316,20 @@ export class SessionsService {
 
     return Number(row?.total ?? 0);
   }
+}
+
+/** The calendar counts every eligible Study Session of a day, whatever its kind. */
+function mergeActivityDays(
+  rows: ReadonlyArray<{ date: string; sessionCount: string; validSeconds: string }>,
+): SessionActivityDay[] {
+  const byDate = new Map<string, SessionActivityDay>();
+  for (const row of rows) {
+    const day = byDate.get(row.date) ?? { date: row.date, sessionCount: 0, validSeconds: 0 };
+    day.sessionCount += Number(row.sessionCount);
+    day.validSeconds += Number(row.validSeconds);
+    byDate.set(row.date, day);
+  }
+  return [...byDate.values()];
 }
 
 function previousDay(date: string, days: number): string {

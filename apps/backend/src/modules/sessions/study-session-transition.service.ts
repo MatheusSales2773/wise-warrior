@@ -216,7 +216,11 @@ export class StudySessionTransitionService {
         } else if (action === 'complete') {
           completionResult = await this.completeAtDeadline(manager, session, now);
         } else {
-          applyStudySessionTransition(session, action, now);
+          // Retomar um Foco livre recalcula o teto contra o saldo diário; o Ciclo não usa o valor.
+          const priorDailySeconds = action === 'resume' && session.kind === 'free'
+            ? await this.sumEligibleFocusSecondsToday(manager, userId, studySessionId, now)
+            : 0;
+          applyStudySessionTransition(session, action, now, priorDailySeconds);
         }
       } catch (error) {
         if (!(error instanceof StudySessionTransitionPolicyError)) throw error;
@@ -376,21 +380,22 @@ export class StudySessionTransitionService {
    * Focus of the day of `endedAt`. There is no upper bound: a late completion passes its deadline, and
    * no other session can have started after it while this one was running (D-005).
    */
-  private async sumEligibleFocusSecondsToday(
+  async sumEligibleFocusSecondsToday(
     manager: EntityManager,
     userId: string,
-    excludeStudySessionId: string,
+    excludeStudySessionId: string | null,
     endedAt: Date,
   ): Promise<number> {
     const startOfDay = new Date(endedAt);
     startOfDay.setHours(0, 0, 0, 0);
 
-    const row = await manager
+    const query = manager
       .getRepository(StudySession)
       .createQueryBuilder('session')
       .select('COALESCE(SUM(session.durationValidSeconds), 0)', 'total')
-      .where('session.userId = :userId', { userId })
-      .andWhere('session.id != :excludeStudySessionId', { excludeStudySessionId })
+      .where('session.userId = :userId', { userId });
+    if (excludeStudySessionId !== null) query.andWhere('session.id != :excludeStudySessionId', { excludeStudySessionId });
+    const row = await query
       .andWhere('session.startedAt >= :startOfDay', { startOfDay })
       .andWhere('session.discardedReason IS NULL')
       .andWhere("(session.state IS NULL OR session.state IN ('completed', 'stopped_early'))")
