@@ -27,7 +27,7 @@ const BORDER = 1;
 export function WiseSwitch({ accessibilityHint, accessibilityLabel, onValueChange, testID, value }: WiseSwitchProps) {
   const [focused, setFocused] = useState(false);
   // 0 is off, 1 is on; the first render rests at the current value without animating.
-  const progress = useRef(new Animated.Value(value ? 1 : 0)).current;
+  const [progress] = useState(() => new Animated.Value(value ? 1 : 0));
   const duration = motionDuration(theme.motion.quick, useReducedMotion());
 
   const shown = useRef(value);
