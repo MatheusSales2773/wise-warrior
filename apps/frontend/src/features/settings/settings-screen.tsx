@@ -11,7 +11,13 @@ import { useSignOut } from '@/features/auth/use-sign-out';
 import { SectionHeader, useFocusRing } from '@/features/character/character-parts';
 import { profileQueryOptions } from '@/features/dashboard/queries';
 import { activeSettingsSection, menuHref, settingsSection, settingsSections, type SettingsSectionId } from './sections';
+import { useActiveDevicesLabel } from './devices-content';
 import { AccountHeader, InfoRow, settingsStyles } from './settings-content';
+
+/** Live counts shown beside a section's name, for the sections that have one. */
+function useSectionMeta(): Partial<Record<SettingsSectionId, string>> {
+  return { dispositivos: useActiveDevicesLabel() };
+}
 
 function useDesktop() {
   const { width } = useWindowDimensions();
@@ -50,10 +56,14 @@ function BackToSettings() {
 export function SettingsSectionScreen({ id }: { id: SettingsSectionId }) {
   const desktop = useDesktop();
   const section = settingsSection(id);
+  const meta = useSectionMeta()[id];
   if (desktop) {
     return <ScrollView contentContainerStyle={styles.desktopSection} testID={`settings-section-${id}`}>
       <View style={styles.card}>
-        <SectionHeader>{section.label}</SectionHeader>
+        <View style={styles.cardHeader}>
+          <SectionHeader>{section.label}</SectionHeader>
+          {meta ? <Text style={styles.cardMeta} testID={`settings-section-meta-${id}`}>{meta}</Text> : null}
+        </View>
         <Text style={styles.description}>{section.description}</Text>
         {section.Content ? <section.Content /> : null}
       </View>
@@ -108,11 +118,12 @@ function SignOutButton() {
 function SettingsList() {
   const profile = useQuery(profileQueryOptions());
   const user = profile.data;
+  const meta = useSectionMeta();
   return <ScrollView contentContainerStyle={styles.mobileScreen} testID="settings-list">
     <Text accessibilityRole="header" aria-level={1} style={styles.mobileTitle}>Configuração</Text>
     <AccountHeader />
     {settingsSections.map((section) => <Group key={section.id} label={section.group}>
-      <LinkRow href={section.href} icon={section.row.icon} title={section.row.title} value={user && section.row.value?.(user)} />
+      <LinkRow href={section.href} icon={section.row.icon} title={section.row.title} value={meta[section.id] ?? (user && section.row.value?.(user))} />
       {user && section.details?.(user).map((detail) => <View key={detail.title} style={settingsStyles.rowDivided}><InfoRow {...detail} /></View>)}
     </Group>)}
     <SignOutButton />
@@ -151,6 +162,7 @@ function MenuSignOut() {
 function SettingsMenu({ active }: { active: SettingsSectionId }) {
   const profile = useQuery(profileQueryOptions());
   const tier = profile.data?.planTier;
+  const sectionMeta = useSectionMeta();
   return <View accessibilityLabel="Seções da configuração" role="navigation" style={styles.menu}>
     {settingsSections.map((section) => <MenuItem
       active={section.id === active}
@@ -158,7 +170,7 @@ function SettingsMenu({ active }: { active: SettingsSectionId }) {
       icon={section.icon}
       key={section.id}
       label={section.label}
-      meta={section.id === 'plano' && tier ? tier.toUpperCase() : undefined}
+      meta={section.id === 'plano' && tier ? tier.toUpperCase() : sectionMeta[section.id]}
     />)}
     <View style={styles.menuDivider} />
     <MenuSignOut />
@@ -226,6 +238,8 @@ const styles = StyleSheet.create({
   menuMeta: { fontFamily: mono, fontSize: 10, lineHeight: 13, color: theme.color.textTertiary },
   menuDivider: { height: 1, backgroundColor: theme.color.borderGhost },
 
+  cardHeader: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'baseline', justifyContent: 'space-between', gap: theme.space.inlineTight },
+  cardMeta: { fontFamily: mono, fontSize: 11, lineHeight: 14, color: theme.color.textTertiary },
   card: { gap: theme.space.controlInset, padding: 22, borderRadius: theme.radius.card, borderWidth: theme.border.standard, borderColor: theme.color.borderSubtle, backgroundColor: theme.color.surfaceCard },
   description: { fontFamily: 'Inter-Regular', fontSize: 13, lineHeight: 18, color: theme.color.textSecondary },
 

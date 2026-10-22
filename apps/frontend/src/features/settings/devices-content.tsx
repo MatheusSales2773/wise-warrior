@@ -1,16 +1,16 @@
-import { useMutation, useQueryClient, type UseQueryResult } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState, type ReactNode } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { isApiError } from '@/core/api/api-error';
 import { useAuth } from '@/core/auth/auth-context';
 import { FeedbackMessage, WiseButton, WiseText, theme, type FeedbackMessageVariant } from '@/design-system';
 import { formatSessionDate } from '@/features/dashboard/formatters';
-import { revokeAllMyDeviceSessions, revokeMyDeviceSession, type DeviceSession } from './api';
-import { describeDevice } from './formatters';
-import { profileKeys } from './queries';
+import { revokeMyDeviceSession, revokeOtherMyDeviceSessions, type DeviceSession } from '@/features/profile/api';
+import { describeDevice } from '@/features/profile/formatters';
+import { deviceSessionsQueryOptions, profileKeys } from '@/features/profile/queries';
 
 type Notice = { variant: FeedbackMessageVariant; title: string; message: string };
-type Confirmation = { kind: 'one'; sessionId: string } | { kind: 'all' };
+type Confirmation = { kind: 'one'; sessionId: string } | { kind: 'others' };
 type DeviceToEnd = { sessionId: string; name: string };
 
 function alreadyEndedNotice(name: string): Notice {
@@ -30,12 +30,6 @@ function failureNotice(error: unknown, action: string): Notice {
   };
 }
 
-const LEAVE_PENDING: Notice = {
-  variant: 'error',
-  title: 'Saída incompleta',
-  message: 'Todos os dispositivos foram desconectados, mas este ainda não concluiu a saída. Verifique sua conexão e tente de novo.',
-};
-
 function ConfirmPanel({ children, testID }: { children: ReactNode; testID: string }) {
   return <View style={styles.confirm} testID={testID}>{children}</View>;
 }
@@ -54,20 +48,20 @@ function DeviceItem({ current, device, confirming, ending, onAsk, onCancel, onCo
   const name = describeDevice(device);
   const lastUsed = `Último acesso: ${formatSessionDate(device.lastUsedAt)}`;
   return (
-    <View style={styles.deviceItem} testID={`profile-device-${device.id}`}>
+    <View style={styles.deviceItem} testID={`settings-device-${device.id}`}>
       <View style={styles.deviceRow}>
         <View accessible accessibilityLabel={`${name}${current ? ', este dispositivo' : ''}. ${lastUsed}`} style={styles.deviceMain}>
           <WiseText variant="label">{name}</WiseText>
           <WiseText color="textSecondary" variant="body">{lastUsed}</WiseText>
         </View>
         {current
-          ? <WiseText color="accentPrimary" testID={`profile-device-current-${device.id}`} variant="caption">ESTE DISPOSITIVO</WiseText>
+          ? <WiseText color="accentPrimary" testID={`settings-device-current-${device.id}`} variant="caption">Este dispositivo</WiseText>
           : confirming
             ? null
-            : <WiseButton accessibilityLabel={`Encerrar ${name}`} label="Encerrar" onPress={onAsk} testID={`profile-device-end-${device.id}`} variant="danger" />}
+            : <WiseButton accessibilityLabel={`Encerrar ${name}`} label="Encerrar" onPress={onAsk} testID={`settings-device-end-${device.id}`} variant="danger" />}
       </View>
       {confirming ? (
-        <ConfirmPanel testID={`profile-device-confirm-${device.id}`}>
+        <ConfirmPanel testID={`settings-device-confirm-${device.id}`}>
           <WiseText variant="body">{`Encerrar o acesso de ${name}?`}</WiseText>
           <WiseText color="textSecondary" variant="body">Quem estiver usando esse dispositivo precisará entrar de novo.</WiseText>
           <View style={styles.confirmActions}>
@@ -80,9 +74,17 @@ function DeviceItem({ current, device, confirming, ending, onAsk, onCancel, onCo
   );
 }
 
-export function DevicesContent({ currentSessionId, query }: { currentSessionId: string | null; query: UseQueryResult<DeviceSession[]> }) {
+/** "3 dispositivos ativos"; absent until the list loads. */
+export function useActiveDevicesLabel(): string | undefined {
+  const count = useQuery(deviceSessionsQueryOptions()).data?.length;
+  if (count === undefined) return undefined;
+  return `${count} ${count === 1 ? 'dispositivo ativo' : 'dispositivos ativos'}`;
+}
+
+export function DevicesContent() {
+  const query = useQuery(deviceSessionsQueryOptions());
+  const { sessionId: currentSessionId } = useAuth();
   const queryClient = useQueryClient();
-  const { logout } = useAuth();
   const [confirming, setConfirming] = useState<Confirmation | null>(null);
   const [notice, setNotice] = useState<Notice | null>(null);
   const reloadDevices = () => queryClient.invalidateQueries({ queryKey: profileKeys.devices() });
@@ -104,18 +106,17 @@ export function DevicesContent({ currentSessionId, query }: { currentSessionId: 
     },
   });
 
-  const endAll = useMutation({
-    mutationFn: () => revokeAllMyDeviceSessions(),
-    // Every Session is already revoked, this one included; leaving locally sends the student to login.
-    onSuccess: () => logout().catch(() => {
-      // Pressing "Sair de todos" again gets a 401 for the revoked Session, which also ends it locally.
+  const endOthers = useMutation({
+    mutationFn: () => revokeOtherMyDeviceSessions(),
+    onSuccess: () => {
       setConfirming(null);
-      setNotice(LEAVE_PENDING);
       return reloadDevices();
-    }),
+    },
     onError: (error) => {
       setConfirming(null);
-      setNotice(failureNotice(error, 'sair de todos os dispositivos'));
+      setNotice(failureNotice(error, 'encerrar os outros dispositivos'));
+      // Part of the batch may have gone through; show what is still connected.
+      return reloadDevices();
     },
   });
 
@@ -126,19 +127,20 @@ export function DevicesContent({ currentSessionId, query }: { currentSessionId: 
 
   const body = (() => {
     if (query.isPending && !query.data) {
-      return <WiseText color="textSecondary" testID="profile-devices-loading" variant="body">Carregando seus dispositivos…</WiseText>;
+      return <WiseText color="textSecondary" testID="settings-devices-loading" variant="body">Carregando seus dispositivos…</WiseText>;
     }
     if (query.isError && !query.data) {
-      return <View style={styles.stack} testID="profile-devices-error">
+      return <View style={styles.stack} testID="settings-devices-error">
         <FeedbackMessage message="Não foi possível carregar seus dispositivos." title="Dispositivos indisponíveis" variant="error" />
         <WiseButton label="Tentar novamente" loading={query.isRefetching} onPress={() => void query.refetch()} variant="secondary" />
       </View>;
     }
     const devices = query.data ?? [];
-    if (!devices.length) return <WiseText color="textSecondary" variant="body">Nenhum dispositivo com sessão ativa.</WiseText>;
+    const others = devices.filter((device) => device.id !== currentSessionId).length;
+    if (!devices.length) return <WiseText color="textSecondary" variant="body">Nenhum dispositivo conectado.</WiseText>;
     return (
       <>
-        <View testID="profile-device-list">
+        <View testID="settings-device-list">
           {devices.map((device, index) => (
             <View key={device.id} style={index > 0 && styles.divider}>
               <DeviceItem
@@ -153,26 +155,25 @@ export function DevicesContent({ currentSessionId, query }: { currentSessionId: 
             </View>
           ))}
         </View>
-        {confirming?.kind === 'all' ? (
-          <ConfirmPanel testID="profile-devices-confirm-all">
-            <WiseText variant="label">Sair de todos os dispositivos?</WiseText>
-            <WiseText color="textSecondary" variant="body">Todos os dispositivos serão desconectados, inclusive este. Você voltará para a tela de entrada.</WiseText>
+        {others > 0 ? (confirming?.kind === 'others' ? (
+          <ConfirmPanel testID="settings-devices-confirm-others">
+            <WiseText variant="label">Encerrar os outros dispositivos?</WiseText>
+            <WiseText color="textSecondary" variant="body">{`${others === 1 ? 'O outro dispositivo será desconectado' : `Os outros ${others} dispositivos serão desconectados`}. Este continua conectado.`}</WiseText>
             <View style={styles.confirmActions}>
-              <WiseButton accessibilityLabel="Confirmar: sair de todos os dispositivos" label="Sair de todos" loading={endAll.isPending} onPress={() => endAll.mutate()} variant="danger" />
-              <WiseButton accessibilityLabel="Cancelar saída de todos os dispositivos" disabled={endAll.isPending} label="Cancelar" onPress={() => setConfirming(null)} variant="ghost" />
+              <WiseButton accessibilityLabel="Confirmar: encerrar os outros dispositivos" label="Encerrar" loading={endOthers.isPending} onPress={() => endOthers.mutate()} variant="danger" />
+              <WiseButton accessibilityLabel="Manter os outros dispositivos conectados" disabled={endOthers.isPending} label="Manter" onPress={() => setConfirming(null)} variant="ghost" />
             </View>
           </ConfirmPanel>
         ) : (
-          <WiseButton label="Sair de todos os dispositivos" onPress={() => ask({ kind: 'all' })} testID="profile-devices-end-all" variant="danger" />
-        )}
+          <WiseButton label="Encerrar os outros dispositivos" onPress={() => ask({ kind: 'others' })} testID="settings-devices-end-others" variant="danger" />
+        )) : null}
       </>
     );
   })();
 
   return (
-    <View style={styles.stack} testID="profile-devices">
-      <WiseText accessibilityRole="header" aria-level={2} variant="subtitle">Dispositivos conectados</WiseText>
-      {notice ? <FeedbackMessage message={notice.message} testID="profile-devices-notice" title={notice.title} variant={notice.variant} /> : null}
+    <View style={styles.stack} testID="settings-devices">
+      {notice ? <FeedbackMessage message={notice.message} testID="settings-devices-notice" title={notice.title} variant={notice.variant} /> : null}
       {body}
     </View>
   );

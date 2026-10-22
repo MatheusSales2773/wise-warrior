@@ -2,6 +2,7 @@ import type { ComponentType } from 'react';
 import type { WiseIconName } from '@/design-system';
 import type { UserProfile } from '@/features/dashboard/api';
 import { planLabel } from './plan';
+import { DevicesContent } from './devices-content';
 import { AccountHeader, PlanContent } from './settings-content';
 
 export type SettingsSectionId = 'conta' | 'foco' | 'dispositivos' | 'acessibilidade' | 'plano';
@@ -39,7 +40,7 @@ export const settingsSections: readonly SettingsSection[] = [
   },
   {
     id: 'dispositivos', label: 'Dispositivos', description: 'Os aparelhos e navegadores em que você está conectado.', href: '/configuracao/dispositivos', icon: 'phone-portrait-outline',
-    group: 'Segurança', row: { title: 'Dispositivos conectados', icon: 'phone-portrait-outline' }, Content: null,
+    group: 'Segurança', row: { title: 'Dispositivos conectados', icon: 'phone-portrait-outline' }, Content: DevicesContent,
   },
   {
     id: 'acessibilidade', label: 'Acessibilidade', description: 'Ajustes de movimento do app.', href: '/configuracao/acessibilidade', icon: 'accessibility-outline',

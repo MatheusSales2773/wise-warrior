@@ -5,7 +5,7 @@ import { controlStyles } from '@/design-system/components/control-styles';
 import type { SessionMetrics, UserProfile } from '@/features/dashboard/api';
 import { formatXp } from '@/features/dashboard/formatters';
 import type { EquippedItems } from './catalog';
-import { formatCompactXp, formatDeviceSummary } from './formatters';
+import { formatCompactXp } from './formatters';
 
 /* Pieces shared by the desktop and mobile Personagem layouts. `compact` is the mobile sizing from the Figma v2 frames. */
 
@@ -32,15 +32,6 @@ export function describeHero(level: number, equipped: Pick<EquippedItems, 'avata
 /** Shown under the title while the equipment drawer previews an item. */
 export function PreviewMark() {
   return <Text style={styles.previewMark} testID="character-preview">Prévia · nada foi salvo</Text>;
-}
-
-/* ---------- Dispositivos ---------- */
-
-export type DevicesState = { count: number | null; failed: boolean };
-
-export function describeDevices({ count, failed }: DevicesState, compact: boolean): string {
-  if (count !== null) return formatDeviceSummary(count, Platform.OS === 'web' ? 'Este navegador' : 'Este dispositivo', compact);
-  return failed ? 'Não foi possível carregar seus dispositivos' : 'Carregando dispositivos…';
 }
 
 /* ---------- Progressão de nível ---------- */
