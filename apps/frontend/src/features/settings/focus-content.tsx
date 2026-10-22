@@ -1,4 +1,4 @@
-import { Pressable, StyleSheet, View } from 'react-native';
+import { Pressable, StyleSheet, Switch, View } from 'react-native';
 import { FOCUS_DURATIONS, useDevicePreference } from '@/core/preferences/device-preferences';
 import { WiseText, theme } from '@/design-system';
 import { useFocusRing } from '@/features/character/character-parts';
@@ -25,6 +25,24 @@ function DurationOption({ checked, duration, onSelect }: { checked: boolean; dur
   </Pressable>;
 }
 
+function SuggestRecentSubjectsSwitch() {
+  const [enabled, setEnabled] = useDevicePreference('suggestRecentSubjects');
+  return <View style={styles.switchRow}>
+    <View style={styles.switchCopy}>
+      <WiseText variant="label">Sugerir matérias recentes</WiseText>
+      <WiseText color="textSecondary" variant="body">Mostra suas últimas matérias na Forja</WiseText>
+    </View>
+    <Switch
+      accessibilityLabel="Sugerir matérias recentes"
+      accessibilityRole="switch"
+      accessibilityState={{ checked: enabled }}
+      onValueChange={setEnabled}
+      testID="settings-focus-suggest-recent-subjects"
+      value={enabled}
+    />
+  </View>;
+}
+
 export function FocusContent() {
   const [selected, select] = useDevicePreference('defaultFocusDuration');
   return <View style={styles.stack} testID="settings-focus">
@@ -33,11 +51,14 @@ export function FocusContent() {
     <View accessibilityLabel="Duração padrão" accessibilityRole="radiogroup" style={styles.options}>
       {FOCUS_DURATIONS.map((duration) => <DurationOption checked={selected === duration} duration={duration} key={duration} onSelect={() => select(duration)} />)}
     </View>
+    <SuggestRecentSubjectsSwitch />
   </View>;
 }
 
 const styles = StyleSheet.create({
   stack: { gap: theme.space.inlineTight },
+  switchRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: theme.space.stackTight, minHeight: theme.layout.touchTarget, marginTop: theme.space.stackTight },
+  switchCopy: { flex: 1, gap: theme.space.inlineTight },
   options: { flexDirection: 'row', flexWrap: 'wrap', gap: theme.space.stackTight },
   option: { minWidth: theme.layout.touchTarget, minHeight: theme.layout.touchTarget, paddingHorizontal: 14, justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: theme.color.borderGhost, borderRadius: theme.radius.pill, backgroundColor: theme.color.surfaceInset },
   optionChecked: { backgroundColor: 'rgba(212, 168, 90, 0.08)', borderColor: theme.color.borderEmphasis },

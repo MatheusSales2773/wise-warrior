@@ -101,7 +101,10 @@ afterEach(async () => {
 });
 
 describe('Foco', () => {
-  afterEach(() => devicePreferences.set('defaultFocusDuration', 1500));
+  afterEach(async () => {
+    await devicePreferences.set('defaultFocusDuration', 1500);
+    await devicePreferences.set('suggestRecentSubjects', true);
+  });
 
   it('chooses the default Forja duration on desktop and shows it beside Foco in the menu', async () => {
     await setViewport('web', 1440);
@@ -118,6 +121,20 @@ describe('Foco', () => {
     expect(screen.getByRole('radio', { name: '25 minutos' }).props.accessibilityState.checked).toBe(false);
     expect(menu.getByText('50 min')).toBeTruthy();
     expect(devicePreferences.get().defaultFocusDuration).toBe(3000);
+  });
+
+  it('toggles "Sugerir matérias recentes", on by default, and keeps the choice', async () => {
+    await setViewport('web', 1440);
+    await openSettings('/configuracao/foco');
+
+    const toggle = await screen.findByRole('switch', { name: 'Sugerir matérias recentes' });
+    expect(screen.getByText('Mostra suas últimas matérias na Forja')).toBeTruthy();
+    expect(toggle.props.accessibilityState.checked).toBe(true);
+
+    await fireEvent(toggle, 'valueChange', false);
+
+    expect(screen.getByRole('switch', { name: 'Sugerir matérias recentes' }).props.accessibilityState.checked).toBe(false);
+    expect(devicePreferences.get().suggestRecentSubjects).toBe(false);
   });
 
   it('chooses the default duration on the phone and shows it in the Duração padrão row', async () => {

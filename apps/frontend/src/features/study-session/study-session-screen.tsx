@@ -419,6 +419,7 @@ export function StudySessionScreen({ initialMode = 'solo' }: { initialMode?: Ses
   const ringSize = wideLayout ? 340 : Platform.OS === 'web' ? Math.min(310, width * 0.78) : Math.min(264, width * 0.68);
   const queryClient = useQueryClient();
   const [defaultDuration] = useDevicePreference('defaultFocusDuration');
+  const [suggestRecentSubjects] = useDevicePreference('suggestRecentSubjects');
   // The Forja opens on the device's default; a pick made here holds until the screen closes.
   const [picked, setSelected] = useState<PlannedDurationSeconds | null>(null);
   const selected = picked ?? defaultDuration;
@@ -1111,11 +1112,13 @@ export function StudySessionScreen({ initialMode = 'solo' }: { initialMode?: Ses
                 testID="study-session-subject-input"
                 value={subjectInput}
               />
-              <RecentSubjectSuggestions
-                disabled={start.isPending}
-                onSelect={changeSubject}
-                selectedSubject={subjectValidation.status === 'valid' ? subjectValidation.subject : null}
-              />
+              {suggestRecentSubjects && preferencesLoaded ? (
+                <RecentSubjectSuggestions
+                  disabled={start.isPending}
+                  onSelect={changeSubject}
+                  selectedSubject={subjectValidation.status === 'valid' ? subjectValidation.subject : null}
+                />
+              ) : null}
             </View>
             {forgeRaid ? (
               <View style={styles.subjectSection}>
