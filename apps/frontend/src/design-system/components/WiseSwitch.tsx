@@ -36,7 +36,7 @@ export function WiseSwitch({ accessibilityHint, accessibilityLabel, onValueChang
       style={[styles.track, value ? styles.trackOn : styles.trackOff, focused && Platform.OS === 'web' && controlStyles.webFocus]}
       testID={testID}
     >
-      <View style={[styles.knob, value ? styles.knobOn : styles.knobOff]} />
+      <View style={[styles.knob, value ? styles.knobOn : styles.knobOff]} testID={testID ? `${testID}-knob` : undefined} />
     </Pressable>
   );
 }
