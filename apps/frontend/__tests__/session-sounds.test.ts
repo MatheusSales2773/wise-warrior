@@ -1,4 +1,4 @@
-type Player = { play: jest.Mock; remove: jest.Mock; seekTo: jest.Mock };
+type Player = { play: jest.Mock; pause: jest.Mock; remove: jest.Mock; seekTo: jest.Mock; loop?: boolean; volume?: number };
 
 function load() {
   let sounds!: typeof import('@/features/study-session/sounds');
@@ -65,4 +65,62 @@ it('releases the players it created', () => {
   expect(player.remove).toHaveBeenCalledTimes(1);
   sounds.playSessionSound('focusEnd');
   expect(audio.createAudioPlayer).toHaveBeenCalledTimes(2);
+});
+
+it('loops the clip only when asked to', async () => {
+  const { sounds, audio } = load();
+
+  sounds.playSessionSound('focusEnd', { loop: true });
+  expect(lastPlayer(audio).loop).toBe(true);
+  sounds.playSessionSound('focusEnd');
+  expect(lastPlayer(audio).loop).toBe(false);
+});
+
+it('stops a ringing cue and rewinds it', async () => {
+  const { sounds, audio } = load();
+  sounds.playSessionSound('focusEnd', { loop: true });
+  await flush();
+  const player = lastPlayer(audio);
+
+  sounds.stopSessionSounds();
+
+  expect(player.pause).toHaveBeenCalledTimes(1);
+  expect(player.loop).toBe(false);
+  expect(player.seekTo).toHaveBeenCalledTimes(2);
+});
+
+it('does not ring a cue that was stopped before its rewind landed', async () => {
+  const { sounds, audio } = load();
+  sounds.playSessionSound('focusEnd', { loop: true });
+
+  sounds.stopSessionSounds();
+  await flush();
+
+  expect(lastPlayer(audio).play).not.toHaveBeenCalled();
+});
+
+it('lets only one cue ring at a time', async () => {
+  const { sounds, audio } = load();
+  sounds.playSessionSound('focusEnd', { loop: true });
+  const focus = lastPlayer(audio);
+  await flush();
+
+  sounds.playSessionSound('breakEnd', { loop: true });
+
+  expect(focus.pause).toHaveBeenCalledTimes(1);
+  expect(lastPlayer(audio)).not.toBe(focus);
+});
+
+it('unlocks every player with a silent play, then restores the volume', () => {
+  const { sounds, audio } = load();
+
+  sounds.unlockSessionSounds();
+
+  const players = (audio.createAudioPlayer as jest.Mock).mock.results.map((result) => result.value as Player);
+  expect(players).toHaveLength(2);
+  for (const player of players) {
+    expect(player.play).toHaveBeenCalledTimes(1);
+    expect(player.pause).toHaveBeenCalledTimes(1);
+    expect(player.volume).toBe(1);
+  }
 });

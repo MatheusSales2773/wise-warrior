@@ -1,4 +1,5 @@
-import type { QueryClient } from '@tanstack/react-query';
+import { useSyncExternalStore } from 'react';
+import { useQueryClient, type QueryClient } from '@tanstack/react-query';
 
 export const BREAK_SECONDS = { short: 300, long: 900 } as const;
 
@@ -28,6 +29,15 @@ export function currentBreak(queryClient: QueryClient): BreakRun | null {
 
 export function clearBreak(queryClient: QueryClient): void {
   queryClient.removeQueries({ queryKey: breakQueryKey });
+}
+
+/** The running break, reactive to `startBreak` and `clearBreak` wherever they are called from. */
+export function useBreakRun(): BreakRun | null {
+  const queryClient = useQueryClient();
+  return useSyncExternalStore(
+    (notify) => queryClient.getQueryCache().subscribe(notify),
+    () => currentBreak(queryClient),
+  );
 }
 
 export function breakRemainingSeconds(run: BreakRun, nowMs: number): number {
