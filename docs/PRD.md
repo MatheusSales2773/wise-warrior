@@ -303,7 +303,7 @@ fazem parte desse primeiro corte.
 
 **Experiência:** Web desktop usa sidebar; celulares usam navegação inferior. O standalone é referência de identidade e UX, não implementação a incorporar. Tema Ouro/Índigo é o único exposto. Mercado Arcano, Crônicas e Configuração permanecem visíveis como “Em breve”. Tablets, áudio ambiente, push remoto, múltiplos temas e publicação nas lojas ficam fora do aceite inicial.
 
-**Domínio relacionado:** no máximo uma Study Session ativa por usuário, controlável em qualquer dispositivo. Ela inicia online, sobrevive a perda de conexão, usa timestamps canônicos e comandos idempotentes. Pause/resume exige rede. Foco de 15/25/50 minutos conclui automaticamente; término antecipado após cinco minutos recebe 10 XP por minuto completo. Pausas Pomodoro de 5/15 minutos são locais e não concedem XP.
+**Domínio relacionado:** no máximo uma Study Session ativa por usuário, controlável em qualquer dispositivo. Ela inicia online, sobrevive a perda de conexão, usa timestamps canônicos e comandos idempotentes. Pause/resume exige rede. Foco de 15/25/50 minutos conclui automaticamente; término antecipado após cinco minutos recebe 10 XP por minuto completo. Pausas Pomodoro de 5/15 minutos são locais e não concedem XP. **Emenda (#273):** além do Ciclo de 15/25/50 minutos, existe o Foco livre, uma Study Session sem duração planejada que conta para cima até o usuário parar; ele não avança a cadência Pomodoro e só conclui sozinho no teto do antifraude (ADR-011).
 
 **Consequências:** Vite, React Router DOM, DOM/CSS direto e Vitest deixam de compor o frontend final; a migração ocorre incrementalmente com validação Web/iOS/Android. O backend e o OpenAPI recebem extensões retrocompatíveis para autenticação nativa, estados, concorrência e idempotência. Eventos Socket.IO ganham AsyncAPI. Detalhes, alternativas, testes e glossário: `docs/plans/2026-09-03-react-native-universal-design.md`.
 
@@ -327,7 +327,7 @@ fazem parte desse primeiro corte.
 5. Modo Guilda usa a mesma taxa de XP do modo solo; o XP concedido é simultaneamente a Contribuição para a Raid ativa.
 6. O timer é server-side (`runDeadlineAt`); a sessão completa no prazo independentemente de heartbeat — o cliente não é fonte de verdade.
 7. Tabela de recompensas de Raid (Cosmetic Item por Missão) ficou fora do escopo desta decisão — ver sub-issue de Missões.
-**Consequência:** `xp-rate.ts` lê `XP_PER_MINUTE` do env; `session-validator.ts` lê os limiares do env e implementa truncamento; `applyStudySessionStop` passa a receber e aplicar `priorDailySeconds`; a entidade `StudySession` ganha a coluna `capped_reason nullable`.
+**Consequência:** `xp-rate.ts` lê `XP_PER_MINUTE` do env; `session-validator.ts` lê os limiares do env e implementa truncamento; `applyStudySessionStop` passa a receber e aplicar `priorDailySeconds`; a entidade `StudySession` ganha a coluna `capped_reason nullable`. **Emenda (#273):** no Foco livre, `runDeadlineAt` é o teto, o menor entre o limite contínuo e o saldo diário restante, recalculado no início e na retomada; ao atingi-lo, a sessão conclui com `capped_reason`. Parar com pelo menos 5 minutos conclui o Foco livre (não há encerramento antecipado), e o início é recusado quando o saldo diário já está zerado.
 
 ### ADR-012: Economia de Moedas, Loja e Fúria do dragão
 **Status:** Aceito em 16/10/2026. **Contexto:** a issue #159 fechou o que o ADR-011 deixou de fora: a moeda do jogo. A spec #145 propunha um tesouro coletivo da Guild e um mercado de missões comprado pelo Líder, o que contradizia o termo Loja do `CONTEXT.md`. **Alternativas:** (a) Moeda por usuário, gasta numa Loja pessoal; (b) tesouro da Guild alimentado pelas sessões dos membros. Para itens: (c) Compra como mais uma Condição de desbloqueio; (d) Compra como entrada separada no Inventário. **Decisão:** (a) e (c).
@@ -403,7 +403,7 @@ Entidades principais (nomes lógicos, DDL real fica para a implementação):
 - **Companion** `(id, species, level, xp_total)` — sub-feature ADR-004
 - **CosmeticItem** `(id, category, name, unlock_condition)`
 - **UserCosmeticItem** `(user_id FK, cosmetic_item_id FK, equipped BOOL, unlocked_at)`
-- **StudySession** `(id, user_id FK, subject, mode[solo|guild], started_at, ended_at, duration_valid_seconds, xp_awarded, discarded_reason nullable, capped_reason nullable['continuous-limit'|'daily-limit'])` — `capped_reason` não nulo indica que o XP foi truncado pelo antifraude (ADR-011)
+- **StudySession** `(id, user_id FK, subject, mode[solo|guild], kind[cycle|free], planned_duration_seconds nullable, started_at, ended_at, duration_valid_seconds, xp_awarded, discarded_reason nullable, capped_reason nullable['continuous-limit'|'daily-limit'])` — `capped_reason` não nulo indica que o XP foi truncado pelo antifraude (ADR-011)
 - **Guild** `(id, name, level, created_by FK)`
 - **GuildMembership** `(guild_id FK, user_id FK, role, joined_at)`
 - **Raid** `(id, guild_id FK, title, goal_xp, progress_xp, starts_at, ends_at, status)`
