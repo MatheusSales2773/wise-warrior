@@ -1,51 +1,22 @@
-export const RAID_TIME_ZONE = 'America/Sao_Paulo';
+import {
+  SAO_PAULO_TIME_ZONE,
+  saoPauloDayKey as zonedDayKey,
+  saoPauloDayStart,
+  saoPauloShiftDayKey,
+  saoPauloWeekAt,
+  type SaoPauloWeek,
+} from '../../../shared/time/sao-paulo-calendar';
+
+export const RAID_TIME_ZONE = SAO_PAULO_TIME_ZONE;
+export const zonedDayStart = saoPauloDayStart;
+export { zonedDayKey };
 export const RAID_XP_PER_MEMBER = 1500;
 const GOAL_STEP_XP = 50;
 const SECONDS_PER_WEEK = 7 * 24 * 60 * 60;
-const DAY_MS = 24 * 60 * 60 * 1000;
-/** 1970-01-05 was the first Monday of the Unix epoch: week 0. */
-const FIRST_MONDAY_MS = Date.UTC(1970, 0, 5);
 
-export interface RaidWeek {
-  /** Weeks elapsed since the first Monday of the Unix epoch. */
-  number: number;
-  startsAt: Date;
-  /** Sunday 23:59:59 in São Paulo. */
-  endsAt: Date;
-}
+export type RaidWeek = SaoPauloWeek;
 
-const zoneFormat = new Intl.DateTimeFormat('en-US', {
-  timeZone: RAID_TIME_ZONE,
-  hourCycle: 'h23',
-  year: 'numeric', month: 'numeric', day: 'numeric',
-  hour: 'numeric', minute: 'numeric', second: 'numeric',
-});
-
-/** The wall-clock reading in São Paulo of an instant, as if it were UTC. */
-function zonedWallClockMs(instantMs: number): number {
-  const parts = Object.fromEntries(
-    zoneFormat.formatToParts(new Date(instantMs)).map((part) => [part.type, Number(part.value)]),
-  ) as Record<'year' | 'month' | 'day' | 'hour' | 'minute' | 'second', number>;
-  return Date.UTC(parts.year, parts.month - 1, parts.day, parts.hour, parts.minute, parts.second);
-}
-
-/** The instant at which São Paulo's wall clock reads `wallClockMs` (read as UTC). */
-function instantAtWallClock(wallClockMs: number): number {
-  const guess = wallClockMs - (zonedWallClockMs(wallClockMs) - wallClockMs);
-  return wallClockMs - (zonedWallClockMs(guess) - guess);
-}
-
-export function raidWeekAt(now: Date): RaidWeek {
-  const wall = new Date(zonedWallClockMs(now.getTime()));
-  const daysSinceMonday = (wall.getUTCDay() + 6) % 7;
-  const mondayWall = Date.UTC(wall.getUTCFullYear(), wall.getUTCMonth(), wall.getUTCDate() - daysSinceMonday);
-  const nextMondayWall = mondayWall + 7 * DAY_MS;
-  return {
-    number: Math.round((mondayWall - FIRST_MONDAY_MS) / (7 * DAY_MS)),
-    startsAt: new Date(instantAtWallClock(mondayWall)),
-    endsAt: new Date(instantAtWallClock(nextMondayWall) - 1000),
-  };
-}
+export const raidWeekAt = saoPauloWeekAt;
 
 /** Week N uses the mission at position `N mod catalog size`, the same for every Guild. */
 export function missionIndexForWeek(weekNumber: number, catalogSize: number): number {
@@ -62,19 +33,7 @@ export function proportionalGoalXp(memberCount: number, week: RaidWeek, now: Dat
   return Math.max(GOAL_STEP_XP, Math.ceil(exact / GOAL_STEP_XP) * GOAL_STEP_XP);
 }
 
-const dayFormat = new Intl.DateTimeFormat('en-CA', {
-  timeZone: RAID_TIME_ZONE,
-  year: 'numeric', month: '2-digit', day: '2-digit',
-});
-
-/** The São Paulo calendar day (`YYYY-MM-DD`) of an instant. */
-export function zonedDayKey(instant: Date): string {
-  return dayFormat.format(instant);
-}
-
-function shiftDayKey(dayKey: string, days: number): string {
-  return new Date(Date.parse(`${dayKey}T00:00:00Z`) + days * DAY_MS).toISOString().slice(0, 10);
-}
+const shiftDayKey = saoPauloShiftDayKey;
 
 /**
  * Dia de estudo: the distinct São Paulo days with at least one Contribuição. The single place this is
@@ -102,9 +61,4 @@ export function studyStreak(studyDays: string[], week: RaidWeek, now: Date): num
 export function raidWeekDayKeys(week: RaidWeek): string[] {
   const monday = zonedDayKey(week.startsAt);
   return Array.from({ length: 7 }, (_, index) => shiftDayKey(monday, index));
-}
-
-/** The instant at which a São Paulo calendar day (`YYYY-MM-DD`) begins. */
-export function zonedDayStart(dayKey: string): Date {
-  return new Date(instantAtWallClock(Date.parse(`${dayKey}T00:00:00Z`)));
 }

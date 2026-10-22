@@ -10,9 +10,13 @@ export const dashboardKeys = {
   history: (date: string) => ['dashboard', 'history', date] as const,
 };
 
-/** The UTC calendar day of an instant, as `/sessions/metrics` and `/sessions/history` count days. */
-export function utcDay(at: number = Date.now()): string {
-  return new Date(at).toISOString().slice(0, 10);
+const SAO_PAULO_DAY = new Intl.DateTimeFormat('en-CA', {
+  timeZone: 'America/Sao_Paulo', year: 'numeric', month: '2-digit', day: '2-digit',
+});
+
+/** The São Paulo calendar day of an instant, as `/sessions/metrics` and `/sessions/history` count days. */
+export function saoPauloDay(at: number = Date.now()): string {
+  return SAO_PAULO_DAY.format(new Date(at));
 }
 
 export const sessionHistoryQueryOptions = (date: string) => infiniteQueryOptions({

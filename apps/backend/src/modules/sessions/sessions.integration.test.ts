@@ -100,14 +100,14 @@ describe('recent study sessions against MySQL', () => {
       { id: '00000000-0000-4000-8000-000000000036', email: 'other-metrics@example.com', passwordHash: 'hash', displayName: 'Other', planTier: 'free' },
     ]);
     const anchor = new Date('2026-09-17T12:00:00.000Z');
-    const today = anchor.toISOString().slice(0, 10);
+    const today = '2026-09-17';
     const dateAtNoon = (offset: number) => {
       const date = new Date(`${today}T12:00:00Z`);
       date.setUTCDate(date.getUTCDate() + offset);
       return date;
     };
-    const windowStart = new Date('2026-07-24T00:00:00.000Z');
-    const dayBeforeWindow = new Date('2026-07-23T23:59:59.000Z');
+    const windowStart = new Date('2026-07-24T03:00:00.000Z');
+    const dayBeforeWindow = new Date('2026-07-24T02:59:59.000Z');
     await dataSource.getRepository(StudySession).insert([
       ...[-1, 0].map((offset, index) => ({
         id: `00000000-0000-4000-8000-${String(32 + index).padStart(12, '0')}`,
@@ -167,6 +167,44 @@ describe('recent study sessions against MySQL', () => {
     expect(result.cadence.days.at(-1)).toEqual({
       date: today, sessionCount: 2, validSeconds: 1380, intensity: 2,
     });
+  });
+
+  it('counts the São Paulo day across midnight: 23:00 in São Paulo is still that day, 00:00 is the next', async () => {
+    database = await createIntegrationDatabase('wise_sessions_metrics_midnight');
+    dataSource = new DataSource(database.options(APPLICATION_MIGRATIONS));
+    await dataSource.initialize();
+    await dataSource.runMigrations();
+
+    const userId = '00000000-0000-4000-8000-000000000051';
+    await dataSource.getRepository(User).insert({
+      id: userId, email: 'midnight@example.com', passwordHash: 'hash', displayName: 'Midnight', planTier: 'free',
+    });
+    const endAt = (id: number, iso: string) => {
+      const endedAt = new Date(iso);
+      return {
+        id: `00000000-0000-4000-8000-${String(id).padStart(12, '0')}`, userId, subject: null, mode: 'solo' as const,
+        startedAt: new Date(endedAt.getTime() - 1_500_000), endedAt, durationValidSeconds: 1500, xpAwarded: 10,
+      };
+    };
+    await dataSource.getRepository(StudySession).insert([
+      endAt(52, '2026-09-16T15:00:00.000Z'), // 12:00 on the 16th
+      endAt(53, '2026-09-18T02:00:00.000Z'), // 23:00 on the 17th in São Paulo
+      endAt(54, '2026-09-18T02:59:59.999Z'), // 23:59:59.999 on the 17th
+      endAt(55, '2026-09-18T03:00:00.000Z'), // 00:00 on the 18th
+    ]);
+    const service = new SessionsService(dataSource.getRepository(StudySession), {} as ProgressionService, {} as RaidsService);
+
+    const beforeMidnight = await service.metrics(userId, new Date('2026-09-18T02:59:59.999Z'));
+    expect(beforeMidnight.sessionsToday).toBe(2);
+    expect(beforeMidnight.cadence.windowEnd).toBe('2026-09-17');
+    expect(beforeMidnight.currentStreakDays).toBe(2);
+    expect(beforeMidnight.cadence.days.at(-1)).toMatchObject({ date: '2026-09-17', sessionCount: 2, validSeconds: 3000 });
+
+    const afterMidnight = await service.metrics(userId, new Date('2026-09-18T03:00:00.000Z'));
+    expect(afterMidnight.sessionsToday).toBe(1);
+    expect(afterMidnight.cadence.windowEnd).toBe('2026-09-18');
+    expect(afterMidnight.currentStreakDays).toBe(3);
+    expect(afterMidnight.longestStreakDays).toBe(3);
   });
 
   it('keeps all canonical terminal states auditable while counting only eligible focus', async () => {
