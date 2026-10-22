@@ -31,7 +31,7 @@ Os Cosmetic Items que um usuário já desbloqueou.
 _Avoid_: Coleção, bolsa
 
 **Condição de desbloqueio**:
-A regra que dá um Cosmetic Item a um usuário, por exemplo alcançar um nível, concluir uma Raid ou fazer a Compra do item.
+A regra que dá um Cosmetic Item a um usuário, por exemplo alcançar um nível, concluir uma Raid, somar um número de Study Sessions, terminar Study Sessions antes das 7h ou fazer a Compra do item.
 _Avoid_: requisito, critério
 
 **Desbloqueio**:
@@ -109,6 +109,24 @@ _Avoid_: sessão inválida, sessão bloqueada
 **Sessão descartada**:
 Uma Study Session cujo XP é zero por violação técnica grave (ex.: duração inválida). Permanece visível ao usuário com indicador "não contabilizada".
 _Avoid_: sessão deletada, sessão removida
+
+### Crônicas
+
+**Objetivo**:
+Uma meta pessoal do usuário, diária ou semanal, cumprida com Study Sessions. Cumprir um Objetivo dá Moedas, nunca XP.
+_Avoid_: missão (reservada ao modelo de Raid), tarefa, desafio, contrato
+
+**Marco**:
+A Condição de desbloqueio de um Badge mostrada com o progresso do usuário até ela. Conquistar um Marco é o Desbloqueio do Badge; não existe recompensa própria do Marco.
+_Avoid_: conquista, achievement, troféu
+
+**Constância**:
+Quantos dias seguidos, até hoje, o usuário terminou pelo menos uma Study Session não descartada, no horário de São Paulo. É pessoal e independe da Guild.
+_Avoid_: sequência (reservada à Guild), streak, ofensiva
+
+**Diário**:
+O histórico de Study Sessions do usuário, mostrando cada uma como concluída, truncada ou descartada. Cancelamentos não aparecem.
+_Avoid_: histórico, log, Extrato (que é o histórico de Moedas)
 
 ### Guilda e Raid
 
@@ -189,7 +207,7 @@ A vida que o chefe da Raid recupera por dia inteiro da Raid que não foi Dia de 
 _Avoid_: regeneração, cura
 
 **Moeda**:
-A moeda do jogo, ganha com Study Sessions, com a Recompensa de Raid e no cadastro, e gasta na Loja. É do usuário, não da Guild, e não pode ser transferida. Não tem relação com o plano premium.
+A moeda do jogo, ganha com Study Sessions, com Objetivos, com a Recompensa de Raid e no cadastro, e gasta na Loja. É do usuário, não da Guild, e não pode ser transferida. Não tem relação com o plano premium.
 _Avoid_: ouro, coin, crédito, tesouro
 
 **Extrato**:
