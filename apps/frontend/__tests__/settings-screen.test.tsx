@@ -4,7 +4,10 @@ import { router as appRouter, Slot } from 'expo-router';
 import { fireEvent, renderRouter, screen, waitFor, within } from 'expo-router/testing-library';
 import { Platform, Text } from 'react-native';
 import { AppShell } from '@/design-system/components/AppShell';
+import { ApiError } from '@/core/api/api-error';
+import { queryClient as appQueryClient } from '@/core/query/query-runtime';
 import { getMyProfile, type UserProfile } from '@/features/dashboard/api';
+import { updateMyDisplayName } from '@/features/settings/api';
 import { resetViewport, setViewport } from '../test-utils/viewport';
 import { mockAuthState, updateMockAuthState } from '../test-utils/auth-context';
 
@@ -18,15 +21,19 @@ jest.mock('@/features/dashboard/api', () => ({
   getSessionMetrics: jest.fn(() => new Promise(() => undefined)),
 }));
 
+jest.mock('@/features/settings/api', () => ({ updateMyDisplayName: jest.fn() }));
+
 const profile: UserProfile = {
   id: 'user-1', email: 'knightshade@wise.app', displayName: 'Knightshade', planTier: 'free',
   level: 3, levelStartXp: 0, nextLevelXp: 1_000, xpTotal: 400, title: null, equipped: [],
 };
 
 const mockedProfile = getMyProfile as jest.MockedFunction<typeof getMyProfile>;
+const mockedRename = updateMyDisplayName as jest.MockedFunction<typeof updateMyDisplayName>;
 const settingsRoutes = {
   'configuracao/_layout': require('../src/app/(app)/configuracao/_layout'),
   'configuracao/index': require('../src/app/(app)/configuracao/index'),
+  'configuracao/nome': require('../src/app/(app)/configuracao/nome'),
   'configuracao/conta': require('../src/app/(app)/configuracao/conta'),
   'configuracao/foco': require('../src/app/(app)/configuracao/foco'),
   'configuracao/dispositivos': require('../src/app/(app)/configuracao/dispositivos'),
@@ -45,6 +52,7 @@ async function openSettings(initialUrl: string) {
       _layout: () => <QueryClientProvider client={client}><AppShell><Slot /></AppShell></QueryClientProvider>,
       ...settingsRoutes,
       entrar: () => <Text>Entrar</Text>,
+      perfil: () => <Text>Personagem aberto</Text>,
     }, { initialUrl })
     : renderRouter('src/app', { initialUrl });
   await router;
@@ -55,9 +63,12 @@ async function openSettings(initialUrl: string) {
 
 beforeEach(() => {
   mockedProfile.mockResolvedValue(profile);
+  mockedRename.mockReset();
 });
 
 afterEach(async () => {
+  // The native app shares one module-level QueryClient; a renamed profile must not leak into the next case.
+  appQueryClient.clear();
   updateMockAuthState({ status: 'authenticated' });
   mockAuthState.logout.mockReset();
   mockAuthState.logout.mockResolvedValue(undefined);
@@ -82,9 +93,8 @@ describe('Configuração on desktop', () => {
     expect(menu.getByRole('button', { name: 'Sair da conta' })).toBeTruthy();
 
     expect(screen.getByRole('header', { name: 'Conta e segurança' })).toBeTruthy();
-    expect(await screen.findByText('knightshade@wise.app')).toBeTruthy();
-    expect(screen.getByText('Knightshade')).toBeTruthy();
-    expect(screen.getByText('PLANO FREE')).toBeTruthy();
+    // The "Perfil público" card replaces the account header on desktop; the email returns in the Acesso card.
+    expect((await screen.findByLabelText('Nome do guerreiro')).props.value).toBe('Knightshade');
     expect(screen.getByText('Wise Warrior · versão 0.1.0')).toBeTruthy();
   });
 
@@ -183,7 +193,7 @@ describe('Configuração on phones', () => {
   });
 
   it.each([
-    ['Nome do guerreiro: Knightshade', '/configuracao/conta', 'Conta e segurança'],
+    ['Nome do guerreiro: Knightshade', '/configuracao/nome', 'Nome do guerreiro'],
     ['Foco', '/configuracao/foco', 'Foco'],
     ['Dispositivos conectados', '/configuracao/dispositivos', 'Dispositivos'],
     ['Acessibilidade', '/configuracao/acessibilidade', 'Acessibilidade'],
@@ -219,5 +229,121 @@ describe('Configuração on phones', () => {
 
     await waitFor(() => expect(router).toHavePathname('/entrar'));
     expect(mockAuthState.logout).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('Renomear o guerreiro', () => {
+  const saveButton = () => screen.getByRole('button', { name: 'Salvar' });
+  const isDisabled = () => Boolean(saveButton().props.accessibilityState?.disabled);
+
+  describe.each([
+    ['desktop', 'web', 1440, '/configuracao'],
+    ['phones', 'android', 390, '/configuracao/nome'],
+  ] as const)('on %s', (_name, platform, width, url) => {
+    beforeEach(async () => {
+      await setViewport(platform, width);
+    });
+
+    async function openForm() {
+      const { router } = await openSettings(url);
+      const field = await screen.findByLabelText('Nome do guerreiro');
+      return { router, field };
+    }
+
+    it('shows the current name and the 2–60 rule, with Salvar off until the name changes', async () => {
+      const { field } = await openForm();
+
+      expect(field.props.value).toBe('Knightshade');
+      expect(screen.getByText('2–60 letras', { includeHiddenElements: true })).toBeTruthy();
+      expect(isDisabled()).toBe(true);
+
+      await fireEvent.changeText(field, 'Knightshade 2');
+      expect(isDisabled()).toBe(false);
+
+      await fireEvent.changeText(field, 'Knightshade');
+      expect(isDisabled()).toBe(true);
+    });
+
+    it.each([[''], ['A'], ['   '], ['x'.repeat(61)]])('keeps Salvar off for the invalid name %j', async (invalid) => {
+      const { field } = await openForm();
+
+      await fireEvent.changeText(field, invalid);
+
+      expect(isDisabled()).toBe(true);
+      expect(mockedRename).not.toHaveBeenCalled();
+    });
+
+    it('saves the trimmed name, confirms it and updates the cached profile', async () => {
+      mockedRename.mockResolvedValue({ ...profile, displayName: 'Nova Lenda' });
+      const { field } = await openForm();
+
+      await fireEvent.changeText(field, '  Nova Lenda ');
+      await fireEvent.press(saveButton());
+
+      await screen.findByText('Seu nome na guilda foi atualizado.');
+      expect(mockedRename).toHaveBeenCalledWith('Nova Lenda');
+      expect(screen.getByLabelText('Nome do guerreiro').props.value).toBe('Nova Lenda');
+      await waitFor(() => expect(isDisabled()).toBe(true));
+    });
+
+    it('says so when there is no connection and keeps the typed name to try again', async () => {
+      mockedRename.mockRejectedValueOnce(new ApiError('network')).mockResolvedValueOnce({ ...profile, displayName: 'Nova Lenda' });
+      const { field } = await openForm();
+
+      await fireEvent.changeText(field, 'Nova Lenda');
+      await fireEvent.press(saveButton());
+
+      await screen.findByText(/Sem conexão/);
+      expect(screen.getByLabelText('Nome do guerreiro').props.value).toBe('Nova Lenda');
+      expect(isDisabled()).toBe(false);
+
+      await fireEvent.press(saveButton());
+      await screen.findByText('Seu nome na guilda foi atualizado.');
+    });
+
+    it('shows a generic failure for a server error', async () => {
+      mockedRename.mockRejectedValue(new ApiError('server', { status: 500 }));
+      const { field } = await openForm();
+
+      await fireEvent.changeText(field, 'Nova Lenda');
+      await fireEvent.press(saveButton());
+
+      await screen.findByText('Não foi possível salvar o nome agora. Tente novamente em instantes.');
+    });
+  });
+
+  it('puts the form in the "Perfil público" card on desktop and sends the shortcut to the Personagem', async () => {
+    await setViewport('web', 1440);
+    await openSettings('/configuracao');
+    await screen.findByTestId('settings-public-profile');
+    expect(screen.getByText('Visível para sua guilda')).toBeTruthy();
+
+    expect(screen.getByRole('link', { name: /Título e aparência são escolhidos no/ }).props.href).toBe('/perfil');
+  });
+
+  it('sends the shortcut of the phone form to the Personagem', async () => {
+    await setViewport('android', 390);
+    const { router } = await openSettings('/configuracao/nome');
+
+    await fireEvent.press(await screen.findByRole('link', { name: /Título e aparência são escolhidos no/ }));
+
+    await waitFor(() => expect(router).toHavePathname('/perfil'));
+  });
+
+  it('refreshes the Configuração header on phones after saving', async () => {
+    await setViewport('android', 390);
+    mockedRename.mockResolvedValue({ ...profile, displayName: 'Nova Lenda' });
+    const { router } = await openSettings('/configuracao');
+    await screen.findByTestId('settings-profile');
+    await fireEvent.press(screen.getByRole('link', { name: 'Nome do guerreiro: Knightshade' }));
+    await waitFor(() => expect(router).toHavePathname('/configuracao/nome'));
+
+    await fireEvent.changeText(await screen.findByLabelText('Nome do guerreiro'), 'Nova Lenda');
+    await fireEvent.press(saveButton());
+    await screen.findByText('Seu nome na guilda foi atualizado.');
+    await fireEvent.press(screen.getByRole('button', { name: 'Voltar para Configuração' }));
+
+    await waitFor(() => expect(router).toHavePathname('/configuracao'));
+    expect(await screen.findByRole('link', { name: 'Nome do guerreiro: Nova Lenda' })).toBeTruthy();
   });
 });

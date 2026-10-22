@@ -245,6 +245,27 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/UserProfile" }
         "401": { $ref: "#/components/responses/Unauthorized" }
+    patch:
+      summary: Renomeia o guerreiro
+      description: >
+        Mesma validação do registro (2 a 60 caracteres). O nome não precisa ser
+        único, não há cooldown e não há evento em tempo real: o Mural lê o nome
+        por join, então mensagens antigas passam a mostrar o nome novo.
+      operationId: updateMyProfile
+      tags: [Users]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateProfileRequest" }
+      responses:
+        "200":
+          description: Perfil atualizado
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/UserProfile" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
 
   /users/me/cosmetics:
     get:
@@ -1194,6 +1215,12 @@ components:
           type: string
           enum: [Wise Web]
           description: Rótulo previsível do dispositivo; a Web assume Wise Web.
+
+    UpdateProfileRequest:
+      type: object
+      required: [displayName]
+      properties:
+        displayName: { type: string, minLength: 2, maxLength: 60 }
 
     LoginRequest:
       type: object

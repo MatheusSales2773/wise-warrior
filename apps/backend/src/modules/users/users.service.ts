@@ -306,6 +306,15 @@ export class UsersService {
     };
   }
 
+  /** Só este Service grava o nome (ADR-001); o Mural e os demais leem por join, então o nome novo aparece em tudo. */
+  async updateDisplayName(userId: string, displayName: string): Promise<UserProfile> {
+    const { affected } = await this.users.update({ id: userId }, { displayName });
+    if (!affected) {
+      throw new NotFoundException('Usuário não encontrado');
+    }
+    return this.getProfile(userId);
+  }
+
   /**
    * Política de entitlement do MVP (ADR-007): enquanto `COSMETICS_PREMIUM_FOR_ALL` não for
    * `false`, os itens premium ficam liberados para todos. A checagem continua no caminho de Equipar.

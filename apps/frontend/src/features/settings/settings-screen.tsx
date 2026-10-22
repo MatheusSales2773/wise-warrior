@@ -11,6 +11,7 @@ import { useSignOut } from '@/features/auth/use-sign-out';
 import { SectionHeader, useFocusRing } from '@/features/character/character-parts';
 import { profileQueryOptions } from '@/features/dashboard/queries';
 import { activeSettingsSection, menuHref, settingsSection, settingsSections, type SettingsSectionId } from './sections';
+import { RenameContent } from './rename-form';
 import { AccountHeader, InfoRow, settingsStyles } from './settings-content';
 
 function useDesktop() {
@@ -67,6 +68,16 @@ export function SettingsSectionScreen({ id }: { id: SettingsSectionId }) {
   </ScrollView>;
 }
 
+/** The phone's edit screen for the warrior name, opened from the "Nome do guerreiro" row. */
+export function RenameScreen() {
+  return <ScrollView contentContainerStyle={styles.mobileScreen} testID="settings-rename">
+    <BackToSettings />
+    <Text accessibilityRole="header" aria-level={1} style={styles.mobileTitle}>Nome do guerreiro</Text>
+    <Text style={styles.description}>Como a sua guilda vê você.</Text>
+    <RenameContent />
+  </ScrollView>;
+}
+
 /* ---------- Lista agrupada (celular) ---------- */
 
 function LinkRow({ href, icon, title, value }: { href: Href; icon: WiseIconName; title: string; value?: string }) {
@@ -112,7 +123,7 @@ function SettingsList() {
     <Text accessibilityRole="header" aria-level={1} style={styles.mobileTitle}>Configuração</Text>
     <AccountHeader />
     {settingsSections.map((section) => <Group key={section.id} label={section.group}>
-      <LinkRow href={section.href} icon={section.row.icon} title={section.row.title} value={user && section.row.value?.(user)} />
+      <LinkRow href={section.row.href ?? section.href} icon={section.row.icon} title={section.row.title} value={user && section.row.value?.(user)} />
       {user && section.details?.(user).map((detail) => <View key={detail.title} style={settingsStyles.rowDivided}><InfoRow {...detail} /></View>)}
     </Group>)}
     <SignOutButton />

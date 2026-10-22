@@ -1,4 +1,5 @@
 import {
+  Body,
   Controller,
   Delete,
   Get,
@@ -11,6 +12,7 @@ import {
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import type { JwtPayload } from '../auth/strategies/jwt.strategy';
+import { UpdateProfileDto } from './dto/update-profile.dto';
 import { UsersService } from './users.service';
 import { AuthService } from '../auth/auth.service';
 
@@ -25,6 +27,12 @@ export class UsersController {
   @Get()
   getProfile(@CurrentUser() user: JwtPayload) {
     return this.users.getProfile(user.sub);
+  }
+
+  /** Renomeia o guerreiro e devolve o perfil no formato de `GET /users/me`. */
+  @Patch()
+  updateProfile(@CurrentUser() user: JwtPayload, @Body() dto: UpdateProfileDto) {
+    return this.users.updateDisplayName(user.sub, dto.displayName);
   }
 
   /** O Catálogo inteiro de Cosmetic Items, com o que o usuário desbloqueou e equipou. */
