@@ -14,6 +14,10 @@ import { mockAuthState } from '../test-utils/auth-context';
 
 jest.mock('@/core/auth/auth-context', () => require('../test-utils/auth-context').createAuthContextMock());
 jest.mock('@/core/realtime/realtime-runtime', () => ({ RealtimeRuntime: () => null }));
+// A pending read keeps the real Forja from racing the storage load into its unmocked history query.
+jest.mock('@/core/preferences/preferences-storage', () => ({
+  preferencesStorage: { read: jest.fn(() => new Promise(() => undefined)), write: jest.fn(async () => undefined) },
+}));
 
 afterEach(async () => {
   mockAuthState.logout.mockReset();
