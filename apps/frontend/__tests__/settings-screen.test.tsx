@@ -4,7 +4,9 @@ import { router as appRouter, Slot } from 'expo-router';
 import { fireEvent, renderRouter, screen, waitFor, within } from 'expo-router/testing-library';
 import { Platform, Text } from 'react-native';
 import { AppShell } from '@/design-system/components/AppShell';
+import { ApiError } from '@/core/api/api-error';
 import { getMyProfile, type UserProfile } from '@/features/dashboard/api';
+import { listMyDeviceSessions, revokeMyDeviceSession, revokeOtherMyDeviceSessions, type DeviceSession } from '@/features/profile/api';
 import { resetViewport, setViewport } from '../test-utils/viewport';
 import { mockAuthState, updateMockAuthState } from '../test-utils/auth-context';
 
@@ -18,12 +20,28 @@ jest.mock('@/features/dashboard/api', () => ({
   getSessionMetrics: jest.fn(() => new Promise(() => undefined)),
 }));
 
+jest.mock('@/features/profile/api', () => ({
+  listMyDeviceSessions: jest.fn(),
+  revokeMyDeviceSession: jest.fn(),
+  revokeOtherMyDeviceSessions: jest.fn(),
+}));
+
+const devices: DeviceSession[] = [
+  { id: 'dev-1', deviceLabel: 'iPhone de Ana', userAgent: null, createdAt: '2026-09-01T10:00:00Z', lastUsedAt: '2026-09-20T10:00:00Z' },
+  { id: 'dev-2', deviceLabel: null, userAgent: 'Mozilla/5.0 (Windows NT 10.0)', createdAt: '2026-09-02T10:00:00Z', lastUsedAt: '2026-09-18T10:00:00Z' },
+  { id: 'dev-3', deviceLabel: 'Notebook', userAgent: null, createdAt: '2026-09-03T10:00:00Z', lastUsedAt: '2026-09-19T10:00:00Z' },
+];
+const otherDevice = 'Navegador no computador';
+
 const profile: UserProfile = {
   id: 'user-1', email: 'knightshade@wise.app', displayName: 'Knightshade', planTier: 'free',
   level: 3, levelStartXp: 0, nextLevelXp: 1_000, xpTotal: 400, title: null, equipped: [],
 };
 
 const mockedProfile = getMyProfile as jest.MockedFunction<typeof getMyProfile>;
+const mockedDevices = listMyDeviceSessions as jest.MockedFunction<typeof listMyDeviceSessions>;
+const mockedRevoke = revokeMyDeviceSession as jest.MockedFunction<typeof revokeMyDeviceSession>;
+const mockedRevokeOthers = revokeOtherMyDeviceSessions as jest.MockedFunction<typeof revokeOtherMyDeviceSessions>;
 const settingsRoutes = {
   'configuracao/_layout': require('../src/app/(app)/configuracao/_layout'),
   'configuracao/index': require('../src/app/(app)/configuracao/index'),
@@ -55,6 +73,10 @@ async function openSettings(initialUrl: string) {
 
 beforeEach(() => {
   mockedProfile.mockResolvedValue(profile);
+  mockedDevices.mockReset().mockResolvedValue(devices);
+  mockedRevoke.mockReset().mockResolvedValue(undefined);
+  mockedRevokeOthers.mockReset().mockResolvedValue(undefined);
+  updateMockAuthState({ sessionId: 'dev-1' });
 });
 
 afterEach(async () => {
@@ -150,6 +172,112 @@ describe('Configuração on desktop', () => {
     await waitFor(() => expect(router).toHavePathname('/entrar'));
     expect(mockAuthState.logout).toHaveBeenCalledTimes(1);
   });
+
+  it('shows the active device count in the menu and the card header of Dispositivos', async () => {
+    await openSettings('/configuracao/dispositivos');
+
+    const menu = within(screen.getByLabelText('Seções da configuração'));
+    expect(await menu.findByText('3 dispositivos ativos')).toBeTruthy();
+    expect(screen.getByTestId('settings-section-meta-dispositivos').props.children).toBe('3 dispositivos ativos');
+    expect(screen.queryByText(/sess(ão|ões)/i)).toBeNull();
+    expect(screen.queryByText(/São Paulo/)).toBeNull();
+  });
+
+  describe('Dispositivos', () => {
+    async function openDevices() {
+      await openSettings('/configuracao/dispositivos');
+      await screen.findByTestId('settings-device-dev-2');
+    }
+
+    it('lists the devices, marking this one and offering Encerrar on the others only', async () => {
+      await openDevices();
+
+      expect(screen.getByText('iPhone de Ana')).toBeTruthy();
+      expect(screen.getByText('Notebook')).toBeTruthy();
+      expect(screen.getByTestId('settings-device-current-dev-1')).toBeTruthy();
+      expect(screen.getByRole('button', { name: `Encerrar ${otherDevice}` })).toBeTruthy();
+      expect(screen.queryByRole('button', { name: 'Encerrar iPhone de Ana' })).toBeNull();
+    });
+
+    it('keeps the device when the student declines the confirmation', async () => {
+      await openDevices();
+
+      await fireEvent.press(screen.getByRole('button', { name: `Encerrar ${otherDevice}` }));
+      expect(screen.getByText(`Encerrar o acesso de ${otherDevice}?`)).toBeTruthy();
+      await fireEvent.press(screen.getByRole('button', { name: `Manter ${otherDevice} conectado` }));
+
+      expect(screen.queryByText(`Encerrar o acesso de ${otherDevice}?`)).toBeNull();
+      expect(mockedRevoke).not.toHaveBeenCalled();
+    });
+
+    it('ends one device after confirmation and reloads the list without signing out', async () => {
+      await openDevices();
+      expect(mockedDevices).toHaveBeenCalledTimes(1);
+
+      await fireEvent.press(screen.getByRole('button', { name: `Encerrar ${otherDevice}` }));
+      await fireEvent.press(screen.getByRole('button', { name: `Confirmar: encerrar ${otherDevice}` }));
+
+      await waitFor(() => expect(mockedRevoke).toHaveBeenCalledWith('dev-2'));
+      await waitFor(() => expect(mockedDevices).toHaveBeenCalledTimes(2));
+      expect(mockAuthState.logout).not.toHaveBeenCalled();
+    });
+
+    it('explains a device that was already disconnected elsewhere and reloads the list', async () => {
+      mockedRevoke.mockRejectedValue(new ApiError('unexpected', { status: 404 }));
+      await openDevices();
+
+      await fireEvent.press(screen.getByRole('button', { name: `Encerrar ${otherDevice}` }));
+      await fireEvent.press(screen.getByRole('button', { name: `Confirmar: encerrar ${otherDevice}` }));
+
+      const notice = await screen.findByTestId('settings-devices-notice');
+      expect(within(notice).getByText(`${otherDevice} já tinha sido desconectado em outro lugar. A lista foi atualizada.`)).toBeTruthy();
+      await waitFor(() => expect(mockedDevices).toHaveBeenCalledTimes(2));
+      expect(mockAuthState.logout).not.toHaveBeenCalled();
+    });
+
+    it('ends the other devices after confirmation, keeps this one signed in and reloads the list', async () => {
+      await openDevices();
+
+      await fireEvent.press(screen.getByRole('button', { name: 'Encerrar os outros dispositivos' }));
+      expect(mockedRevokeOthers).not.toHaveBeenCalled();
+      expect(screen.getByText(/Este continua conectado/)).toBeTruthy();
+      await fireEvent.press(screen.getByRole('button', { name: 'Confirmar: encerrar os outros dispositivos' }));
+
+      await waitFor(() => expect(mockedRevokeOthers).toHaveBeenCalledTimes(1));
+      await waitFor(() => expect(mockedDevices).toHaveBeenCalledTimes(2));
+      expect(mockAuthState.logout).not.toHaveBeenCalled();
+    });
+
+    it('cancels ending the other devices', async () => {
+      await openDevices();
+
+      await fireEvent.press(screen.getByRole('button', { name: 'Encerrar os outros dispositivos' }));
+      await fireEvent.press(screen.getByRole('button', { name: 'Manter os outros dispositivos conectados' }));
+
+      expect(screen.queryByText(/Este continua conectado/)).toBeNull();
+      expect(mockedRevokeOthers).not.toHaveBeenCalled();
+    });
+
+    it('explains a failure to end the other devices', async () => {
+      mockedRevokeOthers.mockRejectedValue(new ApiError('network'));
+      await openDevices();
+
+      await fireEvent.press(screen.getByRole('button', { name: 'Encerrar os outros dispositivos' }));
+      await fireEvent.press(screen.getByRole('button', { name: 'Confirmar: encerrar os outros dispositivos' }));
+
+      const notice = await screen.findByTestId('settings-devices-notice');
+      expect(within(notice).getByText('Não foi possível encerrar os outros dispositivos. Verifique sua conexão e tente novamente.')).toBeTruthy();
+    });
+
+    it('hides Encerrar os outros dispositivos when this is the only device', async () => {
+      mockedDevices.mockResolvedValue([devices[0]!]);
+      await openSettings('/configuracao/dispositivos');
+      await screen.findByTestId('settings-device-dev-1');
+
+      expect(screen.queryByRole('button', { name: 'Encerrar os outros dispositivos' })).toBeNull();
+      expect((await within(screen.getByLabelText('Seções da configuração')).findByText('1 dispositivo ativo'))).toBeTruthy();
+    });
+  });
 });
 
 describe('Configuração on phones', () => {
@@ -185,14 +313,14 @@ describe('Configuração on phones', () => {
   it.each([
     ['Nome do guerreiro: Knightshade', '/configuracao/conta', 'Conta e segurança'],
     ['Foco', '/configuracao/foco', 'Foco'],
-    ['Dispositivos conectados', '/configuracao/dispositivos', 'Dispositivos'],
+    ['Dispositivos conectados: 3 dispositivos ativos', '/configuracao/dispositivos', 'Dispositivos'],
     ['Acessibilidade', '/configuracao/acessibilidade', 'Acessibilidade'],
     ['Plano atual: Free · premium em breve', '/configuracao/plano', 'Plano'],
   ])('opens the %s row on its own screen and returns with ‹ Configuração', async (row, pathname, title) => {
     const { router } = await openSettings('/configuracao');
     await screen.findByTestId('settings-profile');
 
-    await fireEvent.press(screen.getByRole('link', { name: row }));
+    await fireEvent.press(await screen.findByRole('link', { name: row }));
     await waitFor(() => expect(router).toHavePathname(pathname));
     expect(screen.getByRole('header', { name: title })).toBeTruthy();
 

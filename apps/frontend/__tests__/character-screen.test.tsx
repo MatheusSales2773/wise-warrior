@@ -8,14 +8,10 @@ import { getMyProfile, getSessionMetrics, type SessionMetrics, type UserProfile 
 import {
   equipCosmeticItem,
   listCosmeticsCatalog,
-  listMyDeviceSessions,
-  revokeAllMyDeviceSessions,
-  revokeMyDeviceSession,
   unequipCosmeticItem,
   type CatalogCosmeticItem,
-  type DeviceSession,
 } from '@/features/profile/api';
-import { mockAuthState, updateMockAuthState } from '../test-utils/auth-context';
+import { updateMockAuthState } from '../test-utils/auth-context';
 import { resetMockWindowDimensions, setMockWindowDimensions } from '../test-utils/window-dimensions';
 
 jest.mock('@/core/auth/auth-context', () => require('../test-utils/auth-context').createAuthContextMock());
@@ -29,9 +25,6 @@ jest.mock('@/features/profile/api', () => ({
   equipCosmeticItem: jest.fn(),
   unequipCosmeticItem: jest.fn(),
   listCosmeticsCatalog: jest.fn(),
-  listMyDeviceSessions: jest.fn(),
-  revokeMyDeviceSession: jest.fn(),
-  revokeAllMyDeviceSessions: jest.fn(),
 }));
 
 function cosmetic(
@@ -73,20 +66,11 @@ const metrics: SessionMetrics = {
   currentStreakDays: 27, longestStreakDays: 30, sessionsToday: 2, dailyGoal: 4, validSecondsToday: 3_000,
   cadence: { windowStart: '2026-08-01', windowEnd: '2026-09-25', days: [] },
 };
-const devices: DeviceSession[] = [
-  { id: 'dev-1', deviceLabel: 'iPhone de Ana', userAgent: null, createdAt: '2026-09-01T10:00:00Z', lastUsedAt: '2026-09-20T10:00:00Z' },
-  { id: 'dev-2', deviceLabel: null, userAgent: 'Mozilla/5.0 (Windows NT 10.0)', createdAt: '2026-09-02T10:00:00Z', lastUsedAt: '2026-09-18T10:00:00Z' },
-  { id: 'dev-3', deviceLabel: 'Notebook', userAgent: null, createdAt: '2026-09-03T10:00:00Z', lastUsedAt: '2026-09-19T10:00:00Z' },
-];
-
 const mockedProfile = getMyProfile as jest.MockedFunction<typeof getMyProfile>;
 const mockedMetrics = getSessionMetrics as jest.MockedFunction<typeof getSessionMetrics>;
 const mockedCatalog = listCosmeticsCatalog as jest.MockedFunction<typeof listCosmeticsCatalog>;
-const mockedDevices = listMyDeviceSessions as jest.MockedFunction<typeof listMyDeviceSessions>;
 const mockedEquip = equipCosmeticItem as jest.MockedFunction<typeof equipCosmeticItem>;
 const mockedUnequip = unequipCosmeticItem as jest.MockedFunction<typeof unequipCosmeticItem>;
-const mockedRevoke = revokeMyDeviceSession as jest.MockedFunction<typeof revokeMyDeviceSession>;
-const mockedRevokeAll = revokeAllMyDeviceSessions as jest.MockedFunction<typeof revokeAllMyDeviceSessions>;
 
 // A mutation keeps a 5-minute GC timer by default, which would hold the Jest process open after the run.
 let queryClient: QueryClient | undefined;
@@ -121,11 +105,8 @@ beforeEach(() => {
   useWidth(1440);
   mockedMetrics.mockResolvedValue(metrics);
   mockedCatalog.mockResolvedValue(catalog);
-  mockedDevices.mockResolvedValue(devices);
   mockedEquip.mockResolvedValue(undefined);
   mockedUnequip.mockResolvedValue(undefined);
-  mockedRevoke.mockResolvedValue(undefined);
-  mockedRevokeAll.mockResolvedValue(undefined);
 });
 
 afterEach(async () => {
@@ -230,11 +211,13 @@ describe('CharacterScreen', () => {
       expect(screen.queryByRole('button', { name: /^Equipar (Guerreira|Paladino)/ })).toBeNull();
     });
 
-    it('summarizes the connected devices', async () => {
+    it('leaves the devices out of Mais, which only keeps the Companheiro', async () => {
       await renderCharacter();
 
-      await waitFor(() => expect(screen.getByText('Este navegador e mais 2 sessões')).toBeTruthy());
       expect(screen.getByText('Coruja de estudo · chega na Fase 2')).toBeTruthy();
+      expect(screen.queryByTestId('character-devices')).toBeNull();
+      expect(screen.queryByText(/Dispositivos conectados/)).toBeNull();
+      expect(screen.queryByText(/Sair de todos/)).toBeNull();
     });
 
     it('opens the equipment drawer on the tapped category with the real Catalog', async () => {
@@ -572,12 +555,11 @@ describe('CharacterScreen', () => {
       expect(screen.queryByRole('button', { name: 'Trocar herói' })).toBeNull();
     });
 
-    it('words the device row for mobile and counts the sessions', async () => {
+    it('words the Companheiro row for mobile without any device row', async () => {
       await renderCharacter();
 
       expect(screen.getByText('Coruja de estudo · em breve')).toBeTruthy();
-      await waitFor(() => expect(screen.getByText('Este navegador e mais 2')).toBeTruthy());
-      expect(within(screen.getByTestId('character-devices')).getByText('3')).toBeTruthy();
+      expect(screen.queryByTestId('character-devices')).toBeNull();
     });
 
     it('opens a bottom sheet that keeps or equips the Título', async () => {
@@ -615,9 +597,7 @@ describe('CharacterScreen', () => {
 
       expect(mockedProfile).toHaveBeenCalledTimes(2);
       expect(mockedCatalog).toHaveBeenCalledTimes(2);
-      expect(mockedDevices).toHaveBeenCalledTimes(2);
       expect(mockedMetrics).toHaveBeenCalledTimes(2);
-      expect(screen.getByText('Este dispositivo e mais 2')).toBeTruthy();
     });
 
     it('keeps the character with a stale-data notice when a refresh fails', async () => {
@@ -631,114 +611,6 @@ describe('CharacterScreen', () => {
 
       expect(await screen.findByTestId('character-status-profile')).toBeTruthy();
       expect(identity().getByText('Estudante Crepuscular')).toBeTruthy();
-    });
-  });
-
-  describe('ending devices', () => {
-    const otherDevice = 'Navegador no computador';
-
-    async function openDevices() {
-      await renderCharacter();
-      await fireEvent.press(await screen.findByRole('button', { name: /^Dispositivos conectados\./ }));
-      await screen.findByTestId('profile-device-dev-2');
-    }
-
-    it('opens from the Dispositivos conectados row and closes again', async () => {
-      await openDevices();
-
-      expect(screen.getByTestId('devices-panel')).toBeTruthy();
-      expect(screen.getByTestId('profile-device-current-dev-1')).toBeTruthy();
-      await fireEvent.press(screen.getByRole('button', { name: 'Fechar' }));
-      expect(screen.queryByTestId('devices-panel')).toBeNull();
-    });
-
-    it('offers an Encerrar button on every device except the current one', async () => {
-      await openDevices();
-
-      expect(screen.getByRole('button', { name: `Encerrar ${otherDevice}` })).toBeTruthy();
-      expect(screen.queryByRole('button', { name: 'Encerrar iPhone de Ana' })).toBeNull();
-    });
-
-    it('asks for confirmation and keeps the device when the student declines', async () => {
-      await openDevices();
-
-      await fireEvent.press(screen.getByRole('button', { name: `Encerrar ${otherDevice}` }));
-      expect(screen.getByText(`Encerrar o acesso de ${otherDevice}?`)).toBeTruthy();
-      await fireEvent.press(screen.getByRole('button', { name: `Manter ${otherDevice} conectado` }));
-
-      expect(screen.queryByText(`Encerrar o acesso de ${otherDevice}?`)).toBeNull();
-      expect(mockedRevoke).not.toHaveBeenCalled();
-    });
-
-    it('ends another device after confirmation and reloads the list without disconnecting', async () => {
-      await openDevices();
-      expect(mockedDevices).toHaveBeenCalledTimes(1);
-
-      await fireEvent.press(screen.getByRole('button', { name: `Encerrar ${otherDevice}` }));
-      await fireEvent.press(screen.getByRole('button', { name: `Confirmar: encerrar ${otherDevice}` }));
-
-      await waitFor(() => expect(mockedRevoke).toHaveBeenCalledWith('dev-2'));
-      await waitFor(() => expect(mockedDevices).toHaveBeenCalledTimes(2));
-      expect(mockAuthState.logout).not.toHaveBeenCalled();
-    });
-
-    it('explains a device that was already ended, reloads the list and keeps the student connected', async () => {
-      mockedRevoke.mockRejectedValue(new ApiError('unexpected', { status: 404 }));
-      await openDevices();
-
-      await fireEvent.press(screen.getByRole('button', { name: `Encerrar ${otherDevice}` }));
-      await fireEvent.press(screen.getByRole('button', { name: `Confirmar: encerrar ${otherDevice}` }));
-
-      const notice = await screen.findByTestId('profile-devices-notice');
-      expect(within(notice).getByText(`${otherDevice} já tinha sido desconectado em outro lugar. A lista foi atualizada.`)).toBeTruthy();
-      await waitFor(() => expect(mockedDevices).toHaveBeenCalledTimes(2));
-      expect(mockAuthState.logout).not.toHaveBeenCalled();
-    });
-
-    it('keeps the device and explains a failure that is not a missing device', async () => {
-      mockedRevoke.mockRejectedValue(new ApiError('network'));
-      await openDevices();
-
-      await fireEvent.press(screen.getByRole('button', { name: `Encerrar ${otherDevice}` }));
-      await fireEvent.press(screen.getByRole('button', { name: `Confirmar: encerrar ${otherDevice}` }));
-
-      const notice = await screen.findByTestId('profile-devices-notice');
-      expect(within(notice).getByText('Não foi possível encerrar o dispositivo. Verifique sua conexão e tente novamente.')).toBeTruthy();
-      expect(mockAuthState.logout).not.toHaveBeenCalled();
-    });
-
-    it('signs out of every device after confirmation and disconnects the student', async () => {
-      await openDevices();
-
-      await fireEvent.press(screen.getByRole('button', { name: 'Sair de todos os dispositivos' }));
-      expect(mockedRevokeAll).not.toHaveBeenCalled();
-      expect(screen.getByText(/inclusive este/)).toBeTruthy();
-      await fireEvent.press(screen.getByRole('button', { name: 'Confirmar: sair de todos os dispositivos' }));
-
-      await waitFor(() => expect(mockedRevokeAll).toHaveBeenCalledTimes(1));
-      await waitFor(() => expect(mockAuthState.logout).toHaveBeenCalledTimes(1));
-    });
-
-    it('explains and reloads when leaving this device fails after every session was ended', async () => {
-      mockAuthState.logout.mockRejectedValueOnce(new ApiError('network'));
-      await openDevices();
-
-      await fireEvent.press(screen.getByRole('button', { name: 'Sair de todos os dispositivos' }));
-      await fireEvent.press(screen.getByRole('button', { name: 'Confirmar: sair de todos os dispositivos' }));
-
-      const notice = await screen.findByTestId('profile-devices-notice');
-      expect(within(notice).getByText('Todos os dispositivos foram desconectados, mas este ainda não concluiu a saída. Verifique sua conexão e tente de novo.')).toBeTruthy();
-      await waitFor(() => expect(mockedDevices).toHaveBeenCalledTimes(2));
-    });
-
-    it('cancels signing out of every device', async () => {
-      await openDevices();
-
-      await fireEvent.press(screen.getByRole('button', { name: 'Sair de todos os dispositivos' }));
-      await fireEvent.press(screen.getByRole('button', { name: 'Cancelar saída de todos os dispositivos' }));
-
-      expect(screen.queryByText(/inclusive este/)).toBeNull();
-      expect(mockedRevokeAll).not.toHaveBeenCalled();
     });
   });
 });

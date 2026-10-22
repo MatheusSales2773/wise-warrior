@@ -50,7 +50,7 @@ export async function revokeMyDeviceSession(sessionId: string): Promise<void> {
   await getAuthenticatedHttpClient().delete(`/users/me/sessions/${encodeURIComponent(sessionId)}`);
 }
 
-/** "Sair de todos os dispositivos", inclusive este. */
-export async function revokeAllMyDeviceSessions(): Promise<void> {
+/** "Encerrar os outros dispositivos": o do access token em uso continua conectado. */
+export async function revokeOtherMyDeviceSessions(): Promise<void> {
   await getAuthenticatedHttpClient().delete('/users/me/sessions');
 }

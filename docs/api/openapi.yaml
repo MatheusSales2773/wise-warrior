@@ -402,11 +402,15 @@ paths:
                 items: { $ref: "#/components/schemas/SessionSummary" }
         "401": { $ref: "#/components/responses/Unauthorized" }
     delete:
-      summary: Encerra todas as sessões do usuário ("sair de todos os dispositivos")
-      operationId: revokeAllMySessions
+      summary: Encerra os outros dispositivos do usuário
+      description: >
+        Revoga e desconecta do realtime todas as sessões do usuário exceto a
+        do access token em uso, que continua válida junto com o seu refresh
+        token. Sem outras sessões ativas, não faz nada e devolve 204.
+      operationId: revokeOtherMySessions
       tags: [Users]
       responses:
-        "204": { description: Todas as sessões revogadas }
+        "204": { description: Os outros dispositivos foram revogados }
         "401": { $ref: "#/components/responses/Unauthorized" }
 
   /users/me/sessions/{sessionId}:

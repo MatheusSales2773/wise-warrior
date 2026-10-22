@@ -1,10 +1,10 @@
 import type { ReactElement, ReactNode } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View, type RefreshControlProps } from 'react-native';
-import { WiseIcon, theme } from '@/design-system';
+import { theme } from '@/design-system';
 import type { SessionMetrics, UserProfile } from '@/features/dashboard/api';
 import { equipmentCategories, type EquipmentCategory, type EquipmentCategoryDefinition, type EquippedItems } from './catalog';
 import { GroundShadow, HeroGlow } from './character-art';
-import { LevelProgress, PreviewMark, SectionHeader, SummaryRow, describeDevices, describeHero, useFocusRing, type DevicesState } from './character-parts';
+import { LevelProgress, PreviewMark, SectionHeader, SummaryRow, describeHero, useFocusRing } from './character-parts';
 import { LayeredHero } from './layered-hero';
 import { PixelSprite } from './PixelSprite';
 import { companionSprites, itemSprites } from './sprites';
@@ -14,10 +14,8 @@ import { companionSprites, itemSprites } from './sprites';
 const STAGE_WIDTH = 390;
 
 type MobileCharacterProps = {
-  devices: DevicesState;
   equipped: EquippedItems;
   metrics: SessionMetrics | undefined;
-  onOpenDevices: () => void;
   onOpenEquipment: (category: EquipmentCategory) => void;
   previewing: boolean;
   /** Pull-to-refresh on touch platforms; omitted on web. */
@@ -92,47 +90,24 @@ function GearSection({ equipped, onOpen }: { equipped: EquippedItems; onOpen: (c
 
 /* ---------- Mais ---------- */
 
-function MoreRow({ badge, children, description, first = false, onPress, testID, title }: {
-  badge?: string;
-  children: ReactNode;
-  description: string;
-  first?: boolean;
-  onPress?: () => void;
-  testID: string;
-  title: string;
-}) {
-  const { focusProps, focusStyle } = useFocusRing();
-  const style = [styles.moreRow, !first && styles.moreRowDivided];
-  const content = <>
-    <View style={styles.moreIcon}>{children}</View>
-    <View style={styles.moreCopy}>
-      <Text style={styles.moreTitle}>{title}</Text>
-      <Text style={styles.moreDescription}>{description}</Text>
-    </View>
-    {badge ? <Text style={styles.moreBadge}>{badge}</Text> : null}
-    <WiseIcon color="textTertiary" name="chevron-forward" size="xsmall" />
-  </>;
-  return onPress
-    ? <Pressable {...focusProps} accessibilityHint="Abre a lista de dispositivos" accessibilityLabel={`${title}. ${description}`} accessibilityRole="button" onPress={onPress} style={[...style, focusStyle]} testID={testID}>{content}</Pressable>
-    : <View accessible accessibilityLabel={`${title}. ${description}`} style={style} testID={testID}>{content}</View>;
-}
-
-function MoreSection({ devices, onOpenDevices }: { devices: DevicesState; onOpenDevices: () => void }) {
+function MoreSection() {
+  const description = 'Coruja de estudo · em breve';
   return <View accessibilityLabel="Mais" role="region" style={styles.more} testID="character-more">
     <View style={styles.moreList}>
-      <MoreRow description="Coruja de estudo · em breve" first testID="character-companion" title="Companheiro">
-        <PixelSprite opacity={0.5} scale={3} sprite={companionSprites.coruja} />
-      </MoreRow>
-      <MoreRow badge={devices.count !== null ? String(devices.count) : undefined} description={describeDevices(devices, true)} onPress={onOpenDevices} testID="character-devices" title="Dispositivos conectados">
-        <WiseIcon color="textSecondary" name="people-outline" size="compact" />
-      </MoreRow>
+      <View accessible accessibilityLabel={`Companheiro. ${description}`} style={styles.moreRow} testID="character-companion">
+        <View style={styles.moreIcon}><PixelSprite opacity={0.5} scale={3} sprite={companionSprites.coruja} /></View>
+        <View style={styles.moreCopy}>
+          <Text style={styles.moreTitle}>Companheiro</Text>
+          <Text style={styles.moreDescription}>{description}</Text>
+        </View>
+      </View>
     </View>
   </View>;
 }
 
 /* ---------- Tela ---------- */
 
-export function MobileCharacter({ devices, equipped, metrics, onOpenDevices, onOpenEquipment, previewing, refreshControl, status, user }: MobileCharacterProps) {
+export function MobileCharacter({ equipped, metrics, onOpenEquipment, previewing, refreshControl, status, user }: MobileCharacterProps) {
   return <ScrollView refreshControl={refreshControl} showsVerticalScrollIndicator={false} testID="character-scroll">
     <View style={styles.column}>
       <HeroTop equipped={equipped} />
@@ -142,7 +117,7 @@ export function MobileCharacter({ devices, equipped, metrics, onOpenDevices, onO
         <SummaryRow compact metrics={metrics} user={user} />
         <GearSection equipped={equipped} onOpen={onOpenEquipment} />
       </View>
-      <MoreSection devices={devices} onOpenDevices={onOpenDevices} />
+      <MoreSection />
     </View>
   </ScrollView>;
 }

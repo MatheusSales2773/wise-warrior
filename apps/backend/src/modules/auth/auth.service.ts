@@ -419,11 +419,12 @@ export class AuthService {
     await this.revokeAndDisconnect([session]);
   }
 
-  async revokeAllSessions(userId: string): Promise<void> {
+  /** "Encerrar os outros dispositivos": revoga tudo menos a Session do access token em uso. */
+  async revokeOtherSessions(userId: string, keepSessionId: string): Promise<void> {
     const active = await this.sessions.find({
       where: { userId, revokedAt: IsNull() },
     });
-    await this.revokeAndDisconnect(active);
+    await this.revokeAndDisconnect(active.filter((session) => session.id !== keepSessionId));
   }
 
   async listActiveSessions(userId: string): Promise<SessionSummary[]> {
