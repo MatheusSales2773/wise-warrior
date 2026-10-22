@@ -62,7 +62,7 @@ export function WiseSwitch({ accessibilityHint, accessibilityLabel, disabled, on
       onFocus={() => setFocused(true)}
       onPress={() => onValueChange(!value)}
       role="switch"
-      style={[styles.switch, focused && Platform.OS === 'web' && controlStyles.webFocus]}
+      style={[styles.switch, disabled && styles.disabled, focused && Platform.OS === 'web' && controlStyles.webFocus]}
       testID={testID}
     >
       <Animated.View
@@ -85,6 +85,7 @@ export function WiseSwitch({ accessibilityHint, accessibilityLabel, disabled, on
 }
 
 const styles = StyleSheet.create({
+  disabled: { opacity: 0.5 },
   switch: { width: WIDTH, height: HEIGHT, borderRadius: HEIGHT / 2 },
   track: { width: WIDTH, height: HEIGHT, borderRadius: HEIGHT / 2, borderWidth: BORDER },
   // Positions are relative to the padding box, inside the 1 px border.

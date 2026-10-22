@@ -1,7 +1,8 @@
-import { act, render, renderHook, screen, waitFor } from '@testing-library/react-native';
+import { act, fireEvent, render, renderHook, screen, waitFor } from '@testing-library/react-native';
 import { AccessibilityInfo } from 'react-native';
 import { MotionRuntime, useReducedMotion, useRuntimeMotionDuration } from '@/design-system/components/motion-runtime';
 import { Text } from 'react-native';
+import { AccessibilityContent } from '@/features/settings/accessibility-content';
 import { devicePreferences } from '@/core/preferences/device-preferences';
 
 jest.mock('@/core/preferences/preferences-storage', () => ({
@@ -105,5 +106,24 @@ describe('the Reduzir movimento preference', () => {
     await render(<MotionRuntime><MotionProbe /></MotionRuntime>);
     await waitFor(() => expect(devicePreferences.get().reduceMotion).toBe(false));
     expect(screen.getByText('0')).toBeTruthy();
+  });
+
+  it('reduces the app motion as soon as the settings switch is pressed', async () => {
+    jest.spyOn(AccessibilityInfo, 'isReduceMotionEnabled').mockResolvedValue(false);
+    jest.spyOn(AccessibilityInfo, 'addEventListener').mockReturnValue({ remove: jest.fn() } as never);
+    await render(<MotionRuntime><MotionProbe /><AccessibilityContent /></MotionRuntime>);
+    await waitFor(() => expect(screen.getByText('180')).toBeTruthy());
+
+    await fireEvent.press(screen.getByRole('switch', { name: 'Reduzir movimento' }));
+
+    expect(screen.getByText('0')).toBeTruthy();
+  });
+
+  it('shows the stored value, enabled, until the system answers', async () => {
+    jest.spyOn(AccessibilityInfo, 'isReduceMotionEnabled').mockImplementation(() => new Promise<boolean>(() => undefined));
+    jest.spyOn(AccessibilityInfo, 'addEventListener').mockReturnValue({ remove: jest.fn() } as never);
+    await render(<AccessibilityContent />);
+
+    expect(screen.getByRole('switch', { name: 'Reduzir movimento' }).props.accessibilityState).toEqual({ checked: false, disabled: false });
   });
 });

@@ -1,3 +1,4 @@
+import type { PropsWithChildren } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { WiseSwitch, WiseText, theme } from '@/design-system';
 
@@ -14,11 +15,13 @@ export function SwitchRow({ disabled, hint, label, onChange, testID, value }: Sw
   </View>;
 }
 
-export const switchCardStyle = {
-  marginTop: theme.space.stackTight, paddingHorizontal: theme.space.controlInset, paddingVertical: 6, borderRadius: theme.radius.card, borderWidth: theme.border.standard, borderColor: theme.color.borderSubtle, backgroundColor: theme.color.surfaceCard,
-} as const;
+/** The bordered card that holds the switch rows. */
+export function SwitchCard({ children, testID }: PropsWithChildren<{ testID: string }>) {
+  return <View style={styles.card} testID={testID}>{children}</View>;
+}
 
 const styles = StyleSheet.create({
+  card: { marginTop: theme.space.stackTight, paddingHorizontal: theme.space.controlInset, paddingVertical: 6, borderRadius: theme.radius.card, borderWidth: theme.border.standard, borderColor: theme.color.borderSubtle, backgroundColor: theme.color.surfaceCard },
   switchRow: { flexDirection: 'row', alignItems: 'center', gap: theme.space.stackTight, paddingVertical: theme.space.stackTight },
   switchCopy: { flex: 1, gap: 2 },
   switchHint: { fontFamily: 'Inter-Regular', fontSize: 12, lineHeight: 16, color: theme.color.textSecondary },

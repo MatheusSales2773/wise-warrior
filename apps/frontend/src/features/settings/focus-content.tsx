@@ -2,7 +2,7 @@ import { Pressable, StyleSheet, View } from 'react-native';
 import { FOCUS_DURATIONS, useDevicePreference } from '@/core/preferences/device-preferences';
 import { WiseText, theme } from '@/design-system';
 import { useFocusRing } from '@/features/character/character-parts';
-import { SwitchRow, switchCardStyle } from './switch-row';
+import { SwitchCard, SwitchRow } from './switch-row';
 
 /** "25 min": the default Forja duration, as shown beside Foco and in its phone row. */
 export function useDefaultFocusLabel(): string {
@@ -29,7 +29,7 @@ function DurationOption({ checked, duration, onSelect }: { checked: boolean; dur
 function BehaviorCard() {
   const [suggestRecentSubjects, setSuggestRecentSubjects] = useDevicePreference('suggestRecentSubjects');
   const [confirmBeforeStopping, setConfirmBeforeStopping] = useDevicePreference('confirmBeforeStopping');
-  return <View style={switchCardStyle} testID="settings-focus-behavior">
+  return <SwitchCard testID="settings-focus-behavior">
     <SwitchRow
       hint="Mostra suas últimas matérias na Forja"
       label="Sugerir matérias recentes"
@@ -44,7 +44,7 @@ function BehaviorCard() {
       testID="settings-focus-confirm-before-stopping"
       value={confirmBeforeStopping}
     />
-  </View>;
+  </SwitchCard>;
 }
 
 export function FocusContent() {
