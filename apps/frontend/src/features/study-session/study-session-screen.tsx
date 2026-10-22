@@ -226,12 +226,21 @@ function subjectError(validation: SubjectValidation): string | undefined {
   return undefined;
 }
 
-/** Loading, failure and an empty history render nothing: suggestions must never get in the way of starting. */
-function RecentSubjectSuggestions({ selectedSubject, disabled, onSelect }: {
+type RecentSubjectSuggestionsProps = {
   selectedSubject: string | null;
   disabled: boolean;
   onSelect: (subject: string) => void;
-}) {
+};
+
+/** Mounts the list, and so its request, only once the stored preference is read and still on. */
+function RecentSubjectSuggestions(props: RecentSubjectSuggestionsProps) {
+  const [suggestRecentSubjects] = useDevicePreference('suggestRecentSubjects');
+  const preferencesLoaded = useDevicePreferencesLoaded();
+  return suggestRecentSubjects && preferencesLoaded ? <RecentSubjectSuggestionList {...props} /> : null;
+}
+
+/** Loading, failure and an empty history render nothing: suggestions must never get in the way of starting. */
+function RecentSubjectSuggestionList({ selectedSubject, disabled, onSelect }: RecentSubjectSuggestionsProps) {
   const { data: subjects } = useRecentStudySessionSubjects();
   const [focusedSubject, setFocusedSubject] = useState<string | null>(null);
   if (!subjects?.length) return null;

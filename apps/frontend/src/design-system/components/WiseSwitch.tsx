@@ -1,54 +1,89 @@
-import { useState } from 'react';
-import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import { useEffect, useRef, useState } from 'react';
+import { Animated, Platform, Pressable, StyleSheet, type AccessibilityRole } from 'react-native';
 import { theme } from '../tokens/theme';
-import { WiseText } from './WiseText';
 import { controlStyles } from './control-styles';
+import { useReducedMotion } from './motion-runtime';
+import { motionDuration } from '../tokens/theme';
 
 export type WiseSwitchProps = {
-  checked: boolean;
-  /** One line under the label saying what the switch does. */
-  hint: string;
-  label: string;
-  onChange: (next: boolean) => void;
+  /** Names the switch for assistive technology; the visible title beside it is not linked to it. */
+  accessibilityLabel: string;
+  accessibilityHint?: string;
+  onValueChange: (value: boolean) => void;
   testID?: string;
+  value: boolean;
 };
 
-const TRACK_WIDTH = 44;
-const TRACK_HEIGHT = 26;
+const WIDTH = 44;
+const HEIGHT = 26;
 const KNOB = 20;
-const KNOB_INSET = (TRACK_HEIGHT - KNOB) / 2 - 1; // The track's 1px border sits outside the inset.
+const KNOB_INSET = 3;
+const BORDER = 1;
 
-/** A labelled on/off row (Figma "Switch"): title and hint on the left, and the whole row toggles. */
-export function WiseSwitch({ checked, hint, label, onChange, testID }: WiseSwitchProps) {
+/**
+ * Figma "Switch/on" and "Switch/off": a 44×26 pill with a 20 px knob, 3 px from the edge on the side it rests.
+ * The knob and colors slide between the two states in `motion.quick`, and jump when reduce motion is on.
+ */
+export function WiseSwitch({ accessibilityHint, accessibilityLabel, onValueChange, testID, value }: WiseSwitchProps) {
   const [focused, setFocused] = useState(false);
-  return <Pressable
-    accessibilityLabel={label}
-    accessibilityRole="switch"
-    accessibilityState={{ checked }}
-    aria-checked={checked}
-    onBlur={() => setFocused(false)}
-    onFocus={() => setFocused(true)}
-    onPress={() => onChange(!checked)}
-    style={[styles.row, focused && Platform.OS === 'web' && controlStyles.webFocus]}
-    testID={testID}
-  >
-    <View style={styles.copy}>
-      <WiseText variant="label">{label}</WiseText>
-      <Text style={styles.hint}>{hint}</Text>
-    </View>
-    <View style={[styles.track, checked && styles.trackOn]}>
-      <View style={[styles.knob, checked && styles.knobOn]} />
-    </View>
-  </Pressable>;
+  // 0 is off, 1 is on; the first render rests at the current value without animating.
+  const [progress] = useState(() => new Animated.Value(value ? 1 : 0));
+  const duration = motionDuration(theme.motion.quick, useReducedMotion());
+
+  const shown = useRef(value);
+
+  useEffect(() => {
+    // The reduce-motion preference settling must not replay a move that already happened.
+    if (shown.current === value) return;
+    shown.current = value;
+    if (duration === 0) {
+      progress.setValue(value ? 1 : 0);
+      return;
+    }
+    const animation = Animated.timing(progress, { toValue: value ? 1 : 0, duration, useNativeDriver: false, isInteraction: false });
+    animation.start();
+    return () => animation.stop();
+  }, [duration, progress, value]);
+
+  const mix = (off: string, on: string) => progress.interpolate({ inputRange: [0, 1], outputRange: [off, on] });
+
+  return (
+    <Pressable
+      accessibilityHint={accessibilityHint}
+      accessibilityLabel={accessibilityLabel}
+      accessibilityRole={'switch' as AccessibilityRole}
+      accessibilityState={{ checked: value }}
+      aria-checked={value}
+      hitSlop={(theme.layout.touchTarget - HEIGHT) / 2}
+      onBlur={() => setFocused(false)}
+      onFocus={() => setFocused(true)}
+      onPress={() => onValueChange(!value)}
+      role="switch"
+      style={[styles.switch, focused && Platform.OS === 'web' && controlStyles.webFocus]}
+      testID={testID}
+    >
+      <Animated.View
+        style={[styles.track, {
+          backgroundColor: mix(theme.color.surfaceInset, theme.color.accentPrimary),
+          borderColor: mix(theme.color.borderEmphasis, theme.color.accentPrimary),
+        }]}
+        testID={testID ? `${testID}-track` : undefined}
+      >
+        <Animated.View
+          style={[styles.knob, {
+            backgroundColor: mix(theme.color.textTertiary, theme.color.backgroundCanvas),
+            left: progress.interpolate({ inputRange: [0, 1], outputRange: [KNOB_INSET - BORDER, WIDTH - KNOB_INSET - KNOB - BORDER] }),
+          }]}
+          testID={testID ? `${testID}-knob` : undefined}
+        />
+      </Animated.View>
+    </Pressable>
+  );
 }
 
 const styles = StyleSheet.create({
-  row: { flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: theme.layout.touchTarget, paddingVertical: 12 },
-  copy: { flex: 1, gap: 2 },
-  // The caption role tracks 2px, which is for uppercase tags; the hint is a sentence.
-  hint: { fontFamily: theme.type.body.fontFamily, fontSize: 12, lineHeight: 16, color: theme.color.textSecondary },
-  track: { width: TRACK_WIDTH, height: TRACK_HEIGHT, justifyContent: 'center', borderRadius: TRACK_HEIGHT / 2, borderWidth: 1, borderColor: theme.color.borderEmphasis, backgroundColor: theme.color.surfaceInset },
-  trackOn: { borderColor: theme.color.accentPrimary, backgroundColor: theme.color.accentPrimary },
-  knob: { width: KNOB, height: KNOB, marginLeft: KNOB_INSET, borderRadius: KNOB / 2, backgroundColor: theme.color.textSecondary },
-  knobOn: { marginLeft: TRACK_WIDTH - KNOB - KNOB_INSET - 2, backgroundColor: theme.color.backgroundCanvas },
+  switch: { width: WIDTH, height: HEIGHT, borderRadius: HEIGHT / 2 },
+  track: { width: WIDTH, height: HEIGHT, borderRadius: HEIGHT / 2, borderWidth: BORDER },
+  // Positions are relative to the padding box, inside the 1 px border.
+  knob: { position: 'absolute', top: KNOB_INSET - BORDER, width: KNOB, height: KNOB, borderRadius: KNOB / 2 },
 });
