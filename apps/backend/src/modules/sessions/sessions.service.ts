@@ -23,7 +23,7 @@ import {
   saoPauloNextDayKey,
   saoPauloPreviousDayKey,
 } from '../../shared/time/sao-paulo-calendar';
-import { buildCadence, calculateStreaks, groupActivityByDay, type SessionActivityDay } from './domain/session-metrics';
+import { buildCadence, calculateStreaks, groupActivityByDay } from './domain/session-metrics';
 import { FOCUS_CYCLE_LENGTH, focusCycle, type FocusCycle } from './domain/focus-cycle';
 import { decodeDatetimeCursor, encodeDatetimeCursor } from '../../shared/pagination/datetime-cursor';
 
