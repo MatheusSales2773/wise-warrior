@@ -1,5 +1,5 @@
 import { renderHook } from '@testing-library/react-native';
-import { useDeadlineAlarm } from '@/features/study-session/use-deadline-useAlarm';
+import { useDeadlineAlarm } from '@/features/study-session/use-deadline-alarm';
 import { playSessionSound } from '@/features/study-session/sounds';
 
 jest.mock('@/features/study-session/sounds', () => ({ playSessionSound: jest.fn() }));
