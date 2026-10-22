@@ -138,8 +138,10 @@ export const heroBody: PixelSpriteData = {
 export const GRID_WIDTH = 16;
 export const GRID_HEIGHT = 24;
 
-const FACE_ROWS = [5, 6, 7, 8];
-const HAND_ROWS = [13, 14];
+export const FACE_ROWS = [5, 6, 7, 8];
+export const HAND_ROWS = [13, 14];
+/** The palette keys of the body's skin, eyes and skin shade: the pixels a layer must leave to the body. */
+export const SKIN_KEYS = 'efg';
 
 /** An Avatar layer cut from a full-body sprite: its face and hands (skin `e`, eyes `f`, shade `g`) become transparent. */
 function avatarLayerFrom(sprite: PixelSpriteData): PixelSpriteData {
@@ -153,13 +155,52 @@ function avatarLayerFrom(sprite: PixelSpriteData): PixelSpriteData {
   };
 }
 
+/** The Druida of the Figma sprites page (green robe): not a class of the Herói, only the source of an Avatar layer. */
+const druida: PixelSpriteData = {
+  palette: ['#0a0a12', '#3f7a4a', '#6fb07a', '#25502e', '#e8b48a', '#07070c', '#b97d5b', '#d4a85a', '#f0c97a', '#7a4a2a', '#f3ead4'],
+  rows: heroRobe,
+};
+
 /** The initial Avatar's layer, drawn when the slot is empty or the equipped Avatar has no art of its own yet. */
 export const initialAvatarLayer: PixelSpriteData = avatarLayerFrom(heroSprites.erudito);
 
-/** Avatar layers by Catalog name. */
+/** The colours of a robe-shaped Avatar: `cloth` is outline, body, highlight and shade; `trim` is the trim, its highlight, the belt and the belt's highlight. */
+type RobePalette = { cloth: readonly [string, string, string, string]; trim: readonly [string, string, string, string] };
+
+/** The palette in the key order of `heroRobe`: the body's skin slots (`e`, `f`, `g`) sit between the cloth and the trim. */
+function robePalette({ cloth, trim }: RobePalette): readonly string[] {
+  return [...cloth, '#e8b48a', '#07070c', '#b97d5b', ...trim];
+}
+
+/** An Avatar drawn on the robe silhouette of the initial class, with its own rows and colours, cut like any layer. */
+function robeLayer(palette: RobePalette, edit: (rows: string[]) => void = () => {}): PixelSpriteData {
+  const rows: string[] = [...heroRobe];
+  edit(rows);
+  return avatarLayerFrom({ palette: robePalette(palette), rows });
+}
+
+/** Avatar layers by Catalog name: every Avatar of the Catalog has one, drawn on the 16 × 24 grid of the body (#261). */
 export const avatarLayers: Readonly<Record<string, PixelSpriteData>> = {
   'Capuz do Erudito': initialAvatarLayer,
+  /** A plain night cloak with a gold clasp and no belt; on the Figma sprites page as Sprite/Avatar/Manto da Vigília. */
+  'Manto da Vigília': robeLayer(
+    { cloth: ['#0a0a12', '#5b7fc4', '#8fb0e8', '#2f4a80'], trim: ['#d4a85a', '#f0c97a', '#7a5f28', '#f3ead4'] },
+    (rows) => {
+      for (const y of [13, 14, 15, 16]) rows[y] = rows[y]!.replace(/[jk]/g, (key) => (key === 'j' ? 'b' : 'c'));
+      rows[17] = '..abbbbiibbbba..';
+    },
+  ),
+  /** The green robe of the Figma sprites page, worn by the traveler. */
+  'Túnica do Viajante': avatarLayerFrom(druida),
   'Manto Estelar': avatarLayerFrom(heroSprites.arcanista),
+  /** Wolf pelt armour with pointed ears on the hood and red-trimmed pauldrons; on the Figma sprites page as Sprite/Avatar/Armadura do Lobo. */
+  'Armadura do Lobo': robeLayer(
+    { cloth: ['#0a0a12', '#7a7466', '#b3a98e', '#4a463c'], trim: ['#c44545', '#e87070', '#2a2820', '#f3ead4'] },
+    (rows) => {
+      rows[0] = '.....a.aa.a.....';
+      rows[10] = '..ahhhhiihhhha..';
+    },
+  ),
 };
 
 /** Acessório layers by Catalog name; an Acessório without one is only shown in its slot. */
