@@ -156,10 +156,20 @@ function avatarLayerFrom(sprite: PixelSpriteData): PixelSpriteData {
 /** The initial Avatar's layer, drawn when the slot is empty or the equipped Avatar has no art of its own yet. */
 export const initialAvatarLayer: PixelSpriteData = avatarLayerFrom(heroSprites.erudito);
 
-/** Avatar layers by Catalog name. */
+/** A robe Avatar: the robe of the initial class recoloured, keeping the skin slots (`e`, `f`, `g`) so the layer cut matches. */
+function robeLayer(palette: readonly string[]): PixelSpriteData {
+  return avatarLayerFrom({ palette, rows: heroRobe });
+}
+
+const SKIN = ['#e8b48a', '#07070c', '#b97d5b'] as const;
+
+/** Avatar layers by Catalog name: every Avatar of the Catalog has one (#261). */
 export const avatarLayers: Readonly<Record<string, PixelSpriteData>> = {
   'Capuz do Erudito': initialAvatarLayer,
+  'Manto da Vigília': robeLayer(['#0a0a12', '#5b7fc4', '#8fb0e8', '#2f4a80', ...SKIN, '#d4a85a', '#f0c97a', '#7a5f28', '#f3ead4']),
+  'Túnica do Viajante': robeLayer(['#0a0a12', '#3f7a4a', '#6fae6a', '#2a4f31', ...SKIN, '#d4a85a', '#f0c97a', '#7a4a2a', '#f3ead4']),
   'Manto Estelar': avatarLayerFrom(heroSprites.arcanista),
+  'Armadura do Lobo': robeLayer(['#0a0a12', '#7a7466', '#b3a98e', '#4a463c', ...SKIN, '#c44545', '#e87070', '#2a2820', '#f3ead4']),
 };
 
 /** Acessório layers by Catalog name; an Acessório without one is only shown in its slot. */
