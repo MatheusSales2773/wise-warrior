@@ -33,15 +33,16 @@ export type RecentStudySession = {
   cappedReason?: 'continuous-limit' | 'daily-limit' | null;
 };
 
-/** One Study Session of the Histórico do dia (`GET /sessions/history`). */
+/** One Study Session of the Diário (`GET /sessions/history`). */
 export type SessionHistoryItem = RecentStudySession & {
   /** Place of a focus completed in full in the Pomodoro cycle (1 to 4); `null` for any other outcome. */
   cyclePosition: number | null;
 };
 
+/** The Diário filters the server applies: concluded without truncation, limited by the antifraude, not counted. */
+export type SessionHistoryState = 'completed' | 'truncated' | 'discarded';
+
 export type SessionHistoryPage = {
-  /** The São Paulo day listed, the same calendar day the metrics use. */
-  date: string;
   items: SessionHistoryItem[];
   nextCursor: string | null;
 };
@@ -82,10 +83,11 @@ export async function getSessionMetrics({ signal }: { signal?: AbortSignal } = {
 }
 
 export async function getSessionHistory(
-  date: string,
-  { cursor, signal }: { cursor?: string | null; signal?: AbortSignal } = {},
+  { date, state, cursor, signal }: { date?: string; state?: SessionHistoryState; cursor?: string | null; signal?: AbortSignal } = {},
 ): Promise<SessionHistoryPage> {
-  const params = new URLSearchParams({ date });
+  const params = new URLSearchParams();
+  if (date) params.set('date', date);
+  if (state) params.set('state', state);
   if (cursor) params.set('cursor', cursor);
   const response = await getAuthenticatedHttpClient().get<SessionHistoryPage>(`/sessions/history?${params.toString()}`, { signal });
   return response.data;

@@ -37,7 +37,7 @@ describe('adaptive application navigation', () => {
     expect(focus).toHaveBeenCalledTimes(1);
   });
 
-  it('renders the desktop sidebar at 900px with one active real destination and inert future items', async () => {
+  it('renders the desktop sidebar at 900px with one active real destination and no "Em breve" item', async () => {
     expect(isDesktopLayout('web', 899)).toBe(false);
     expect(isDesktopLayout('web', 900)).toBe(true);
     expect(isDesktopLayout('ios', 1200)).toBe(false);
@@ -59,22 +59,14 @@ describe('adaptive application navigation', () => {
     });
     expect(screen.queryByTestId('mobile-navigation')).toBeNull();
     const links = screen.getAllByRole('link');
-    expect(links).toHaveLength(6);
+    expect(links).toHaveLength(7);
+    expect(screen.getByRole('link', { name: 'Crônicas' })).toBeTruthy();
     expect(screen.getByRole('link', { name: 'Mercado' })).toBeTruthy();
     expect(screen.getByRole('link', { name: 'Configuração' })).toBeTruthy();
     expect(links.filter((link) => link.props.accessibilityState?.selected)).toHaveLength(1);
     expect(screen.getByRole('link', { name: 'Forja' }).props.accessibilityState.selected).toBe(true);
 
-    for (const label of ['Crônicas']) {
-      const item = screen.getByLabelText(`${label}, indisponível, em breve`);
-      expect(item.props.onPress).toBeUndefined();
-      expect(item.props.href).toBeUndefined();
-      expect(item.props.focusable).toBe(false);
-      expect(StyleSheet.flatten(screen.getByText(label).props.style).color).toBe(theme.color.textSecondary);
-    }
-    for (const badge of screen.getAllByText('Em breve', { includeHiddenElements: true })) {
-      expect(StyleSheet.flatten(badge.props.style).color).toBe(theme.color.accentPrimary);
-    }
+    expect(screen.queryByText('Em breve', { includeHiddenElements: true })).toBeNull();
   });
 
   it('switches only the navigation at 899/900 without changing pathname or remounting route content', async () => {
@@ -161,7 +153,7 @@ describe('adaptive application navigation', () => {
     expect(StyleSheet.flatten(screen.getByTestId('app-route-content').props.style).pointerEvents).toBe('auto');
   });
 
-  it('opens and closes Mais without changing URL and exposes no action for future destinations', async () => {
+  it('opens and closes Mais without changing URL and lists Crônicas as a link without "Em breve"', async () => {
     await setViewport('android', 390);
     const router = renderRouter('src/app', { initialUrl: '/guilda' });
     await router;
@@ -174,12 +166,8 @@ describe('adaptive application navigation', () => {
     expect(StyleSheet.flatten(screen.getByTestId('app-route-content', { includeHiddenElements: true }).props.style).pointerEvents).toBe('none');
     expect(screen.getByTestId('mobile-navigation', { includeHiddenElements: true }).props['aria-hidden']).toBe(true);
 
-    for (const label of ['Crônicas']) {
-      const item = screen.getByLabelText(`${label}, indisponível, em breve`);
-      expect(item.props.accessibilityState).toEqual({ disabled: true });
-      expect(item.props.onPress).toBeUndefined();
-      expect(item.props.focusable).toBe(false);
-    }
+    expect(screen.getByRole('link', { name: 'Crônicas' })).toBeTruthy();
+    expect(screen.queryByText('Em breve', { includeHiddenElements: true })).toBeNull();
 
     expect(screen.getByRole('link', { name: 'Mercado' })).toBeTruthy();
     expect(screen.getByRole('link', { name: 'Configuração' })).toBeTruthy();
@@ -197,7 +185,7 @@ describe('adaptive application navigation', () => {
     await waitFor(() => expect(screen.queryByTestId('more-modal')).toBeNull());
   });
 
-  it('shows Sair in the mobile Mais menu next to the remaining future destination', async () => {
+  it('shows Sair in the mobile Mais menu ', async () => {
     await setViewport('android', 390);
     const router = renderRouter('src/app', { initialUrl: '/guilda' });
     await router;
@@ -205,9 +193,7 @@ describe('adaptive application navigation', () => {
     await fireEvent.press(screen.getByRole('button', { name: 'Mais' }));
 
     expect(screen.getByRole('button', { name: 'Sair' })).toBeTruthy();
-    for (const label of ['Crônicas']) {
-      expect(screen.getByLabelText(`${label}, indisponível, em breve`)).toBeTruthy();
-    }
+    expect(screen.getByRole('link', { name: 'Crônicas' })).toBeTruthy();
   });
 
   it('opens the Mercado from Mais, closes the menu and keeps Mais lit there', async () => {

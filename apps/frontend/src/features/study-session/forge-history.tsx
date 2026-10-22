@@ -47,7 +47,7 @@ function HistoryItem({ item }: { item: SessionHistoryItem }) {
 }
 
 function TodayHistory() {
-  const history = useInfiniteQuery(sessionHistoryQueryOptions(saoPauloDay()));
+  const history = useInfiniteQuery(sessionHistoryQueryOptions({ date: saoPauloDay() }));
   const items = history.data?.pages.flatMap((page) => page.items) ?? [];
 
   const body = (() => {

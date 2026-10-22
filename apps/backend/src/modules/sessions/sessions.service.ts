@@ -13,7 +13,7 @@ import { ProgressionService } from '../progression/progression.service';
 import { RaidsService } from '../raids/raids.service';
 import { RecentSessionResponseDto } from './dto/recent-session-response.dto';
 import type { SessionHistoryItemDto, SessionHistoryPageDto } from './dto/session-history-response.dto';
-import { SESSION_HISTORY_PAGE_SIZE_DEFAULT, type SessionHistoryQueryDto } from './dto/session-history-query.dto';
+import { SESSION_HISTORY_PAGE_SIZE_DEFAULT, type SessionHistoryQueryDto, type SessionHistoryState } from './dto/session-history-query.dto';
 import { RecentSubjectsResponseDto } from './dto/recent-subjects-response.dto';
 import { SessionMetricsResponseDto } from './dto/session-metrics-response.dto';
 import {
@@ -28,6 +28,14 @@ import { FOCUS_CYCLE_LENGTH, focusCycle, type FocusCycle } from './domain/focus-
 import { decodeDatetimeCursor, encodeDatetimeCursor } from '../../shared/pagination/datetime-cursor';
 
 const RECENT_SUBJECTS_LIMIT = 6;
+
+/** What each Diário filter keeps, on top of dropping cancellations. A truncated session is capped, so it never counts as plain completed. */
+const HISTORY_STATE_FILTER: Record<SessionHistoryState | 'all', string> = {
+  all: '',
+  completed: `AND session.capped_reason IS NULL AND (session.state IS NULL OR session.state IN ('completed', 'stopped_early'))`,
+  truncated: `AND session.capped_reason IS NOT NULL AND (session.state IS NULL OR session.state <> 'discarded')`,
+  discarded: `AND session.state = 'discarded'`,
+};
 
 @Injectable()
 export class SessionsService {
@@ -62,12 +70,13 @@ export class SessionsService {
   }
 
   /**
-   * Histórico do dia (#17): every Study Session that ended on a São Paulo day, newest first, with the place of each
-   * focus completed in full in the Pomodoro cycle. The cycle counts the same focuses as `focusCycle`.
+   * Diário (#299): every Study Session that counted, newest first, through as many São Paulo days as the cursor walks,
+   * or one day when `date` is given. Cancellations never appear. Each focus completed in full carries its place in the
+   * Pomodoro cycle, counted over the same focuses as `focusCycle`.
    */
-  async history(userId: string, query: SessionHistoryQueryDto, now: Date = new Date()): Promise<SessionHistoryPageDto> {
-    const date = query.date ?? saoPauloDayKey(now);
-    if (!isSaoPauloDayKey(date)) {
+  async history(userId: string, query: SessionHistoryQueryDto): Promise<SessionHistoryPageDto> {
+    const date = query.date ?? null;
+    if (date !== null && !isSaoPauloDayKey(date)) {
       throw new BadRequestException('Data inválida');
     }
     const limit = query.limit ?? SESSION_HISTORY_PAGE_SIZE_DEFAULT;
@@ -97,12 +106,16 @@ export class SessionsService {
          FROM study_sessions WHERE user_id = ? AND state = 'completed'
        ) completed ON completed.id = session.id
        WHERE session.user_id = ?
-         AND session.ended_at >= ? AND session.ended_at < ?
+         AND session.ended_at IS NOT NULL
+         AND (session.state IS NULL OR session.state <> 'cancelled')
+         ${HISTORY_STATE_FILTER[query.state ?? 'all']}
+         ${date ? 'AND session.ended_at >= ? AND session.ended_at < ?' : ''}
          ${after ? 'AND (session.ended_at < ? OR (session.ended_at = ? AND session.id < ?))' : ''}
        ORDER BY session.ended_at DESC, session.id DESC
        LIMIT ?`,
       [
-        userId, userId, saoPauloDayStart(date), saoPauloDayStart(saoPauloNextDayKey(date)),
+        userId, userId,
+        ...(date ? [saoPauloDayStart(date), saoPauloDayStart(saoPauloNextDayKey(date))] : []),
         ...(after ? [after.datetime, after.datetime, after.id] : []),
         limit + 1,
       ],
@@ -110,7 +123,6 @@ export class SessionsService {
     const page = rows.slice(0, limit);
     const last = page[page.length - 1];
     return {
-      date,
       items: page.map((row): SessionHistoryItemDto => ({
         id: row.id,
         subject: row.subject,

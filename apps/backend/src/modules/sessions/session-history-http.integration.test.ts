@@ -18,7 +18,6 @@ import { StudySessionStartService } from './study-session-start.service';
 import { StudySessionTransitionService } from './study-session-transition.service';
 
 type HistoryPage = {
-  date: string;
   items: Array<{
     id: string;
     subject: string | null;
@@ -34,7 +33,7 @@ type HistoryPage = {
   nextCursor: string | null;
 };
 
-describe('Histórico do dia (GET /sessions/history) against MySQL', () => {
+describe('Diário (GET /sessions/history) against MySQL', () => {
   jest.setTimeout(30_000);
 
   let database: IntegrationDatabase | undefined;
@@ -131,7 +130,7 @@ describe('Histórico do dia (GET /sessions/history) against MySQL', () => {
     expect((await history('?date=2026-09-01&limit=51')).status).toBe(400);
   });
 
-  it('lists every outcome of the São Paulo day, newest first, with what the user needs to read it', async () => {
+  it('lists every outcome that counted on the São Paulo day, newest first, without cancellations', async () => {
     const early = await record(ana, '2026-09-01T03:00:00.000Z', 'completed');
     const stopped = await record(ana, '2026-09-01T10:00:00.000Z', 'stopped_early');
     const discarded = await record(ana, '2026-09-01T11:00:00.000Z', 'discarded', { discardedReason: 'heartbeat-gap', xpAwarded: 0 });
@@ -144,13 +143,13 @@ describe('Histórico do dia (GET /sessions/history) against MySQL', () => {
 
     const result = await page();
 
-    expect(result.date).toBe('2026-09-01');
     expect(result.nextCursor).toBeNull();
-    expect(result.items.map((item) => item.id)).toEqual([cancelled, capped, discarded, stopped, early]);
+    expect(result.items.map((item) => item.id)).toEqual([capped, discarded, stopped, early]);
+    expect(result.items.map((item) => item.id)).not.toContain(cancelled);
     expect(result.items.find((item) => item.id === discarded)).toMatchObject({ state: 'discarded', discardedReason: 'heartbeat-gap', xpAwarded: 0, cyclePosition: null });
     expect(result.items.find((item) => item.id === capped)).toMatchObject({ cappedReason: 'daily-limit', cyclePosition: null });
     expect(result.items.find((item) => item.id === early)).toMatchObject({ subject: 'Cálculo', durationValidSeconds: 1500, xpAwarded: 250 });
-    expect(new Date(result.items[0]!.endedAt).toISOString()).toBe('2026-09-02T02:59:59.999Z');
+    expect(new Date(result.items[0]!.endedAt).toISOString()).toBe('2026-09-01T12:00:00.000Z');
   });
 
   it('numbers each focus completed in full in the Pomodoro cycle, counting across days', async () => {
@@ -204,6 +203,54 @@ describe('Histórico do dia (GET /sessions/history) against MySQL', () => {
   });
 
   it('returns an empty page for a day without sessions', async () => {
-    expect(await page('?date=2026-09-03')).toEqual({ date: '2026-09-03', items: [], nextCursor: null });
+    expect(await page('?date=2026-09-03')).toEqual({ items: [], nextCursor: null });
+  });
+
+  it('pages through several days without a date, newest first, never listing running sessions or someone else\'s', async () => {
+    const newest = await record(ana, '2026-09-03T15:00:00.000Z', 'completed');
+    const middle = await record(ana, '2026-09-02T15:00:00.000Z', 'completed');
+    const oldest = await record(ana, '2026-08-20T15:00:00.000Z', 'stopped_early');
+    await record(ana, null, 'running');
+    await record(bruno, '2026-09-02T16:00:00.000Z', 'completed');
+
+    const one = await page('?limit=2');
+    expect(one.items.map((item) => item.id)).toEqual([newest, middle]);
+    const two = await page(`?limit=2&cursor=${one.nextCursor}`);
+    expect(two.items.map((item) => item.id)).toEqual([oldest]);
+    expect(two.nextCursor).toBeNull();
+  });
+
+  it.each([
+    ['completed', ['plain', 'early']],
+    ['truncated', ['capped']],
+    ['discarded', ['discarded']],
+  ])('filters %s on the server', async (state, expected) => {
+    const ids: Record<string, string> = {
+      plain: await record(ana, '2026-09-01T10:00:00.000Z', 'completed'),
+      early: await record(ana, '2026-09-01T11:00:00.000Z', 'stopped_early'),
+      capped: await record(ana, '2026-09-01T12:00:00.000Z', 'stopped_early', { cappedReason: 'continuous-limit' }),
+      discarded: await record(ana, '2026-09-01T13:00:00.000Z', 'discarded', { discardedReason: 'heartbeat-gap', xpAwarded: 0 }),
+      cancelled: await record(ana, '2026-09-01T14:00:00.000Z', 'cancelled'),
+    };
+
+    const result = await page(`?state=${state}`);
+
+    expect(result.items.map((item) => item.id).sort()).toEqual(expected.map((key) => ids[key]!).sort());
+  });
+
+  it('keeps the filter while paging across days', async () => {
+    await record(ana, '2026-09-03T12:00:00.000Z', 'completed');
+    const capped = await record(ana, '2026-09-02T12:00:00.000Z', 'completed', { cappedReason: 'daily-limit' });
+    const older = await record(ana, '2026-09-01T12:00:00.000Z', 'stopped_early', { cappedReason: 'continuous-limit' });
+
+    const one = await page('?state=truncated&limit=1');
+    expect(one.items.map((item) => item.id)).toEqual([capped]);
+    const two = await page(`?state=truncated&limit=1&cursor=${one.nextCursor}`);
+    expect(two.items.map((item) => item.id)).toEqual([older]);
+    expect(two.nextCursor).toBeNull();
+  });
+
+  it('rejects an unknown filter', async () => {
+    expect((await history('?state=cancelled')).status).toBe(400);
   });
 });
