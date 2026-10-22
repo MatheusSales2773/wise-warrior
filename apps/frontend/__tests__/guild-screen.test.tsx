@@ -69,7 +69,7 @@ const members = (names: string[], nextCursor: string | null = null): GuildMember
   items: names.map((name, index) => ({
     userId: `u-${name}`, displayName: name, level: index + 2, title: index === 0 ? 'Aprendiz' : null,
     role: index === 0 ? 'leader' : 'member', joinedAt: '2026-09-01T10:00:00Z',
-    avatar: null, accessory: null,
+    avatar: null, weapon: null, accessory: null,
   })),
   nextCursor,
 });
@@ -167,7 +167,7 @@ describe('GuildScreen', () => {
     const [ana, bruno] = members(['Ana', 'Bruno']).items;
     mockedMembers.mockResolvedValue({
       items: [
-        { ...ana!, avatar: { itemId: 'i1', name: 'Manto Estelar' }, accessory: { itemId: 'i2', name: 'Cristal da Aurora' } },
+        { ...ana!, avatar: { itemId: 'i1', name: 'Manto Estelar' }, weapon: { itemId: 'i3', name: 'Espada' }, accessory: { itemId: 'i2', name: 'Cristal da Aurora' } },
         bruno!,
       ],
       nextCursor: null,
@@ -176,10 +176,12 @@ describe('GuildScreen', () => {
     await openTab('members');
 
     const equipped = within(await screen.findByTestId('guild-member-portrait-u-Ana'));
-    expect(equipped.getByTestId('hero-avatar-sprite-arcanista', { includeHiddenElements: true })).toBeTruthy();
+    expect(equipped.getByTestId('character-hero-layer-body', { includeHiddenElements: true })).toBeTruthy();
+    expect(equipped.getByTestId('character-hero-layer-avatar', { includeHiddenElements: true })).toBeTruthy();
+    expect(equipped.queryByTestId('character-hero-layer-weapon', { includeHiddenElements: true })).toBeNull();
     expect(equipped.getByTestId('guild-member-accessory-u-Ana', { includeHiddenElements: true })).toBeTruthy();
     const plain = within(screen.getByTestId('guild-member-portrait-u-Bruno'));
-    expect(plain.getByTestId('hero-avatar-sprite-erudito', { includeHiddenElements: true })).toBeTruthy();
+    expect(plain.getByTestId('character-hero-layer-avatar', { includeHiddenElements: true })).toBeTruthy();
     expect(plain.queryByTestId('guild-member-accessory-u-Bruno', { includeHiddenElements: true })).toBeNull();
   });
 
@@ -194,10 +196,10 @@ describe('GuildScreen', () => {
     await openTab('members');
 
     const onlyAvatar = within(await screen.findByTestId('guild-member-portrait-u-Ana'));
-    expect(onlyAvatar.getByTestId('hero-avatar-sprite-arcanista', { includeHiddenElements: true })).toBeTruthy();
+    expect(onlyAvatar.getByTestId('character-hero-layer-avatar', { includeHiddenElements: true })).toBeTruthy();
     expect(onlyAvatar.queryByTestId('guild-member-accessory-u-Ana', { includeHiddenElements: true })).toBeNull();
     const onlyAccessory = within(screen.getByTestId('guild-member-portrait-u-Bruno'));
-    expect(onlyAccessory.getByTestId('hero-avatar-sprite-erudito', { includeHiddenElements: true })).toBeTruthy();
+    expect(onlyAccessory.getByTestId('character-hero-layer-avatar', { includeHiddenElements: true })).toBeTruthy();
     expect(onlyAccessory.getByTestId('guild-member-accessory-u-Bruno', { includeHiddenElements: true })).toBeTruthy();
   });
 
@@ -954,7 +956,7 @@ describe('GuildScreen', () => {
 
 describe('Ranking interno', () => {
   const row = (position: number, name: string, contributionXp: number, overrides: Partial<RaidRankingEntry> = {}): RaidRankingEntry => ({
-    position, userId: `u-${name}`, displayName: name, level: 3, title: null, avatar: null, accessory: null, contributionXp, isMe: false, ...overrides,
+    position, userId: `u-${name}`, displayName: name, level: 3, title: null, avatar: null, weapon: null, accessory: null, contributionXp, isMe: false, ...overrides,
   });
   const rankingPage = (items: RaidRankingEntry[], nextCursor: string | null = null): RaidRankingPage => ({ items, nextCursor });
 

@@ -1,9 +1,7 @@
-import { DEFAULT_HERO_ID, cosmeticSprite } from '@/features/character/catalog';
-import type { ItemSpriteName, PixelSpriteData } from '@/features/character/sprites';
-import { heroSprites } from '@/features/character/sprites';
+import { cosmeticSprite } from '@/features/character/catalog';
+import type { ItemSpriteName } from '@/features/character/sprites';
 import type { ActiveRaid, EquippedAppearance, EquippedLook, RaidHit, RaidRankingEntry } from './api';
 import { XP_PER_FOCUS_HOUR, formatFocusHours } from './focus-hours';
-import { raidWeapons, sentinelaSprite } from './raid-scene-sprites';
 
 /*
  * Regras de apresentação da tela da Raid (Figma 06b). O domínio continua em XP; a tela mostra horas de foco.
@@ -45,36 +43,6 @@ export function formatBattleTimeLeft(milliseconds: number, { long = false }: { l
   return long ? `${short} restantes` : short;
 }
 
-export type PartyHero = 'guerreira' | 'sentinela' | 'paladino' | 'arcanista' | 'erudito';
-
-export const partyHeroSprites: Record<PartyHero, PixelSpriteData> = {
-  guerreira: heroSprites.guerreira,
-  sentinela: sentinelaSprite,
-  paladino: heroSprites.paladino,
-  arcanista: heroSprites.arcanista,
-  erudito: heroSprites.erudito,
-};
-
-export const partyHeroWeapons: Record<PartyHero, keyof typeof raidWeapons> = {
-  guerreira: 'sword',
-  sentinela: 'sword',
-  paladino: 'crossbow',
-  arcanista: 'staff',
-  erudito: 'staff',
-};
-
-/** The class a worn Avatar dresses; Avatars without one (and an empty slot) keep the initial class. */
-const heroByAvatar: Record<string, PartyHero> = {
-  'Armadura do Lobo': 'guerreira',
-  'Manto Estelar': 'arcanista',
-  'Manto da Vigília': 'sentinela',
-};
-
-/** The hero drawn for a member, from the Avatar they have equipped. */
-export function heroOf(member: Pick<EquippedAppearance, 'avatar'>): PartyHero {
-  return (member.avatar && heroByAvatar[member.avatar.name]) || DEFAULT_HERO_ID;
-}
-
 /** The sprite of an equipped Acessório; `null` with the slot empty. */
 export function accessorySpriteOf(look: EquippedLook): ItemSpriteName | null {
   return look ? cosmeticSprite({ category: 'accessory', name: look.name }) : null;
@@ -85,9 +53,8 @@ export type PartyMember = {
   displayName: string;
   level: number;
   isMe: boolean;
-  hero: PartyHero;
-  /** The sprite of the equipped Acessório, drawn beside the hero; `null` with the slot empty. */
-  accessory: ItemSpriteName | null;
+  /** What the member wears; the scene composes the Herói from it (ADR-013). */
+  equipped: EquippedAppearance;
 };
 
 /** Quem aparece na cena: os primeiros Participantes do Ranking interno (`party` da Raid, no máximo cinco). */
@@ -97,8 +64,7 @@ export function raidParty(party: readonly RaidRankingEntry[]): PartyMember[] {
     displayName: entry.isMe ? 'Você' : entry.displayName,
     level: entry.level,
     isMe: entry.isMe,
-    hero: heroOf(entry),
-    accessory: accessorySpriteOf(entry.accessory),
+    equipped: { avatar: entry.avatar, weapon: entry.weapon, accessory: entry.accessory },
   }));
 }
 

@@ -1,8 +1,8 @@
 import type { RaidRankingEntry } from '@/features/guild/api';
-import { XP_PER_FOCUS_HOUR, bossLifePercent, formatBattleTimeLeft, formatFocusHours, formatStreak, formatStreakDays, heroOf, raidParty, raidWeekGrid, weeklyStrikes } from '@/features/guild/raid-battle';
+import { XP_PER_FOCUS_HOUR, bossLifePercent, formatBattleTimeLeft, formatFocusHours, formatStreak, formatStreakDays, raidParty, raidWeekGrid, weeklyStrikes } from '@/features/guild/raid-battle';
 import { defaultRaidSceneArt, raidSceneArt } from '@/features/guild/raid-scene-art';
 import { raidSceneScale } from '@/features/guild/raid-scene';
-import { RAID_SCENE_HEIGHT, RAID_SCENE_WIDTH, raidSceneBackground, raidSceneBoss, sentinelaSprite } from '@/features/guild/raid-scene-sprites';
+import { RAID_SCENE_HEIGHT, RAID_SCENE_WIDTH, raidSceneBackground, raidSceneBoss } from '@/features/guild/raid-scene-sprites';
 
 const entry = (position: number, overrides: Partial<RaidRankingEntry> = {}): RaidRankingEntry => ({
   position,
@@ -11,6 +11,7 @@ const entry = (position: number, overrides: Partial<RaidRankingEntry> = {}): Rai
   level: position + 1,
   title: null,
   avatar: null,
+  weapon: null,
   accessory: null,
   contributionXp: (10 - position) * XP_PER_FOCUS_HOUR,
   isMe: false,
@@ -73,24 +74,16 @@ describe('formatBattleTimeLeft', () => {
   });
 });
 
-describe('heroOf', () => {
-  it('dresses the class of the equipped Avatar and keeps the initial class without one', () => {
-    expect(heroOf({ avatar: { itemId: 'a1', name: 'Armadura do Lobo' } })).toBe('guerreira');
-    expect(heroOf({ avatar: { itemId: 'a2', name: 'Capuz do Erudito' } })).toBe('erudito');
-    expect(heroOf({ avatar: null })).toBe('erudito');
-  });
-});
-
 describe('raidParty', () => {
   it('puts the party in the scene and calls you "Você"', () => {
     const party = raidParty([entry(1), entry(2, { isMe: true }), entry(3), entry(4), entry(5)]);
     expect(party.map((member) => member.displayName)).toEqual(['Membro 1', 'Você', 'Membro 3', 'Membro 4', 'Membro 5']);
-    expect(party[1]).toMatchObject({ isMe: true, hero: 'erudito', level: 3, accessory: null });
+    expect(party[1]).toMatchObject({ isMe: true, level: 3, equipped: { avatar: null, weapon: null, accessory: null } });
   });
 
-  it('carries the look of each member: the class of the Avatar and the sprite of the Acessório', () => {
-    const [member] = raidParty([entry(1, { avatar: { itemId: 'a1', name: 'Manto Estelar' }, accessory: { itemId: 'c1', name: 'Pena do Escriba' } })]);
-    expect(member).toMatchObject({ hero: 'arcanista', accessory: 'penaDoEscriba' });
+  it('carries what each member wears: Avatar, Arma and Acessório', () => {
+    const [member] = raidParty([entry(1, { avatar: { itemId: 'a1', name: 'Manto Estelar' }, weapon: { itemId: 'w1', name: 'Cajado' }, accessory: { itemId: 'c1', name: 'Pena do Escriba' } })]);
+    expect(member?.equipped).toEqual({ avatar: { itemId: 'a1', name: 'Manto Estelar' }, weapon: { itemId: 'w1', name: 'Cajado' }, accessory: { itemId: 'c1', name: 'Pena do Escriba' } });
   });
 });
 
@@ -127,7 +120,7 @@ describe('raid scene', () => {
   });
 
   it('keeps the exported pixel art rectangular and inside its palette', () => {
-    for (const sprite of [raidSceneBackground, raidSceneBoss, sentinelaSprite]) {
+    for (const sprite of [raidSceneBackground, raidSceneBoss]) {
       const width = sprite.rows[0]!.length;
       for (const row of sprite.rows) {
         expect(row).toHaveLength(width);

@@ -149,46 +149,6 @@ export const raidSceneBoss: PixelSpriteData = {
   ],
 };
 
-/** Herói Sentinela (16 × 24), variação de paleta da Guerreira que só aparece na cena por enquanto. */
-export const sentinelaSprite: PixelSpriteData = {
-  palette: ['#0a0a12', '#7a7f92', '#4a4d5c', '#d4a85a', '#2c2e38', '#e8b48a', '#07070c', '#b97d5b', '#4e3275', '#8a5bc4'],
-  rows: [
-    '......aaaa......',
-    '....abbccca.....',
-    '...abcccccca....',
-    '...accdddcca....',
-    '...aeaaaaaea....',
-    '...aefgfgfea....',
-    '...aeffffhea....',
-    '....aehhhea.....',
-    '..aiacccccaia...',
-    '.aijabccccajia..',
-    '.aijcbcddcccjia.',
-    '.aijcccddcccjia.',
-    '.aijeccccccejia.',
-    '.aifaeeddeeafia.',
-    '.aijaccccccajia.',
-    '.aijacceeccajia.',
-    'aiijaecaaceajiia',
-    'aiijaccaaccajiia',
-    'aiiiacca.accaiia',
-    '.aiiaeea.aeeaia.',
-    '..aaacca.accaaa.',
-    '....aeea.aeea...',
-    '...aeeea.aeeea..',
-    '...aaaaa.aaaaa..',
-  ],
-};
-
-export type RaidWeapon = { sprite: PixelSpriteData; offset: { x: number; y: number } };
-
-/** Armas da cena, com a posição relativa ao canto da vaga do herói. */
-export const raidWeapons = {
-  sword: { offset: { x: 14, y: 7 }, sprite: { palette: ['#d4a85a', '#c9cfdc', '#ffffff', '#7a4a2a'], rows: ['.......c', '......b.', '.....b..', '....b...', '...b....', '..b.....', '.b......', '.d......', 'ad......'] } },
-  crossbow: { offset: { x: 12, y: 12 }, sprite: { palette: ['#7a4a2a', '#c9cfdc', '#f3ead4'], rows: ['.......b..', '.......b..', 'aaaaaaabcc', '.......b..', '.......b..'] } },
-  staff: { offset: { x: 15, y: 1 }, sprite: { palette: ['#7a4a2a', '#e8702a', '#f0c97a'], rows: ['bbb', 'bcb', 'bbb', '.a.', '.a.', '.a.', '.a.', '.a.', '.a.', '.a.', '.a.', '.a.', '.a.', '.a.', '.a.', '.a.', '.a.', '.a.', '.a.', '.a.', '.a.', '.a.', '.a.'] } },
-} as const satisfies Record<string, RaidWeapon>;
-
 /** Vagas dos membros: 16 × 24 a cada 19 pixels a partir de x = 10, com o pé em y = 76. */
 export const RAID_PARTY_ORIGIN = { x: 10, y: 52 } as const;
 export const RAID_PARTY_SPACING = 19;
