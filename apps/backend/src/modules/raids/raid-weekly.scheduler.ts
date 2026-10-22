@@ -1,6 +1,6 @@
 import { Inject, Injectable, Logger, type OnApplicationBootstrap } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
-import { RAID_TIME_ZONE } from './domain/raid-week';
+import { SAO_PAULO_TIME_ZONE } from '../../shared/time/sao-paulo-calendar';
 import { RAID_CLOCK, type RaidClock } from './raid-clock';
 import { RaidsService } from './raids.service';
 
@@ -24,7 +24,7 @@ export class RaidWeeklyScheduler implements OnApplicationBootstrap {
     void this.run();
   }
 
-  @Cron('0 * * * * *', { name: 'raid-weekly-close', timeZone: RAID_TIME_ZONE })
+  @Cron('0 * * * * *', { name: 'raid-weekly-close', timeZone: SAO_PAULO_TIME_ZONE })
   async handleCron(): Promise<void> {
     await this.run();
   }

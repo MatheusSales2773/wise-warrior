@@ -16,7 +16,14 @@ import type { SessionHistoryItemDto, SessionHistoryPageDto } from './dto/session
 import { SESSION_HISTORY_PAGE_SIZE_DEFAULT, type SessionHistoryQueryDto } from './dto/session-history-query.dto';
 import { RecentSubjectsResponseDto } from './dto/recent-subjects-response.dto';
 import { SessionMetricsResponseDto } from './dto/session-metrics-response.dto';
-import { buildCadence, calculateStreaks, type SessionActivityDay } from './domain/session-metrics';
+import {
+  saoPauloDayKey,
+  isSaoPauloDayKey,
+  saoPauloDayStart,
+  saoPauloNextDayKey,
+  saoPauloPreviousDayKey,
+} from '../../shared/time/sao-paulo-calendar';
+import { buildCadence, calculateStreaks, groupActivityByDay } from './domain/session-metrics';
 import { FOCUS_CYCLE_LENGTH, focusCycle, type FocusCycle } from './domain/focus-cycle';
 import { decodeDatetimeCursor, encodeDatetimeCursor } from '../../shared/pagination/datetime-cursor';
 
@@ -55,12 +62,12 @@ export class SessionsService {
   }
 
   /**
-   * Histórico do dia (#17): every Study Session that ended on a UTC day, newest first, with the place of each
+   * Histórico do dia (#17): every Study Session that ended on a São Paulo day, newest first, with the place of each
    * focus completed in full in the Pomodoro cycle. The cycle counts the same focuses as `focusCycle`.
    */
   async history(userId: string, query: SessionHistoryQueryDto, now: Date = new Date()): Promise<SessionHistoryPageDto> {
-    const date = query.date ?? utcDateKey(now);
-    if (Number.isNaN(utcDayStart(date).getTime()) || utcDateKey(utcDayStart(date)) !== date) {
+    const date = query.date ?? saoPauloDayKey(now);
+    if (!isSaoPauloDayKey(date)) {
       throw new BadRequestException('Data inválida');
     }
     const limit = query.limit ?? SESSION_HISTORY_PAGE_SIZE_DEFAULT;
@@ -95,7 +102,7 @@ export class SessionsService {
        ORDER BY session.ended_at DESC, session.id DESC
        LIMIT ?`,
       [
-        userId, userId, utcDayStart(date), utcDayStart(nextDay(date)),
+        userId, userId, saoPauloDayStart(date), saoPauloDayStart(saoPauloNextDayKey(date)),
         ...(after ? [after.datetime, after.datetime, after.id] : []),
         limit + 1,
       ],
@@ -169,50 +176,37 @@ export class SessionsService {
   }
 
   /**
-   * Returns dashboard metrics using one UTC anchor for all calendar
-   * boundaries. This keeps a request deterministic even when it crosses
-   * midnight and avoids depending on the MySQL session timezone.
+   * Returns dashboard metrics on the São Paulo calendar, anchored on one instant so a request that
+   * crosses midnight stays deterministic. Days are bucketed here, not in SQL, because the MySQL
+   * session runs in UTC (`timezone: 'Z'`) and `DATE_FORMAT` would group by the UTC day.
    */
   async metrics(userId: string, now: Date = new Date()): Promise<SessionMetricsResponseDto> {
-    const today = utcDateKey(now);
-    const windowStart = previousDay(today, 55);
-    const windowEndExclusive = nextDay(today);
+    const today = saoPauloDayKey(now);
+    const windowStart = saoPauloPreviousDayKey(today, 55);
 
-    const cadenceRows = await this.studySessions
+    const rows = await this.studySessions
       .createQueryBuilder('session')
-      .select("DATE_FORMAT(session.endedAt, '%Y-%m-%d')", 'date')
+      .select("DATE_FORMAT(session.endedAt, '%Y-%m-%d %H')", 'hour')
       .addSelect('COUNT(session.id)', 'sessionCount')
       .addSelect('COALESCE(SUM(session.durationValidSeconds), 0)', 'validSeconds')
-      .where('session.userId = :userId', { userId })
-      .andWhere('session.endedAt >= :windowStart', { windowStart: utcDayStart(windowStart) })
-      .andWhere('session.endedAt < :windowEndExclusive', { windowEndExclusive: utcDayStart(windowEndExclusive) })
-      .andWhere('session.discardedReason IS NULL')
-      .andWhere("(session.state IS NULL OR session.state IN ('completed', 'stopped_early'))")
-      .groupBy("DATE_FORMAT(session.endedAt, '%Y-%m-%d')")
-      .getRawMany<{ date: string; sessionCount: string; validSeconds: string }>();
-
-    const historicalRows = await this.studySessions
-      .createQueryBuilder('session')
-      .select("DATE_FORMAT(session.endedAt, '%Y-%m-%d')", 'date')
       .where('session.userId = :userId', { userId })
       .andWhere('session.endedAt IS NOT NULL')
       .andWhere('session.discardedReason IS NULL')
       .andWhere("(session.state IS NULL OR session.state IN ('completed', 'stopped_early'))")
-      .groupBy("DATE_FORMAT(session.endedAt, '%Y-%m-%d')")
-      .orderBy('date', 'ASC')
-      .getRawMany<{ date: string }>();
+      .groupBy("DATE_FORMAT(session.endedAt, '%Y-%m-%d %H')")
+      .getRawMany<{ hour: string; sessionCount: string; validSeconds: string }>();
 
-    const activity: SessionActivityDay[] = cadenceRows.map((row) => ({
-      date: row.date,
-      sessionCount: Number(row.sessionCount),
-      validSeconds: Number(row.validSeconds),
-    }));
-    const streaks = calculateStreaks(historicalRows.map((row) => row.date), today);
-    const cadence = buildCadence(activity, previousDay(today, 55), today).map((day) => ({
+    const days = groupActivityByDay(
+      rows.map((row) => ({ hour: row.hour, sessionCount: Number(row.sessionCount), validSeconds: Number(row.validSeconds) })),
+      saoPauloDayKey,
+    );
+    const activity = days.filter((day) => day.date >= windowStart && day.date <= today);
+    const streaks = calculateStreaks(days.map((day) => day.date), today);
+    const cadence = buildCadence(activity, windowStart, today).map((day) => ({
       ...day,
       intensity: Math.min(day.sessionCount, 4) as 0 | 1 | 2 | 3 | 4,
     }));
-    const todayActivity = activity.find((day) => day.date === today);
+    const todayActivity = days.find((day) => day.date === today);
 
     return {
       ...streaks,
@@ -309,24 +303,4 @@ export class SessionsService {
 
     return Number(row?.total ?? 0);
   }
-}
-
-function previousDay(date: string, days: number): string {
-  const value = utcDayStart(date);
-  value.setUTCDate(value.getUTCDate() - days);
-  return value.toISOString().slice(0, 10);
-}
-
-function nextDay(date: string): string {
-  const value = utcDayStart(date);
-  value.setUTCDate(value.getUTCDate() + 1);
-  return value.toISOString().slice(0, 10);
-}
-
-function utcDateKey(value: Date): string {
-  return value.toISOString().slice(0, 10);
-}
-
-function utcDayStart(date: string): Date {
-  return new Date(`${date}T00:00:00.000Z`);
 }

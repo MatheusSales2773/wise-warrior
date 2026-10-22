@@ -1,8 +1,9 @@
 import { furyDaysDue, furyRegenXp } from './dragon-fury';
-import { raidWeekAt, raidWeekDayKeys } from './raid-week';
+import { saoPauloWeekAt } from '../../../shared/time/sao-paulo-calendar';
+import { raidWeekDayKeys } from './raid-week';
 
 // Week of Monday 2026-10-05 to Sunday 2026-10-11 in São Paulo (UTC-3).
-const week = raidWeekAt(new Date('2026-10-07T15:00:00Z'));
+const week = saoPauloWeekAt(new Date('2026-10-07T15:00:00Z'));
 const weekDays = raidWeekDayKeys(week);
 const at = (iso: string) => new Date(iso);
 
