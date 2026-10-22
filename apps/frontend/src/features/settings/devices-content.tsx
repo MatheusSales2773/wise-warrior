@@ -55,7 +55,7 @@ function DeviceItem({ current, device, confirming, ending, onAsk, onCancel, onCo
           <WiseText color="textSecondary" variant="body">{lastUsed}</WiseText>
         </View>
         {current
-          ? <WiseText color="accentPrimary" testID={`settings-device-current-${device.id}`} variant="caption">ESTE DISPOSITIVO</WiseText>
+          ? <WiseText color="accentPrimary" testID={`settings-device-current-${device.id}`} variant="caption">Este dispositivo</WiseText>
           : confirming
             ? null
             : <WiseButton accessibilityLabel={`Encerrar ${name}`} label="Encerrar" onPress={onAsk} testID={`settings-device-end-${device.id}`} variant="danger" />}
@@ -115,6 +115,8 @@ export function DevicesContent() {
     onError: (error) => {
       setConfirming(null);
       setNotice(failureNotice(error, 'encerrar os outros dispositivos'));
+      // Part of the batch may have gone through; show what is still connected.
+      return reloadDevices();
     },
   });
 

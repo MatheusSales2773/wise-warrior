@@ -11,7 +11,7 @@ import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import { InjectRepository } from '@nestjs/typeorm';
 import * as argon2 from 'argon2';
-import { DataSource, IsNull, LessThanOrEqual, Repository } from 'typeorm';
+import { DataSource, IsNull, LessThanOrEqual, Not, Repository } from 'typeorm';
 import { User } from '../users/entities/user.entity';
 import { Character } from '../progression/entities/character.entity';
 import { UsersService } from '../users/users.service';
@@ -421,10 +421,10 @@ export class AuthService {
 
   /** "Encerrar os outros dispositivos": revoga tudo menos a Session do access token em uso. */
   async revokeOtherSessions(userId: string, keepSessionId: string): Promise<void> {
-    const active = await this.sessions.find({
-      where: { userId, revokedAt: IsNull() },
+    const others = await this.sessions.find({
+      where: { userId, revokedAt: IsNull(), id: Not(keepSessionId) },
     });
-    await this.revokeAndDisconnect(active.filter((session) => session.id !== keepSessionId));
+    await this.revokeAndDisconnect(others);
   }
 
   async listActiveSessions(userId: string): Promise<SessionSummary[]> {

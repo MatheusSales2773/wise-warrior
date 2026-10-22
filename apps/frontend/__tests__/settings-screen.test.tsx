@@ -194,7 +194,7 @@ describe('Configuração on desktop', () => {
 
       expect(screen.getByText('iPhone de Ana')).toBeTruthy();
       expect(screen.getByText('Notebook')).toBeTruthy();
-      expect(screen.getByTestId('settings-device-current-dev-1')).toBeTruthy();
+      expect(screen.getByTestId('settings-device-current-dev-1')).toHaveTextContent('Este dispositivo');
       expect(screen.getByRole('button', { name: `Encerrar ${otherDevice}` })).toBeTruthy();
       expect(screen.queryByRole('button', { name: 'Encerrar iPhone de Ana' })).toBeNull();
     });
@@ -267,6 +267,7 @@ describe('Configuração on desktop', () => {
 
       const notice = await screen.findByTestId('settings-devices-notice');
       expect(within(notice).getByText('Não foi possível encerrar os outros dispositivos. Verifique sua conexão e tente novamente.')).toBeTruthy();
+      await waitFor(() => expect(mockedDevices).toHaveBeenCalledTimes(2));
     });
 
     it('hides Encerrar os outros dispositivos when this is the only device', async () => {
