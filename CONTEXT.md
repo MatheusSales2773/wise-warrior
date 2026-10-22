@@ -79,15 +79,19 @@ _Avoid_: sessão, sessão ativa, sessão de login (para não confundir com Study
 ### Sessão de estudo
 
 **Study Session** (Sessão de estudo):
-O intervalo de foco registrado no servidor, com duração planejada, modo (solo ou guilda) e timestamps canônicos gerados pelo servidor. Um usuário tem no máximo uma Study Session ativa por vez.
+O intervalo de foco registrado no servidor, com modo (solo ou guilda) e timestamps canônicos gerados pelo servidor. É um Ciclo ou um Foco livre. Um usuário tem no máximo uma Study Session ativa por vez.
 _Avoid_: sessão Pomodoro (quando se refere à entidade de dados), timer
 
 **Ciclo**:
-Um intervalo de foco de duração planejada — tipicamente 15, 25 ou 50 minutos. Corresponde a uma Study Session iniciada com aquela duração. Pausas entre ciclos são locais ao cliente e não geram Study Sessions.
+Uma Study Session de duração planejada — tipicamente 15, 25 ou 50 minutos — que conclui sozinha ao fim dela e avança a cadência Pomodoro. Pausas entre ciclos são locais ao cliente e não geram Study Sessions.
 _Avoid_: pomodoro (como substantivo para o ciclo inteiro), rodada
 
+**Foco livre**:
+Uma Study Session sem duração planejada, em que o tempo conta para cima até o usuário parar. Parar com pelo menos 5 minutos completos de foco a conclui; com menos, é Cancelamento. Combina com o modo solo ou guilda, gera XP, Moedas e Contribuição como um Ciclo, mas não avança a cadência Pomodoro nem oferece pausa curta ou longa. Ao atingir o limite contínuo ou o limite diário do antifraude, conclui sozinho.
+_Avoid_: modo livre (o modo é solo ou guilda), cronômetro livre, sessão aberta
+
 **Encerramento antecipado**:
-O ato de encerrar manualmente uma Study Session com pelo menos 5 minutos completos de foco acumulado. Concede XP proporcional ao tempo válido.
+O ato de encerrar manualmente um Ciclo antes da duração planejada, com pelo menos 5 minutos completos de foco acumulado. Concede XP proporcional ao tempo válido. Um Foco livre não tem Encerramento antecipado: parar é concluí-lo.
 _Avoid_: cancelamento (reservado para menos de 5 minutos), interrupção
 
 **Cancelamento**:
