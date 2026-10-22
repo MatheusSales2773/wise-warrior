@@ -182,7 +182,7 @@ function robeLayer(palette: RobePalette, edit: (rows: string[]) => void = () => 
 /** Avatar layers by Catalog name: every Avatar of the Catalog has one, drawn on the 16 × 24 grid of the body (#261). */
 export const avatarLayers: Readonly<Record<string, PixelSpriteData>> = {
   'Capuz do Erudito': initialAvatarLayer,
-  /** A plain night cloak: no belt, a cap-less hood closed by a gold clasp. */
+  /** A plain night cloak with a gold clasp and no belt; on the Figma sprites page as Sprite/Avatar/Manto da Vigília. */
   'Manto da Vigília': robeLayer(
     { cloth: ['#0a0a12', '#5b7fc4', '#8fb0e8', '#2f4a80'], trim: ['#d4a85a', '#f0c97a', '#7a5f28', '#f3ead4'] },
     (rows) => {
@@ -193,7 +193,7 @@ export const avatarLayers: Readonly<Record<string, PixelSpriteData>> = {
   /** The green robe of the Figma sprites page, worn by the traveler. */
   'Túnica do Viajante': avatarLayerFrom(druida),
   'Manto Estelar': avatarLayerFrom(heroSprites.arcanista),
-  /** Wolf pelt armour: pointed ears on the hood and red-trimmed pauldrons. */
+  /** Wolf pelt armour with pointed ears on the hood and red-trimmed pauldrons; on the Figma sprites page as Sprite/Avatar/Armadura do Lobo. */
   'Armadura do Lobo': robeLayer(
     { cloth: ['#0a0a12', '#7a7466', '#b3a98e', '#4a463c'], trim: ['#c44545', '#e87070', '#2a2820', '#f3ead4'] },
     (rows) => {
