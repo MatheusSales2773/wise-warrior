@@ -192,23 +192,25 @@ describe('SessionsService', () => {
   });
 
   describe('metrics', () => {
-    const session = (endedAt: string, durationValidSeconds: number) => ({
-      endedAt: new Date(endedAt), durationValidSeconds,
+    const hour = (utcHour: string, sessionCount: number, validSeconds: number) => ({
+      hour: utcHour, sessionCount: String(sessionCount), validSeconds: String(validSeconds),
     });
     const builderReturning = (rows: unknown[]) => {
       const builder = queryBuilderReturning(0) as ReturnType<typeof queryBuilderReturning> & Record<string, jest.Mock>;
       builder.select = jest.fn().mockReturnThis();
-      builder.getMany = jest.fn().mockResolvedValue(rows);
+      builder.addSelect = jest.fn().mockReturnThis();
+      builder.groupBy = jest.fn().mockReturnThis();
+      builder.getRawMany = jest.fn().mockResolvedValue(rows);
       mockRepo.createQueryBuilder.mockReturnValueOnce(builder);
       return builder;
     };
 
     it('returns São Paulo-calendar cadence and streak metrics from valid sessions only', async () => {
       const builder = builderReturning([
-        session('2026-09-15T15:00:00Z', 600),
-        session('2026-09-16T15:00:00Z', 900),
-        session('2026-09-16T16:00:00Z', 900),
-        ...[0, 1, 2, 3].map((hour) => session(`2026-09-17T${String(12 + hour)}:00:00Z`, 900)),
+        hour('2026-09-15 15', 1, 600),
+        hour('2026-09-16 15', 2, 1800),
+        hour('2026-09-17 12', 2, 1800),
+        hour('2026-09-17 14', 2, 1800),
       ]);
 
       const result = await service.metrics('user-1', new Date('2026-09-17T23:59:59.999Z'));
@@ -228,13 +230,13 @@ describe('SessionsService', () => {
     });
 
     it('counts a session ended at 23:00 in São Paulo (02:00 UTC the next day) on its own São Paulo day', async () => {
-      builderReturning([session('2026-09-18T02:00:00Z', 1500)]);
+      builderReturning([hour('2026-09-18 02', 1, 1500)]);
 
       const evening = await service.metrics('user-1', new Date('2026-09-18T02:30:00Z'));
       expect(evening.sessionsToday).toBe(1);
       expect(evening.cadence.windowEnd).toBe('2026-09-17');
 
-      builderReturning([session('2026-09-18T02:00:00Z', 1500)]);
+      builderReturning([hour('2026-09-18 02', 1, 1500)]);
       const afterMidnight = await service.metrics('user-1', new Date('2026-09-18T03:00:00Z'));
       expect(afterMidnight.sessionsToday).toBe(0);
       expect(afterMidnight.currentStreakDays).toBe(1);

@@ -16,7 +16,8 @@ import { MissionRewardItem } from './entities/mission-reward-item.entity';
 import { Raid } from './entities/raid.entity';
 import { RAID_CLOCK, type RaidClock } from './raid-clock';
 import { bossHealthXp, furyDaysDue, furyRegenXp, getRaidFuryRegenPercent } from './domain/dragon-fury';
-import { missionIndexForWeek, proportionalGoalXp, raidWeekAt, raidWeekDayKeys, studyDaysOf, studyStreak, zonedDayKey } from './domain/raid-week';
+import { missionIndexForWeek, proportionalGoalXp, raidWeekDayKeys, studyDaysOf, studyStreak } from './domain/raid-week';
+import { saoPauloDayKey, saoPauloWeekAt } from '../../shared/time/sao-paulo-calendar';
 import { EMPTY_APPEARANCE, UsersService, type EquippedAppearance } from '../users/users.service';
 import { EconomyService } from '../economy/economy.service';
 import { getRaidWinCoins } from '../economy/domain/coin-config';
@@ -306,7 +307,7 @@ export class RaidsService {
    * weekly rotation and the goal is frozen from the member count at this moment.
    */
   async createForGuild(manager: EntityManager, guildId: string, memberCount: number, now: Date = this.clock()): Promise<Raid> {
-    const week = raidWeekAt(now);
+    const week = saoPauloWeekAt(now);
     // A escolha do Líder vale uma vez; sem ela, ou com o dono fora da Guild, vale o rodízio.
     const chosen = (await this.missionChoice?.consume(manager, guildId)) ?? null;
     const catalog = chosen ? [] : await manager.find(Mission, { where: { price: IsNull() }, order: { rotationOrder: 'ASC' } });
@@ -357,7 +358,7 @@ export class RaidsService {
     }
     const [owner] = raid.missionOwnerUserId ? await this.users.findDisplayNames([raid.missionOwnerUserId]) : [];
     const studyDays = await this.studyDaysOfRaid(raid.id);
-    const week = raidWeekAt(raid.startsAt);
+    const week = saoPauloWeekAt(raid.startsAt);
     const { items: party } = await this.rankingPage(raid.id, requesterId, RAID_PARTY_SIZE, 0);
     return {
       id: raid.id,
@@ -381,7 +382,7 @@ export class RaidsService {
       endsAt: raid.endsAt,
       status: raid.status,
       weekDays: raidWeekDayKeys(week),
-      today: zonedDayKey(now),
+      today: saoPauloDayKey(now),
       studyDays,
       streak: studyStreak(studyDays, week, now),
       me: await this.myStanding(raid.id, requesterId),
@@ -590,7 +591,7 @@ export class RaidsService {
       this.notifyRaidComplete(closing);
     }
 
-    const week = raidWeekAt(now);
+    const week = saoPauloWeekAt(now);
     const withoutRaid = await this.raids.manager
       .createQueryBuilder(Guild, 'guild')
       .select('guild.id', 'id')
@@ -637,11 +638,11 @@ export class RaidsService {
       .getOne();
     if (!raid || raid.status !== 'active' || raid.goalReachedAt !== null) return null;
 
-    const weekDays = raidWeekDayKeys(raidWeekAt(raid.startsAt));
+    const weekDays = raidWeekDayKeys(saoPauloWeekAt(raid.startsAt));
     const rows = await manager.find(RaidContribution, { select: { createdAt: true }, where: { raidId } });
     const due = furyDaysDue({ weekDays, openedAt: raid.openedAt ?? raid.startsAt, studyDays: studyDaysOf(rows.map((row) => row.createdAt)), now })
       .filter((day) => raid.furyThrough === null || day > raid.furyThrough);
-    const today = zonedDayKey(now);
+    const today = saoPauloDayKey(now);
     const closedDay = weekDays.slice(0, -1).filter((day) => day < today).pop() ?? null;
     if (closedDay === null || (raid.furyThrough !== null && raid.furyThrough >= closedDay)) return null;
 
@@ -747,7 +748,7 @@ export class RaidsService {
       .where('guild.id = :guildId', { guildId })
       .getOne();
     if (!guild) return null;
-    const week = raidWeekAt(now);
+    const week = saoPauloWeekAt(now);
     if (await manager.exists(Raid, { where: { guildId, startsAt: week.startsAt } })) return null;
     const memberCount = await manager.count(GuildMembership, { where: { guildId } });
     if (memberCount === 0) return null;

@@ -1,4 +1,5 @@
 import {
+  isSaoPauloDayKey,
   saoPauloDayKey,
   saoPauloDayStart,
   saoPauloNextDayKey,
@@ -31,6 +32,15 @@ describe('São Paulo calendar', () => {
       const start = saoPauloDayStart('2026-09-18');
       expect(saoPauloDayKey(start)).toBe('2026-09-18');
       expect(saoPauloDayKey(new Date(start.getTime() - 1))).toBe('2026-09-17');
+    });
+  });
+
+  describe('isSaoPauloDayKey', () => {
+    it('accepts real days and rejects malformed or impossible ones', () => {
+      expect(isSaoPauloDayKey('2026-09-17')).toBe(true);
+      expect(isSaoPauloDayKey('2028-02-29')).toBe(true);
+      expect(isSaoPauloDayKey('2026-02-30')).toBe(false);
+      expect(isSaoPauloDayKey('01/09/2026')).toBe(false);
     });
   });
 

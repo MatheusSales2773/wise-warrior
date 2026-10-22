@@ -190,6 +190,19 @@ describe('Histórico do dia (GET /sessions/history) against MySQL', () => {
     expect([...seen].sort()).toEqual([...ids].sort());
   });
 
+  it('pages across the São Paulo midnight without leaking the neighbouring days', async () => {
+    const last = await record(ana, '2026-09-02T02:59:59.999Z', 'completed');
+    const first = await record(ana, '2026-09-01T03:00:00.000Z', 'completed');
+    await record(ana, '2026-09-01T02:59:59.999Z', 'completed'); // 23:59:59 of the day before
+    await record(ana, '2026-09-02T03:00:00.000Z', 'completed'); // 00:00 of the day after
+
+    const one = await page('?date=2026-09-01&limit=1');
+    expect(one.items.map((item) => item.id)).toEqual([last]);
+    const two = await page(`?date=2026-09-01&limit=1&cursor=${one.nextCursor}`);
+    expect(two.items.map((item) => item.id)).toEqual([first]);
+    expect(two.nextCursor).toBeNull();
+  });
+
   it('returns an empty page for a day without sessions', async () => {
     expect(await page('?date=2026-09-03')).toEqual({ date: '2026-09-03', items: [], nextCursor: null });
   });

@@ -53,6 +53,13 @@ export function saoPauloDayStart(dayKey: string): Date {
   return new Date(instantAtWallClock(Date.parse(`${dayKey}T00:00:00Z`)));
 }
 
+/** Whether `value` is a real calendar day written as `YYYY-MM-DD` (rejects `2026-02-30`). */
+export function isSaoPauloDayKey(value: string): boolean {
+  const parsed = new Date(`${value}T00:00:00.000Z`);
+  return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
+}
+
+/** Moves a day key by whole calendar days (negative goes back). */
 export function saoPauloShiftDayKey(dayKey: string, days: number): string {
   return new Date(Date.parse(`${dayKey}T00:00:00Z`) + days * DAY_MS).toISOString().slice(0, 10);
 }

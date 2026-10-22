@@ -1,4 +1,4 @@
-import { zonedDayKey, zonedDayStart } from './raid-week';
+import { saoPauloDayKey, saoPauloDayStart } from '../../../shared/time/sao-paulo-calendar';
 
 /** Fúria do dragão (ADR-012): the percent of the goal the boss recovers per day, when `RAID_FURY_REGEN_PERCENT` is unset. */
 export const DEFAULT_RAID_FURY_REGEN_PERCENT = 5;
@@ -29,11 +29,11 @@ export function furyDaysDue({ weekDays, openedAt, studyDays, now }: {
   studyDays: readonly string[];
   now: Date;
 }): string[] {
-  const today = zonedDayKey(now);
+  const today = saoPauloDayKey(now);
   const studied = new Set(studyDays);
   return weekDays
     .slice(0, -1)
-    .filter((day) => day < today && !studied.has(day) && zonedDayStart(day).getTime() >= openedAt.getTime());
+    .filter((day) => day < today && !studied.has(day) && saoPauloDayStart(day).getTime() >= openedAt.getTime());
 }
 
 /** Vida do chefe: o que falta para a Meta batida, `goalXp − progressXp + regeneratedXp`, entre 0 e `goalXp`. */

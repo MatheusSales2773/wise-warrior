@@ -18,11 +18,12 @@ import { RecentSubjectsResponseDto } from './dto/recent-subjects-response.dto';
 import { SessionMetricsResponseDto } from './dto/session-metrics-response.dto';
 import {
   saoPauloDayKey,
+  isSaoPauloDayKey,
   saoPauloDayStart,
   saoPauloNextDayKey,
   saoPauloPreviousDayKey,
 } from '../../shared/time/sao-paulo-calendar';
-import { buildCadence, calculateStreaks, type SessionActivityDay } from './domain/session-metrics';
+import { buildCadence, calculateStreaks, groupActivityByDay, type SessionActivityDay } from './domain/session-metrics';
 import { FOCUS_CYCLE_LENGTH, focusCycle, type FocusCycle } from './domain/focus-cycle';
 import { decodeDatetimeCursor, encodeDatetimeCursor } from '../../shared/pagination/datetime-cursor';
 
@@ -66,7 +67,7 @@ export class SessionsService {
    */
   async history(userId: string, query: SessionHistoryQueryDto, now: Date = new Date()): Promise<SessionHistoryPageDto> {
     const date = query.date ?? saoPauloDayKey(now);
-    if (!isCalendarDay(date)) {
+    if (!isSaoPauloDayKey(date)) {
       throw new BadRequestException('Data inválida');
     }
     const limit = query.limit ?? SESSION_HISTORY_PAGE_SIZE_DEFAULT;
@@ -183,31 +184,29 @@ export class SessionsService {
     const today = saoPauloDayKey(now);
     const windowStart = saoPauloPreviousDayKey(today, 55);
 
-    const sessions = await this.studySessions
+    const rows = await this.studySessions
       .createQueryBuilder('session')
-      .select(['session.endedAt', 'session.durationValidSeconds'])
+      .select("DATE_FORMAT(session.endedAt, '%Y-%m-%d %H')", 'hour')
+      .addSelect('COUNT(session.id)', 'sessionCount')
+      .addSelect('COALESCE(SUM(session.durationValidSeconds), 0)', 'validSeconds')
       .where('session.userId = :userId', { userId })
       .andWhere('session.endedAt IS NOT NULL')
       .andWhere('session.discardedReason IS NULL')
       .andWhere("(session.state IS NULL OR session.state IN ('completed', 'stopped_early'))")
-      .getMany();
+      .groupBy("DATE_FORMAT(session.endedAt, '%Y-%m-%d %H')")
+      .getRawMany<{ hour: string; sessionCount: string; validSeconds: string }>();
 
-    const byDay = new Map<string, SessionActivityDay>();
-    for (const session of sessions) {
-      const date = saoPauloDayKey(session.endedAt as Date);
-      const day = byDay.get(date) ?? { date, sessionCount: 0, validSeconds: 0 };
-      day.sessionCount += 1;
-      day.validSeconds += Number(session.durationValidSeconds);
-      byDay.set(date, day);
-    }
-
-    const activity = [...byDay.values()].filter((day) => day.date >= windowStart && day.date <= today);
-    const streaks = calculateStreaks([...byDay.keys()], today);
+    const days = groupActivityByDay(
+      rows.map((row) => ({ hour: row.hour, sessionCount: Number(row.sessionCount), validSeconds: Number(row.validSeconds) })),
+      saoPauloDayKey,
+    );
+    const activity = days.filter((day) => day.date >= windowStart && day.date <= today);
+    const streaks = calculateStreaks(days.map((day) => day.date), today);
     const cadence = buildCadence(activity, windowStart, today).map((day) => ({
       ...day,
       intensity: Math.min(day.sessionCount, 4) as 0 | 1 | 2 | 3 | 4,
     }));
-    const todayActivity = byDay.get(today);
+    const todayActivity = days.find((day) => day.date === today);
 
     return {
       ...streaks,
@@ -304,9 +303,4 @@ export class SessionsService {
 
     return Number(row?.total ?? 0);
   }
-}
-
-function isCalendarDay(date: string): boolean {
-  const parsed = new Date(`${date}T00:00:00.000Z`);
-  return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === date;
 }
