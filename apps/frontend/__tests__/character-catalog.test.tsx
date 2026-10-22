@@ -1,6 +1,6 @@
 import { render, screen } from '@testing-library/react-native';
 import { cosmeticSprite, equipmentCategoryById, equippedItems, optionsFor } from '@/features/character/catalog';
-import { formatCompactXp, formatDeviceSummary } from '@/features/character/formatters';
+import { formatCompactXp } from '@/features/character/formatters';
 import type { CatalogCosmeticItem } from '@/features/profile/api';
 import { cosmeticItemState, describeDevice, describeNextUnlock } from '@/features/profile/formatters';
 import { avatarLayerFor } from '@/features/character/layered-hero';
@@ -79,14 +79,6 @@ describe('character catalog', () => {
 describe('character formatters', () => {
   it.each([[0, '0'], [950, '950'], [1_950, '1,9k'], [128_400, '128,4k'], [128_499, '128,4k'], [1_250_000, '1,2M']])('compacts %s XP as %s', (value, expected) => {
     expect(formatCompactXp(value)).toBe(expected);
-  });
-
-  it.each([[1, 'Somente este navegador'], [2, 'Este navegador e mais 1 sessão'], [3, 'Este navegador e mais 2 sessões']])('summarizes %s device sessions', (count, expected) => {
-    expect(formatDeviceSummary(count, 'Este navegador')).toBe(expected);
-  });
-
-  it.each([[1, 'Somente este navegador'], [2, 'Este navegador e mais 1'], [3, 'Este navegador e mais 2']])('drops the noun in the compact (mobile) wording for %s sessions', (count, expected) => {
-    expect(formatDeviceSummary(count, 'Este navegador', true)).toBe(expected);
   });
 });
 

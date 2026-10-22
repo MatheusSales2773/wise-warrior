@@ -76,10 +76,10 @@ export class UsersController {
     await this.auth.revokeSession(user.sub, sessionId);
   }
 
-  /** "Sair de todos os dispositivos". */
+  /** "Encerrar os outros dispositivos": mantém o dispositivo do access token em uso. */
   @Delete('sessions')
   @HttpCode(HttpStatus.NO_CONTENT)
-  async revokeAllSessions(@CurrentUser() user: JwtPayload): Promise<void> {
-    await this.auth.revokeAllSessions(user.sub);
+  async revokeOtherSessions(@CurrentUser() user: JwtPayload): Promise<void> {
+    await this.auth.revokeOtherSessions(user.sub, user.sessionId);
   }
 }

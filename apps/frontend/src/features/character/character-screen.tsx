@@ -1,19 +1,17 @@
 import { useQuery } from '@tanstack/react-query';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useCallback, useState, type ReactNode } from 'react';
+import { useCallback, useState } from 'react';
 import { Platform, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
-import { useAuth } from '@/core/auth/auth-context';
-import { FeedbackMessage, ProgressBar, Screen, WiseButton, WiseIcon, WiseText, isDesktopLayout, theme } from '@/design-system';
+import { FeedbackMessage, ProgressBar, Screen, WiseButton, WiseText, isDesktopLayout, theme } from '@/design-system';
 import type { SessionMetrics, UserProfile } from '@/features/dashboard/api';
 import { profileQueryOptions, sessionMetricsQueryOptions } from '@/features/dashboard/queries';
 import { profileWithEquipped } from '@/features/profile/equipment';
-import { cosmeticsCatalogQueryOptions, deviceSessionsQueryOptions } from '@/features/profile/queries';
+import { cosmeticsCatalogQueryOptions } from '@/features/profile/queries';
 import { useCosmeticEquipment } from '@/features/profile/use-cosmetic-equipment';
 import { equipmentCategories, equippedItems, type EquipmentCategory, type EquipmentCategoryDefinition, type EquippedItems } from './catalog';
 import { GroundShadow, HeroGlow } from './character-art';
 import { MobileCharacter } from './character-mobile';
-import { LevelProgress, PreviewMark, describeHero, SectionHeader, SummaryRow, describeDevices, useFocusRing, type DevicesState } from './character-parts';
-import { DevicesPanel } from './devices-panel';
+import { LevelProgress, PreviewMark, describeHero, SectionHeader, SummaryRow, useFocusRing } from './character-parts';
 import { EquipmentDrawer } from './equipment-drawer';
 import { LayeredHero } from './layered-hero';
 import { PixelSprite } from './PixelSprite';
@@ -92,31 +90,17 @@ function GearSection({ equipped, onOpen }: { equipped: EquippedItems; onOpen: (c
 
 /* ---------- Mais ---------- */
 
-function MoreRow({ children, description, onPress, testID, title }: { children: ReactNode; description: string; onPress?: () => void; testID: string; title: string }) {
-  const { focusProps, focusStyle } = useFocusRing();
-  const content = <>
-    <View style={styles.moreIcon}>{children}</View>
-    <View style={styles.moreCopy}>
-      <Text style={styles.moreTitle}>{title}</Text>
-      <Text style={styles.moreDescription}>{description}</Text>
-    </View>
-    <WiseIcon color="textTertiary" name="chevron-forward" size="xsmall" />
-  </>;
-  return onPress
-    ? <Pressable {...focusProps} accessibilityHint="Abre a lista de dispositivos" accessibilityLabel={`${title}. ${description}`} accessibilityRole="button" onPress={onPress} style={[styles.moreRow, focusStyle]} testID={testID}>{content}</Pressable>
-    : <View accessible accessibilityLabel={`${title}. ${description}`} style={styles.moreRow} testID={testID}>{content}</View>;
-}
-
-function MoreSection({ devices, onOpenDevices }: { devices: DevicesState; onOpenDevices: () => void }) {
+function MoreSection() {
   return <View accessibilityLabel="Mais" role="region" style={styles.section} testID="character-more">
     <SectionHeader>Mais</SectionHeader>
     <View style={styles.row}>
-      <MoreRow description="Coruja de estudo · chega na Fase 2" testID="character-companion" title="Companheiro">
-        <PixelSprite opacity={0.5} scale={3} sprite={companionSprites.coruja} />
-      </MoreRow>
-      <MoreRow description={describeDevices(devices, false)} onPress={onOpenDevices} testID="character-devices" title="Dispositivos conectados">
-        <WiseIcon color="textSecondary" name="people-outline" size="regular" />
-      </MoreRow>
+      <View accessible accessibilityLabel="Companheiro. Coruja de estudo · chega na Fase 2" style={styles.moreRow} testID="character-companion">
+        <View style={styles.moreIcon}><PixelSprite opacity={0.5} scale={3} sprite={companionSprites.coruja} /></View>
+        <View style={styles.moreCopy}>
+          <Text style={styles.moreTitle}>Companheiro</Text>
+          <Text style={styles.moreDescription}>Coruja de estudo · chega na Fase 2</Text>
+        </View>
+      </View>
     </View>
   </View>;
 }
@@ -134,25 +118,20 @@ function StatusMessages({ messages }: { messages: { key: string; title: string; 
 export function CharacterScreen() {
   const profile = useQuery(profileQueryOptions());
   const metrics = useQuery(sessionMetricsQueryOptions());
-  const deviceSessions = useQuery(deviceSessionsQueryOptions());
   const catalog = useQuery(cosmeticsCatalogQueryOptions());
   const equipment = useCosmeticEquipment();
-  const { sessionId } = useAuth();
   const { width } = useWindowDimensions();
   const [drawerCategory, setDrawerCategory] = useState<EquipmentCategory | null>(null);
-  const [devicesOpen, setDevicesOpen] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const { cancel } = equipment;
   const closeDrawer = useCallback(() => {
     cancel();
     setDrawerCategory(null);
   }, [cancel]);
-  const closeDevices = useCallback(() => setDevicesOpen(false), []);
-  const openDevices = useCallback(() => setDevicesOpen(true), []);
   const refresh = async () => {
     setRefreshing(true);
     try {
-      await Promise.all([profile.refetch(), catalog.refetch(), deviceSessions.refetch(), metrics.refetch()]);
+      await Promise.all([profile.refetch(), catalog.refetch(), metrics.refetch()]);
     } finally {
       setRefreshing(false);
     }
@@ -184,7 +163,6 @@ export function CharacterScreen() {
   const variant = desktop ? 'drawer' : 'sheet';
   const equipped = equippedItems(user);
   const shownEquipped = equippedItems(shown);
-  const devices: DevicesState = { count: deviceSessions.data?.length ?? null, failed: deviceSessions.isError };
   const statusMessages = [
     ...(equipment.notice ? [{ key: 'equipment', ...equipment.notice }] : []),
     ...(profile.isError ? [{ key: 'profile', title: 'Dados desatualizados', message: 'Não foi possível atualizar seu personagem.' }] : []),
@@ -196,7 +174,7 @@ export function CharacterScreen() {
   const content = <View style={[styles.content, desktop && styles.contentDesktop]} testID="character-content">
     <StatusMessages messages={statusMessages} />
     <GearSection equipped={shownEquipped} onOpen={setDrawerCategory} />
-    <MoreSection devices={devices} onOpenDevices={openDevices} />
+    <MoreSection />
   </View>;
 
   return <View style={styles.root} testID="character">
@@ -207,10 +185,8 @@ export function CharacterScreen() {
         <ScrollView style={styles.contentScroll} testID="character-content-scroll">{content}</ScrollView>
       </View>
       : <MobileCharacter
-        devices={devices}
         equipped={shownEquipped}
         metrics={metrics.data}
-        onOpenDevices={openDevices}
         onOpenEquipment={setDrawerCategory}
         previewing={Boolean(previewed)}
         refreshControl={refreshControl}
@@ -218,7 +194,6 @@ export function CharacterScreen() {
         user={shown}
       />}
     <EquipmentDrawer catalog={catalog} category={drawerCategory} equipment={equipment} equipped={equipped} level={user.level} onCategoryChange={(next) => { cancel(); setDrawerCategory(next); }} onClose={closeDrawer} planTier={user.planTier} variant={variant} />
-    {devicesOpen ? <DevicesPanel currentSessionId={sessionId} onClose={closeDevices} query={deviceSessions} variant={variant} /> : null}
   </View>;
 }
 
