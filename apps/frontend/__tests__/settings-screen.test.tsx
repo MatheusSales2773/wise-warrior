@@ -5,6 +5,7 @@ import { fireEvent, renderRouter, screen, waitFor, within } from 'expo-router/te
 import { Platform, Text } from 'react-native';
 import { AppShell } from '@/design-system/components/AppShell';
 import { devicePreferences } from '@/core/preferences/device-preferences';
+import { preferencesStorage } from '@/core/preferences/preferences-storage';
 import { ApiError } from '@/core/api/api-error';
 import { queryClient as appQueryClient } from '@/core/query/query-runtime';
 import { getMyProfile, type UserProfile } from '@/features/dashboard/api';
@@ -135,6 +136,8 @@ describe('Foco', () => {
 
     expect(screen.getByRole('switch', { name: 'Sugerir matérias recentes' }).props.accessibilityState.checked).toBe(false);
     expect(devicePreferences.get().suggestRecentSubjects).toBe(false);
+    expect(preferencesStorage.write).toHaveBeenLastCalledWith(expect.stringContaining('"suggestRecentSubjects":false'));
+    expect(screen.getByRole('switch', { name: 'Sugerir matérias recentes' }).props.accessibilityHint).toBe('Mostra suas últimas matérias na Forja');
   });
 
   it('chooses the default duration on the phone and shows it in the Duração padrão row', async () => {

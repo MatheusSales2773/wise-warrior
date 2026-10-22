@@ -25,15 +25,19 @@ function DurationOption({ checked, duration, onSelect }: { checked: boolean; dur
   </Pressable>;
 }
 
+const SUGGEST_RECENT_SUBJECTS_LABEL = 'Sugerir matérias recentes';
+const SUGGEST_RECENT_SUBJECTS_HINT = 'Mostra suas últimas matérias na Forja';
+
 function SuggestRecentSubjectsSwitch() {
   const [enabled, setEnabled] = useDevicePreference('suggestRecentSubjects');
   return <View style={styles.switchRow}>
     <View style={styles.switchCopy}>
-      <WiseText variant="label">Sugerir matérias recentes</WiseText>
-      <WiseText color="textSecondary" variant="body">Mostra suas últimas matérias na Forja</WiseText>
+      <WiseText variant="label">{SUGGEST_RECENT_SUBJECTS_LABEL}</WiseText>
+      <WiseText color="textSecondary" variant="body">{SUGGEST_RECENT_SUBJECTS_HINT}</WiseText>
     </View>
     <Switch
-      accessibilityLabel="Sugerir matérias recentes"
+      accessibilityHint={SUGGEST_RECENT_SUBJECTS_HINT}
+      accessibilityLabel={SUGGEST_RECENT_SUBJECTS_LABEL}
       accessibilityRole="switch"
       accessibilityState={{ checked: enabled }}
       onValueChange={setEnabled}

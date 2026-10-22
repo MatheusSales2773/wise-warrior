@@ -225,12 +225,21 @@ function subjectError(validation: SubjectValidation): string | undefined {
   return undefined;
 }
 
-/** Loading, failure and an empty history render nothing: suggestions must never get in the way of starting. */
-function RecentSubjectSuggestions({ selectedSubject, disabled, onSelect }: {
+type RecentSubjectSuggestionsProps = {
   selectedSubject: string | null;
   disabled: boolean;
   onSelect: (subject: string) => void;
-}) {
+};
+
+/** Mounts the list, and so its request, only once the stored preference is read and still on. */
+function RecentSubjectSuggestions(props: RecentSubjectSuggestionsProps) {
+  const [suggestRecentSubjects] = useDevicePreference('suggestRecentSubjects');
+  const preferencesLoaded = useDevicePreferencesLoaded();
+  return suggestRecentSubjects && preferencesLoaded ? <RecentSubjectSuggestionList {...props} /> : null;
+}
+
+/** Loading, failure and an empty history render nothing: suggestions must never get in the way of starting. */
+function RecentSubjectSuggestionList({ selectedSubject, disabled, onSelect }: RecentSubjectSuggestionsProps) {
   const { data: subjects } = useRecentStudySessionSubjects();
   const [focusedSubject, setFocusedSubject] = useState<string | null>(null);
   if (!subjects?.length) return null;
@@ -419,7 +428,6 @@ export function StudySessionScreen({ initialMode = 'solo' }: { initialMode?: Ses
   const ringSize = wideLayout ? 340 : Platform.OS === 'web' ? Math.min(310, width * 0.78) : Math.min(264, width * 0.68);
   const queryClient = useQueryClient();
   const [defaultDuration] = useDevicePreference('defaultFocusDuration');
-  const [suggestRecentSubjects] = useDevicePreference('suggestRecentSubjects');
   // The Forja opens on the device's default; a pick made here holds until the screen closes.
   const [picked, setSelected] = useState<PlannedDurationSeconds | null>(null);
   const selected = picked ?? defaultDuration;
@@ -1112,13 +1120,11 @@ export function StudySessionScreen({ initialMode = 'solo' }: { initialMode?: Ses
                 testID="study-session-subject-input"
                 value={subjectInput}
               />
-              {suggestRecentSubjects && preferencesLoaded ? (
-                <RecentSubjectSuggestions
-                  disabled={start.isPending}
-                  onSelect={changeSubject}
-                  selectedSubject={subjectValidation.status === 'valid' ? subjectValidation.subject : null}
-                />
-              ) : null}
+              <RecentSubjectSuggestions
+                disabled={start.isPending}
+                onSelect={changeSubject}
+                selectedSubject={subjectValidation.status === 'valid' ? subjectValidation.subject : null}
+              />
             </View>
             {forgeRaid ? (
               <View style={styles.subjectSection}>

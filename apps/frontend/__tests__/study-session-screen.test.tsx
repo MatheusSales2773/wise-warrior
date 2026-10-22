@@ -416,6 +416,15 @@ describe('Recent Matéria suggestions on the Forja', () => {
     view.unmount();
   });
 
+  it('requests and shows the recent Matérias when the preference is on', async () => {
+    await devicePreferences.set('suggestRecentSubjects', true);
+    const { view } = await renderSetupWithSuggestions(['Física']);
+
+    expect(await view.findByRole('button', { name: 'Física' })).toBeTruthy();
+    expect(getRecent).toHaveBeenCalledTimes(1);
+    view.unmount();
+  });
+
   it('hides the suggestions and never requests the recent Matérias when the preference is off', async () => {
     await devicePreferences.set('suggestRecentSubjects', false);
     try {
