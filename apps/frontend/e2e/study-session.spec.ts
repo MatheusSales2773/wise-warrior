@@ -63,6 +63,7 @@ test.describe('Forja web', () => {
       && response.request().method() === 'POST',
     );
     await page.getByRole('button', { name: 'Encerrar antecipadamente' }).click();
+    await page.getByTestId('study-session-stop-confirm').click();
     const stopResponse = await stopResponsePromise;
     expect(stopResponse.status()).toBe(200);
     const result = await stopResponse.json() as {
@@ -124,6 +125,7 @@ test.describe('Forja web', () => {
       && response.request().method() === 'POST',
     );
     await page.getByRole('button', { name: 'Cancelar sessão' }).click();
+    await page.getByTestId('study-session-stop-confirm').click();
     const response = await stopResponse;
     expect(response.url()).toContain(`${apiUrl}/sessions/`);
     expect(response.status()).toBe(200);
