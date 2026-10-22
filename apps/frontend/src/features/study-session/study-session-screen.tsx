@@ -25,6 +25,7 @@ import { formatRemainingTime, remainingStudySeconds } from './timer';
 import { MAX_SUBJECT_LENGTH, validateSubject, type SubjectValidation } from './subject';
 import { FeedbackMessage } from '@/design-system/components/FeedbackMessage';
 import { sessionMetricsQueryOptions } from '@/features/dashboard/queries';
+import { useDevicePreference } from '@/core/preferences/device-preferences';
 import { useIsOnline } from '@/core/query/online-manager';
 import { ForgeHistory } from './forge-history';
 import { ForgeSyncIndicator } from './sync-indicator';
@@ -417,7 +418,10 @@ export function StudySessionScreen({ initialMode = 'solo' }: { initialMode?: Ses
   const wideLayout = width >= 1140;
   const ringSize = wideLayout ? 340 : Platform.OS === 'web' ? Math.min(310, width * 0.78) : Math.min(264, width * 0.68);
   const queryClient = useQueryClient();
-  const [selected, setSelected] = useState<PlannedDurationSeconds>(1500);
+  const [defaultDuration] = useDevicePreference('defaultFocusDuration');
+  // The Forja opens on the device's default; a pick made here holds until the screen closes.
+  const [picked, setSelected] = useState<PlannedDurationSeconds | null>(null);
+  const selected = picked ?? defaultDuration;
   const [subjectInput, setSubjectInput] = useState('');
   const [sessionMode, setSessionMode] = useState<SessionMode>(initialMode);
   const [raidEndedNotice, setRaidEndedNotice] = useState(false);

@@ -3,6 +3,7 @@ import type { WiseIconName } from '@/design-system';
 import type { UserProfile } from '@/features/dashboard/api';
 import { planLabel } from './plan';
 import { DevicesContent } from './devices-content';
+import { FocusContent } from './focus-content';
 import { AccountHeader, PlanContent } from './settings-content';
 
 export type SettingsSectionId = 'conta' | 'foco' | 'dispositivos' | 'acessibilidade' | 'plano';
@@ -36,7 +37,7 @@ export const settingsSections: readonly SettingsSection[] = [
   },
   {
     id: 'foco', label: 'Foco', description: 'Como a Forja abre e se comporta.', href: '/configuracao/foco', icon: 'hammer-outline',
-    group: 'Foco', row: { title: 'Foco', icon: 'hammer-outline' }, Content: null,
+    group: 'Foco', row: { title: 'Duração padrão', icon: 'hammer-outline' }, Content: FocusContent,
   },
   {
     id: 'dispositivos', label: 'Dispositivos', description: 'Os aparelhos e navegadores em que você está conectado.', href: '/configuracao/dispositivos', icon: 'phone-portrait-outline',

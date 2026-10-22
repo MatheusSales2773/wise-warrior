@@ -12,11 +12,12 @@ import { SectionHeader, useFocusRing } from '@/features/character/character-part
 import { profileQueryOptions } from '@/features/dashboard/queries';
 import { activeSettingsSection, menuHref, settingsSection, settingsSections, type SettingsSectionId } from './sections';
 import { useActiveDevicesLabel } from './devices-content';
+import { useDefaultFocusLabel } from './focus-content';
 import { AccountHeader, InfoRow, settingsStyles } from './settings-content';
 
 /** Live counts shown beside a section's name, for the sections that have one. */
 function useSectionMeta(): Partial<Record<SettingsSectionId, string>> {
-  return { dispositivos: useActiveDevicesLabel() };
+  return { foco: useDefaultFocusLabel(), dispositivos: useActiveDevicesLabel() };
 }
 
 function useDesktop() {

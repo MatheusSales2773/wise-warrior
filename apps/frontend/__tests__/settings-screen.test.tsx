@@ -4,6 +4,7 @@ import { router as appRouter, Slot } from 'expo-router';
 import { fireEvent, renderRouter, screen, waitFor, within } from 'expo-router/testing-library';
 import { Platform, Text } from 'react-native';
 import { AppShell } from '@/design-system/components/AppShell';
+import { devicePreferences } from '@/core/preferences/device-preferences';
 import { ApiError } from '@/core/api/api-error';
 import { getMyProfile, type UserProfile } from '@/features/dashboard/api';
 import { listMyDeviceSessions, revokeMyDeviceSession, revokeOtherMyDeviceSessions, type DeviceSession } from '@/features/profile/api';
@@ -20,6 +21,9 @@ jest.mock('@/features/dashboard/api', () => ({
   getSessionMetrics: jest.fn(() => new Promise(() => undefined)),
 }));
 
+jest.mock('@/core/preferences/preferences-storage', () => ({
+  preferencesStorage: { read: jest.fn(async () => null), write: jest.fn(async () => undefined) },
+}));
 jest.mock('@/features/profile/api', () => ({
   listMyDeviceSessions: jest.fn(),
   revokeMyDeviceSession: jest.fn(),
@@ -84,6 +88,39 @@ afterEach(async () => {
   mockAuthState.logout.mockReset();
   mockAuthState.logout.mockResolvedValue(undefined);
   await resetViewport();
+});
+
+describe('Foco', () => {
+  afterEach(() => devicePreferences.set('defaultFocusDuration', 1500));
+
+  it('chooses the default Forja duration on desktop and shows it beside Foco in the menu', async () => {
+    await setViewport('web', 1440);
+    await openSettings('/configuracao/foco');
+
+    const menu = within(screen.getByLabelText('Seções da configuração'));
+    expect(menu.getByText('25 min')).toBeTruthy();
+    expect(screen.getAllByRole('radio')).toHaveLength(3);
+    expect(screen.getByRole('radio', { name: '25 minutos' }).props.accessibilityState.checked).toBe(true);
+
+    await fireEvent.press(screen.getByRole('radio', { name: '50 minutos' }));
+
+    expect(screen.getByRole('radio', { name: '50 minutos' }).props.accessibilityState.checked).toBe(true);
+    expect(screen.getByRole('radio', { name: '25 minutos' }).props.accessibilityState.checked).toBe(false);
+    expect(menu.getByText('50 min')).toBeTruthy();
+    expect(devicePreferences.get().defaultFocusDuration).toBe(3000);
+  });
+
+  it('chooses the default duration on the phone and shows it in the Duração padrão row', async () => {
+    await setViewport('ios', 390);
+    await openSettings('/configuracao');
+    await screen.findByTestId('settings-profile');
+
+    await fireEvent.press(await screen.findByRole('link', { name: 'Duração padrão: 25 min' }));
+    await fireEvent.press(await screen.findByRole('radio', { name: '15 minutos' }));
+    await fireEvent.press(screen.getByRole('button', { name: 'Voltar para Configuração' }));
+
+    expect(await screen.findByRole('link', { name: 'Duração padrão: 15 min' })).toBeTruthy();
+  });
 });
 
 describe('Configuração on desktop', () => {
@@ -313,7 +350,7 @@ describe('Configuração on phones', () => {
 
   it.each([
     ['Nome do guerreiro: Knightshade', '/configuracao/conta', 'Conta e segurança'],
-    ['Foco', '/configuracao/foco', 'Foco'],
+    ['Duração padrão: 25 min', '/configuracao/foco', 'Foco'],
     ['Dispositivos conectados: 3 dispositivos ativos', '/configuracao/dispositivos', 'Dispositivos'],
     ['Acessibilidade', '/configuracao/acessibilidade', 'Acessibilidade'],
     ['Plano atual: Free · premium em breve', '/configuracao/plano', 'Plano'],
