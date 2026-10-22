@@ -9,6 +9,7 @@ import { formatRemainingTime, remainingStudySeconds } from '@/features/study-ses
 import { clearCompletionIntent } from '@/features/study-session/completion-intent';
 import { stopSessionSounds, unlockSessionSounds } from '@/features/study-session/sounds';
 import { ApiError } from '@/core/api/api-error';
+import { devicePreferences } from '@/core/preferences/device-preferences';
 import { getActiveRaid, getMyGuild, joinRaid, type ActiveRaid, type MyGuild } from '@/features/guild/api';
 
 // The day history and the week chart have their own tests (forge-history.test.tsx).
@@ -19,6 +20,9 @@ jest.mock('@/features/guild/api', () => ({
   joinRaid: jest.fn(),
 }));
 
+jest.mock('@/core/preferences/preferences-storage', () => ({
+  preferencesStorage: { read: jest.fn(async () => null), write: jest.fn(async () => undefined) },
+}));
 jest.mock('@/features/study-session/sounds', () => ({
   playSessionSound: jest.fn(), releaseSessionSounds: jest.fn(), stopSessionSounds: jest.fn(), unlockSessionSounds: jest.fn(),
 }));
@@ -88,6 +92,23 @@ beforeEach(() => {
 afterEach(() => {
   jest.restoreAllMocks();
   jest.clearAllMocks();
+});
+
+it('opens on the device default duration and still lets the user pick another before starting', async () => {
+  getActive.mockResolvedValue(null);
+  start.mockResolvedValue(snapshot);
+  await devicePreferences.set('defaultFocusDuration', 3000);
+  const { view } = await renderStudySession();
+  await view.findByTestId('study-session-setup');
+
+  expect(view.getByText('50 min selecionados')).toBeTruthy();
+  await fireEvent.press(view.getByRole('button', { name: 'Configurar duração' }));
+  expect(view.getByTestId('study-duration-50').props.accessibilityState.checked).toBe(true);
+  await fireEvent.press(view.getByTestId('study-duration-15'));
+  await fireEvent.press(view.getByTestId('study-session-start'));
+  await waitFor(() => expect(start).toHaveBeenCalledWith(900, expect.any(String), null));
+  view.unmount();
+  await devicePreferences.set('defaultFocusDuration', 1500);
 });
 
 it('offers only three presets, starts with 25 minutes and sends the chosen duration', async () => {

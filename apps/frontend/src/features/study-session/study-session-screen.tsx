@@ -25,6 +25,7 @@ import { formatRemainingTime, remainingStudySeconds } from './timer';
 import { MAX_SUBJECT_LENGTH, validateSubject, type SubjectValidation } from './subject';
 import { FeedbackMessage } from '@/design-system/components/FeedbackMessage';
 import { sessionMetricsQueryOptions } from '@/features/dashboard/queries';
+import { useDevicePreference, useDevicePreferencesLoaded } from '@/core/preferences/device-preferences';
 import { useIsOnline } from '@/core/query/online-manager';
 import { ForgeHistory } from './forge-history';
 import { ForgeSyncIndicator } from './sync-indicator';
@@ -417,7 +418,13 @@ export function StudySessionScreen({ initialMode = 'solo' }: { initialMode?: Ses
   const wideLayout = width >= 1140;
   const ringSize = wideLayout ? 340 : Platform.OS === 'web' ? Math.min(310, width * 0.78) : Math.min(264, width * 0.68);
   const queryClient = useQueryClient();
-  const [selected, setSelected] = useState<PlannedDurationSeconds>(1500);
+  const [defaultDuration] = useDevicePreference('defaultFocusDuration');
+  // The Forja opens on the device's default; a pick made here holds until the screen closes.
+  const [picked, setSelected] = useState<PlannedDurationSeconds | null>(null);
+  const selected = picked ?? defaultDuration;
+  // Until the stored default is read, Iniciar would send the 25 min placeholder instead of the saved duration.
+  const preferencesLoaded = useDevicePreferencesLoaded();
+  const waitingForDefault = picked === null && !preferencesLoaded;
   const [subjectInput, setSubjectInput] = useState('');
   const [sessionMode, setSessionMode] = useState<SessionMode>(initialMode);
   const [raidEndedNotice, setRaidEndedNotice] = useState(false);
@@ -1126,7 +1133,7 @@ export function StudySessionScreen({ initialMode = 'solo' }: { initialMode?: Ses
               {settingsOpen && !wideLayout ? <DurationSettings selected={selected} focusedDuration={focusedDuration} startPending={start.isPending} onSelect={(duration) => { pendingKey.current = null; setSelected(duration); }} onFocus={setFocusedDuration} onClose={() => setSettingsOpen(false)} inline /> : null}
               <View style={[styles.actionRow, width < 450 && styles.actionRowCompact]}>
                 <View style={styles.actionButtonPlaceholder} />
-                <ForgeAction icon="play" primary label={startLabel} loading={start.isPending} disabled={subjectValidation.status !== 'valid'} onPress={begin} testID="study-session-start" />
+                <ForgeAction icon="play" primary label={startLabel} loading={start.isPending} disabled={subjectValidation.status !== 'valid' || waitingForDefault} onPress={begin} testID="study-session-start" />
                 <ForgeAction icon="settings-outline" iconOnly label="Configurar duração" expanded={settingsOpen} onPress={() => setSettingsOpen((open) => !open)} />
               </View>
               {raidEndedNotice ? (
