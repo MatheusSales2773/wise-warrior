@@ -9,7 +9,8 @@ type LogoutActionProps = {
   onLogout: () => Promise<void>;
 };
 
-export function LogoutAction({ onLogout }: LogoutActionProps) {
+/** Runs a logout once at a time and keeps its failure, so the caller can offer a retry. */
+export function useLogoutAction(onLogout: () => Promise<void>) {
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<unknown>(null);
   const pendingRef = useRef(false);
@@ -28,6 +29,12 @@ export function LogoutAction({ onLogout }: LogoutActionProps) {
       setPending(false);
     }
   }, [onLogout]);
+
+  return { error, pending, submit };
+}
+
+export function LogoutAction({ onLogout }: LogoutActionProps) {
+  const { error, pending, submit } = useLogoutAction(onLogout);
 
   return (
     <View style={styles.container} testID="logout-action">

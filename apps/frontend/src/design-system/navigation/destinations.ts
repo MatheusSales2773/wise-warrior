@@ -3,7 +3,7 @@ import type { WiseIconName } from '../icons/WiseIcon';
 export type PrimaryDestination = {
   readonly available: true;
   readonly label: string;
-  readonly href: '/' | '/sessao' | '/perfil' | '/guilda' | '/mercado';
+  readonly href: '/' | '/sessao' | '/perfil' | '/guilda' | '/mercado' | '/configuracao';
   readonly inactiveIcon: WiseIconName;
   readonly activeIcon: WiseIconName;
   readonly position: number;
@@ -27,7 +27,7 @@ export const destinations = [
   { label: 'Guilda', href: '/guilda', inactiveIcon: 'shield-outline', activeIcon: 'shield', available: true, position: 3, compact: 'bar' },
   { label: 'Mercado', href: '/mercado', inactiveIcon: 'storefront-outline', activeIcon: 'storefront', available: true, position: 4, compact: 'more' },
   { label: 'Crônicas', href: null, inactiveIcon: null, activeIcon: null, available: false, position: 5 },
-  { label: 'Configuração', href: null, inactiveIcon: null, activeIcon: null, available: false, position: 6 },
+  { label: 'Configuração', href: '/configuracao', inactiveIcon: 'settings-outline', activeIcon: 'settings', available: true, position: 6, compact: 'more' },
 ] as const satisfies readonly (PrimaryDestination | FutureDestination)[];
 
 export const primaryDestinations: readonly PrimaryDestination[] = destinations.filter(
