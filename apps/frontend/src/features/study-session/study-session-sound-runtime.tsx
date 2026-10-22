@@ -1,11 +1,12 @@
 import { useEffect } from 'react';
 import { useBreakRun } from './pomodoro-break';
+import type { StudySessionSnapshot } from './api';
 import { useActiveStudySession } from './queries';
 import { releaseSessionSounds } from './sounds';
 import { useDeadlineAlarm } from './use-deadline-alarm';
 
 /** Local instant a running focus ends, by the server clock offset the snapshot was received with. */
-function focusEndsAtMs(snapshot: ReturnType<typeof useActiveStudySession>['data']): number | null {
+function focusEndsAtMs(snapshot: StudySessionSnapshot | null | undefined): number | null {
   if (!snapshot || snapshot.state !== 'running' || !snapshot.runDeadlineAt) return null;
   const clockOffset = new Date(snapshot.serverNow).getTime() - snapshot.receivedAtMs;
   return new Date(snapshot.runDeadlineAt).getTime() - clockOffset;
@@ -18,8 +19,8 @@ function focusEndsAtMs(snapshot: ReturnType<typeof useActiveStudySession>['data'
 export function StudySessionSoundRuntime() {
   const active = useActiveStudySession();
   const breakRun = useBreakRun();
-  useDeadlineAlarm({ atMs: focusEndsAtMs(active.data), sound: 'focusEnd' });
-  useDeadlineAlarm({ atMs: breakRun?.deadlineMs ?? null, sound: 'breakEnd' });
+  useDeadlineAlarm({ key: active.data?.id ?? null, atMs: focusEndsAtMs(active.data), sound: 'focusEnd' });
+  useDeadlineAlarm({ key: breakRun ? 'break' : null, atMs: breakRun?.deadlineMs ?? null, sound: 'breakEnd' });
   useEffect(() => releaseSessionSounds, []);
   return null;
 }

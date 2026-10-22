@@ -1,4 +1,6 @@
-import { act, render, waitFor } from '@testing-library/react-native';
+import { useState } from 'react';
+import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
+import { Pressable, Text } from 'react-native';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { StudySessionSoundRuntime } from '@/features/study-session/study-session-sound-runtime';
 import { getActiveStudySession, type StudySessionSnapshot } from '@/features/study-session/api';
@@ -126,4 +128,32 @@ it('releases the players on unmount', async () => {
   await view.unmount();
 
   expect(releaseSessionSounds).toHaveBeenCalledTimes(1);
+});
+
+it('keeps ringing when the Forja leaves the screen, and stays silent for a result kept on return', async () => {
+  getActive.mockResolvedValue(running(60));
+  // The runtime sits in the layout; the Forja is just the route that comes and goes.
+  function Layout() {
+    const [onForja, setOnForja] = useState(true);
+    return (
+      <>
+        <StudySessionSoundRuntime />
+        <Pressable onPress={() => setOnForja((value) => !value)} testID="switch-tab">
+          <Text>{onForja ? 'Forja' : 'Início'}</Text>
+        </Pressable>
+      </>
+    );
+  }
+  const view = await render(<QueryClientProvider client={client}><Layout /></QueryClientProvider>);
+  await waitFor(() => expect(client.getQueryState(['study-session', 'active'])?.status).toBe('success'));
+  await act(async () => { await fireEvent.press(view.getByTestId('switch-tab')); });
+
+  await advance(60);
+  expect(play).toHaveBeenCalledTimes(1);
+
+  // Back on the Forja with the result retained: the session is over, the deadline is past, nothing rings again.
+  await change(() => { client.setQueryData(['study-session', 'active'], null); });
+  await act(async () => { await fireEvent.press(view.getByTestId('switch-tab')); });
+  await advance(120);
+  expect(play).toHaveBeenCalledTimes(1);
 });

@@ -10,6 +10,7 @@ import {
   stopStudySession,
   type StudySessionTransitionResult,
 } from '@/features/study-session/api';
+import { stopSessionSounds } from '@/features/study-session/sounds';
 import { dashboardKeys } from '@/features/dashboard/queries';
 
 // Without a Guild the Forja offers only solo sessions.
@@ -21,6 +22,9 @@ jest.mock('@/features/guild/api', () => ({
   joinRaid: jest.fn(),
 }));
 
+jest.mock('@/features/study-session/sounds', () => ({
+  playSessionSound: jest.fn(), releaseSessionSounds: jest.fn(), stopSessionSounds: jest.fn(), unlockSessionSounds: jest.fn(),
+}));
 jest.mock('@/features/study-session/api', () => ({
   STUDY_SESSION_PRESETS: [900, 1500, 3000],
   getActiveStudySession: jest.fn(),
@@ -129,8 +133,10 @@ it('stops with the projected label, shows the confirmed result, then offers a ne
   expect(client.getQueryState(dashboardKeys.profile())?.isInvalidated).toBe(true);
   expect(client.getQueryState(dashboardKeys.recentActivity())?.isInvalidated).toBe(true);
   expect(client.getQueryState(dashboardKeys.metrics())?.isInvalidated).toBe(true);
+  expect(stopSessionSounds).toHaveBeenCalledTimes(1);
   await fireEvent.press(view.getByRole('button', { name: 'Nova sessão' }));
   await view.findByTestId('study-session-setup');
+  expect(stopSessionSounds).toHaveBeenCalledTimes(2);
   view.unmount();
   client.clear();
 });

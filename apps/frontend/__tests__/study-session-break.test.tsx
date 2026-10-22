@@ -230,3 +230,14 @@ it('silences the alarm when a break starts and when a new session is chosen', as
   await fireEvent.press(view.getByTestId('study-session-break-skip'));
   expect(stopSessionSounds).toHaveBeenCalledTimes(2);
 });
+
+it('silences the alarm when the finished break hands over to a new session', async () => {
+  const view = await renderCompletedFocus(inCycle(1));
+  await fireEvent.press(await view.findByRole('button', { name: 'Iniciar pausa curta' }));
+  await advance(300);
+  (stopSessionSounds as jest.Mock).mockClear();
+
+  await fireEvent.press(await view.findByRole('button', { name: 'Nova sessão' }));
+
+  expect(stopSessionSounds).toHaveBeenCalledTimes(1);
+});

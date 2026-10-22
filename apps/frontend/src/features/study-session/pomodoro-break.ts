@@ -17,7 +17,8 @@ export const breakQueryKey = ['study-session', 'break'] as const;
 export function startBreak(queryClient: QueryClient, kind: BreakKind, nowMs: number): BreakRun {
   const durationSeconds = BREAK_SECONDS[kind];
   const run: BreakRun = { kind, durationSeconds, deadlineMs: nowMs + durationSeconds * 1000 };
-  // Nothing observes this entry, so without this it would be garbage collected after five minutes.
+  // No query observer holds this entry (useBreakRun listens to the cache), so without this it would be
+  // garbage collected after five minutes.
   queryClient.setQueryDefaults(breakQueryKey, { gcTime: Infinity });
   queryClient.setQueryData(breakQueryKey, run);
   return run;

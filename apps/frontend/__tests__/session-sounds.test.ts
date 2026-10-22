@@ -124,3 +124,31 @@ it('unlocks every player with a silent play, then restores the volume', () => {
     expect(player.volume).toBe(1);
   }
 });
+
+it('swallows a play blocked by the autoplay policy', async () => {
+  const { sounds, audio } = load();
+  (audio.createAudioPlayer as jest.Mock).mockReturnValueOnce({
+    play: jest.fn(() => Promise.reject(new Error('NotAllowedError'))),
+    pause: jest.fn(), remove: jest.fn(), seekTo: jest.fn(() => Promise.resolve()),
+  });
+
+  sounds.playSessionSound('focusEnd', { loop: true });
+  sounds.unlockSessionSounds();
+  await flush();
+
+  expect(lastPlayer(audio).play).toHaveBeenCalled();
+});
+
+it('does not mute the cue that is ringing when the start gesture unlocks the players', async () => {
+  const { sounds, audio } = load();
+  sounds.playSessionSound('focusEnd', { loop: true });
+  await flush();
+  const ringing = lastPlayer(audio);
+  ringing.play.mockClear();
+
+  sounds.unlockSessionSounds();
+
+  expect(ringing.pause).not.toHaveBeenCalled();
+  expect(ringing.play).not.toHaveBeenCalled();
+  expect(ringing.loop).toBe(true);
+});
