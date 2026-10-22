@@ -83,7 +83,7 @@ describe('raidParty', () => {
 
   it('carries what each member wears: Avatar, Arma and Acessório', () => {
     const [member] = raidParty([entry(1, { avatar: { itemId: 'a1', name: 'Manto Estelar' }, weapon: { itemId: 'w1', name: 'Cajado' }, accessory: { itemId: 'c1', name: 'Pena do Escriba' } })]);
-    expect(member?.equipped).toEqual({ avatar: { itemId: 'a1', name: 'Manto Estelar' }, weapon: { itemId: 'w1', name: 'Cajado' }, accessory: { itemId: 'c1', name: 'Pena do Escriba' } });
+    expect(member?.equipped).toMatchObject({ avatar: { itemId: 'a1', name: 'Manto Estelar' }, weapon: { itemId: 'w1', name: 'Cajado' }, accessory: { itemId: 'c1', name: 'Pena do Escriba' } });
   });
 });
 

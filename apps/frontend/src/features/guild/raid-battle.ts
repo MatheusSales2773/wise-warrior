@@ -64,7 +64,7 @@ export function raidParty(party: readonly RaidRankingEntry[]): PartyMember[] {
     displayName: entry.isMe ? 'Você' : entry.displayName,
     level: entry.level,
     isMe: entry.isMe,
-    equipped: { avatar: entry.avatar, weapon: entry.weapon, accessory: entry.accessory },
+    equipped: entry,
   }));
 }
 

@@ -1,13 +1,12 @@
 import { StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
-import type { EquippedSlot } from './catalog';
 import { PixelSprite } from './PixelSprite';
 import { GRID_HEIGHT, GRID_WIDTH, accessoryLayers, avatarLayers, heroBody, initialAvatarLayer, weaponLayers } from './sprites';
 
-/** An equipped item as the Herói needs it: its Catalog name picks the layer. */
-export type EquippedLayerItem = EquippedSlot | { itemId: string; name: string } | null;
+/** What the Herói wears: the Catalog name of each equipped item picks its layer; `null` with the slot empty. */
+export type HeroLayers = Record<'avatar' | 'weapon' | 'accessory', { name: string } | null>;
 
 /** The layer drawn for the equipped Avatar: its own art, or the initial Avatar's when it has none or the slot is empty. */
-export function avatarLayerFor(equipped: { avatar: EquippedLayerItem }) {
+export function avatarLayerFor(equipped: Pick<HeroLayers, 'avatar'>) {
   return (equipped.avatar && avatarLayers[equipped.avatar.name]) || initialAvatarLayer;
 }
 
@@ -15,7 +14,7 @@ export function avatarLayerFor(equipped: { avatar: EquippedLayerItem }) {
  * The Herói: the neutral body, the Avatar, Arma and Acessório layers stacked on one 16 × 24 grid (ADR-013).
  * Decorative: the equipped items are named by the text around it.
  */
-export function LayeredHero({ equipped, scale, style, testID }: { equipped: { avatar: EquippedLayerItem; weapon: EquippedLayerItem; accessory: EquippedLayerItem }; scale: number; style?: StyleProp<ViewStyle>; testID?: string }) {
+export function LayeredHero({ equipped, scale, style, testID }: { equipped: HeroLayers; scale: number; style?: StyleProp<ViewStyle>; testID?: string }) {
   const weapon = equipped.weapon && weaponLayers[equipped.weapon.name];
   const accessory = equipped.accessory && accessoryLayers[equipped.accessory.name];
   return <View
