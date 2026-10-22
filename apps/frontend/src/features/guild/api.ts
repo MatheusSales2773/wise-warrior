@@ -107,8 +107,8 @@ export type RaidHit = {
 /** An equipped Cosmetic Item as shown on someone else's screen; `null` when the slot is empty. */
 export type EquippedLook = { itemId: string; name: string } | null;
 
-/** What a member wears on someone else's screen: the Avatar and the Acessório. */
-export type EquippedAppearance = { avatar: EquippedLook; accessory: EquippedLook };
+/** What a member wears on someone else's screen: the Avatar, the Arma and the Acessório. */
+export type EquippedAppearance = { avatar: EquippedLook; weapon: EquippedLook; accessory: EquippedLook };
 
 export type RaidRankingEntry = EquippedAppearance & {
   position: number;

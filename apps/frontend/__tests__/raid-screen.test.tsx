@@ -24,7 +24,7 @@ const mine: MyGuild = {
   role: 'member',
 };
 const entry = (position: number, name: string, xp: number, isMe = false): RaidRankingEntry => ({
-  position, userId: `u-${name}`, displayName: name, level: 10 + position, title: null, avatar: null, accessory: null, contributionXp: xp, isMe,
+  position, userId: `u-${name}`, displayName: name, level: 10 + position, title: null, avatar: null, weapon: null, accessory: null, contributionXp: xp, isMe,
 });
 const ranking = [entry(1, 'Astaroth', 14_520), entry(2, 'Eldoria', 12_660), entry(3, 'Ravenstone', 11_160), entry(4, 'Guilherme', 6_780, true), entry(5, 'Brisa', 600)];
 
@@ -155,6 +155,16 @@ describe('RaidBattleScreen on desktop', () => {
     expect(screen.getByTestId('raid-scene-background', { includeHiddenElements: true })).toBeTruthy();
   });
 
+  it('draws the Herói of a bare member with the initial Avatar and no Arma', async () => {
+    mockedRaid.mockResolvedValue(raid({ party: [entry(1, 'Brisa', 9_000)] }));
+    await renderRaid();
+
+    const hero = within(await screen.findByTestId('raid-scene-hero-u-Brisa', { includeHiddenElements: true }));
+    expect(hero.getByTestId('character-hero-layer-avatar', { includeHiddenElements: true })).toBeTruthy();
+    expect(hero.queryByTestId('character-hero-layer-weapon', { includeHiddenElements: true })).toBeNull();
+    expect(hero.queryByTestId('character-hero-layer-accessory', { includeHiddenElements: true })).toBeNull();
+  });
+
   it('offers the Mission reward to everyone who contributes and opens the Forja in guild mode', async () => {
     await renderRaid();
 
@@ -186,12 +196,12 @@ describe('RaidBattleScreen on desktop', () => {
   });
 
   it('draws the party from the Raid with the equipped look and falls back to the default scene art', async () => {
-    const dressed = { ...entry(1, 'Astaroth', 14_520), avatar: { itemId: 'a1', name: 'Armadura do Lobo' }, accessory: { itemId: 'c1', name: 'Pena do Escriba' } };
+    const dressed = { ...entry(1, 'Astaroth', 14_520), avatar: { itemId: 'a1', name: 'Manto Estelar' }, weapon: { itemId: 'w1', name: 'Cajado' }, accessory: { itemId: 'c1', name: 'Selo dos Madrugadores' } };
     mockedRaid.mockResolvedValue(raid({ mission: { slug: 'missao-sem-arte', name: 'Sem Arte', description: 'x', imageUrl: null }, party: [dressed] }));
     await renderRaid();
 
-    expect(await screen.findByTestId('raid-scene-accessory-u-Astaroth', { includeHiddenElements: true })).toBeTruthy();
-    expect(screen.getByTestId('raid-scene-hero-u-Astaroth', { includeHiddenElements: true })).toBeTruthy();
+    const hero = within(await screen.findByTestId('raid-scene-hero-u-Astaroth', { includeHiddenElements: true }));
+    for (const layer of ['body', 'avatar', 'weapon', 'accessory']) expect(hero.getByTestId(`character-hero-layer-${layer}`, { includeHiddenElements: true })).toBeTruthy();
     expect(screen.queryByTestId('raid-scene-hero-u-Brisa', { includeHiddenElements: true })).toBeNull();
     expect(screen.getByTestId('raid-scene-background', { includeHiddenElements: true })).toBeTruthy();
   });

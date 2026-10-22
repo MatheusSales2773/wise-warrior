@@ -151,8 +151,8 @@ describe('pixel sprites', () => {
 
   it('falls back to the initial Avatar layer without an Avatar or without art for it', () => {
     expect(avatarLayerFor({ avatar: null })).toBe(initialAvatarLayer);
-    expect(avatarLayerFor({ avatar: { itemId: 'i', name: 'Avatar sem arte', sprite: 'capuzDoErudito' } })).toBe(initialAvatarLayer);
-    expect(avatarLayerFor({ avatar: { itemId: 'i', name: 'Manto Estelar', sprite: 'mantoEstelar' } })).toBe(avatarLayers['Manto Estelar']);
+    expect(avatarLayerFor({ avatar: { name: 'Avatar sem arte' } })).toBe(initialAvatarLayer);
+    expect(avatarLayerFor({ avatar: { name: 'Manto Estelar' } })).toBe(avatarLayers['Manto Estelar']);
   });
 
   it('composes the initial Avatar over the body into the initial class sprite', () => {

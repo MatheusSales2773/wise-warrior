@@ -2,8 +2,8 @@ import type { ReactNode } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { theme } from '@/design-system';
 import { PixelSprite } from '@/features/character/PixelSprite';
-import { itemSprites } from '@/features/character/sprites';
-import { partyHeroSprites, partyHeroWeapons, type PartyMember } from './raid-battle';
+import { LayeredHero } from '@/features/character/layered-hero';
+import type { PartyMember } from './raid-battle';
 import {
   RAID_HERO_SIZE,
   RAID_PARTY_ORIGIN,
@@ -13,7 +13,6 @@ import {
   RAID_SCENE_HIT_ANCHOR,
   RAID_SCENE_WIDTH,
   RAID_SHADOW,
-  raidWeapons,
 } from './raid-scene-sprites';
 import { defaultRaidSceneArt, type RaidSceneArt } from './raid-scene-art';
 
@@ -29,19 +28,11 @@ function slotOrigin(index: number) {
   return { x: RAID_PARTY_ORIGIN.x + index * RAID_PARTY_SPACING, y: RAID_PARTY_ORIGIN.y };
 }
 
-/** Where the Acessório (8 × 8) hangs, relative to the hero's slot: at the hero's feet, away from the weapon. */
-const ACCESSORY_OFFSET = { x: -4, y: 16 } as const;
-
 function PartyHeroFigure({ index, member, scale }: { index: number; member: PartyMember; scale: number }) {
   const origin = slotOrigin(index);
-  const weapon = raidWeapons[partyHeroWeapons[member.hero]];
   return <>
     <View style={[styles.layer, { left: (origin.x + RAID_SHADOW.x) * scale, top: (origin.y + RAID_SHADOW.y) * scale, width: RAID_SHADOW.width * scale, height: scale, backgroundColor: RAID_SHADOW.color }]} />
-    <PixelSprite scale={scale} sprite={partyHeroSprites[member.hero]} style={[styles.layer, { left: origin.x * scale, top: origin.y * scale }]} testID={`raid-scene-hero-${member.userId}`} />
-    <PixelSprite scale={scale} sprite={weapon.sprite} style={[styles.layer, { left: (origin.x + weapon.offset.x) * scale, top: (origin.y + weapon.offset.y) * scale }]} />
-    {member.accessory
-      ? <PixelSprite scale={scale} sprite={itemSprites[member.accessory]} style={[styles.layer, { left: (origin.x + ACCESSORY_OFFSET.x) * scale, top: (origin.y + ACCESSORY_OFFSET.y) * scale }]} testID={`raid-scene-accessory-${member.userId}`} />
-      : null}
+    <LayeredHero equipped={member.equipped} scale={scale} style={[styles.layer, { left: origin.x * scale, top: origin.y * scale }]} testID={`raid-scene-hero-${member.userId}`} />
   </>;
 }
 
