@@ -56,7 +56,11 @@ export function createDevicePreferences(storage: PreferencesStorage) {
   const notify = () => listeners.forEach((listener) => listener());
 
   const load = (): Promise<void> => {
-    loading ??= (async () => storage.read())().then(parse, () => ({}) as Partial<DevicePreferences>).then((stored) => {
+    loading ??= (async () => storage.read())().then(parse, () => {
+      // Defaults for now; the next `load` reads again instead of caching the failure.
+      loading = null;
+      return {} as Partial<DevicePreferences>;
+    }).then((stored) => {
       // A choice made while the read was pending wins over the stored value.
       values = { ...DEFAULT_PREFERENCES, ...stored, ...touched };
       loaded = true;
@@ -64,6 +68,18 @@ export function createDevicePreferences(storage: PreferencesStorage) {
     });
     return loading;
   };
+
+  let writing: Promise<void> = Promise.resolve();
+  /** Writes the stored keys plus this run's choices; never a blob rebuilt from defaults, which could erase keys that were not read. */
+  const persist = async () => {
+    try {
+      const stored = parse(await storage.read());
+      await storage.write(JSON.stringify({ ...stored, ...touched }));
+    } catch {
+      // Storage unavailable: the choice holds until the app closes, and the stored keys stay as they are.
+    }
+  };
+
   return {
     get: (): DevicePreferences => values,
     isLoaded: () => loaded,
@@ -77,12 +93,8 @@ export function createDevicePreferences(storage: PreferencesStorage) {
       touched[key] = value;
       values = { ...values, [key]: value };
       notify();
-      await load();
-      try {
-        await storage.write(JSON.stringify(values));
-      } catch {
-        // Storage unavailable: the choice holds until the app closes.
-      }
+      writing = writing.then(persist);
+      await writing;
     },
   };
 }
@@ -95,4 +107,9 @@ export function useDevicePreference<K extends keyof DevicePreferences>(key: K): 
   useEffect(() => { void devicePreferences.load(); }, []);
   const set = useCallback((value: DevicePreferences[K]) => { void devicePreferences.set(key, value); }, [key]);
   return [snapshot[key], set] as const;
+}
+
+/** True once the stored preferences were read (or the read failed and the defaults stand). */
+export function useDevicePreferencesLoaded(): boolean {
+  return useSyncExternalStore(devicePreferences.subscribe, devicePreferences.isLoaded, devicePreferences.isLoaded);
 }

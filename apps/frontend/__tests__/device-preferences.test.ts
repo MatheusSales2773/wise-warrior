@@ -4,6 +4,7 @@ import type { PreferencesStorage } from '@/core/preferences/types';
 function memoryStorage(initial: string | null = null) {
   const storage: { value: string | null } = { value: initial };
   return {
+    value: () => storage.value,
     read: jest.fn<ReturnType<PreferencesStorage['read']>, []>(async () => storage.value),
     write: jest.fn<ReturnType<PreferencesStorage['write']>, [string]>(async (value) => { storage.value = value; }),
   };
@@ -60,6 +61,38 @@ describe('device preferences', () => {
     await preferences.set('defaultFocusDuration', 3000);
     await loading;
     expect(preferences.get().defaultFocusDuration).toBe(3000);
+  });
+
+  it('keeps the stored keys it did not read when it writes a choice', async () => {
+    const storage = memoryStorage(JSON.stringify({ reduceMotion: true, confirmBeforeStopping: false }));
+    storage.read.mockRejectedValueOnce(new Error('keychain locked'));
+    const preferences = createDevicePreferences(storage);
+    await preferences.load();
+    expect(preferences.get().reduceMotion).toBe(false);
+
+    await preferences.set('defaultFocusDuration', 900);
+
+    expect(JSON.parse(storage.value() as string)).toEqual({ reduceMotion: true, confirmBeforeStopping: false, defaultFocusDuration: 900 });
+  });
+
+  it('does not write over the stored data when it cannot read it back', async () => {
+    const storage = memoryStorage(JSON.stringify({ reduceMotion: true }));
+    const preferences = createDevicePreferences(storage);
+    await preferences.load();
+    storage.read.mockRejectedValue(new Error('keychain locked'));
+    await preferences.set('defaultFocusDuration', 900);
+    expect(storage.write).not.toHaveBeenCalled();
+    expect(preferences.get().defaultFocusDuration).toBe(900);
+  });
+
+  it('reads again after a failed read and keeps the choices made meanwhile', async () => {
+    const storage = memoryStorage(JSON.stringify({ reduceMotion: true }));
+    storage.read.mockRejectedValueOnce(new Error('keychain locked'));
+    const preferences = createDevicePreferences(storage);
+    await preferences.load();
+    await preferences.set('defaultFocusDuration', 900).catch(() => undefined);
+    await preferences.load();
+    expect(preferences.get()).toEqual({ ...DEFAULT_PREFERENCES, reduceMotion: true, defaultFocusDuration: 900 });
   });
 
   it('keeps the choice for this run when the write fails, and notifies subscribers', async () => {
