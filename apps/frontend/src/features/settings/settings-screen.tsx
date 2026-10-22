@@ -3,23 +3,15 @@ import Constants from 'expo-constants';
 import { Link, Slot, Stack, usePathname, useRouter, type Href } from 'expo-router';
 import type { ReactNode } from 'react';
 import { Platform, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
-import { FeedbackMessage, ProgressBar, WiseButton, WiseIcon, isDesktopLayout, theme, type WiseIconName } from '@/design-system';
+import { FeedbackMessage, WiseButton, WiseIcon, isDesktopLayout, theme, type WiseIconName } from '@/design-system';
 import { useRuntimeMotionDuration } from '@/design-system/components/motion-runtime';
 import { useLogoutAction } from '@/design-system/navigation/LogoutAction';
 import { logoutErrorMessage } from '@/features/auth/messages';
 import { useSignOut } from '@/features/auth/use-sign-out';
-import { equippedItems } from '@/features/character/catalog';
-import { HeroGlow } from '@/features/character/character-art';
 import { SectionHeader, useFocusRing } from '@/features/character/character-parts';
-import { LayeredHero } from '@/features/character/layered-hero';
-import type { UserProfile } from '@/features/dashboard/api';
 import { profileQueryOptions } from '@/features/dashboard/queries';
-import { activeSettingsSection, planName, settingsSection, settingsSections, type SettingsSectionId } from './sections';
-
-/** "Free · premium em breve": the current plan, with no upgrade to offer yet. */
-function planLabel(planTier: string) {
-  return `${planName(planTier)} · premium em breve`;
-}
+import { activeSettingsSection, menuHref, settingsSection, settingsSections, type SettingsSectionId } from './sections';
+import { AccountHeader, InfoRow, settingsStyles } from './settings-content';
 
 function useDesktop() {
   const { width } = useWindowDimensions();
@@ -35,62 +27,7 @@ function VersionFooter() {
   return <Text style={styles.version} testID="settings-version">{appVersionLabel()}</Text>;
 }
 
-/* ---------- Cabeçalho da conta ---------- */
-
-function ProfileCard({ user }: { user: UserProfile }) {
-  return <View style={styles.profileCard} testID="settings-profile">
-    <View style={styles.profileAvatar}>
-      <HeroGlow height={86.4} opacity={0.24} style={styles.profileGlow} width={84} />
-      <LayeredHero equipped={equippedItems(user)} scale={3} style={styles.profileHero} />
-    </View>
-    <View style={styles.profileCopy}>
-      <Text numberOfLines={1} style={styles.profileName}>{user.displayName}</Text>
-      <Text numberOfLines={1} style={styles.profileEmail}>{user.email}</Text>
-      <View style={styles.pill}>
-        <Text style={styles.pillText}>{`PLANO ${user.planTier.toUpperCase()}`}</Text>
-      </View>
-    </View>
-  </View>;
-}
-
-/** The account header from `GET /users/me`, with its own loading and failure states. */
-function AccountHeader() {
-  const profile = useQuery(profileQueryOptions());
-  if (profile.data) return <ProfileCard user={profile.data} />;
-  if (profile.isError) {
-    return <View style={styles.stateBlock} testID="settings-profile-error">
-      <FeedbackMessage message="Não foi possível carregar sua conta." title="Conta indisponível" variant="error" />
-      <WiseButton label="Tentar novamente" loading={profile.isRefetching} onPress={() => void profile.refetch()} variant="ghost" />
-    </View>;
-  }
-  return <View accessibilityLabel="Carregando sua conta" accessibilityState={{ busy: true }} aria-busy style={styles.stateBlock} testID="settings-profile-loading">
-    <ProgressBar indeterminate accessibilityLabel="Carregando sua conta" />
-  </View>;
-}
-
 /* ---------- Seções ---------- */
-
-function InfoRow({ icon, title, value }: { icon: WiseIconName; title: string; value: string }) {
-  return <View accessible accessibilityLabel={`${title}: ${value}`} style={styles.row}>
-    <WiseIcon color="textSecondary" name={icon} size="compact" />
-    <Text style={styles.rowTitle}>{title}</Text>
-    <Text numberOfLines={1} style={styles.rowValue}>{value}</Text>
-  </View>;
-}
-
-function PlanContent() {
-  const profile = useQuery(profileQueryOptions());
-  if (!profile.data) return <AccountHeader />;
-  return <View style={styles.list}>
-    <InfoRow icon="diamond-outline" title="Plano atual" value={planLabel(profile.data.planTier)} />
-  </View>;
-}
-
-function SectionContent({ id }: { id: SettingsSectionId }) {
-  if (id === 'conta') return <AccountHeader />;
-  if (id === 'plano') return <PlanContent />;
-  return null;
-}
 
 function BackToSettings() {
   const router = useRouter();
@@ -118,7 +55,7 @@ export function SettingsSectionScreen({ id }: { id: SettingsSectionId }) {
       <View style={styles.card}>
         <SectionHeader>{section.label}</SectionHeader>
         <Text style={styles.description}>{section.description}</Text>
-        <SectionContent id={id} />
+        {section.Content ? <section.Content /> : null}
       </View>
     </ScrollView>;
   }
@@ -126,19 +63,19 @@ export function SettingsSectionScreen({ id }: { id: SettingsSectionId }) {
     <BackToSettings />
     <Text accessibilityRole="header" aria-level={1} style={styles.mobileTitle}>{section.label}</Text>
     <Text style={styles.description}>{section.description}</Text>
-    <SectionContent id={id} />
+    {section.Content ? <section.Content /> : null}
   </ScrollView>;
 }
 
 /* ---------- Lista agrupada (celular) ---------- */
 
-function LinkRow({ first, href, icon, title, value }: { first?: boolean; href: Href; icon: WiseIconName; title: string; value?: string }) {
+function LinkRow({ href, icon, title, value }: { href: Href; icon: WiseIconName; title: string; value?: string }) {
   const { focusProps, focusStyle } = useFocusRing();
   return <Link asChild href={href}>
-    <Pressable {...focusProps} accessibilityLabel={value ? `${title}: ${value}` : title} accessibilityRole="link" style={StyleSheet.flatten([styles.row, !first && styles.rowDivided, focusStyle])}>
+    <Pressable {...focusProps} accessibilityLabel={value ? `${title}: ${value}` : title} accessibilityRole="link" style={StyleSheet.flatten([settingsStyles.row, focusStyle])}>
       <WiseIcon color="textSecondary" name={icon} size="compact" />
-      <Text style={styles.rowTitle}>{title}</Text>
-      {value ? <Text numberOfLines={1} style={styles.rowValue}>{value}</Text> : null}
+      <Text style={settingsStyles.rowTitle}>{title}</Text>
+      {value ? <Text numberOfLines={1} style={settingsStyles.rowValue}>{value}</Text> : null}
       <WiseIcon color="textTertiary" name="chevron-forward" size="xsmall" />
     </Pressable>
   </Link>;
@@ -147,7 +84,7 @@ function LinkRow({ first, href, icon, title, value }: { first?: boolean; href: H
 function Group({ children, label }: { children: ReactNode; label: string }) {
   return <View style={styles.group}>
     <Text accessibilityRole="header" aria-level={2} style={styles.groupLabel}>{label.toUpperCase()}</Text>
-    <View style={styles.list}>{children}</View>
+    <View style={settingsStyles.list}>{children}</View>
   </View>;
 }
 
@@ -161,7 +98,7 @@ function SignOut({ children }: { children: (action: { pending: boolean; submit: 
 }
 
 function SignOutButton() {
-  return <View style={styles.stateBlock}>
+  return <View style={settingsStyles.stateBlock}>
     <SignOut>
       {({ pending, submit }) => <WiseButton label="Sair da conta" leading={<WiseIcon color="feedbackDanger" name="log-out-outline" size="xsmall" />} loading={pending} onPress={submit} variant="danger" />}
     </SignOut>
@@ -174,22 +111,10 @@ function SettingsList() {
   return <ScrollView contentContainerStyle={styles.mobileScreen} testID="settings-list">
     <Text accessibilityRole="header" aria-level={1} style={styles.mobileTitle}>Configuração</Text>
     <AccountHeader />
-    <Group label="Conta">
-      <LinkRow first href="/configuracao/conta" icon="person-outline" title="Nome do guerreiro" value={user?.displayName} />
-      {user ? <View style={styles.rowDivided}><InfoRow icon="mail-outline" title="E-mail" value={user.email} /></View> : null}
-    </Group>
-    <Group label="Foco">
-      <LinkRow first href="/configuracao/foco" icon="hammer-outline" title="Foco" />
-    </Group>
-    <Group label="Segurança">
-      <LinkRow first href="/configuracao/dispositivos" icon="phone-portrait-outline" title="Dispositivos conectados" />
-    </Group>
-    <Group label="Acessibilidade">
-      <LinkRow first href="/configuracao/acessibilidade" icon="accessibility-outline" title="Acessibilidade" />
-    </Group>
-    <Group label="Plano">
-      <LinkRow first href="/configuracao/plano" icon="diamond-outline" title="Plano atual" value={user ? planLabel(user.planTier) : undefined} />
-    </Group>
+    {settingsSections.map((section) => <Group key={section.id} label={section.group}>
+      <LinkRow href={section.href} icon={section.row.icon} title={section.row.title} value={user && section.row.value?.(user)} />
+      {user && section.details?.(user).map((detail) => <View key={detail.title} style={settingsStyles.rowDivided}><InfoRow {...detail} /></View>)}
+    </Group>)}
     <SignOutButton />
     <VersionFooter />
   </ScrollView>;
@@ -229,7 +154,7 @@ function SettingsMenu({ active }: { active: SettingsSectionId }) {
   return <View accessibilityLabel="Seções da configuração" role="navigation" style={styles.menu}>
     {settingsSections.map((section) => <MenuItem
       active={section.id === active}
-      href={section.desktopHref}
+      href={menuHref(section)}
       icon={section.icon}
       key={section.id}
       label={section.label}
@@ -309,24 +234,9 @@ const styles = StyleSheet.create({
   back: { minHeight: theme.layout.touchTarget, alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 6, marginLeft: -4, marginVertical: -12 },
   backLabel: { fontFamily: 'Inter-SemiBold', fontSize: 14, lineHeight: 17, color: theme.color.accentPrimary },
 
-  profileCard: { flexDirection: 'row', alignItems: 'center', gap: 14, paddingLeft: 12, paddingRight: 14, paddingVertical: 12, borderRadius: theme.radius.card, borderWidth: theme.border.standard, borderColor: theme.color.accentMuted, backgroundColor: theme.color.surfaceCard },
-  profileAvatar: { width: 60, height: 72, overflow: 'hidden', borderRadius: theme.radius.control, borderWidth: theme.border.standard, borderColor: theme.color.accentMuted, backgroundColor: theme.color.surfaceInset },
-  profileGlow: { position: 'absolute', top: -8.2, left: -13 },
-  profileHero: { position: 'absolute', top: -5, left: 5 },
-  profileCopy: { flex: 1, minWidth: 0, alignItems: 'flex-start', gap: 3 },
-  profileName: { fontFamily: cinzel, fontSize: 17, lineHeight: 23, color: theme.color.textPrimary },
-  profileEmail: { fontFamily: 'Inter-Regular', fontSize: 12, lineHeight: 15, color: theme.color.textSecondary },
-  pill: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: theme.radius.pill, borderWidth: theme.border.standard, borderColor: theme.color.accentMuted, backgroundColor: theme.color.surfaceInset },
-  pillText: { fontFamily: mono, fontSize: 9, lineHeight: 12, letterSpacing: 0.8, color: theme.color.accentPrimary },
-  stateBlock: { gap: theme.space.inlineTight },
 
   group: { gap: theme.space.inlineTight },
   groupLabel: { fontFamily: mono, fontSize: 10, lineHeight: 13, letterSpacing: 1.2, color: theme.color.textTertiary },
-  list: { overflow: 'hidden', borderRadius: theme.radius.card, borderWidth: theme.border.standard, borderColor: theme.color.borderSubtle, backgroundColor: theme.color.surfaceCard },
-  row: { minHeight: theme.layout.touchTarget, flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 14, paddingVertical: 13 },
-  rowDivided: { borderTopWidth: theme.border.standard, borderTopColor: theme.color.borderGhost },
-  rowTitle: { flex: 1, fontFamily: 'Inter-Medium', fontSize: 14, lineHeight: 17, color: theme.color.textPrimary },
-  rowValue: { flexShrink: 1, fontFamily: 'Inter-Regular', fontSize: 13, lineHeight: 16, color: theme.color.textTertiary },
 
   version: { fontFamily: mono, fontSize: 10, lineHeight: 13, letterSpacing: 0.8, color: theme.color.textTertiary },
 });
