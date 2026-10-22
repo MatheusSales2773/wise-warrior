@@ -207,7 +207,7 @@ fazem parte desse primeiro corte.
 **Sessão persistente multi-dispositivo (novo — ADR-009)**
 - Quando um usuário efetua login, o sistema shall criar uma nova sessão persistente (linha em `Session`) sem invalidar sessões ativas em outros dispositivos, até um limite de 5 sessões simultâneas — ao exceder, o sistema shall revogar automaticamente a sessão menos recentemente usada.
 - Quando qualquer evento de progresso (XP, nível, raid, convite de guilda) ocorre, o sistema shall propagá-lo em tempo real para todas as conexões WebSocket ativas do mesmo usuário, independentemente do dispositivo.
-- Onde o usuário revoga uma sessão específica ou aciona "sair de todos os dispositivos", o sistema shall invalidar o(s) refresh token(s) correspondente(s) imediatamente, encerrando a conexão WebSocket associada.
+- Onde o usuário revoga uma sessão específica ou aciona "encerrar os outros dispositivos", o sistema shall invalidar o(s) refresh token(s) correspondente(s) imediatamente, encerrando a conexão WebSocket associada, e shall preservar a sessão do dispositivo em uso.
 
 **Experiência universal (ADR-008 revisado)**
 - Onde o cliente for Web desktop, o sistema shall usar navegação lateral e composições amplas derivadas do standalone.
@@ -249,7 +249,7 @@ fazem parte desse primeiro corte.
 - Dado um usuário já logado no notebook, quando ele faz login no celular, então a sessão do notebook permanece ativa e ambas aparecem em `GET /users/me/sessions`.
 - Dado dois dispositivos logados do mesmo usuário, quando um deles ganha XP numa sessão de estudo, então o outro dispositivo recebe o evento `progress:xpUpdated` via WebSocket em até 1 segundo, sem recarregar a página.
 - Dado um usuário com 5 sessões ativas, quando ele faz login num 6º dispositivo, então a sessão menos recentemente usada é revogada automaticamente.
-- Dado um usuário que aciona "sair de todos os dispositivos", quando a ação é confirmada, então toda sessão ativa é revogada e cada dispositivo é desconectado do WebSocket na próxima tentativa de uso do access token expirado.
+- Dado um usuário que aciona "encerrar os outros dispositivos", quando a ação é confirmada, então toda sessão ativa exceto a do dispositivo em uso é revogada, cada dispositivo encerrado é desconectado do WebSocket na próxima tentativa de uso do access token expirado, e o dispositivo em uso continua logado.
 
 ### 7.5 Checklist de implementação — backlog Must da Fase 1
 
@@ -312,7 +312,7 @@ fazem parte desse primeiro corte.
 - Cada login cria uma linha na tabela `Session` (seção 9), com um refresh token próprio (rotativo, hash armazenado — nunca o token em texto puro). Limite de 5 sessões simultâneas por usuário (configurável); ao exceder, a sessão mais antiga é revogada automaticamente.
 - Refresh token entregue como cookie `httpOnly` + `Secure` + `SameSite=Lax` no client web (não em `localStorage`, para reduzir superfície de XSS); access token JWT de vida curta (15 min) usado no `Authorization` header.
 - Todo evento relevante (XP ganho, level-up, progresso de raid, convite de guilda) é emitido pelo backend na room Socket.IO `user:{id}` (já prevista na seção 10) — cada dispositivo logado abre sua própria conexão de socket e entra automaticamente nessa room ao autenticar, recebendo o mesmo evento em paralelo.
-- Endpoint de "sair de todos os dispositivos" revoga todas as linhas de `Session` do usuário de uma vez; endpoint de listagem de sessões ativas permite revogar um dispositivo específico (ex.: notebook antigo esquecido logado).
+- Endpoint de "encerrar os outros dispositivos" revoga de uma vez todas as linhas de `Session` do usuário exceto a do dispositivo em uso (identificada pelo access token); para sair também do dispositivo atual, o usuário usa o logout; endpoint de listagem de sessões ativas permite revogar um dispositivo específico (ex.: notebook antigo esquecido logado).
 **Consequência:** nenhuma duplicação de estado entre dispositivos é necessária — o MySQL já é a fonte única de verdade (arquitetura já documentada); este ADR só formaliza como a autenticação e o tempo real acompanham múltiplos dispositivos do mesmo usuário.
 
 ### ADR-010: Título é o Cosmetic Item equipado da categoria `title`
@@ -419,8 +419,8 @@ Entidades principais (nomes lógicos, DDL real fica para a implementação):
 
 **REST (NestJS controllers, prefixo `/api/v1`)**
 - `POST /auth/register`, `POST /auth/login`, `POST /auth/refresh` (rotativo, seta cookie `httpOnly` de refresh — ADR-009), `POST /auth/logout` (revoga a sessão atual)
-- `GET /users/me/sessions` (lista dispositivos logados), `DELETE /users/me/sessions/{id}` (revoga um dispositivo), `DELETE /users/me/sessions` (sai de todos os dispositivos)
-- `GET /users/me`, `PATCH /users/me/cosmetics/{itemId}` (equipar)
+- `GET /users/me/sessions` (lista dispositivos logados), `DELETE /users/me/sessions/{id}` (revoga um dispositivo), `DELETE /users/me/sessions` (encerra os outros dispositivos, preservando o atual)
+- `GET /users/me`, `PATCH /users/me` (altera o nome do guerreiro), `PATCH /users/me/cosmetics/{itemId}` (equipar)
 - `POST /sessions` (iniciar), `PATCH /sessions/{id}/heartbeat`, `POST /sessions/{id}/complete`
 - `GET /guilds/{id}`, `POST /guilds`, `POST /guilds/{id}/members`
 - `GET /raids/{id}`, `POST /raids/{id}/join`

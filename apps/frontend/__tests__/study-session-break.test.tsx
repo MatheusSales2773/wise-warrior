@@ -11,7 +11,7 @@ import {
   type StudySessionTransitionResult,
 } from '@/features/study-session/api';
 import { clearCompletionIntent } from '@/features/study-session/completion-intent';
-import { playSessionSound } from '@/features/study-session/sounds';
+import { stopSessionSounds } from '@/features/study-session/sounds';
 import { useStudySessionAppActive } from '@/features/study-session/use-study-session-app-active';
 
 // The day history and the week chart have their own tests (forge-history.test.tsx).
@@ -22,7 +22,9 @@ jest.mock('@/features/guild/api', () => ({
   joinRaid: jest.fn(),
 }));
 
-jest.mock('@/features/study-session/sounds', () => ({ playSessionSound: jest.fn(), releaseSessionSounds: jest.fn() }));
+jest.mock('@/features/study-session/sounds', () => ({
+  playSessionSound: jest.fn(), releaseSessionSounds: jest.fn(), stopSessionSounds: jest.fn(), unlockSessionSounds: jest.fn(),
+}));
 jest.mock('@/features/study-session/api', () => ({
   STUDY_SESSION_PRESETS: [900, 1500, 3000],
   completeStudySession: jest.fn(),
@@ -218,24 +220,24 @@ it('drops the break when a session is started on another device', async () => {
   expect(client.getQueryData(['study-session', 'break'])).toBeUndefined();
 });
 
-it('rings the focus cue on completion and the break cue when the break runs out', async () => {
+it('silences the alarm when a break starts and when a new session is chosen', async () => {
   const view = await renderCompletedFocus(inCycle(1));
-  expect(playSessionSound).toHaveBeenCalledTimes(1);
-  expect(playSessionSound).toHaveBeenLastCalledWith('focusEnd');
+  (stopSessionSounds as jest.Mock).mockClear();
 
   await fireEvent.press(await view.findByRole('button', { name: 'Iniciar pausa curta' }));
-  await advance(299);
-  expect(playSessionSound).toHaveBeenCalledTimes(1);
-  await advance(1);
+  expect(stopSessionSounds).toHaveBeenCalledTimes(1);
 
-  expect(playSessionSound).toHaveBeenCalledTimes(2);
-  expect(playSessionSound).toHaveBeenLastCalledWith('breakEnd');
+  await fireEvent.press(view.getByTestId('study-session-break-skip'));
+  expect(stopSessionSounds).toHaveBeenCalledTimes(2);
 });
 
-it('rings nothing when a break is skipped', async () => {
+it('silences the alarm when the finished break hands over to a new session', async () => {
   const view = await renderCompletedFocus(inCycle(1));
   await fireEvent.press(await view.findByRole('button', { name: 'Iniciar pausa curta' }));
-  await fireEvent.press(view.getByTestId('study-session-break-skip'));
+  await advance(300);
+  (stopSessionSounds as jest.Mock).mockClear();
 
-  expect(playSessionSound).toHaveBeenCalledTimes(1);
+  await fireEvent.press(await view.findByRole('button', { name: 'Nova sessão' }));
+
+  expect(stopSessionSounds).toHaveBeenCalledTimes(1);
 });
