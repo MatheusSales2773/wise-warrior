@@ -19,6 +19,7 @@ jest.mock('expo-linear-gradient', () => {
   const { View } = jest.requireActual('react-native-web');
   return { LinearGradient: ({ colors: _colors, start: _start, end: _end, ...props }) => <View {...props} /> };
 });
+jest.mock('@/core/preferences/preferences-storage', () => ({ preferencesStorage: { read: jest.fn(async () => null), write: jest.fn(async () => undefined) } }));
 jest.mock('expo-splash-screen', () => ({ hideAsync: jest.fn() }));
 jest.mock('expo/src/winter/fetch', () => ({ fetch: jest.fn() }));
 

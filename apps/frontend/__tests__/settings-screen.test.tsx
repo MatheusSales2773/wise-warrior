@@ -2,7 +2,7 @@ import { act } from '@testing-library/react-native';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { router as appRouter, Slot } from 'expo-router';
 import { fireEvent, renderRouter, screen, waitFor, within } from 'expo-router/testing-library';
-import { Platform, Text } from 'react-native';
+import { AccessibilityInfo, Platform, Text } from 'react-native';
 import { AppShell } from '@/design-system/components/AppShell';
 import { devicePreferences } from '@/core/preferences/device-preferences';
 import { preferencesStorage } from '@/core/preferences/preferences-storage';
@@ -99,6 +99,46 @@ afterEach(async () => {
   mockAuthState.logout.mockReset();
   mockAuthState.logout.mockResolvedValue(undefined);
   await resetViewport();
+});
+
+describe('Acessibilidade', () => {
+  afterEach(async () => {
+    jest.restoreAllMocks();
+    await devicePreferences.set('reduceMotion', false);
+  });
+
+  it('turns "Reduzir movimento" on and off, off by default, and keeps the choice on the device', async () => {
+    jest.spyOn(AccessibilityInfo, 'isReduceMotionEnabled').mockResolvedValue(false);
+    await setViewport('web', 1440);
+    await openSettings('/configuracao/acessibilidade');
+
+    const toggle = () => screen.getByRole('switch', { name: 'Reduzir movimento' });
+    await waitFor(() => expect(toggle().props.accessibilityState.disabled).toBe(false));
+    expect(toggle().props.accessibilityState.checked).toBe(false);
+    expect(screen.queryByText('Tema')).toBeNull();
+
+    await fireEvent.press(toggle());
+    expect(toggle().props.accessibilityState.checked).toBe(true);
+    expect(devicePreferences.get().reduceMotion).toBe(true);
+    expect(preferencesStorage.write).toHaveBeenLastCalledWith(expect.stringContaining('"reduceMotion":true'));
+
+    await fireEvent.press(toggle());
+    expect(toggle().props.accessibilityState.checked).toBe(false);
+    expect(devicePreferences.get().reduceMotion).toBe(false);
+  });
+
+  it('shows the switch on and disabled, with an explanation, when the system asks for reduced motion', async () => {
+    jest.spyOn(AccessibilityInfo, 'isReduceMotionEnabled').mockResolvedValue(true);
+    await setViewport('web', 1440);
+    await openSettings('/configuracao/acessibilidade');
+
+    const toggle = await screen.findByRole('switch', { name: 'Reduzir movimento' });
+    expect(toggle.props.accessibilityState).toEqual({ checked: true, disabled: true });
+    expect(screen.getByText('O app segue a configuração de movimento do seu sistema.')).toBeTruthy();
+
+    await fireEvent.press(toggle);
+    expect(devicePreferences.get().reduceMotion).toBe(false);
+  });
 });
 
 describe('Foco', () => {

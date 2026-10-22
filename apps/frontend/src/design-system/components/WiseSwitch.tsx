@@ -1,14 +1,15 @@
 import { useEffect, useRef, useState } from 'react';
 import { Animated, Platform, Pressable, StyleSheet, type AccessibilityRole } from 'react-native';
-import { theme } from '../tokens/theme';
+import { motionDuration, theme } from '../tokens/theme';
 import { controlStyles } from './control-styles';
 import { useReducedMotion } from './motion-runtime';
-import { motionDuration } from '../tokens/theme';
 
 export type WiseSwitchProps = {
   /** Names the switch for assistive technology; the visible title beside it is not linked to it. */
   accessibilityLabel: string;
   accessibilityHint?: string;
+  /** Keeps the switch at its value and ignores presses. */
+  disabled?: boolean;
   onValueChange: (value: boolean) => void;
   testID?: string;
   value: boolean;
@@ -24,7 +25,7 @@ const BORDER = 1;
  * Figma "Switch/on" and "Switch/off": a 44×26 pill with a 20 px knob, 3 px from the edge on the side it rests.
  * The knob and colors slide between the two states in `motion.quick`, and jump when reduce motion is on.
  */
-export function WiseSwitch({ accessibilityHint, accessibilityLabel, onValueChange, testID, value }: WiseSwitchProps) {
+export function WiseSwitch({ accessibilityHint, accessibilityLabel, disabled, onValueChange, testID, value }: WiseSwitchProps) {
   const [focused, setFocused] = useState(false);
   // 0 is off, 1 is on; the first render rests at the current value without animating.
   const [progress] = useState(() => new Animated.Value(value ? 1 : 0));
@@ -52,8 +53,10 @@ export function WiseSwitch({ accessibilityHint, accessibilityLabel, onValueChang
       accessibilityHint={accessibilityHint}
       accessibilityLabel={accessibilityLabel}
       accessibilityRole={'switch' as AccessibilityRole}
-      accessibilityState={{ checked: value }}
+      accessibilityState={{ checked: value, disabled: !!disabled }}
       aria-checked={value}
+      aria-disabled={disabled}
+      disabled={disabled}
       hitSlop={(theme.layout.touchTarget - HEIGHT) / 2}
       onBlur={() => setFocused(false)}
       onFocus={() => setFocused(true)}

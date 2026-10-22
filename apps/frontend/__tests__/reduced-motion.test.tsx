@@ -2,6 +2,11 @@ import { act, render, renderHook, screen, waitFor } from '@testing-library/react
 import { AccessibilityInfo } from 'react-native';
 import { MotionRuntime, useReducedMotion, useRuntimeMotionDuration } from '@/design-system/components/motion-runtime';
 import { Text } from 'react-native';
+import { devicePreferences } from '@/core/preferences/device-preferences';
+
+jest.mock('@/core/preferences/preferences-storage', () => ({
+  preferencesStorage: { read: jest.fn(async () => null), write: jest.fn(async () => undefined) },
+}));
 
 function MotionProbe() {
   return <Text>{useRuntimeMotionDuration()}</Text>;
@@ -75,5 +80,30 @@ describe('useReducedMotion', () => {
     await waitFor(() => expect(screen.getByText('0')).toBeTruthy());
     await act(async () => onChange?.(false));
     await waitFor(() => expect(screen.getByText('180')).toBeTruthy());
+  });
+});
+
+describe('the Reduzir movimento preference', () => {
+  afterEach(async () => {
+    jest.restoreAllMocks();
+    await devicePreferences.set('reduceMotion', false);
+  });
+
+  it('reduces motion immediately when on, even if the system does not ask for it', async () => {
+    jest.spyOn(AccessibilityInfo, 'isReduceMotionEnabled').mockResolvedValue(false);
+    jest.spyOn(AccessibilityInfo, 'addEventListener').mockReturnValue({ remove: jest.fn() } as never);
+    await render(<MotionRuntime><MotionProbe /></MotionRuntime>);
+    await waitFor(() => expect(screen.getByText('180')).toBeTruthy());
+
+    await act(async () => { await devicePreferences.set('reduceMotion', true); });
+    expect(screen.getByText('0')).toBeTruthy();
+  });
+
+  it('keeps motion reduced when the system asks for it and the preference is off', async () => {
+    jest.spyOn(AccessibilityInfo, 'isReduceMotionEnabled').mockResolvedValue(true);
+    jest.spyOn(AccessibilityInfo, 'addEventListener').mockReturnValue({ remove: jest.fn() } as never);
+    await render(<MotionRuntime><MotionProbe /></MotionRuntime>);
+    await waitFor(() => expect(devicePreferences.get().reduceMotion).toBe(false));
+    expect(screen.getByText('0')).toBeTruthy();
   });
 });
