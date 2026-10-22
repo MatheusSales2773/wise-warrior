@@ -28,6 +28,7 @@ import { sessionMetricsQueryOptions } from '@/features/dashboard/queries';
 import { useDevicePreference, useDevicePreferencesLoaded } from '@/core/preferences/device-preferences';
 import { useIsOnline } from '@/core/query/online-manager';
 import { ForgeHistory } from './forge-history';
+import { StopConfirmation } from './stop-confirmation';
 import { ForgeSyncIndicator } from './sync-indicator';
 import { forgeSyncStatus } from './sync-status';
 import { formatSessionsToday } from '@/features/dashboard/formatters';
@@ -419,6 +420,9 @@ export function StudySessionScreen({ initialMode = 'solo' }: { initialMode?: Ses
   const ringSize = wideLayout ? 340 : Platform.OS === 'web' ? Math.min(310, width * 0.78) : Math.min(264, width * 0.68);
   const queryClient = useQueryClient();
   const [defaultDuration] = useDevicePreference('defaultFocusDuration');
+  const [confirmBeforeStopping] = useDevicePreference('confirmBeforeStopping');
+  // The id of the session the open stop dialog is about, so a dialog left over from an ended session never reappears.
+  const [confirmingStopOf, setConfirmingStopOf] = useState<string | null>(null);
   // The Forja opens on the device's default; a pick made here holds until the screen closes.
   const [picked, setSelected] = useState<PlannedDurationSeconds | null>(null);
   const selected = picked ?? defaultDuration;
@@ -738,7 +742,7 @@ export function StudySessionScreen({ initialMode = 'solo' }: { initialMode?: Ses
   const validFocusSeconds = snapshot?.state === 'running'
     ? Math.max(snapshot.durationValidSeconds, snapshot.plannedDurationSeconds - remaining)
     : snapshot?.durationValidSeconds ?? 0;
-  const stopLabel = validFocusSeconds < 300 ? 'Cancelar sessão' : 'Encerrar antecipadamente';
+  const stopLabel = validFocusSeconds < 300 ? 'Cancelar sessão' as const : 'Encerrar antecipadamente' as const;
   const pendingNonStopAction = pendingAction && pendingAction !== 'stop' ? pendingAction : null;
   const retryAvailable = Boolean(retryTransition && transition.isError && !transition.isPending);
   const versionConflict = isVersionConflict(transition.error);
@@ -813,6 +817,16 @@ export function StudySessionScreen({ initialMode = 'solo' }: { initialMode?: Ses
       : { id: snapshot.id, action, expectedVersion: snapshot.version, idempotencyKey: newIdempotencyKey() };
     setRetryTransition(command);
     transition.mutate(command);
+  };
+
+  const requestStop = () => {
+    if (confirmBeforeStopping && snapshot) setConfirmingStopOf(snapshot.id);
+    else changeSessionState('stop');
+  };
+
+  const confirmStop = () => {
+    setConfirmingStopOf(null);
+    changeSessionState('stop');
   };
 
   const retryLastTransition = () => {
@@ -1007,7 +1021,7 @@ export function StudySessionScreen({ initialMode = 'solo' }: { initialMode?: Ses
                   label={transition.isPending && pendingAction === 'stop' ? TRANSITION_COPY.stop.button : stopLabel}
                   loading={transition.isPending && pendingAction === 'stop'}
                   disabled={transition.isPending || refreshingCanonicalSnapshot || completionPending}
-                  onPress={() => changeSessionState('stop')}
+                  onPress={requestStop}
                   testID="study-session-stop"
                 />
                 <ForgeAction
@@ -1027,6 +1041,7 @@ export function StudySessionScreen({ initialMode = 'solo' }: { initialMode?: Ses
                 />
               </View>
             ) : null}
+            {confirmingStopOf === snapshot.id ? <StopConfirmation action={stopLabel} onConfirm={confirmStop} onDecline={() => setConfirmingStopOf(null)} /> : null}
             <ForgeAction icon="settings-outline" iconOnly label="Configurações da sessão" expanded={settingsOpen} onPress={() => setSettingsOpen((open) => !open)} />
             </View>
             {transition.isError ? (

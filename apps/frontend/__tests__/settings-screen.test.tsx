@@ -101,7 +101,10 @@ afterEach(async () => {
 });
 
 describe('Foco', () => {
-  afterEach(() => devicePreferences.set('defaultFocusDuration', 1500));
+  afterEach(async () => {
+    await devicePreferences.set('defaultFocusDuration', 1500);
+    await devicePreferences.set('confirmBeforeStopping', true);
+  });
 
   it('chooses the default Forja duration on desktop and shows it beside Foco in the menu', async () => {
     await setViewport('web', 1440);
@@ -118,6 +121,23 @@ describe('Foco', () => {
     expect(screen.getByRole('radio', { name: '25 minutos' }).props.accessibilityState.checked).toBe(false);
     expect(menu.getByText('50 min')).toBeTruthy();
     expect(devicePreferences.get().defaultFocusDuration).toBe(3000);
+  });
+
+  it('turns "Confirmar antes de encerrar" off and on, on by default, and keeps the choice on the device', async () => {
+    await setViewport('web', 1440);
+    await openSettings('/configuracao/foco');
+
+    const toggle = () => screen.getByRole('switch', { name: 'Confirmar antes de encerrar' });
+    expect(screen.getByText('Evita perder o foco válido sem querer')).toBeTruthy();
+    expect(toggle().props.accessibilityState.checked).toBe(true);
+
+    await fireEvent.press(toggle());
+    expect(toggle().props.accessibilityState.checked).toBe(false);
+    expect(devicePreferences.get().confirmBeforeStopping).toBe(false);
+
+    await fireEvent.press(toggle());
+    expect(toggle().props.accessibilityState.checked).toBe(true);
+    expect(devicePreferences.get().confirmBeforeStopping).toBe(true);
   });
 
   it('chooses the default duration on the phone and shows it in the Duração padrão row', async () => {

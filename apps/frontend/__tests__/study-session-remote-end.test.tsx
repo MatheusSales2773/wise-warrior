@@ -11,8 +11,12 @@ import {
 } from '@/features/study-session/api';
 import { activeStudySessionQueryKey } from '@/features/study-session/queries';
 import { getActiveRaid, getMyGuild } from '@/features/guild/api';
+import { devicePreferences } from '@/core/preferences/device-preferences';
 
 // The day history and the week chart have their own tests (forge-history.test.tsx).
+jest.mock('@/core/preferences/preferences-storage', () => ({
+  preferencesStorage: { read: jest.fn(async () => null), write: jest.fn(async () => undefined) },
+}));
 jest.mock('@/features/study-session/forge-history', () => ({ ForgeHistory: () => null }));
 jest.mock('@/features/guild/api', () => ({
   getMyGuild: jest.fn(),
@@ -58,7 +62,9 @@ async function refetchActive(client: QueryClient, result: StudySessionSnapshot |
   });
 }
 
-beforeEach(() => {
+beforeEach(async () => {
+  // The stop confirmation has its own tests (study-session-controls); here the stop control sends the command at once.
+  await devicePreferences.set('confirmBeforeStopping', false);
   getRecent.mockResolvedValue([]);
   getMine.mockResolvedValue(null);
   getRaid.mockResolvedValue(null);

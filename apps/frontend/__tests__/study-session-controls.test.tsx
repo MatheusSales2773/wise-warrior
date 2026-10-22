@@ -12,6 +12,7 @@ import {
 } from '@/features/study-session/api';
 import { stopSessionSounds } from '@/features/study-session/sounds';
 import { dashboardKeys } from '@/features/dashboard/queries';
+import { devicePreferences } from '@/core/preferences/device-preferences';
 
 // Without a Guild the Forja offers only solo sessions.
 // The day history and the week chart have their own tests (forge-history.test.tsx).
@@ -22,6 +23,9 @@ jest.mock('@/features/guild/api', () => ({
   joinRaid: jest.fn(),
 }));
 
+jest.mock('@/core/preferences/preferences-storage', () => ({
+  preferencesStorage: { read: jest.fn(async () => null), write: jest.fn(async () => undefined) },
+}));
 jest.mock('@/features/study-session/sounds', () => ({
   playSessionSound: jest.fn(), releaseSessionSounds: jest.fn(), stopSessionSounds: jest.fn(), unlockSessionSounds: jest.fn(),
 }));
@@ -57,8 +61,10 @@ async function renderStudySession(client = new QueryClient({ defaultOptions: { q
   return { view, client };
 }
 
-beforeEach(() => {
+beforeEach(async () => {
   jest.clearAllMocks();
+  // The confirmation is covered below; the other cases press the stop control and expect the command at once.
+  await devicePreferences.set('confirmBeforeStopping', false);
 });
 
 afterEach(() => {
@@ -411,4 +417,65 @@ it.each([
   await view.findByTestId('study-session-result');
   expect(view.getByTestId('study-session-result-subject')).toHaveTextContent(shown);
   view.unmount();
+});
+
+describe('confirming before stopping', () => {
+  const stopped: StudySessionTransitionResult = {
+    ...snapshot, state: 'stopped_early', endedAt: '2026-09-22T12:05:00.000Z',
+    durationValidSeconds: 300, remainingSeconds: 0, terminalReason: 'manual-stop', version: 2,
+    serverNow: '2026-09-22T12:05:00.000Z', receivedAtMs: new Date('2026-09-22T12:05:00.000Z').getTime(),
+  };
+  const command = { id: 'study-1', expectedVersion: 1, idempotencyKey: expect.any(String) };
+  // 'Cancelar sessão' below five valid minutes, 'Encerrar antecipadamente' from five on.
+  const cases = [
+    { action: 'Encerrar antecipadamente', durationValidSeconds: 600 },
+    { action: 'Cancelar sessão', durationValidSeconds: 120 },
+  ] as const;
+
+  beforeEach(async () => {
+    await devicePreferences.set('confirmBeforeStopping', true);
+  });
+  afterAll(() => devicePreferences.set('confirmBeforeStopping', true));
+
+  it.each(cases)('asks before "$action" and sends nothing until the dialog is confirmed', async ({ action, durationValidSeconds }) => {
+    getActive.mockResolvedValue({ ...snapshot, durationValidSeconds });
+    stop.mockResolvedValue(stopped);
+    const { view } = await renderStudySession();
+
+    await fireEvent.press(await view.findByRole('button', { name: action }));
+
+    const dialog = await view.findByTestId('study-session-stop-dialog');
+    expect(dialog.props.accessibilityLabel).toBe(`Confirmar: ${action}`);
+    expect(stop).not.toHaveBeenCalled();
+
+    await fireEvent.press(view.getByTestId('study-session-stop-confirm'));
+    await waitFor(() => expect(stop).toHaveBeenCalledTimes(1));
+    expect(stop).toHaveBeenCalledWith(command);
+    expect(view.queryByTestId('study-session-stop-dialog')).toBeNull();
+  });
+
+  it.each(cases)('keeps the session running when "$action" is declined', async ({ action, durationValidSeconds }) => {
+    getActive.mockResolvedValue({ ...snapshot, durationValidSeconds });
+    const { view } = await renderStudySession();
+
+    await fireEvent.press(await view.findByRole('button', { name: action }));
+    await fireEvent.press(await view.findByTestId('study-session-stop-decline'));
+
+    expect(view.queryByTestId('study-session-stop-dialog')).toBeNull();
+    expect(stop).not.toHaveBeenCalled();
+    expect(view.getByTestId('study-session-active')).toBeTruthy();
+    expect(view.getByRole('button', { name: action })).toBeTruthy();
+  });
+
+  it.each(cases)('runs "$action" at once when the confirmation is off', async ({ action, durationValidSeconds }) => {
+    await devicePreferences.set('confirmBeforeStopping', false);
+    getActive.mockResolvedValue({ ...snapshot, durationValidSeconds });
+    stop.mockResolvedValue(stopped);
+    const { view } = await renderStudySession();
+
+    await fireEvent.press(await view.findByRole('button', { name: action }));
+
+    await waitFor(() => expect(stop).toHaveBeenCalledWith(command));
+    expect(view.queryByTestId('study-session-stop-dialog')).toBeNull();
+  });
 });
