@@ -155,6 +155,12 @@ function avatarLayerFrom(sprite: PixelSpriteData): PixelSpriteData {
   };
 }
 
+/** The Druida of the Figma sprites page (green robe): not a class of the Herói, only the source of an Avatar layer. */
+const druida: PixelSpriteData = {
+  palette: ['#0a0a12', '#3f7a4a', '#6fb07a', '#25502e', '#e8b48a', '#07070c', '#b97d5b', '#d4a85a', '#f0c97a', '#7a4a2a', '#f3ead4'],
+  rows: heroRobe,
+};
+
 /** The initial Avatar's layer, drawn when the slot is empty or the equipped Avatar has no art of its own yet. */
 export const initialAvatarLayer: PixelSpriteData = avatarLayerFrom(heroSprites.erudito);
 
@@ -184,16 +190,8 @@ export const avatarLayers: Readonly<Record<string, PixelSpriteData>> = {
       rows[17] = '..abbbbiibbbba..';
     },
   ),
-  /** A traveler's tunic: no hood, a short cap, and a wide belt. */
-  'Túnica do Viajante': robeLayer(
-    { cloth: ['#0a0a12', '#3f7a4a', '#6fae6a', '#2a4f31'], trim: ['#d4a85a', '#f0c97a', '#7a4a2a', '#f3ead4'] },
-    (rows) => {
-      rows[0] = '.'.repeat(16);
-      rows[1] = '.'.repeat(16);
-      rows[2] = '.....aaaaaa.....';
-      rows[3] = '....abbbbbba....';
-    },
-  ),
+  /** The green robe of the Figma sprites page, worn by the traveler. */
+  'Túnica do Viajante': avatarLayerFrom(druida),
   'Manto Estelar': avatarLayerFrom(heroSprites.arcanista),
   /** Wolf pelt armour: pointed ears on the hood and red-trimmed pauldrons. */
   'Armadura do Lobo': robeLayer(

@@ -26,7 +26,7 @@ describe('avatarLayers', () => {
   });
 
   it('gives each Avatar its own art', () => {
-    const drawn = CATALOG_AVATARS.map((name) => JSON.stringify(avatarLayers[name]!.rows));
+    const drawn = CATALOG_AVATARS.map((name) => JSON.stringify(avatarLayers[name]));
     expect(new Set(drawn).size).toBe(CATALOG_AVATARS.length);
   });
 
