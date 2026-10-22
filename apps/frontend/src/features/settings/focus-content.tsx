@@ -1,6 +1,6 @@
-import { Pressable, StyleSheet, Switch, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { FOCUS_DURATIONS, useDevicePreference } from '@/core/preferences/device-preferences';
-import { WiseText, theme } from '@/design-system';
+import { WiseSwitch, WiseText, theme } from '@/design-system';
 import { useFocusRing } from '@/features/character/character-parts';
 
 /** "25 min": the default Forja duration, as shown beside Foco and in its phone row. */
@@ -37,16 +37,11 @@ function SuggestRecentSubjectsSwitch() {
         <WiseText variant="label">{SUGGEST_RECENT_SUBJECTS_LABEL}</WiseText>
         <Text allowFontScaling style={styles.switchHint}>{SUGGEST_RECENT_SUBJECTS_HINT}</Text>
       </View>
-      <Switch
+      <WiseSwitch
         accessibilityHint={SUGGEST_RECENT_SUBJECTS_HINT}
         accessibilityLabel={SUGGEST_RECENT_SUBJECTS_LABEL}
-        accessibilityRole="switch"
-        accessibilityState={{ checked: enabled }}
-        ios_backgroundColor={theme.color.surfaceInset}
         onValueChange={setEnabled}
         testID="settings-focus-suggest-recent-subjects"
-        thumbColor={enabled ? theme.color.surfaceInset : theme.color.textSecondary}
-        trackColor={{ false: theme.color.surfaceInset, true: theme.color.accentPrimary }}
         value={enabled}
       />
     </View>

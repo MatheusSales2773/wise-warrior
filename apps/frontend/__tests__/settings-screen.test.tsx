@@ -132,7 +132,7 @@ describe('Foco', () => {
     expect(screen.getByText('Mostra suas últimas matérias na Forja')).toBeTruthy();
     expect(toggle.props.accessibilityState.checked).toBe(true);
 
-    await fireEvent(toggle, 'valueChange', false);
+    await fireEvent.press(toggle);
 
     expect(screen.getByRole('switch', { name: 'Sugerir matérias recentes' }).props.accessibilityState.checked).toBe(false);
     expect(devicePreferences.get().suggestRecentSubjects).toBe(false);

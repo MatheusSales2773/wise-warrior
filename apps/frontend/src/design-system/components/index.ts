@@ -18,3 +18,5 @@ export { ResourcePill } from './ResourcePill';
 export type { ResourcePillProps } from './ResourcePill';
 export { AppNavigation } from './AppNavigation';
 export { AppShell } from './AppShell';
+export { WiseSwitch } from './WiseSwitch';
+export type { WiseSwitchProps } from './WiseSwitch';

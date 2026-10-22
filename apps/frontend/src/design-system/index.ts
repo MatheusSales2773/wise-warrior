@@ -5,8 +5,8 @@ export type { WiseIconColor, WiseIconName, WiseIconProps, WiseIconSize } from '.
 export { isSemanticColor, motionDuration, theme, typographyFor } from './tokens/theme';
 export type { MotionDuration, SemanticColor, TypographyRole } from './tokens/theme';
 export { isDesktopLayout, screenGutter } from './tokens/layout';
-export { WiseButton, WiseField, FeedbackMessage, ProgressBar, ResourcePill } from './components';
+export { WiseButton, WiseField, WiseSwitch, FeedbackMessage, ProgressBar, ResourcePill } from './components';
 export type {
-  WiseButtonProps, WiseButtonSize, WiseButtonVariant, WiseFieldProps,
+  WiseButtonProps, WiseButtonSize, WiseButtonVariant, WiseFieldProps, WiseSwitchProps,
   FeedbackMessageProps, FeedbackMessageVariant, ProgressBarProps, ResourcePillProps,
 } from './components';
