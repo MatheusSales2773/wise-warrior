@@ -1,5 +1,5 @@
 import { renderHook } from '@testing-library/react-native';
-import { useDeadlineAlarm } from '@/features/study-session/use-deadline-alarm';
+import { useDeadlineAlarm } from '@/features/study-session/use-deadline-useAlarm';
 import { playSessionSound } from '@/features/study-session/sounds';
 
 jest.mock('@/features/study-session/sounds', () => ({ playSessionSound: jest.fn() }));
@@ -7,7 +7,7 @@ jest.mock('@/features/study-session/sounds', () => ({ playSessionSound: jest.fn(
 const T0 = new Date('2026-09-22T12:00:00.000Z').getTime();
 const play = playSessionSound as jest.Mock;
 type Props = { key: string | null; atMs: number | null };
-const alarm = (props: Props) => useDeadlineAlarm({ ...props, sound: 'focusEnd' });
+const useAlarm = (props: Props) => useDeadlineAlarm({ ...props, sound: 'focusEnd' });
 
 beforeEach(() => {
   jest.useFakeTimers({ now: T0 });
@@ -15,7 +15,7 @@ beforeEach(() => {
 });
 
 it('rings once, in a loop, when the deadline arrives', async () => {
-  const hook = await renderHook(alarm, { initialProps: { key: 's1', atMs: T0 + 10_000 } });
+  const hook = await renderHook(useAlarm, { initialProps: { key: 's1', atMs: T0 + 10_000 } });
 
   jest.advanceTimersByTime(9_999);
   expect(play).not.toHaveBeenCalled();
@@ -28,14 +28,14 @@ it('rings once, in a loop, when the deadline arrives', async () => {
 });
 
 it('stays silent for a deadline already past when first seen', async () => {
-  await renderHook(alarm, { initialProps: { key: 's1', atMs: T0 - 1 } });
+  await renderHook(useAlarm, { initialProps: { key: 's1', atMs: T0 - 1 } });
   jest.advanceTimersByTime(60_000);
 
   expect(play).not.toHaveBeenCalled();
 });
 
 it('rearms for a new deadline and a new key, and disarms on null', async () => {
-  const hook = await renderHook(alarm, { initialProps: { key: 's1', atMs: T0 + 10_000 } });
+  const hook = await renderHook(useAlarm, { initialProps: { key: 's1', atMs: T0 + 10_000 } });
   await hook.rerender({ key: 's1', atMs: T0 + 30_000 });
   jest.advanceTimersByTime(10_000);
   expect(play).not.toHaveBeenCalled();
@@ -52,7 +52,7 @@ it('rearms for a new deadline and a new key, and disarms on null', async () => {
 });
 
 it('cancels the timer on unmount', async () => {
-  const hook = await renderHook(alarm, { initialProps: { key: 's1', atMs: T0 + 10_000 } });
+  const hook = await renderHook(useAlarm, { initialProps: { key: 's1', atMs: T0 + 10_000 } });
   await hook.unmount();
   jest.advanceTimersByTime(60_000);
 
