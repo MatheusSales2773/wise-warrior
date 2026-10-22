@@ -159,7 +159,7 @@ describe('SessionsService', () => {
     it('returns only the public fields of up to five ended sessions', async () => {
       mockRepo.find.mockResolvedValue([
         {
-          id: 'session-1', userId: 'user-1', subject: 'Cálculo', mode: 'solo',
+          id: 'session-1', userId: 'user-1', subject: 'Cálculo', kind: 'cycle', mode: 'solo',
           startedAt: new Date('2026-01-01T10:00:00Z'), endedAt: new Date('2026-01-01T10:25:00Z'),
           durationValidSeconds: 1500, xpAwarded: 25, discardedReason: null,
           lastHeartbeatAt: new Date(), raidId: 'internal-raid',
@@ -176,7 +176,7 @@ describe('SessionsService', () => {
         }),
       ]);
       expect(Object.keys(result[0]!)).toEqual([
-        'id', 'subject', 'mode', 'state', 'startedAt', 'endedAt', 'durationValidSeconds', 'xpAwarded', 'discardedReason', 'cappedReason',
+        'id', 'subject', 'kind', 'mode', 'state', 'startedAt', 'endedAt', 'durationValidSeconds', 'xpAwarded', 'discardedReason', 'cappedReason',
       ]);
       expect(mockRepo.find).toHaveBeenCalledWith({
         where: { userId: 'user-1', endedAt: expect.anything() },
@@ -196,9 +196,11 @@ describe('SessionsService', () => {
       const cadenceBuilder = queryBuilderReturning(0) as ReturnType<typeof queryBuilderReturning> & Record<string, jest.Mock>;
       cadenceBuilder.addSelect = jest.fn().mockReturnThis();
       cadenceBuilder.groupBy = jest.fn().mockReturnThis();
+      cadenceBuilder.addGroupBy = jest.fn().mockReturnThis();
       cadenceBuilder.getRawMany = jest.fn().mockResolvedValue([
-        { date: '2026-09-16', sessionCount: '2', validSeconds: '1800' },
-        { date: '2026-09-17', sessionCount: '4', validSeconds: '3600' },
+        { date: '2026-09-16', kind: 'cycle', sessionCount: '2', validSeconds: '1800' },
+        { date: '2026-09-17', kind: 'cycle', sessionCount: '3', validSeconds: '2400' },
+        { date: '2026-09-17', kind: 'free', sessionCount: '1', validSeconds: '1200' },
       ]);
       const historicalBuilder = queryBuilderReturning(0) as ReturnType<typeof queryBuilderReturning> & Record<string, jest.Mock>;
       historicalBuilder.groupBy = jest.fn().mockReturnThis();
@@ -217,6 +219,10 @@ describe('SessionsService', () => {
       expect(result.sessionsToday).toBe(4);
       expect(result.dailyGoal).toBe(4);
       expect(result.validSecondsToday).toBe(3600);
+      expect(result.todayByKind).toEqual({
+        cycle: { sessionCount: 3, validSeconds: 2400 },
+        free: { sessionCount: 1, validSeconds: 1200 },
+      });
       expect(result.cadence.windowStart).toBe('2026-07-24');
       expect(result.cadence.days).toHaveLength(56);
       expect(result.cadence.days.at(-1)).toEqual({
