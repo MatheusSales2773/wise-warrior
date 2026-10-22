@@ -3,6 +3,7 @@ import type { ComponentType } from 'react';
 import type { WiseIconName } from '@/design-system';
 import type { UserProfile } from '@/features/dashboard/api';
 import { planLabel } from './plan';
+import { AccessibilityContent } from './accessibility-content';
 import { DevicesContent } from './devices-content';
 import { FocusContent } from './focus-content';
 import { PublicProfile } from './public-profile-card';
@@ -53,7 +54,7 @@ export const settingsSections: readonly SettingsSection[] = [
   },
   {
     id: 'acessibilidade', label: 'Acessibilidade', description: 'Ajustes de movimento do app.', href: '/configuracao/acessibilidade', icon: 'accessibility-outline',
-    group: 'Acessibilidade', row: { title: 'Acessibilidade', icon: 'accessibility-outline' }, Content: null,
+    group: 'Acessibilidade', row: { title: 'Acessibilidade', icon: 'accessibility-outline' }, Content: AccessibilityContent,
   },
   {
     id: 'plano', label: 'Plano', description: 'O plano da sua conta.', href: '/configuracao/plano', icon: 'diamond-outline',

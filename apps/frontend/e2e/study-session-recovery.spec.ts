@@ -40,6 +40,7 @@ test.describe('Forja: recuperação e histórico (#17)', () => {
     // Encerrar: a sessão entra no histórico do dia, com o XP confirmado pelo servidor.
     const stopResponse = page.waitForResponse(isApi('/stop', 'POST'));
     await page.getByRole('button', { name: 'Encerrar antecipadamente' }).click();
+    await page.getByTestId('study-session-stop-confirm').click();
     const stopped = await (await stopResponse).json() as { xpAwarded: number };
     expect(stopped.xpAwarded).toBeGreaterThan(0);
 

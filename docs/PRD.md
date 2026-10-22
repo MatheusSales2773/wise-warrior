@@ -49,6 +49,12 @@
 |---|---|---|
 | Como o Avatar aparece no Herói | Corpo base único com camadas de Avatar, Arma e Acessório; sem classe; Arma é nova categoria de Cosmetic Item | ADR-013 (Aceito) |
 
+### Registro de decisões fechadas em 22/10/2026
+
+| Ponto aberto | Decisão | ADR |
+|---|---|---|
+| Recompensa dos Objetivos de Crônicas | Moedas pagas automaticamente, nunca XP; lista fixa de 3 diários e 3 semanais, renovando no horário de São Paulo | ADR-014 (Aceito) |
+
 > Este documento consolida e substitui as lacunas dos documentos orientadores (Documento de Visão, Documento de Arquitetura, Documentação de Interface, Pitch e Casos de Uso UC01–UC04), resolvendo inconsistências entre eles e propondo um caminho técnico único para a Fase 1 de desenvolvimento.
 
 ---
@@ -345,6 +351,18 @@ fazem parte desse primeiro corte.
 3. **Arma:** nova categoria de Cosmetic Item, só visual, sem efeito em XP, Raid ou Moedas. A Espada é o Item inicial; Cajado e Besta são as primeiras Armas À venda, com preço definido pelo PO. Desequipada, o Herói aparece sem arma. Aparece em Personagem, Prévia e Raid, e fora do retrato de 32 px da Guild. A aparência de Raid e Guild passa a expor Arma além de Avatar e Acessório.
 4. **Prévia:** segue só para itens do Inventário e compõe todas as camadas.
 **Consequência:** o mapa nome do Avatar → classe da Raid e a arma derivada da classe são substituídos. O trabalho se divide em backend e API da Arma, Herói em camadas no frontend e a arte de cada Avatar. Glossário em `CONTEXT.md`.
+
+### ADR-014: Objetivos pagam Moedas, não XP
+**Status:** Aceito em 22/10/2026. **Contexto:** a proposta de Crônicas v2 (Figma `09 · Crônicas — v2`) traz Objetivos diários e semanais com recompensa em XP. Hoje o XP vem só do foco válido de uma Study Session e passa pelo antifraude (ADR-011), que calibrou a curva de nível sobre essa única fonte. **Alternativas:** (a) XP, como no design; (b) Moedas, que já têm Extrato com origem (ADR-012). **Decisão:** (b).
+1. **XP continua sendo só tempo de foco.** Cumprir um Objetivo nunca dá XP nem Contribuição para Raid.
+2. **Pagamento automático:** as Moedas entram no Extrato quando o Objetivo é cumprido, sem botão Resgatar.
+3. **Valores iniciais, configuráveis no servidor:** diários de +5, +15 e +10 (30 por dia); semanais de +40, +50 e +30 (120 por semana). Para quem estuda 2h por dia, isso soma cerca de 50% à renda de foco.
+4. **Lista fixa:** 3 Objetivos diários e 3 semanais, iguais para todos e alcançáveis sem Guild. Os diários renovam à meia-noite e os semanais na segunda às 00:00, no horário de São Paulo.
+5. **O que conta:** toda Study Session não descartada que termina, no dia e na semana em que terminou. Objetivos de duração usam o foco válido.
+6. **Um único dia:** as métricas do Dashboard, a Constância e o histórico de sessões passam do dia UTC para o dia de São Paulo. O `dailyGoal` fixo do Dashboard sai, e o Dashboard mostra o Objetivo "Conclua 4 sessões hoje". O limite diário do antifraude (ADR-011) não muda.
+7. **Marcos:** um Marco é a Condição de desbloqueio de um Badge mostrada com progresso. Madrugador passa de `level:3` para 5 Study Sessions terminadas antes das 7h, e Cem Sessões passa de `level:12` para 100 Study Sessions não descartadas. Quem já desbloqueou esses Badges continua com eles.
+8. **Sem Capítulos:** a trilha de Capítulos da proposta sai do escopo.
+**Consequência:** a curva de nível da ADR-011 não muda; a economia da ADR-012 ganha uma fonte de Moedas, com origem própria no Extrato. Crônicas sai de "Em breve" com Objetivos, Marcos e Diário juntos. Glossário em `CONTEXT.md`.
 
 ### 8.1 Diagrama de arquitetura (implementado em `dev/phase-1`)
 

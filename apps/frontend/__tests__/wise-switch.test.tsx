@@ -9,6 +9,17 @@ const track = () => StyleSheet.flatten(screen.getByTestId('notify-track').props.
 const knob = () => StyleSheet.flatten(screen.getByTestId('notify-knob').props.style);
 
 describe('WiseSwitch', () => {
+  it('dims and ignores presses when disabled, and says so to assistive technology', async () => {
+    const onValueChange = jest.fn();
+    await render(<WiseSwitch accessibilityLabel="Notificar" disabled testID="notify" onValueChange={onValueChange} value />);
+
+    const toggle = screen.getByRole('switch', { name: 'Notificar' });
+    expect(toggle.props.accessibilityState).toEqual({ checked: true, disabled: true });
+    expect(StyleSheet.flatten(toggle.props.style).opacity).toBe(0.5);
+    await fireEvent.press(toggle);
+    expect(onValueChange).not.toHaveBeenCalled();
+  });
+
   it('draws Switch/on: a gold 44×26 pill with the knob 3 px from the right edge', async () => {
     await render(<WiseSwitch accessibilityLabel="Notificar" testID="notify" onValueChange={jest.fn()} value />);
 
