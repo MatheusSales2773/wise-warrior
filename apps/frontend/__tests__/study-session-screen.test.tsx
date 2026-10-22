@@ -7,6 +7,7 @@ import { getActiveStudySession, getRecentStudySessionSubjects, heartbeatStudySes
 import { STUDY_SESSION_HEARTBEAT_INTERVAL_MS } from '@/features/study-session/use-study-session-heartbeat';
 import { formatRemainingTime, remainingStudySeconds } from '@/features/study-session/timer';
 import { clearCompletionIntent } from '@/features/study-session/completion-intent';
+import { stopSessionSounds, unlockSessionSounds } from '@/features/study-session/sounds';
 import { ApiError } from '@/core/api/api-error';
 import { getActiveRaid, getMyGuild, joinRaid, type ActiveRaid, type MyGuild } from '@/features/guild/api';
 
@@ -18,6 +19,9 @@ jest.mock('@/features/guild/api', () => ({
   joinRaid: jest.fn(),
 }));
 
+jest.mock('@/features/study-session/sounds', () => ({
+  playSessionSound: jest.fn(), releaseSessionSounds: jest.fn(), stopSessionSounds: jest.fn(), unlockSessionSounds: jest.fn(),
+}));
 jest.mock('@/features/study-session/api', () => ({
   STUDY_SESSION_PRESETS: [900, 1500, 3000],
   getActiveStudySession: jest.fn(),
@@ -101,6 +105,20 @@ it('offers only three presets, starts with 25 minutes and sends the chosen durat
   await waitFor(() => expect(start).toHaveBeenCalledWith(900, expect.any(String), null));
   await view.findByTestId('study-session-active');
   expect(view.queryByTestId('study-session-setup')).toBeNull();
+  view.unmount();
+});
+
+it('unlocks the audio on the start gesture and silences a ringing alarm once the session started', async () => {
+  getActive.mockResolvedValue(null);
+  start.mockResolvedValue(snapshot);
+  const { view } = await renderStudySession();
+  await view.findByTestId('study-session-setup');
+
+  await fireEvent.press(view.getByTestId('study-session-start'));
+  expect(unlockSessionSounds).toHaveBeenCalledTimes(1);
+  await view.findByTestId('study-session-active');
+
+  expect(stopSessionSounds).toHaveBeenCalledTimes(1);
   view.unmount();
 });
 
