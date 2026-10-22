@@ -3,7 +3,7 @@ import type { ComponentType } from 'react';
 import type { WiseIconName } from '@/design-system';
 import type { UserProfile } from '@/features/dashboard/api';
 import { planLabel } from './plan';
-import { PublicProfile } from './rename-form';
+import { PublicProfile } from './public-profile-card';
 import { PlanContent } from './settings-content';
 
 export type SettingsSectionId = 'conta' | 'foco' | 'dispositivos' | 'acessibilidade' | 'plano';
@@ -22,7 +22,13 @@ export type SettingsSection = {
   readonly icon: WiseIconName;
   /** The phone list's group around this section's row. */
   readonly group: string;
-  readonly row: { readonly title: string; /** Where the row leads when it is not the section itself. */ readonly href?: Href; readonly icon: WiseIconName; readonly value?: (user: UserProfile) => string };
+  readonly row: {
+    readonly title: string;
+    /** Where the row leads when it is not the section itself. */
+    readonly href?: Href;
+    readonly icon: WiseIconName;
+    readonly value?: (user: UserProfile) => string;
+  };
   readonly details?: (user: UserProfile) => readonly SettingsDetail[];
   /** What the section shows below its description; `null` while it is still a skeleton. */
   readonly Content: ComponentType | null;

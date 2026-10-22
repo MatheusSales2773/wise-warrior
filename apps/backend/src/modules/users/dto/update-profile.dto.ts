@@ -1,9 +1,7 @@
-import { IsString, MaxLength, MinLength } from 'class-validator';
+import { IsDisplayName } from './display-name.decorator';
 
 export class UpdateProfileDto {
-  /** Mesma regra do registro; não precisa ser único. */
-  @IsString()
-  @MinLength(2)
-  @MaxLength(60)
+  /** Não precisa ser único. */
+  @IsDisplayName()
   displayName: string;
 }

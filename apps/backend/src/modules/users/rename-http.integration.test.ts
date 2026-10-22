@@ -96,7 +96,7 @@ describe('PATCH /users/me against MySQL', () => {
     expect((await patch({ displayName: 'Novo Nome' }, null)).status).toBe(401);
   });
 
-  it.each([[''], ['A'], ['x'.repeat(61)]])('rejects the name %j with 400', async (displayName) => {
+  it.each([[''], ['A'], ['   '], [' a '], ['x'.repeat(61)]])('rejects the name %j with 400', async (displayName) => {
     expect((await patch({ displayName })).status).toBe(400);
     expect(await dataSource!.getRepository(User).findOneByOrFail({ id: ana })).toEqual(expect.objectContaining({ displayName: 'Ana' }));
   });
@@ -113,6 +113,13 @@ describe('PATCH /users/me against MySQL', () => {
     const profile = await response.json() as { id: string; email: string; displayName: string };
     expect(profile).toEqual(await (await getProfile(ana)).json());
     expect(profile).toEqual(expect.objectContaining({ id: ana, email: 'Ana@example.com', displayName: 'Ana, a Bruxa' }));
+  });
+
+  it('saves the name without the spaces around it', async () => {
+    const response = await patch({ displayName: '  Ana, a Bruxa  ' });
+
+    expect(response.status).toBe(200);
+    expect((await response.json() as { displayName: string }).displayName).toBe('Ana, a Bruxa');
   });
 
   it('accepts a name another user already has', async () => {

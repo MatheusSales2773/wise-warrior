@@ -248,7 +248,7 @@ paths:
     patch:
       summary: Renomeia o guerreiro
       description: >
-        Mesma validação do registro (2 a 60 caracteres). O nome não precisa ser
+        Mesma validação do registro (2 a 60 caracteres, depois de remover os espaços das pontas, que também não são gravados). O nome não precisa ser
         único, não há cooldown e não há evento em tempo real: o Mural lê o nome
         por join, então mensagens antigas passam a mostrar o nome novo.
       operationId: updateMyProfile
