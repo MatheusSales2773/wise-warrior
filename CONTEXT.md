@@ -70,6 +70,12 @@ _Avoid_: item pago, item VIP
 A visualização de um Cosmetic Item aplicado ao Character antes de confirmar a ação de Equipar. Nada é persistido.
 _Avoid_: preview, rascunho
 
+### Conta
+
+**Dispositivo conectado**:
+Um aparelho ou navegador em que o usuário está logado. Cada login abre um novo Dispositivo conectado, que permanece ativo até ser encerrado pelo próprio usuário, substituído ao exceder o limite de dispositivos simultâneos ou desconectado ao sair da conta. Encerrar os outros dispositivos preserva aquele em uso.
+_Avoid_: sessão, sessão ativa, sessão de login (para não confundir com Study Session)
+
 ### Sessão de estudo
 
 **Study Session** (Sessão de estudo):
