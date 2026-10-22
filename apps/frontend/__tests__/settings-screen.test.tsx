@@ -2,9 +2,10 @@ import { act } from '@testing-library/react-native';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { router as appRouter, Slot } from 'expo-router';
 import { fireEvent, renderRouter, screen, waitFor, within } from 'expo-router/testing-library';
-import { Dimensions, Platform, Text } from 'react-native';
+import { Platform, Text } from 'react-native';
 import { AppShell } from '@/design-system/components/AppShell';
 import { getMyProfile, type UserProfile } from '@/features/dashboard/api';
+import { resetViewport, setViewport } from '../test-utils/viewport';
 import { mockAuthState, updateMockAuthState } from '../test-utils/auth-context';
 
 jest.mock('@/core/auth/auth-context', () => require('../test-utils/auth-context').createAuthContextMock());
@@ -23,17 +24,6 @@ const profile: UserProfile = {
 };
 
 const mockedProfile = getMyProfile as jest.MockedFunction<typeof getMyProfile>;
-const originalPlatform = Platform.OS;
-const originalWindow = Dimensions.get('window');
-const originalScreen = Dimensions.get('screen');
-
-async function setViewport(platform: 'web' | 'ios' | 'android', width: number) {
-  Object.defineProperty(Platform, 'OS', { configurable: true, value: platform });
-  await act(() => {
-    Dimensions.set({ window: { ...originalWindow, width }, screen: { ...originalScreen, width } });
-  });
-}
-
 const settingsRoutes = {
   'configuracao/_layout': require('../src/app/(app)/configuracao/_layout'),
   'configuracao/index': require('../src/app/(app)/configuracao/index'),
@@ -71,10 +61,7 @@ afterEach(async () => {
   updateMockAuthState({ status: 'authenticated' });
   mockAuthState.logout.mockReset();
   mockAuthState.logout.mockResolvedValue(undefined);
-  Object.defineProperty(Platform, 'OS', { configurable: true, value: originalPlatform });
-  await act(() => {
-    Dimensions.set({ window: originalWindow, screen: originalScreen });
-  });
+  await resetViewport();
 });
 
 describe('Configuração on desktop', () => {
@@ -121,6 +108,16 @@ describe('Configuração on desktop', () => {
     expect(screen.getByRole('header', { name: 'Plano' })).toBeTruthy();
     expect(await screen.findByText('Free · premium em breve')).toBeTruthy();
     expect(screen.queryByRole('button', { name: /premium|upgrade|assinar/i })).toBeNull();
+  });
+
+  it('offers a retry in Plano when the account cannot be loaded', async () => {
+    mockedProfile.mockRejectedValue(new Error('offline'));
+    await openSettings('/configuracao/plano');
+
+    expect(await screen.findByText('Não foi possível carregar sua conta.')).toBeTruthy();
+    mockedProfile.mockResolvedValue(profile);
+    await fireEvent.press(screen.getByRole('button', { name: 'Tentar novamente' }));
+    expect(await screen.findByText('Free · premium em breve')).toBeTruthy();
   });
 
   it.each([

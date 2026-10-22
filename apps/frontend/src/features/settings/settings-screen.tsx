@@ -16,7 +16,10 @@ import type { UserProfile } from '@/features/dashboard/api';
 import { profileQueryOptions } from '@/features/dashboard/queries';
 import { activeSettingsSection, planName, settingsSection, settingsSections, type SettingsSectionId } from './sections';
 
-const PLAN_DESCRIPTION = 'premium em breve';
+/** "Free · premium em breve": the current plan, with no upgrade to offer yet. */
+function planLabel(planTier: string) {
+  return `${planName(planTier)} · premium em breve`;
+}
 
 function useDesktop() {
   const { width } = useWindowDimensions();
@@ -77,9 +80,9 @@ function InfoRow({ icon, title, value }: { icon: WiseIconName; title: string; va
 
 function PlanContent() {
   const profile = useQuery(profileQueryOptions());
-  const tier = profile.data?.planTier;
+  if (!profile.data) return <AccountHeader />;
   return <View style={styles.list}>
-    <InfoRow icon="diamond-outline" title="Plano atual" value={tier ? `${planName(tier)} · ${PLAN_DESCRIPTION}` : '…'} />
+    <InfoRow icon="diamond-outline" title="Plano atual" value={planLabel(profile.data.planTier)} />
   </View>;
 }
 
@@ -97,7 +100,8 @@ function BackToSettings() {
     accessibilityLabel="Voltar para Configuração"
     accessibilityRole="button"
     hitSlop={12}
-    onPress={() => (router.canGoBack() ? router.back() : router.replace('/configuracao'))}
+    // Native stacks the list under every section (anchor), so back is the list; the web may have come from anywhere.
+    onPress={() => (Platform.OS !== 'web' && router.canGoBack() ? router.back() : router.navigate('/configuracao'))}
     style={[styles.back, focusStyle]}
   >
     <WiseIcon color="accentPrimary" name="chevron-back" size="small" />
@@ -147,12 +151,20 @@ function Group({ children, label }: { children: ReactNode; label: string }) {
   </View>;
 }
 
-function SignOutButton() {
-  const signOut = useSignOut();
-  const { error, pending, submit } = useLogoutAction(signOut);
-  return <View style={styles.stateBlock}>
-    <WiseButton label="Sair da conta" leading={<WiseIcon color="feedbackDanger" name="log-out-outline" size="xsmall" />} loading={pending} onPress={submit} variant="danger" />
+/** "Sair da conta" logs this device out; the trigger differs between the phone button and the desktop menu. */
+function SignOut({ children }: { children: (action: { pending: boolean; submit: () => Promise<void> }) => ReactNode }) {
+  const { error, pending, submit } = useLogoutAction(useSignOut());
+  return <>
+    {children({ pending, submit })}
     {error !== null ? <FeedbackMessage message={logoutErrorMessage(error)} title="Erro ao sair" variant="error" /> : null}
+  </>;
+}
+
+function SignOutButton() {
+  return <View style={styles.stateBlock}>
+    <SignOut>
+      {({ pending, submit }) => <WiseButton label="Sair da conta" leading={<WiseIcon color="feedbackDanger" name="log-out-outline" size="xsmall" />} loading={pending} onPress={submit} variant="danger" />}
+    </SignOut>
   </View>;
 }
 
@@ -176,7 +188,7 @@ function SettingsList() {
       <LinkRow first href="/configuracao/acessibilidade" icon="accessibility-outline" title="Acessibilidade" />
     </Group>
     <Group label="Plano">
-      <LinkRow first href="/configuracao/plano" icon="diamond-outline" title="Plano atual" value={user ? `${planName(user.planTier)} · ${PLAN_DESCRIPTION}` : undefined} />
+      <LinkRow first href="/configuracao/plano" icon="diamond-outline" title="Plano atual" value={user ? planLabel(user.planTier) : undefined} />
     </Group>
     <SignOutButton />
     <VersionFooter />
@@ -202,16 +214,13 @@ function MenuItem({ active, href, icon, label, meta }: { active: boolean; href: 
 }
 
 function MenuSignOut() {
-  const signOut = useSignOut();
-  const { error, pending, submit } = useLogoutAction(signOut);
   const { focusProps, focusStyle } = useFocusRing();
-  return <>
-    <Pressable {...focusProps} accessibilityLabel="Sair da conta" accessibilityRole="button" accessibilityState={{ busy: pending, disabled: pending }} disabled={pending} onPress={submit} style={[styles.menuItem, focusStyle]}>
+  return <SignOut>
+    {({ pending, submit }) => <Pressable {...focusProps} accessibilityLabel="Sair da conta" accessibilityRole="button" accessibilityState={{ busy: pending, disabled: pending }} disabled={pending} onPress={submit} style={[styles.menuItem, focusStyle]}>
       <WiseIcon color="feedbackDanger" name="log-out-outline" size="compact" />
       <Text style={[styles.menuLabel, styles.menuLabelDanger]}>Sair da conta</Text>
-    </Pressable>
-    {error !== null ? <FeedbackMessage message={logoutErrorMessage(error)} title="Erro ao sair" variant="error" /> : null}
-  </>;
+    </Pressable>}
+  </SignOut>;
 }
 
 function SettingsMenu({ active }: { active: SettingsSectionId }) {

@@ -2,39 +2,23 @@ import { act } from '@testing-library/react-native';
 import { Slot } from 'expo-router';
 import { fireEvent, renderRouter, screen, waitFor } from 'expo-router/testing-library';
 import { useState } from 'react';
-import { Dimensions, Platform, Pressable, StyleSheet, Text } from 'react-native';
+import { Platform, Pressable, StyleSheet, Text } from 'react-native';
 import { AppNavigation, restoreNavigationTriggerFocus } from '@/design-system/components/AppNavigation';
 import { AppShell, AppShellFrame } from '@/design-system/components/AppShell';
 import { isDesktopLayout } from '@/design-system/tokens/layout';
 import { modalAnimationType, MoreMenu } from '@/design-system/navigation/MoreMenu';
 import { render, within } from '@testing-library/react-native';
 import { theme } from '@/design-system/tokens/theme';
+import { resetViewport, setViewport } from '../test-utils/viewport';
 import { mockAuthState } from '../test-utils/auth-context';
 
 jest.mock('@/core/auth/auth-context', () => require('../test-utils/auth-context').createAuthContextMock());
 jest.mock('@/core/realtime/realtime-runtime', () => ({ RealtimeRuntime: () => null }));
 
-const originalPlatform = Platform.OS;
-const originalWindow = Dimensions.get('window');
-const originalScreen = Dimensions.get('screen');
-
-async function setViewport(platform: 'web' | 'ios' | 'android', width: number) {
-  Object.defineProperty(Platform, 'OS', { configurable: true, value: platform });
-  await act(() => {
-    Dimensions.set({
-      window: { ...originalWindow, width },
-      screen: { ...originalScreen, width },
-    });
-  });
-}
-
 afterEach(async () => {
   mockAuthState.logout.mockReset();
   mockAuthState.logout.mockResolvedValue(undefined);
-  Object.defineProperty(Platform, 'OS', { configurable: true, value: originalPlatform });
-  await act(() => {
-    Dimensions.set({ window: originalWindow, screen: originalScreen });
-  });
+  await resetViewport();
 });
 
 describe('adaptive application navigation', () => {
