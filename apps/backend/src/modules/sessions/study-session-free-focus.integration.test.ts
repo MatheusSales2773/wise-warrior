@@ -31,7 +31,6 @@ describe('Foco livre against MySQL', () => {
   let start: StudySessionStartService;
   let transitions: StudySessionTransitionService;
   const userId = '00000000-0000-4000-8000-000000000f01';
-  const at = (seconds: number) => new Date(clock.getTime() + seconds * 1000);
   let keys = 0;
   const key = () => `free-${keys += 1}`;
 
