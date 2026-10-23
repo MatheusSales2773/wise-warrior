@@ -39,8 +39,8 @@ export class ObjectivesService {
 
   /** Os Objetivos de hoje e da semana (São Paulo) com o progresso de quem pede. */
   async list(userId: string): Promise<ObjectivesResponseDto> {
-    const date = saoPauloDayKey(this.clock.now());
     const instant = this.clock.now();
+    const date = saoPauloDayKey(instant);
     const [sessionsOfDay, sessionsOfWeek] = await Promise.all([
       this.sessions.finishedSessionsOfDay(userId, date),
       this.sessions.finishedSessionsOfWeek(userId, instant),

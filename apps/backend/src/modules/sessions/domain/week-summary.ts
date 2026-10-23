@@ -37,7 +37,7 @@ export interface WeekSummary {
   subjects: WeekSummarySubject[];
 }
 
-export const subjectKey =(subject: string | null): string => (subject?.trim() ?? '').toLocaleLowerCase('pt-BR');
+export const subjectKey = (subject: string | null): string => (subject?.trim() ?? '').toLocaleLowerCase('pt-BR');
 
 /** The week of `now` in São Paulo: totals, a bar per day and the top subjects. Sessions outside the week are ignored. */
 export function buildWeekSummary(sessions: readonly WeekSessionRow[], now: Date): WeekSummary {
