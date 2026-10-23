@@ -171,7 +171,7 @@ describe('Foco livre against MySQL', () => {
 
     const sessions = new SessionsService(dataSource!.getRepository(StudySession), {} as never, {} as never);
     expect(await sessions.focusCycle(userId)).toMatchObject({ completedInCycle: 3 });
-    const history = await sessions.history(userId, { date: saoPauloDayKey(clock) } as never, clock);
+    const history = await sessions.history(userId, { date: saoPauloDayKey(clock) } as never);
     expect(history.items.filter((item) => item.kind === 'free')).toHaveLength(1);
     expect(history.items.find((item) => item.kind === 'free')!.cyclePosition).toBeNull();
   });

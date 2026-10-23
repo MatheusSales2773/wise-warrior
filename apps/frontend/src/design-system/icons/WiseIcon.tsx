@@ -26,6 +26,8 @@ export const wiseIconNames = [
   'play',
   'storefront-outline',
   'storefront',
+  'book-outline',
+  'book',
   'bag-handle-outline',
   'checkmark',
   'arrow-forward',

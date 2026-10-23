@@ -643,23 +643,32 @@ paths:
 
   /sessions/history:
     get:
-      summary: Histórico do dia do usuário autenticado
+      summary: Diário de Study Sessions do usuário autenticado
       description: >
-        Toda Sessão de estudo encerrada num dia em UTC (o mesmo recorte das métricas
-        do Dashboard), da mais recente para a mais antiga, com todos os desfechos:
-        concluída, encerrada antecipadamente, cancelada e descartada. Cada foco
-        concluído por inteiro traz `cyclePosition`, sua posição no ciclo Pomodoro
-        (1 a 4), contada sobre os mesmos focos de `/sessions/cycle`. `nextCursor` é
-        opaco; `null` indica a última página.
+        Toda Sessão de estudo encerrada que contou, da mais recente para a mais antiga, paginada
+        por cursor através de vários dias de São Paulo. Os Cancelamentos nunca aparecem.
+        Encerramento antecipado e Foco livre contam como concluídos. A Sessão truncada traz
+        `cappedReason` e o XP já reduzido; a Sessão descartada traz `state: discarded` e XP 0.
+        Cada foco concluído por inteiro traz `cyclePosition`, sua posição no ciclo Pomodoro
+        (1 a 4), contada sobre os mesmos focos de `/sessions/cycle`. `date` limita a lista a
+        um dia de São Paulo; sem ele a lista atravessa todos os dias. `nextCursor` é opaco;
+        `null` indica a última página.
       operationId: getStudySessionHistory
       tags: [Sessions]
       parameters:
-        - { name: date, in: query, required: false, description: "Dia em UTC (AAAA-MM-DD); hoje por padrão", schema: { type: string, format: date } }
+        - { name: date, in: query, required: false, description: "Limita a um dia de São Paulo (AAAA-MM-DD); sem ele, todos os dias", schema: { type: string, format: date } }
+        - name: state
+          in: query
+          required: false
+          description: >
+            Filtro de desfecho. `completed`: concluídas sem truncamento (inclui encerramento antecipado);
+            `truncated`: limitadas pelo antifraude; `discarded`: não contabilizadas. Sem o filtro, todas.
+          schema: { type: string, enum: [completed, truncated, discarded] }
         - { name: cursor, in: query, required: false, schema: { type: string, maxLength: 200 } }
         - { name: limit, in: query, required: false, schema: { type: integer, minimum: 1, maximum: 50, default: 20 } }
       responses:
         "200":
-          description: Página do histórico do dia
+          description: Página do Diário
           content:
             application/json:
               schema: { $ref: "#/components/schemas/StudySessionHistoryPage" }
@@ -1680,9 +1689,8 @@ components:
 
     StudySessionHistoryPage:
       type: object
-      required: [date, items, nextCursor]
+      required: [items, nextCursor]
       properties:
-        date: { type: string, format: date, description: "O dia em UTC listado" }
         items:
           type: array
           items: { $ref: "#/components/schemas/StudySessionHistoryItem" }

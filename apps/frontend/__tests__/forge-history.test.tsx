@@ -44,7 +44,6 @@ afterEach(() => { jest.clearAllMocks(); mockedHistory.mockReset(); mockedMetrics
 describe('Histórico de hoje', () => {
   it('lists every outcome of the day with subject, times, valid focus, cycle and XP', async () => {
     mockedHistory.mockResolvedValue({
-      date: '2026-10-16',
       items: [
         item('a'),
         item('b', { state: 'stopped_early', cyclePosition: null, xpAwarded: 80, durationValidSeconds: 480 }),
@@ -67,11 +66,11 @@ describe('Histórico de hoje', () => {
     expect(screen.getByTestId('forge-history-outcome-d')).toHaveTextContent('XP limitado pelo teto diário');
     expect(screen.getByTestId('forge-history-outcome-e')).toHaveTextContent('Cancelada');
     expect(first.props.accessibilityLabel).toMatch(/^Cálculo\. .+ às .+\. 25 min de foco válido\. Foco 2 de 4\. 250 XP\.$/);
-    expect(mockedHistory).toHaveBeenCalledWith(expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/), expect.objectContaining({ cursor: null }));
+    expect(mockedHistory).toHaveBeenCalledWith(expect.objectContaining({ date: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/), cursor: null }));
   });
 
   it('explains an empty day', async () => {
-    mockedHistory.mockResolvedValue({ date: '2026-10-16', items: [], nextCursor: null });
+    mockedHistory.mockResolvedValue({ items: [], nextCursor: null });
     await renderHistory();
 
     expect(await screen.findByTestId('forge-history-empty')).toBeTruthy();
@@ -82,21 +81,21 @@ describe('Histórico de hoje', () => {
     await renderHistory();
     expect(await screen.findByTestId('forge-history-error')).toBeTruthy();
 
-    mockedHistory.mockResolvedValueOnce({ date: '2026-10-16', items: [item('a')], nextCursor: 'next' });
+    mockedHistory.mockResolvedValueOnce({ items: [item('a')], nextCursor: 'next' });
     await fireEvent.press(within(screen.getByTestId('forge-history-error')).getByLabelText('Tentar novamente'));
     expect(await screen.findByTestId('forge-history-item-a')).toBeTruthy();
 
-    mockedHistory.mockResolvedValueOnce({ date: '2026-10-16', items: [item('b')], nextCursor: null });
+    mockedHistory.mockResolvedValueOnce({ items: [item('b')], nextCursor: null });
     await fireEvent.press(screen.getByTestId('forge-history-more'));
     expect(await screen.findByTestId('forge-history-item-b')).toBeTruthy();
-    expect(mockedHistory).toHaveBeenLastCalledWith(expect.any(String), expect.objectContaining({ cursor: 'next' }));
+    expect(mockedHistory).toHaveBeenLastCalledWith(expect.objectContaining({ cursor: 'next' }));
     expect(screen.queryByTestId('forge-history-more')).toBeNull();
   });
 });
 
 describe('Foco na semana', () => {
   it('draws seven days with a text summary, a label per bar and today named in words', async () => {
-    mockedHistory.mockResolvedValue({ date: '2026-10-16', items: [], nextCursor: null });
+    mockedHistory.mockResolvedValue({ items: [], nextCursor: null });
     await renderHistory();
 
     expect(await screen.findByTestId('forge-week-summary')).toHaveTextContent('Últimos 7 dias: 175 min de foco válido em 4 dias.');
@@ -107,7 +106,7 @@ describe('Foco na semana', () => {
   });
 
   it('keeps the history when the week cannot be loaded', async () => {
-    mockedHistory.mockResolvedValue({ date: '2026-10-16', items: [item('a')], nextCursor: null });
+    mockedHistory.mockResolvedValue({ items: [item('a')], nextCursor: null });
     mockedMetrics.mockReset();
     mockedMetrics.mockRejectedValue(new ApiError('server', { status: 500 }));
     await renderHistory();

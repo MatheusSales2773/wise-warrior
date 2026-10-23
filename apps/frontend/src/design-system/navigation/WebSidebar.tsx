@@ -2,8 +2,7 @@ import { StyleSheet, View } from 'react-native';
 import { BrandSigil } from '../icons/brand-sigil';
 import { theme } from '../tokens/theme';
 import { WiseText } from '../components/WiseText';
-import { futureDestinations, isDestinationActive, primaryDestinations } from './destinations';
-import { FutureDestinationRow } from './FutureDestinationRow';
+import { isDestinationActive, primaryDestinations } from './destinations';
 import { NavigationLink } from './NavigationLink';
 import { LogoutAction } from './LogoutAction';
 
@@ -19,11 +18,6 @@ export function WebSidebar({ onLogout, pathname }: { onLogout: () => Promise<voi
       <View style={styles.primary}>
         {primaryDestinations.map((destination) => (
           <NavigationLink active={isDestinationActive(destination, pathname)} destination={destination} key={destination.href} />
-        ))}
-      </View>
-      <View style={styles.future}>
-        {futureDestinations.map((destination) => (
-          <FutureDestinationRow destination={destination} key={destination.label} />
         ))}
       </View>
       <View style={styles.footer}>
@@ -53,11 +47,5 @@ const styles = StyleSheet.create({
     marginBottom: theme.space.screenGap,
   },
   primary: { gap: theme.space.inlineTight },
-  future: {
-    gap: theme.space.inlineHairline,
-    borderTopColor: theme.color.borderSubtle,
-    borderTopWidth: theme.border.standard,
-    paddingTop: theme.space.stackDefault,
-  },
   footer: { marginTop: 'auto' },
 });

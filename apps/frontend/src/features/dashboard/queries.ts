@@ -1,4 +1,5 @@
 import { infiniteQueryOptions, queryOptions } from '@tanstack/react-query';
+import type { SessionHistoryState } from './api';
 import { getMyProfile, getRecentStudySessions, getSessionMetrics, getSessionHistory } from './api';
 
 export const dashboardKeys = {
@@ -6,8 +7,8 @@ export const dashboardKeys = {
   profile: () => ['dashboard', 'profile'] as const,
   recentActivity: () => ['dashboard', 'recent-activity'] as const,
   metrics: () => ['dashboard', 'metrics'] as const,
-  // Under the dashboard key: XP earned on any device (progress:xpUpdated) refreshes the day history too.
-  history: (date: string) => ['dashboard', 'history', date] as const,
+  // Under the dashboard key: XP earned on any device (progress:xpUpdated) refreshes every history too.
+  history: (scope: { date?: string; state?: string } = {}) => ['dashboard', 'history', scope] as const,
 };
 
 const SAO_PAULO_DAY = new Intl.DateTimeFormat('en-CA', {
@@ -19,9 +20,10 @@ export function saoPauloDay(at: number = Date.now()): string {
   return SAO_PAULO_DAY.format(new Date(at));
 }
 
-export const sessionHistoryQueryOptions = (date: string) => infiniteQueryOptions({
-  queryKey: dashboardKeys.history(date),
-  queryFn: ({ pageParam, signal }) => getSessionHistory(date, { cursor: pageParam, signal }),
+/** One day of the history (`date`), or the whole Diário across days, optionally narrowed to one outcome. */
+export const sessionHistoryQueryOptions = ({ date, state }: { date?: string; state?: SessionHistoryState } = {}) => infiniteQueryOptions({
+  queryKey: dashboardKeys.history({ date, state }),
+  queryFn: ({ pageParam, signal }) => getSessionHistory({ date, state, cursor: pageParam, signal }),
   initialPageParam: null as string | null,
   getNextPageParam: (lastPage) => lastPage.nextCursor,
   staleTime: 30_000,
