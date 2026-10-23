@@ -67,6 +67,19 @@ export type SessionMetrics = {
   };
 };
 
+export type WeekSummary = {
+  weekStart: string;
+  weekEnd: string;
+  today: string;
+  validSeconds: number;
+  sessionCount: number;
+  xp: number;
+  /** Monday to Sunday, one entry per day. */
+  days: { date: string; sessionCount: number; validSeconds: number }[];
+  /** The subjects with the most valid focus, most first. */
+  subjects: { subject: string; validSeconds: number }[];
+};
+
 export async function getMyProfile({ signal }: { signal?: AbortSignal } = {}): Promise<UserProfile> {
   const response = await getAuthenticatedHttpClient().get<UserProfile>('/users/me', { signal });
   return response.data;
@@ -90,5 +103,10 @@ export async function getSessionHistory(
   if (state) params.set('state', state);
   if (cursor) params.set('cursor', cursor);
   const response = await getAuthenticatedHttpClient().get<SessionHistoryPage>(`/sessions/history?${params.toString()}`, { signal });
+  return response.data;
+}
+
+export async function getWeekSummary({ signal }: { signal?: AbortSignal } = {}): Promise<WeekSummary> {
+  const response = await getAuthenticatedHttpClient().get<WeekSummary>('/sessions/week', { signal });
   return response.data;
 }
