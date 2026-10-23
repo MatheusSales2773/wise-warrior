@@ -4,11 +4,12 @@ import { isDesktopLayout, theme } from '@/design-system';
 import { TabList } from '@/features/guild/guild-tabs';
 import { saoPauloDay } from '@/features/dashboard/queries';
 import { Diary } from './diary-list';
+import { Milestones } from './milestones-card';
 import { Objectives } from './objectives';
 import { WeekCards } from './week-cards';
 import { weekRangeLabel } from './diary';
 
-/* Crônicas: Objetivos e Diário (ADR-014). Os Marcos chegam em fatia própria. */
+/* Crônicas: Objetivos, Marcos e Diário (ADR-014). */
 
 type Section = 'objetivos' | 'diario';
 
@@ -63,7 +64,10 @@ export function ChroniclesScreen() {
             <View style={desktop ? styles.diaryDesktop : undefined}><Diary desktop={desktop} loadMore={nearEnd} /></View>
             <WeekCards desktop={desktop} />
           </View>
-          : <View style={desktop ? styles.diaryDesktop : undefined}><Objectives desktop={desktop} /></View>}
+          : <View style={[styles.diaryLayout, desktop && styles.diaryLayoutDesktop]}>
+            <View style={desktop ? styles.diaryDesktop : undefined}><Objectives desktop={desktop} /></View>
+            <View style={desktop ? styles.milestonesDesktop : undefined}><Milestones desktop={desktop} /></View>
+          </View>}
       </View>
     </ScrollView>
   </View>;
@@ -83,5 +87,6 @@ const styles = StyleSheet.create({
   titleCompact: { fontFamily: cinzel, fontSize: 24, lineHeight: 32, color: theme.color.textPrimary },
   diaryLayout: { gap: 20 },
   diaryLayoutDesktop: { flexDirection: 'row', alignItems: 'flex-start', gap: 24 },
+  milestonesDesktop: { width: 368 },
   diaryDesktop: { flex: 1, maxWidth: DIARY_MAX },
 });

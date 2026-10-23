@@ -3,7 +3,7 @@ import { fireEvent, render, screen, within } from '@testing-library/react-native
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { getSessionHistory, getWeekSummary, type SessionHistoryItem, type WeekSummary } from '@/features/dashboard/api';
 import { ChroniclesScreen } from '@/features/chronicles/chronicles-screen';
-import { getObjectives, type Objectives } from '@/features/chronicles/api';
+import { getMilestones, getObjectives, type Milestones, type Objectives } from '@/features/chronicles/api';
 import { countLabel, renewalLabel } from '@/features/chronicles/objectives';
 import { formatFocusTime, weekBars } from '@/features/chronicles/week';
 import { dayHeading, diaryStatus, diaryXp, groupByDay, weekRangeLabel } from '@/features/chronicles/diary';
@@ -16,9 +16,10 @@ jest.mock('@/features/dashboard/api', () => ({
   getRecentStudySessions: jest.fn(),
 }));
 
-jest.mock('@/features/chronicles/api', () => ({ getObjectives: jest.fn() }));
+jest.mock('@/features/chronicles/api', () => ({ getObjectives: jest.fn(), getMilestones: jest.fn() }));
 
 const mockedObjectives = getObjectives as jest.MockedFunction<typeof getObjectives>;
+const mockedMilestones = getMilestones as jest.MockedFunction<typeof getMilestones>;
 const mockedHistory = getSessionHistory as jest.MockedFunction<typeof getSessionHistory>;
 const mockedWeek = getWeekSummary as jest.MockedFunction<typeof getWeekSummary>;
 
@@ -53,6 +54,23 @@ const objectives = (progress: [number, number, number], weeklyProgress: [number,
   },
 });
 
+const MADRUGADOR = 'c05e71c0-0000-4000-8000-000000000003';
+const CEM_SESSOES = 'c05e71c0-0000-4000-8000-000000000006';
+const GRIMORIO = 'c05e71c0-0000-4000-8000-000000000009';
+const FORJA = 'c05e71c0-0000-4000-8000-00000000000b';
+
+/** Madrugador conquistado, Cem Sessões em 87 de 100 e as duas Raids por vencer (o frame v3). */
+const MILESTONES: Milestones = {
+  earned: 1,
+  total: 4,
+  items: [
+    { id: MADRUGADOR, name: 'Madrugador', progress: 5, target: 5, earned: true },
+    { id: CEM_SESSOES, name: 'Cem Sessões', progress: 87, target: 100, earned: false },
+    { id: GRIMORIO, name: 'Marcador do Grimório', progress: 0, target: 1, earned: false },
+    { id: FORJA, name: 'Brasão da Forja', progress: 0, target: 1, earned: false },
+  ],
+};
+
 const item = (id: string, endedAt: string, overrides: Partial<SessionHistoryItem> = {}): SessionHistoryItem => ({
   id, subject: 'Cálculo II', mode: 'solo', state: 'completed',
   startedAt: endedAt, endedAt, durationValidSeconds: 2400, xpAwarded: 400, discardedReason: null, cappedReason: null, cyclePosition: 1,
@@ -72,9 +90,10 @@ const setViewport = (width: number, os: 'web' | 'ios' = 'web') => {
 beforeEach(() => {
   setViewport(390, 'ios');
   mockedWeek.mockResolvedValue(WEEK);
+  mockedMilestones.mockResolvedValue(MILESTONES);
   jest.spyOn(Date, 'now').mockReturnValue(Date.parse('2026-10-22T18:00:00.000Z'));
 });
-afterEach(() => { jest.restoreAllMocks(); mockedHistory.mockReset(); mockedWeek.mockReset(); mockedObjectives.mockReset(); });
+afterEach(() => { jest.restoreAllMocks(); mockedHistory.mockReset(); mockedWeek.mockReset(); mockedObjectives.mockReset(); mockedMilestones.mockReset(); });
 
 describe('Diário helpers', () => {
   it('names the São Paulo week from Monday to Sunday', () => {
@@ -213,6 +232,90 @@ describe('Crônicas', () => {
     await fireEvent.press(await screen.findByRole('button', { name: 'Tentar novamente' }));
 
     expect(await screen.findByTestId('objective-one-session')).toBeTruthy();
+  });
+
+  describe('Marcos', () => {
+    const openObjectives = async () => {
+      mockedHistory.mockResolvedValue({ items: [], nextCursor: null });
+      mockedObjectives.mockResolvedValue(objectives([0, 0, 0]));
+      await renderChronicles();
+      await fireEvent.press(screen.getByTestId('chronicles-tab-objetivos'));
+    };
+
+    it('shows "N de 4", the earned Badge as Conquistado and the progress of the others', async () => {
+      await openObjectives();
+
+      expect(await screen.findByTestId('milestones')).toBeTruthy();
+      expect(screen.getByTestId('milestones-count')).toHaveTextContent('1 de 4');
+      expect(screen.queryByText('Selo dos Madrugadores')).toBeNull();
+      expect(screen.getAllByTestId(/^milestone-[^-]+-[^-]+-[^-]+-[^-]+-[^-]+$/)).toHaveLength(4);
+    });
+
+    it('shows each Marco as a mobile block with its short name and badge', async () => {
+      await openObjectives();
+
+      await screen.findByTestId('milestones');
+      expect(within(screen.getByTestId('milestone-' + MADRUGADOR)).getByText('Madrugador')).toBeTruthy();
+      expect(screen.getByTestId('milestone-' + MADRUGADOR + '-badge')).toHaveTextContent('✓');
+      expect(screen.getByTestId('milestone-' + CEM_SESSOES + '-badge')).toHaveTextContent('87%');
+      expect(within(screen.getByTestId('milestone-' + GRIMORIO)).getByText('Grimório')).toBeTruthy();
+      expect(screen.getByTestId('milestone-' + GRIMORIO + '-badge')).toHaveTextContent('0/1');
+      expect(within(screen.getByTestId('milestone-' + FORJA)).getByText('Forja')).toBeTruthy();
+    });
+
+    describe('on desktop', () => {
+      beforeEach(() => {
+        setViewport(1440);
+      });
+
+      it('lists the Marcos as rows: Conquistado, sessions in progress and the Raid to win', async () => {
+        await openObjectives();
+
+        await screen.findByTestId('milestones');
+        expect(within(screen.getByTestId('milestone-' + MADRUGADOR)).getByText('Conquistado')).toBeTruthy();
+        expect(screen.queryByTestId('milestone-' + MADRUGADOR + '-bar')).toBeNull();
+        expect(screen.getByTestId('milestone-' + CEM_SESSOES + '-bar')).toBeTruthy();
+        expect(screen.getByTestId('milestone-' + MADRUGADOR + '-description')).toHaveTextContent('5 sessões antes das 7h');
+        expect(screen.getByTestId('milestone-' + CEM_SESSOES + '-description')).toHaveTextContent('87 de 100 sessões');
+        expect(screen.getByTestId('milestone-' + GRIMORIO + '-description')).toHaveTextContent('Vença a Raid Cerco ao Grimório · 0 de 1');
+        expect(screen.getByTestId('milestone-' + FORJA + '-description')).toHaveTextContent('Vença a Raid Forja dos Sábios · 0 de 1');
+      });
+
+      it('shows the Brasão da Forja as Conquistado, with 1 de 1, once its Raid is won', async () => {
+        mockedMilestones.mockResolvedValue({
+          earned: 2,
+          total: 4,
+          items: [MILESTONES.items[0]!, MILESTONES.items[1]!, MILESTONES.items[2]!, { ...MILESTONES.items[3]!, progress: 1, earned: true }],
+        });
+        await openObjectives();
+
+        await screen.findByTestId('milestones');
+        expect(within(screen.getByTestId('milestone-' + FORJA)).getByText('Conquistado')).toBeTruthy();
+        expect(screen.getByTestId('milestone-' + FORJA + '-description')).toHaveTextContent('Vença a Raid Forja dos Sábios · 1 de 1');
+      });
+
+      it('shows a Raid Marco as 1 de 1 once it is won', async () => {
+        mockedMilestones.mockResolvedValue({
+          earned: 2,
+          total: 4,
+          items: [MILESTONES.items[0]!, MILESTONES.items[1]!, { ...MILESTONES.items[2]!, progress: 1, earned: true }, MILESTONES.items[3]!],
+        });
+        await openObjectives();
+
+        await screen.findByTestId('milestones');
+        expect(screen.getByTestId('milestones-count')).toHaveTextContent('2 de 4');
+        expect(within(screen.getByTestId('milestone-' + GRIMORIO)).getByText('Conquistado')).toBeTruthy();
+      });
+    });
+
+    it('offers a retry when the Marcos fail to load', async () => {
+      mockedMilestones.mockRejectedValueOnce(new Error('boom'));
+      await openObjectives();
+
+      await fireEvent.press(await screen.findByRole('button', { name: 'Tentar novamente' }));
+
+      expect(await screen.findByTestId('milestones')).toBeTruthy();
+    });
   });
 
   it('lists the sessions grouped by São Paulo day with time, subject, status and XP', async () => {

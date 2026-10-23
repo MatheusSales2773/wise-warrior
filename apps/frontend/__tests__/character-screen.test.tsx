@@ -73,6 +73,7 @@ const objectives = (target = 4, progress = 2): Objectives => ({
     date: '2026-09-17', renewsAt: '2026-09-18T03:00:00.000Z',
     items: [{ id: 'four-sessions', title: 'Conclua 4 sessões hoje', progress, target, coins: 15, completed: progress >= target }],
   },
+  weekly: { weekStart: '2026-09-14', renewsAt: '2026-09-21T03:00:00.000Z', items: [] },
 });
 const mockedObjectives = getObjectives as jest.MockedFunction<typeof getObjectives>;
 const mockedProfile = getMyProfile as jest.MockedFunction<typeof getMyProfile>;

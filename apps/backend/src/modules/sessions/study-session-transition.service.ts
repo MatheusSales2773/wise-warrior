@@ -29,8 +29,7 @@ import {
   type StudySessionCommandAction,
 } from './domain/study-session-time';
 import { COUNTED_SESSION_SQL } from './domain/counted-session';
-import { countSessions } from './domain/session-counts';
-import type { SessionCounts } from '../users/domain/unlock-condition';
+import { countFinishedSessions } from './finished-session-counts';
 import type { XpApplicationResult } from '../progression/domain/progression-policy';
 
 export type StudySessionClock = { now(): Date };
@@ -364,7 +363,7 @@ export class StudySessionTransitionService {
       });
     }
     if (countsAsFinishedSession(saved)) {
-      await this.users.unlockSessionBadges(manager, userId, await this.countFinishedSessions(manager, userId));
+      await this.users.unlockSessionBadges(manager, userId, await countFinishedSessions(manager, userId));
       // Objetivos pagam Moedas no mesmo commit, e nunca XP nem Contribuição (ADR-014).
       objectiveCoinMovements = await this.objectives.settleInTransaction(manager, userId, saved.endedAt!);
     }
@@ -378,21 +377,6 @@ export class StudySessionTransitionService {
       });
     }
     return { xpGained: xpAwarded, progressionResult, coinMovement, objectiveCoinMovements, raidContributionOutcome };
-  }
-
-  /** Finished, non-discarded Study Sessions of the user (the one just saved included), bucketed by UTC hour like the metrics. */
-  private async countFinishedSessions(manager: EntityManager, userId: string): Promise<SessionCounts> {
-    const rows = await manager
-      .getRepository(StudySession)
-      .createQueryBuilder('session')
-      .select("DATE_FORMAT(session.endedAt, '%Y-%m-%d %H')", 'hour')
-      .addSelect('COUNT(session.id)', 'sessionCount')
-      .where('session.userId = :userId', { userId })
-      .andWhere('session.endedAt IS NOT NULL')
-      .andWhere(COUNTED_SESSION_SQL)
-      .groupBy("DATE_FORMAT(session.endedAt, '%Y-%m-%d %H')")
-      .getRawMany<{ hour: string; sessionCount: string }>();
-    return countSessions(rows.map((row) => ({ hour: row.hour, sessionCount: Number(row.sessionCount), validSeconds: 0 })));
   }
 
   private publishTerminalEffects(userId: string, effects: TerminalEffects): void {
