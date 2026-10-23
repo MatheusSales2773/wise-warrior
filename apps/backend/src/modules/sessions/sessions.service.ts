@@ -22,9 +22,12 @@ import {
   saoPauloDayStart,
   saoPauloNextDayKey,
   saoPauloPreviousDayKey,
+  saoPauloWeekAt,
 } from '../../shared/time/sao-paulo-calendar';
 import { buildCadence, calculateStreaks, groupActivityByDay } from './domain/session-metrics';
 import { COUNTED_SESSION_SQL, type FinishedSessionOfDay } from './domain/counted-session';
+import { buildWeekSummary } from './domain/week-summary';
+import type { WeekSummaryResponseDto } from './dto/week-summary-response.dto';
 import { FOCUS_CYCLE_LENGTH, focusCycle, type FocusCycle } from './domain/focus-cycle';
 import { decodeDatetimeCursor, encodeDatetimeCursor } from '../../shared/pagination/datetime-cursor';
 
@@ -263,6 +266,38 @@ export class SessionsService {
       todayByKind: { cycle: todayOfKind('cycle'), free: todayOfKind('free') },
       cadence: { windowStart, windowEnd: today, days: cadence },
     };
+  }
+
+  /**
+   * Cards "Esta semana" and "Matérias da semana" (#300): the current São Paulo week, Monday to Sunday, over the Study
+   * Sessions that counted. Discards and cancellations are left out; the arithmetic lives in `buildWeekSummary`.
+   */
+  async weekSummary(userId: string, now: Date = new Date()): Promise<WeekSummaryResponseDto> {
+    const week = saoPauloWeekAt(now);
+    const rows = await this.studySessions
+      .createQueryBuilder('session')
+      .select('session.endedAt', 'endedAt')
+      .addSelect('session.subject', 'subject')
+      .addSelect('session.durationValidSeconds', 'validSeconds')
+      .addSelect('session.xpAwarded', 'xpAwarded')
+      .where('session.userId = :userId', { userId })
+      .andWhere('session.endedAt IS NOT NULL')
+      .andWhere('session.endedAt >= :start AND session.endedAt < :nextStart', {
+        start: week.startsAt,
+        nextStart: new Date(week.endsAt.getTime() + 1000),
+      })
+      .andWhere(COUNTED_SESSION_SQL)
+      .getRawMany<{ endedAt: Date; subject: string | null; validSeconds: string; xpAwarded: string }>();
+
+    return buildWeekSummary(
+      rows.map((row) => ({
+        endedAt: new Date(row.endedAt),
+        subject: row.subject,
+        validSeconds: Number(row.validSeconds),
+        xpAwarded: Number(row.xpAwarded),
+      })),
+      now,
+    );
   }
 
   /**

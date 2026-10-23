@@ -1,13 +1,15 @@
 import { fireEvent, render, screen, within } from '@testing-library/react-native';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { getSessionHistory, type SessionHistoryItem } from '@/features/dashboard/api';
+import { getSessionHistory, getWeekSummary, type SessionHistoryItem, type WeekSummary } from '@/features/dashboard/api';
 import { ChroniclesScreen } from '@/features/chronicles/chronicles-screen';
 import { getObjectives, type Objectives } from '@/features/chronicles/api';
 import { renewalLabel } from '@/features/chronicles/objectives';
+import { formatFocusTime, weekBars } from '@/features/chronicles/week';
 import { dayHeading, diaryStatus, diaryXp, groupByDay, weekRangeLabel } from '@/features/chronicles/diary';
 
 jest.mock('@/features/dashboard/api', () => ({
   getSessionHistory: jest.fn(),
+  getWeekSummary: jest.fn(),
   getSessionMetrics: jest.fn(),
   getMyProfile: jest.fn(),
   getRecentStudySessions: jest.fn(),
@@ -17,6 +19,15 @@ jest.mock('@/features/chronicles/api', () => ({ getObjectives: jest.fn() }));
 
 const mockedObjectives = getObjectives as jest.MockedFunction<typeof getObjectives>;
 const mockedHistory = getSessionHistory as jest.MockedFunction<typeof getSessionHistory>;
+const mockedWeek = getWeekSummary as jest.MockedFunction<typeof getWeekSummary>;
+
+const day = (date: string, validSeconds: number, sessionCount = validSeconds > 0 ? 1 : 0) => ({ date, validSeconds, sessionCount });
+const WEEK: WeekSummary = {
+  weekStart: '2026-10-19', weekEnd: '2026-10-25', today: '2026-10-22',
+  validSeconds: 34800, sessionCount: 14, xp: 3400,
+  days: [day('2026-10-19', 3000), day('2026-10-20', 6000), day('2026-10-21', 0), day('2026-10-22', 12000), day('2026-10-23', 0), day('2026-10-24', 0), day('2026-10-25', 0)],
+  subjects: [{ subject: 'Cálculo II', validSeconds: 13200 }, { subject: 'Sem matéria', validSeconds: 6600 }],
+};
 
 const objectives = (progress: [number, number, number]): Objectives => ({
   daily: {
@@ -42,9 +53,10 @@ async function renderChronicles() {
 }
 
 beforeEach(() => {
+  mockedWeek.mockResolvedValue(WEEK);
   jest.spyOn(Date, 'now').mockReturnValue(Date.parse('2026-10-22T18:00:00.000Z'));
 });
-afterEach(() => { jest.restoreAllMocks(); mockedHistory.mockReset(); mockedObjectives.mockReset(); });
+afterEach(() => { jest.restoreAllMocks(); mockedHistory.mockReset(); mockedWeek.mockReset(); mockedObjectives.mockReset(); });
 
 describe('Diário helpers', () => {
   it('names the São Paulo week from Monday to Sunday', () => {
@@ -221,5 +233,66 @@ describe('Crônicas', () => {
     await fireEvent.press(await screen.findByRole('button', { name: 'Tentar novamente' }));
 
     expect(await screen.findByTestId('diary-item-a')).toBeTruthy();
+  });
+});
+
+describe('Cards da semana', () => {
+  it('shows the week range, the totals and the subjects of the week', async () => {
+    mockedHistory.mockResolvedValue({ items: [], nextCursor: null });
+    await renderChronicles();
+
+    expect(await screen.findByTestId('week-range')).toHaveTextContent('19/10 a 25/10');
+    expect(screen.getByTestId('week-focus')).toHaveTextContent('9h 40');
+    expect(screen.getByTestId('week-sessions')).toHaveTextContent('14');
+    expect(screen.getByTestId('week-xp')).toHaveTextContent('3.400');
+    expect(within(screen.getByTestId('week-subjects')).getByText('Matérias da semana')).toBeTruthy();
+    expect(within(screen.getByTestId('week-subject-Cálculo II')).getByText('3h 40')).toBeTruthy();
+    expect(within(screen.getByTestId('week-subject-Sem matéria')).getByText('1h 50')).toBeTruthy();
+  });
+
+  it('draws one bar per day, Monday to Sunday, with today highlighted', async () => {
+    mockedHistory.mockResolvedValue({ items: [], nextCursor: null });
+    await renderChronicles();
+
+    const chart = await screen.findByTestId('week-chart');
+    expect(within(chart).getAllByTestId(/^week-bar-2026-/)).toHaveLength(7);
+    expect(screen.getAllByTestId('week-bar-today')).toHaveLength(1);
+    expect(within(screen.getByTestId('week-bar-2026-10-22')).getByTestId('week-bar-today')).toBeTruthy();
+  });
+
+  it('says so when no session counted this week', async () => {
+    mockedHistory.mockResolvedValue({ items: [], nextCursor: null });
+    mockedWeek.mockResolvedValue({ ...WEEK, validSeconds: 0, sessionCount: 0, xp: 0, subjects: [], days: WEEK.days.map((d) => day(d.date, 0)) });
+    await renderChronicles();
+
+    expect(await screen.findByTestId('week-subjects-empty')).toBeTruthy();
+    expect(screen.getByTestId('week-focus')).toHaveTextContent('0 min');
+  });
+
+  it('keeps the Diário usable when the week fails to load', async () => {
+    mockedHistory.mockResolvedValue({ items: [item('a', '2026-10-22T17:20:00.000Z')], nextCursor: null });
+    mockedWeek.mockRejectedValue(new Error('boom'));
+    await renderChronicles();
+
+    expect(await screen.findByTestId('week-error')).toBeTruthy();
+    expect(await screen.findByTestId('diary-item-a')).toBeTruthy();
+  });
+});
+
+describe('Week helpers', () => {
+  it('formats focus time in hours and minutes', () => {
+    expect(formatFocusTime(13200)).toBe('3h 40');
+    expect(formatFocusTime(7500)).toBe('2h 05');
+    expect(formatFocusTime(2400)).toBe('40 min');
+    expect(formatFocusTime(0)).toBe('0 min');
+  });
+
+  it('scales the bars to the busiest day and flags today', () => {
+    const bars = weekBars(WEEK);
+    expect(bars.map((bar) => bar.initial).join('')).toBe('STQQSSD');
+    expect(bars[3]).toMatchObject({ height: 96, today: true });
+    expect(bars[0]?.height).toBe(24);
+    expect(bars[2]?.height).toBe(4);
+    expect(bars.filter((bar) => bar.today)).toHaveLength(1);
   });
 });

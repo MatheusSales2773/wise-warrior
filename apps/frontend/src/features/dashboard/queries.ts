@@ -1,12 +1,13 @@
 import { infiniteQueryOptions, queryOptions } from '@tanstack/react-query';
 import type { SessionHistoryState } from './api';
-import { getMyProfile, getRecentStudySessions, getSessionMetrics, getSessionHistory } from './api';
+import { getMyProfile, getRecentStudySessions, getSessionMetrics, getSessionHistory, getWeekSummary } from './api';
 
 export const dashboardKeys = {
   all: ['dashboard'] as const,
   profile: () => ['dashboard', 'profile'] as const,
   recentActivity: () => ['dashboard', 'recent-activity'] as const,
   metrics: () => ['dashboard', 'metrics'] as const,
+  week: () => ['dashboard', 'week'] as const,
   // Under the dashboard key: XP earned on any device (progress:xpUpdated) refreshes every history too.
   history: (scope: { date?: string; state?: string } = {}) => ['dashboard', 'history', scope] as const,
 };
@@ -47,6 +48,14 @@ export const recentActivityQueryOptions = () => queryOptions({
 export const sessionMetricsQueryOptions = () => queryOptions({
   queryKey: dashboardKeys.metrics(),
   queryFn: ({ signal }) => getSessionMetrics({ signal }),
+  staleTime: 30_000,
+  retry: false,
+});
+
+/** The Diário's week cards. Under the dashboard key, so XP earned on any device refreshes them too. */
+export const weekSummaryQueryOptions = () => queryOptions({
+  queryKey: dashboardKeys.week(),
+  queryFn: ({ signal }) => getWeekSummary({ signal }),
   staleTime: 30_000,
   retry: false,
 });

@@ -5,6 +5,7 @@ import { TabList } from '@/features/guild/guild-tabs';
 import { saoPauloDay } from '@/features/dashboard/queries';
 import { Diary } from './diary-list';
 import { Objectives } from './objectives';
+import { WeekCards } from './week-cards';
 import { weekRangeLabel } from './diary';
 
 /* Crônicas: Objetivos e Diário (ADR-014). Os Objetivos semanais e os Marcos chegam em fatias próprias. */
@@ -58,7 +59,10 @@ export function ChroniclesScreen() {
           </View>
         </View>
         {section === 'diario'
-          ? <View style={desktop ? styles.diaryDesktop : undefined}><Diary desktop={desktop} loadMore={nearEnd} /></View>
+          ? <View style={[styles.diaryLayout, desktop && styles.diaryLayoutDesktop]}>
+            <View style={desktop ? styles.diaryDesktop : undefined}><Diary desktop={desktop} loadMore={nearEnd} /></View>
+            <WeekCards desktop={desktop} />
+          </View>
           : <View style={desktop ? styles.diaryDesktop : undefined}><Objectives /></View>}
       </View>
     </ScrollView>
@@ -77,5 +81,7 @@ const styles = StyleSheet.create({
   week: { fontFamily: 'JetBrainsMono-Medium', fontSize: 10, lineHeight: 14, letterSpacing: 1.6, textTransform: 'uppercase', color: theme.color.accentPrimary },
   title: { fontFamily: cinzel, fontSize: 32, lineHeight: 40, letterSpacing: 1, color: theme.color.textPrimary },
   titleCompact: { fontFamily: cinzel, fontSize: 24, lineHeight: 32, color: theme.color.textPrimary },
-  diaryDesktop: { maxWidth: DIARY_MAX },
+  diaryLayout: { gap: 20 },
+  diaryLayoutDesktop: { flexDirection: 'row', alignItems: 'flex-start', gap: 24 },
+  diaryDesktop: { flex: 1, maxWidth: DIARY_MAX },
 });

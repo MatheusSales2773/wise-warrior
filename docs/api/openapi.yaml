@@ -740,6 +740,25 @@ paths:
               schema: { $ref: "#/components/schemas/Objectives" }
         "401": { $ref: "#/components/responses/Unauthorized" }
 
+  /sessions/week:
+    get:
+      summary: Resumo da semana corrente de São Paulo, de segunda a domingo
+      description: >
+        Alimenta os cards "Esta semana" e "Matérias da semana" do Diário. Soma só
+        Study Sessions não descartadas que terminaram na semana; Cancelamentos e
+        Sessões descartadas ficam de fora. As matérias são agrupadas sem
+        diferenciar maiúsculas nem espaços nas pontas, sessões sem matéria entram
+        como "Sem matéria", e voltam as 4 com mais foco válido, em ordem.
+      operationId: getStudySessionWeek
+      tags: [Sessions]
+      responses:
+        "200":
+          description: Totais da semana, um dia por barra e as matérias com mais foco
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SessionWeekSummary" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
   /sessions/{id}/heartbeat:
     patch:
       summary: Pulso periódico do servidor (RN-ANTIFRAUDE — nunca o cliente marca o tempo)
@@ -1789,6 +1808,40 @@ components:
             cycle: { $ref: "#/components/schemas/SessionMetricsKindTotals" }
             free: { $ref: "#/components/schemas/SessionMetricsKindTotals" }
         cadence: { $ref: "#/components/schemas/SessionMetricsCadence" }
+
+    SessionWeekSummary:
+      type: object
+      description: Semana de São Paulo (segunda a domingo) que contém o momento da requisição.
+      required: [weekStart, weekEnd, today, validSeconds, sessionCount, xp, days, subjects]
+      properties:
+        weekStart: { type: string, format: date, description: Segunda-feira da semana }
+        weekEnd: { type: string, format: date, description: Domingo da semana }
+        today: { type: string, format: date, description: Dia de hoje em São Paulo }
+        validSeconds: { type: integer, minimum: 0 }
+        sessionCount: { type: integer, minimum: 0 }
+        xp: { type: integer, minimum: 0, description: XP de sessão da semana }
+        days:
+          type: array
+          minItems: 7
+          maxItems: 7
+          description: Um item por dia, de segunda a domingo
+          items:
+            type: object
+            required: [date, sessionCount, validSeconds]
+            properties:
+              date: { type: string, format: date }
+              sessionCount: { type: integer, minimum: 0 }
+              validSeconds: { type: integer, minimum: 0 }
+        subjects:
+          type: array
+          maxItems: 4
+          description: As matérias com mais foco válido, da maior para a menor
+          items:
+            type: object
+            required: [subject, validSeconds]
+            properties:
+              subject: { type: string, description: 'Nome da matéria, ou "Sem matéria"' }
+              validSeconds: { type: integer, minimum: 0 }
 
     SessionMetricsKindTotals:
       type: object
