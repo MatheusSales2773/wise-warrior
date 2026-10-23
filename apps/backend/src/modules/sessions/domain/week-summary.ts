@@ -42,6 +42,8 @@ const subjectKey = (subject: string | null): string => (subject?.trim() ?? '').t
 /** The week of `now` in São Paulo: totals, a bar per day and the top subjects. Sessions outside the week are ignored. */
 export function buildWeekSummary(sessions: readonly WeekSessionRow[], now: Date): WeekSummary {
   const week = saoPauloWeekAt(now);
+  // `endsAt` is Sunday 23:59:59.000; the week lasts until the next Monday begins.
+  const nextWeekStartsAt = new Date(week.endsAt.getTime() + 1000);
   const weekStart = saoPauloDayKey(week.startsAt);
   const days: WeekSummaryDay[] = Array.from({ length: 7 }, (_, index) => ({
     date: saoPauloShiftDayKey(weekStart, index),
@@ -52,7 +54,7 @@ export function buildWeekSummary(sessions: readonly WeekSessionRow[], now: Date)
   const summary = { validSeconds: 0, sessionCount: 0, xp: 0 };
 
   for (const session of sessions) {
-    if (session.endedAt < week.startsAt || session.endedAt > week.endsAt) continue;
+    if (session.endedAt < week.startsAt || session.endedAt >= nextWeekStartsAt) continue;
     const day = days.find((candidate) => candidate.date === saoPauloDayKey(session.endedAt))!;
     day.sessionCount += 1;
     day.validSeconds += session.validSeconds;

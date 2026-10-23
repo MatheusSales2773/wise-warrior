@@ -38,14 +38,15 @@ describe('buildWeekSummary', () => {
   it('keeps Sunday 23:59 in the week and leaves out Monday 00:00 of the next one', () => {
     const summary = buildWeekSummary([
       session('2026-10-26T02:59:59Z', { validSeconds: 100, xpAwarded: 1 }), // Sunday 23:59:59 in São Paulo
+      session('2026-10-26T02:59:59.500Z', { validSeconds: 50, xpAwarded: 1 }), // the last second of Sunday
       session('2026-10-26T03:00:00Z', { validSeconds: 999, xpAwarded: 9 }), // Monday 00:00:00, next week
       session('2026-10-19T02:59:59Z', { validSeconds: 888, xpAwarded: 8 }), // Sunday 23:59:59, previous week
       session('2026-10-19T03:00:00Z', { validSeconds: 200, xpAwarded: 2 }), // Monday 00:00:00 in São Paulo
     ], NOW);
 
-    expect(summary).toMatchObject({ validSeconds: 300, sessionCount: 2, xp: 3 });
+    expect(summary).toMatchObject({ validSeconds: 350, sessionCount: 3, xp: 4 });
     expect(summary.days[0]).toMatchObject({ validSeconds: 200, sessionCount: 1 });
-    expect(summary.days[6]).toMatchObject({ validSeconds: 100, sessionCount: 1 });
+    expect(summary.days[6]).toMatchObject({ validSeconds: 150, sessionCount: 2 });
   });
 
   it('groups subjects ignoring case and edge spaces, as one subject', () => {

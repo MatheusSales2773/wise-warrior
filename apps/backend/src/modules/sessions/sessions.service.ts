@@ -263,7 +263,10 @@ export class SessionsService {
       .addSelect('session.xpAwarded', 'xpAwarded')
       .where('session.userId = :userId', { userId })
       .andWhere('session.endedAt IS NOT NULL')
-      .andWhere('session.endedAt >= :start AND session.endedAt <= :end', { start: week.startsAt, end: week.endsAt })
+      .andWhere('session.endedAt >= :start AND session.endedAt < :nextStart', {
+        start: week.startsAt,
+        nextStart: new Date(week.endsAt.getTime() + 1000),
+      })
       .andWhere('session.discardedReason IS NULL')
       .andWhere("(session.state IS NULL OR session.state IN ('completed', 'stopped_early'))")
       .getRawMany<{ endedAt: Date; subject: string | null; validSeconds: string; xpAwarded: string }>();
