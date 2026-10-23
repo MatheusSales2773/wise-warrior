@@ -3,7 +3,7 @@ import type { CosmeticCategory } from '@/features/profile/api';
 
 /* Moeda, Extrato e Loja (ADR-012, `docs/api/openapi.yaml`). */
 
-export type CoinOriginType = 'study-session' | 'raid-win' | 'purchase' | 'signup' | 'migration';
+export type CoinOriginType = 'study-session' | 'raid-win' | 'purchase' | 'signup' | 'migration' | 'objective';
 
 /** `ref` da Compra é `mission:<id>` ou `cosmetic:<id>`; das demais origens, o id de quem gerou a movimentação. */
 export type CoinOrigin = { type: CoinOriginType; ref: string };

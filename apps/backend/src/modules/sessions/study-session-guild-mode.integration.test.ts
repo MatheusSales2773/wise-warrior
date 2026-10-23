@@ -37,6 +37,7 @@ import { SessionsController } from './sessions.controller';
 import { SessionsService } from './sessions.service';
 import { StudySessionStartService } from './study-session-start.service';
 import { StudySessionEventsService } from './study-session-events.service';
+import { ObjectivesService } from '../objectives/objectives.service';
 import { STUDY_SESSION_CLOCK, StudySessionTransitionService } from './study-session-transition.service';
 
 type Snapshot = { id: string; mode: string; raidId: string | null; startedAt: string; state: string; xpAwarded: number };
@@ -119,6 +120,7 @@ describe('Study Session de modo Guilda against MySQL', () => {
         ProgressionService,
         StudySessionStartService,
         StudySessionTransitionService,
+        { provide: ObjectivesService, useValue: { settleDailyInTransaction: async () => [] } },
         StudySessionEventsService,
         repo(Guild), repo(GuildMembership), repo(Raid), repo(RaidContribution), repo(RaidParticipation), repo(Mission), repo(MissionRewardItem),
         repo(User), repo(CosmeticItem), repo(UserCosmeticItem), repo(Character),

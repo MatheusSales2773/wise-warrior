@@ -5,7 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { IsNull, Not, Repository } from 'typeorm';
+import { type EntityManager, IsNull, Not, Repository } from 'typeorm';
 import { StudySession } from './entities/study-session.entity';
 import { validateSessionDuration } from './domain/session-validator';
 import { xpForDuration } from './domain/xp-rate';
@@ -25,6 +25,7 @@ import {
   saoPauloWeekAt,
 } from '../../shared/time/sao-paulo-calendar';
 import { buildCadence, calculateStreaks, groupActivityByDay } from './domain/session-metrics';
+import { COUNTED_SESSION_SQL, type FinishedSessionOfDay } from './domain/counted-session';
 import { buildWeekSummary } from './domain/week-summary';
 import type { WeekSummaryResponseDto } from './dto/week-summary-response.dto';
 import { FOCUS_CYCLE_LENGTH, focusCycle, type FocusCycle } from './domain/focus-cycle';
@@ -171,6 +172,25 @@ export class SessionsService {
   }
 
   /**
+   * Study Sessions that ended on a São Paulo day and counted: not cancelled, not discarded. Crônicas' Objetivos
+   * read the day from here (ADR-014). `manager` joins the caller's transaction, which sees the session it just saved.
+   */
+  async finishedSessionsOfDay(userId: string, dayKey: string, manager?: EntityManager): Promise<FinishedSessionOfDay[]> {
+    const rows = await (manager ?? this.studySessions.manager)
+      .getRepository(StudySession)
+      .createQueryBuilder('session')
+      .select('session.durationValidSeconds', 'validSeconds')
+      .where('session.userId = :userId', { userId })
+      .andWhere('session.endedAt >= :dayStart AND session.endedAt < :nextDayStart', {
+        dayStart: saoPauloDayStart(dayKey),
+        nextDayStart: saoPauloDayStart(saoPauloNextDayKey(dayKey)),
+      })
+      .andWhere(COUNTED_SESSION_SQL)
+      .getRawMany<{ validSeconds: number | string }>();
+    return rows.map((row) => ({ validSeconds: Number(row.validSeconds) }));
+  }
+
+  /**
    * Latest spelling of each distinct Matéria, newest use first. "Distinct" ignores letter case but
    * not accents, so the collation is set explicitly: the MySQL 8.0 default (`utf8mb4_0900_ai_ci`)
    * would also merge accents. Blank subjects only exist in rows from before the Matéria rules
@@ -213,8 +233,7 @@ export class SessionsService {
       .addSelect('COALESCE(SUM(session.durationValidSeconds), 0)', 'validSeconds')
       .where('session.userId = :userId', { userId })
       .andWhere('session.endedAt IS NOT NULL')
-      .andWhere('session.discardedReason IS NULL')
-      .andWhere("(session.state IS NULL OR session.state IN ('completed', 'stopped_early'))")
+      .andWhere(COUNTED_SESSION_SQL)
       .groupBy("DATE_FORMAT(session.endedAt, '%Y-%m-%d %H')")
       .addGroupBy('session.kind')
       .getRawMany<{ hour: string; kind: StudySession['kind']; sessionCount: string; validSeconds: string }>();
@@ -267,8 +286,7 @@ export class SessionsService {
         start: week.startsAt,
         nextStart: new Date(week.endsAt.getTime() + 1000),
       })
-      .andWhere('session.discardedReason IS NULL')
-      .andWhere("(session.state IS NULL OR session.state IN ('completed', 'stopped_early'))")
+      .andWhere(COUNTED_SESSION_SQL)
       .getRawMany<{ endedAt: Date; subject: string | null; validSeconds: string; xpAwarded: string }>();
 
     return buildWeekSummary(
@@ -362,8 +380,7 @@ export class SessionsService {
       .where('session.userId = :userId', { userId })
       .andWhere('session.id != :excludeSessionId', { excludeSessionId })
       .andWhere('session.startedAt >= :startOfDay', { startOfDay })
-      .andWhere('session.discardedReason IS NULL')
-      .andWhere("(session.state IS NULL OR session.state IN ('completed', 'stopped_early'))")
+      .andWhere(COUNTED_SESSION_SQL)
       .getRawOne<{ total: string }>();
 
     return Number(row?.total ?? 0);

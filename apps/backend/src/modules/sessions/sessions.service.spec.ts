@@ -1,3 +1,4 @@
+import { COUNTED_SESSION_SQL } from './domain/counted-session';
 import { Test, TestingModule } from '@nestjs/testing';
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { getRepositoryToken } from '@nestjs/typeorm';
@@ -151,7 +152,7 @@ describe('SessionsService', () => {
 
       await service.complete('user-1', 'legacy-session');
 
-      expect(dailyTotalQuery.andWhere).toHaveBeenCalledWith("(session.state IS NULL OR session.state IN ('completed', 'stopped_early'))");
+      expect(dailyTotalQuery.andWhere).toHaveBeenCalledWith(COUNTED_SESSION_SQL);
     });
   });
 
@@ -231,8 +232,7 @@ describe('SessionsService', () => {
       expect(result.cadence.days.at(-1)).toEqual({
         date: '2026-09-17', sessionCount: 4, validSeconds: 3600, intensity: 4,
       });
-      expect(builder.andWhere).toHaveBeenCalledWith('session.discardedReason IS NULL');
-      expect(builder.andWhere).toHaveBeenCalledWith("(session.state IS NULL OR session.state IN ('completed', 'stopped_early'))");
+      expect(builder.andWhere).toHaveBeenCalledWith(COUNTED_SESSION_SQL);
     });
 
     it('counts a session ended at 23:00 in São Paulo (02:00 UTC the next day) on its own São Paulo day', async () => {

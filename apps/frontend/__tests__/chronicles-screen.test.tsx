@@ -2,6 +2,8 @@ import { fireEvent, render, screen, within } from '@testing-library/react-native
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { getSessionHistory, getWeekSummary, type SessionHistoryItem, type WeekSummary } from '@/features/dashboard/api';
 import { ChroniclesScreen } from '@/features/chronicles/chronicles-screen';
+import { getObjectives, type Objectives } from '@/features/chronicles/api';
+import { renewalLabel } from '@/features/chronicles/objectives';
 import { formatFocusTime, weekBars } from '@/features/chronicles/week';
 import { dayHeading, diaryStatus, diaryXp, groupByDay, weekRangeLabel } from '@/features/chronicles/diary';
 
@@ -13,6 +15,9 @@ jest.mock('@/features/dashboard/api', () => ({
   getRecentStudySessions: jest.fn(),
 }));
 
+jest.mock('@/features/chronicles/api', () => ({ getObjectives: jest.fn() }));
+
+const mockedObjectives = getObjectives as jest.MockedFunction<typeof getObjectives>;
 const mockedHistory = getSessionHistory as jest.MockedFunction<typeof getSessionHistory>;
 const mockedWeek = getWeekSummary as jest.MockedFunction<typeof getWeekSummary>;
 
@@ -23,6 +28,18 @@ const WEEK: WeekSummary = {
   days: [day('2026-10-19', 3000), day('2026-10-20', 6000), day('2026-10-21', 0), day('2026-10-22', 12000), day('2026-10-23', 0), day('2026-10-24', 0), day('2026-10-25', 0)],
   subjects: [{ subject: 'Cálculo II', validSeconds: 13200 }, { subject: 'Sem matéria', validSeconds: 6600 }],
 };
+
+const objectives = (progress: [number, number, number]): Objectives => ({
+  daily: {
+    date: '2026-10-22',
+    renewsAt: '2026-10-23T03:00:00.000Z',
+    items: [
+      { id: 'one-session', title: 'Conclua 1 sessão de foco', progress: progress[0], target: 1, coins: 5, completed: progress[0] >= 1 },
+      { id: 'four-sessions', title: 'Conclua 4 sessões hoje', progress: progress[1], target: 4, coins: 15, completed: progress[1] >= 4 },
+      { id: 'fifty-minutes', title: 'Faça uma sessão de 50 minutos', progress: progress[2], target: 1, coins: 10, completed: progress[2] >= 1 },
+    ],
+  },
+});
 
 const item = (id: string, endedAt: string, overrides: Partial<SessionHistoryItem> = {}): SessionHistoryItem => ({
   id, subject: 'Cálculo II', mode: 'solo', state: 'completed',
@@ -39,7 +56,7 @@ beforeEach(() => {
   mockedWeek.mockResolvedValue(WEEK);
   jest.spyOn(Date, 'now').mockReturnValue(Date.parse('2026-10-22T18:00:00.000Z'));
 });
-afterEach(() => { jest.restoreAllMocks(); mockedHistory.mockReset(); mockedWeek.mockReset(); });
+afterEach(() => { jest.restoreAllMocks(); mockedHistory.mockReset(); mockedWeek.mockReset(); mockedObjectives.mockReset(); });
 
 describe('Diário helpers', () => {
   it('names the São Paulo week from Monday to Sunday', () => {
@@ -76,6 +93,15 @@ describe('Diário helpers', () => {
   });
 });
 
+describe('Objetivos helpers', () => {
+  it('counts down to the renewal in hours and minutes, never below zero', () => {
+    const at = Date.parse('2026-10-22T18:00:00.000Z');
+    expect(renewalLabel('2026-10-23T03:00:00.000Z', at)).toBe('Renova em 09h 00min');
+    expect(renewalLabel('2026-10-22T18:07:00.000Z', at)).toBe('Renova em 00h 07min');
+    expect(renewalLabel('2026-10-22T17:00:00.000Z', at)).toBe('Renova em 00h 00min');
+  });
+});
+
 describe('Crônicas', () => {
   it('opens on the Diário with the São Paulo week in the header', async () => {
     mockedHistory.mockResolvedValue({ items: [], nextCursor: null });
@@ -87,15 +113,48 @@ describe('Crônicas', () => {
     expect(await screen.findByTestId('diary-empty')).toBeTruthy();
   });
 
-  it('shows an empty state on Objetivos', async () => {
+  it('shows today\'s Objetivos with progress and the time until they renew', async () => {
     mockedHistory.mockResolvedValue({ items: [], nextCursor: null });
+    mockedObjectives.mockResolvedValue(objectives([1, 2, 0]));
     await renderChronicles();
 
     await fireEvent.press(screen.getByTestId('chronicles-tab-objetivos'));
-    expect(screen.getByTestId('chronicles-objectives-empty')).toBeTruthy();
+
+    expect(await screen.findByTestId('objectives-daily')).toBeTruthy();
+    expect(screen.getByTestId('objectives-renewal')).toHaveTextContent('Renova em 09h 00min');
+    expect(within(screen.getByTestId('objective-four-sessions')).getByText('Conclua 4 sessões hoje')).toBeTruthy();
+    expect(screen.getByTestId('objective-four-sessions-count')).toHaveTextContent('2/4');
+    expect(screen.getByTestId('objective-fifty-minutes-count')).toHaveTextContent('0/1');
     expect(screen.queryByTestId('diary')).toBeNull();
     await fireEvent.press(screen.getByTestId('chronicles-tab-diario'));
     expect(await screen.findByTestId('diary')).toBeTruthy();
+  });
+
+  it('shows "+N Moedas" on a completed Objetivo, with no button to claim it', async () => {
+    mockedHistory.mockResolvedValue({ items: [], nextCursor: null });
+    mockedObjectives.mockResolvedValue(objectives([1, 2, 0]));
+    await renderChronicles();
+    await fireEvent.press(screen.getByTestId('chronicles-tab-objetivos'));
+
+    const done = await screen.findByTestId('objective-one-session');
+    expect(within(done).getByText('+5 Moedas')).toBeTruthy();
+    expect(done.props.accessibilityLabel).toContain('Cumprido');
+    expect(within(done).queryByRole('button')).toBeNull();
+    expect(within(screen.getByTestId('objective-four-sessions')).getByText('+15 Moedas')).toBeTruthy();
+    expect(within(screen.getByTestId('objective-four-sessions')).queryByRole('button')).toBeNull();
+    expect(screen.queryByText(/Resgatar/)).toBeNull();
+  });
+
+  it('offers a retry when the Objetivos fail to load', async () => {
+    mockedHistory.mockResolvedValue({ items: [], nextCursor: null });
+    mockedObjectives.mockRejectedValueOnce(new Error('boom'));
+    mockedObjectives.mockResolvedValueOnce(objectives([0, 0, 0]));
+    await renderChronicles();
+    await fireEvent.press(screen.getByTestId('chronicles-tab-objetivos'));
+
+    await fireEvent.press(await screen.findByRole('button', { name: 'Tentar novamente' }));
+
+    expect(await screen.findByTestId('objective-one-session')).toBeTruthy();
   });
 
   it('lists the sessions grouped by São Paulo day with time, subject, status and XP', async () => {

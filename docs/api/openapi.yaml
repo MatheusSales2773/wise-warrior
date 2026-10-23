@@ -722,6 +722,24 @@ paths:
               schema: { $ref: "#/components/schemas/SessionMetrics" }
         "401": { $ref: "#/components/responses/Unauthorized" }
 
+  /objectives:
+    get:
+      summary: Objetivos de Crônicas do usuário autenticado
+      description: >
+        Os Objetivos diários de hoje (dia de São Paulo) com o progresso de quem pede (ADR-014). A lista e as Moedas
+        vêm de configuração do servidor, iguais para todos. Cumprir um Objetivo credita as Moedas automaticamente,
+        uma vez por Objetivo por dia, no término da Study Session que o cumpre, com a origem `objective` no Extrato.
+        Objetivos nunca dão XP nem Contribuição de Raid. Cancelamento e Sessão descartada não avançam o progresso.
+      operationId: getObjectives
+      tags: [Objectives]
+      responses:
+        "200":
+          description: Objetivos diários
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Objectives" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
   /sessions/week:
     get:
       summary: Resumo da semana corrente de São Paulo, de segunda a domingo
@@ -1511,8 +1529,8 @@ components:
       type: object
       required: [type, ref]
       properties:
-        type: { type: string, enum: [study-session, raid-win, purchase, signup, migration] }
-        ref: { type: string, maxLength: 64, description: "Referência da origem, como o id da Study Session" }
+        type: { type: string, enum: [study-session, raid-win, purchase, signup, migration, objective] }
+        ref: { type: string, maxLength: 64, description: "Referência da origem, como o id da Study Session; no Objetivo, `<id do Objetivo>:<dia de São Paulo>`" }
 
     CoinStatementItem:
       type: object
@@ -1523,6 +1541,31 @@ components:
         balanceAfter: { type: integer, minimum: 0, description: "Saldo logo depois deste lançamento" }
         origin: { $ref: "#/components/schemas/CoinOrigin" }
         createdAt: { type: string, format: date-time }
+
+    DailyObjective:
+      type: object
+      required: [id, title, progress, target, coins, completed]
+      properties:
+        id: { type: string, maxLength: 32, example: four-sessions }
+        title: { type: string, example: Conclua 4 sessões hoje }
+        progress: { type: integer, minimum: 0, description: "Limitado a `target`" }
+        target: { type: integer, minimum: 1 }
+        coins: { type: integer, minimum: 0, description: "Moedas pagas uma vez, quando o Objetivo é cumprido" }
+        completed: { type: boolean }
+
+    Objectives:
+      type: object
+      required: [daily]
+      properties:
+        daily:
+          type: object
+          required: [date, renewsAt, items]
+          properties:
+            date: { type: string, format: date, description: "Dia de São Paulo coberto" }
+            renewsAt: { type: string, format: date-time, description: "Meia-noite de São Paulo em que os Objetivos renovam" }
+            items:
+              type: array
+              items: { $ref: "#/components/schemas/DailyObjective" }
 
     CoinStatementPage:
       type: object

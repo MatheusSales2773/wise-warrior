@@ -60,6 +60,7 @@ export function statementTitle(entry: CoinStatementItem, names: ReadonlyMap<stri
     case 'raid-win': return 'Vitória na Raid';
     case 'signup': return 'Moedas de boas-vindas';
     case 'migration': return 'Ajuste de saldo';
+    case 'objective': return 'Objetivo';
     case 'purchase': {
       const name = names.get(entry.origin.ref);
       return name ? `Compra · ${name}` : 'Compra na Loja';
@@ -73,6 +74,7 @@ export function statementDetail(entry: CoinStatementItem): string {
     case 'purchase': return `${time} · ${entry.origin.ref.startsWith('mission:') ? 'Missão' : 'Item'}`;
     case 'raid-win': return `${time} · Recompensa de Raid`;
     case 'signup': return `${time} · Ao entrar na fortaleza`;
+    case 'objective': return `${time} · Objetivo diário`;
     default: return time;
   }
 }

@@ -81,6 +81,15 @@ describe('Extrato', () => {
     expect(await screen.findByTestId('statement-empty')).toBeTruthy();
   });
 
+  it('names a Moedas credit from a daily Objetivo as "Objetivo"', async () => {
+    mocked.statement.mockResolvedValue({ items: [entry('e1', 15, 200, { type: 'objective', ref: 'four-sessions:2026-10-22' }, hoursAgo(0))], nextCursor: null });
+    await renderStatement();
+
+    const row = await screen.findByTestId('statement-entry-e1');
+    expect(within(row).getByText('Objetivo')).toBeTruthy();
+    expect(within(row).getByText(/Objetivo diário/)).toBeTruthy();
+  });
+
   it('carries the balance after each line on a phone, where there is no column for it', async () => {
     setViewport(390);
     mocked.statement.mockResolvedValue({ items: [entry('e1', 50, 185, { type: 'raid-win', ref: 'r1' }, hoursAgo(0))], nextCursor: null });

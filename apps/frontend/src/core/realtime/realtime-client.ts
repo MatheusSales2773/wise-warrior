@@ -2,6 +2,7 @@ import type { QueryClient } from '@tanstack/react-query';
 import { io } from 'socket.io-client';
 import type { AuthenticationRecoveryResult } from '@/core/api/api-client';
 import type { ActiveRaid, RaidHit } from '@/features/guild/api';
+import { chroniclesKeys } from '@/features/chronicles/queries';
 import { dashboardKeys } from '@/features/dashboard/queries';
 import { guildKeys } from '@/features/guild/queries';
 import type { CoinOrigin } from '@/features/market/api';
@@ -101,6 +102,7 @@ export type RealtimeClient = RealtimeChannel & {
 /** XP earned on any device changes the Dashboard (Nível, XP, recent activity, metrics) and the Personagem. */
 export function applyXpUpdated(queryClient: QueryClient): void {
   void queryClient.invalidateQueries({ queryKey: dashboardKeys.all });
+  void queryClient.invalidateQueries({ queryKey: chroniclesKeys.objectives() });
 }
 
 /** A level-up also unlocks cosmetics, so the catalog is refreshed along with the Dashboard. */
@@ -127,6 +129,7 @@ export function applyCoinsChanged(queryClient: QueryClient, event: CoinsChangedE
   queryClient.setQueryData(marketKeys.balance(), event.balance);
   void queryClient.invalidateQueries({ queryKey: marketKeys.statement() });
   void queryClient.invalidateQueries({ queryKey: marketKeys.shop() });
+  if (event.origin.type === 'objective') void queryClient.invalidateQueries({ queryKey: chroniclesKeys.objectives() });
   if (event.origin.type === 'purchase' && event.origin.ref.startsWith('cosmetic:')) {
     void queryClient.invalidateQueries({ queryKey: profileKeys.cosmeticsCatalog() });
   }

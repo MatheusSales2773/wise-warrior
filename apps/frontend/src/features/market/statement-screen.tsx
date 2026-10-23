@@ -23,6 +23,7 @@ const ORIGIN_ICON: Record<CoinOriginType, WiseIconName> = {
   purchase: 'bag-handle-outline',
   signup: 'sparkles',
   migration: 'swap-horizontal-outline',
+  objective: 'checkmark-circle',
 };
 
 export function StatementScreen() {
