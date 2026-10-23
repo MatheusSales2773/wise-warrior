@@ -479,3 +479,41 @@ describe('confirming before stopping', () => {
     expect(view.queryByTestId('study-session-stop-dialog')).toBeNull();
   });
 });
+
+const freeFocus: StudySessionTransitionResult = { ...snapshot, kind: 'free', plannedDurationSeconds: null, remainingSeconds: 0, runDeadlineAt: '2026-09-22T14:00:00.000Z' };
+const freeAt = (validSeconds: number) => {
+  const serverNow = new Date(new Date('2026-09-22T12:00:00.000Z').getTime() + validSeconds * 1000).toISOString();
+  return { ...freeFocus, durationValidSeconds: validSeconds, serverNow, receivedAtMs: new Date(serverNow).getTime() };
+};
+
+it('cancels a Foco livre stopped under five minutes', async () => {
+  getActive.mockResolvedValue(freeAt(299));
+  const { view } = await renderStudySession();
+
+  expect(await view.findByRole('button', { name: 'Cancelar sessão' })).toBeTruthy();
+  view.unmount();
+});
+
+it('concludes a Foco livre stopped from five minutes, with the confirmed XP', async () => {
+  getActive.mockResolvedValue(freeAt(300));
+  stop.mockResolvedValue({ ...freeAt(300), state: 'completed', xpAwarded: 50, version: 2, endedAt: '2026-09-22T12:05:00.000Z', terminalReason: 'manual-stop' });
+  const { view } = await renderStudySession();
+
+  await fireEvent.press(await view.findByRole('button', { name: 'Parar foco livre' }));
+  await view.findByTestId('study-session-result');
+  expect(view.getByText('Sessão concluída')).toBeTruthy();
+  expect(view.getByText('XP confirmado: 50')).toBeTruthy();
+  view.unmount();
+});
+
+it('confirms stopping a Foco livre with its own copy', async () => {
+  await devicePreferences.set('confirmBeforeStopping', true);
+  getActive.mockResolvedValue(freeAt(600));
+  const { view } = await renderStudySession();
+
+  await fireEvent.press(await view.findByRole('button', { name: 'Parar foco livre' }));
+  expect(await view.findByText('Parar foco livre?')).toBeTruthy();
+  expect(view.getByTestId('study-session-stop-confirm')).toBeTruthy();
+  expect(stop).not.toHaveBeenCalled();
+  view.unmount();
+});

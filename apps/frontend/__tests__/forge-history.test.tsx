@@ -120,6 +120,8 @@ describe('helpers', () => {
   it('describes outcomes and the week', () => {
     expect(historyOutcome(item('x', { cyclePosition: 4 }))).toBe('Foco 4 de 4');
     expect(historyOutcome(item('x', { cyclePosition: null }))).toBe('Foco concluído');
+    expect(historyOutcome(item('x', { kind: 'free' }))).toBe('Livre');
+    expect(historyOutcome(item('x', { kind: 'free', cappedReason: 'daily-limit' }))).toBe('Livre · XP limitado pelo teto diário');
     expect(weeklySummary(week([0, 0, 0, 0, 0, 0, 30]).cadence.days)).toBe('Últimos 7 dias: 30 min de foco válido em 1 dia.');
   });
 });

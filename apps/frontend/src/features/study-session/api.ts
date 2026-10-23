@@ -1,4 +1,5 @@
 import { getAuthenticatedHttpClient } from '@/core/api/api-client';
+import type { FocusChoice } from './focus-choice';
 import { beginStudySessionCommand, settleStudySessionCommand, type PendingStudySessionCommand } from './pending-command';
 
 export const STUDY_SESSION_PRESETS = [900, 1500, 3000] as const;
@@ -9,11 +10,14 @@ export type RaidContributionFeedback = {
 };
 export type StudySessionSnapshot = {
   id: string;
+  /** Absent on responses from older servers, which only know the Ciclo. */
+  kind?: 'cycle' | 'free';
   mode: 'solo' | 'guild';
   raidId: string | null;
   subject: string | null;
   state: 'running' | 'paused' | 'completed' | 'stopped_early' | 'cancelled' | 'discarded';
-  plannedDurationSeconds: number;
+  /** `null` in a Foco livre, which has no planned duration. */
+  plannedDurationSeconds: number | null;
   startedAt: string;
   runDeadlineAt: string | null;
   pausedAt: string | null;
@@ -69,7 +73,7 @@ export async function getRecentStudySessionSubjects(signal?: AbortSignal): Promi
  * session in guild mode; a 409 then can mean the Raid already ended.
  */
 export async function startStudySession(
-  plannedDurationSeconds: PlannedDurationSeconds,
+  focus: FocusChoice,
   idempotencyKey: string,
   subject: string | null = null,
   raidId?: string,
@@ -78,7 +82,7 @@ export async function startStudySession(
     const response = await getAuthenticatedHttpClient().post<StudySessionSnapshot>(
       '/sessions',
       {
-        plannedDurationSeconds,
+        ...(focus === 'free' ? { kind: 'free' } : { plannedDurationSeconds: focus }),
         ...(subject === null ? {} : { subject }),
         ...(raidId === undefined ? {} : { mode: 'guild', raidId }),
       },

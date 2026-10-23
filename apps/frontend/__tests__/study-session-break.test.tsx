@@ -247,3 +247,19 @@ it('silences the alarm when the finished break hands over to a new session', asy
 
   expect(stopSessionSounds).toHaveBeenCalledTimes(1);
 });
+
+it('concludes a Foco livre at the antifraude ceiling, names the cap and offers no break', async () => {
+  const free = { ...atZero(), kind: 'free' as const, plannedDurationSeconds: null };
+  getActive.mockResolvedValue(free);
+  complete.mockResolvedValue({ ...completedResult(), ...free, state: 'completed', raidContribution: null, durationValidSeconds: 7200, xpAwarded: 400, cappedReason: 'continuous-limit' });
+  cycle.mockResolvedValue(inCycle(1));
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 }, mutations: { retry: false, gcTime: 0 } } });
+  queryClients.push(queryClient);
+  const view = await render(<QueryClientProvider client={queryClient}><StudySessionScreen /></QueryClientProvider>);
+
+  await view.findByText('Sessão concluída');
+  expect(complete).toHaveBeenCalledTimes(1);
+  expect(view.getByTestId('study-session-result-capped')).toHaveTextContent('XP limitado ao máximo de sessão contínua.');
+  expect(view.queryByTestId('study-session-break-offer')).toBeNull();
+  view.unmount();
+});
