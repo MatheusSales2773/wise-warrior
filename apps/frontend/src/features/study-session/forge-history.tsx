@@ -12,7 +12,14 @@ const TIME = new Intl.DateTimeFormat('pt-BR', { hour: '2-digit', minute: '2-digi
 const WEEKDAY = new Intl.DateTimeFormat('pt-BR', { weekday: 'short', timeZone: 'UTC' });
 const DAY_MONTH = new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: '2-digit', timeZone: 'UTC' });
 
+/** A Foco livre is marked "Livre" in the Histórico; completed in full, that is all there is to say. */
 export function historyOutcome(item: SessionHistoryItem): string {
+  const outcome = baseOutcome(item);
+  if (item.kind !== 'free') return outcome;
+  return item.state === 'completed' && !item.cappedReason ? 'Livre' : `Livre · ${outcome}`;
+}
+
+function baseOutcome(item: SessionHistoryItem): string {
   if (item.state === 'discarded') return 'Não contabilizada pelo antifraude';
   if (item.cappedReason) return formatCappedReason(item.cappedReason);
   switch (item.state) {

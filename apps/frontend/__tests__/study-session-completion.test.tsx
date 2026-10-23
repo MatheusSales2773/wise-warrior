@@ -66,9 +66,9 @@ function completed(base: StudySessionTransitionResult): StudySessionTransitionRe
     ...base,
     state: 'completed',
     endedAt: base.runDeadlineAt,
-    durationValidSeconds: base.plannedDurationSeconds,
+    durationValidSeconds: base.plannedDurationSeconds as number,
     remainingSeconds: 0,
-    xpAwarded: base.plannedDurationSeconds / 60 * 10,
+    xpAwarded: (base.plannedDurationSeconds as number) / 60 * 10,
     terminalReason: 'auto-complete',
   };
 }

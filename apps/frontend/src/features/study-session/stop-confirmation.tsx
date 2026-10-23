@@ -1,13 +1,16 @@
+import type { StudySessionKind } from './focus-choice';
 import { Platform, StyleSheet, View, useWindowDimensions } from 'react-native';
 import { WiseButton, WiseDialog, WiseText, isDesktopLayout } from '@/design-system';
 
 /** Below this much valid focus a stop is a Cancelamento (no XP); from it on, an Encerramento antecipado. */
 export const EARLY_STOP_MIN_SECONDS = 300;
 
-export type StopKind = 'cancel' | 'early-end';
+export type StopKind = 'cancel' | 'early-end' | 'free-end';
 
-export function stopKindFor(validFocusSeconds: number): StopKind {
-  return validFocusSeconds < EARLY_STOP_MIN_SECONDS ? 'cancel' : 'early-end';
+/** A Foco livre has no planned end, so stopping it from 5 minutes on is concluding it, not ending early. */
+export function stopKindFor(validFocusSeconds: number, sessionKind: StudySessionKind = 'cycle'): StopKind {
+  if (validFocusSeconds < EARLY_STOP_MIN_SECONDS) return 'cancel';
+  return sessionKind === 'free' ? 'free-end' : 'early-end';
 }
 
 /** What the Forja calls each way of ending a Study Session early, on its control and in the dialog that asks first. */
@@ -16,6 +19,11 @@ export const STOP_COPY = {
     label: 'Encerrar antecipadamente',
     message: 'A sessão termina agora e você recebe XP proporcional ao foco válido até aqui.',
     confirm: 'Sim, encerrar',
+  },
+  'free-end': {
+    label: 'Parar foco livre',
+    message: 'O foco livre termina agora e você recebe XP proporcional ao foco válido.',
+    confirm: 'Sim, parar',
   },
   cancel: {
     label: 'Cancelar sessão',

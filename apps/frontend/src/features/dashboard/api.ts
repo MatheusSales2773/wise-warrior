@@ -1,4 +1,5 @@
 import { getAuthenticatedHttpClient } from '@/core/api/api-client';
+import type { StudySessionKind } from '@/features/study-session/focus-choice';
 
 export type UserProfile = {
   id: string;
@@ -23,6 +24,8 @@ export type EquippedCosmeticItem = {
 export type RecentStudySession = {
   id: string;
   subject: string | null;
+  /** Absent on responses from older servers, which only know the Ciclo. */
+  kind?: StudySessionKind;
   mode: string;
   state: 'running' | 'paused' | 'completed' | 'stopped_early' | 'cancelled' | 'discarded' | null;
   startedAt: string;

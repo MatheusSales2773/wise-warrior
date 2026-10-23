@@ -111,7 +111,7 @@ it('opens on the device default duration and still lets the user pick another be
   await devicePreferences.set('defaultFocusDuration', 1500);
 });
 
-it('offers only three presets, starts with 25 minutes and sends the chosen duration', async () => {
+it('offers three presets and Livre, starts with 25 minutes and sends the chosen duration', async () => {
   getActive.mockResolvedValue(null);
   start.mockResolvedValue(snapshot);
   const { view } = await renderStudySession();
@@ -119,7 +119,7 @@ it('offers only three presets, starts with 25 minutes and sends the chosen durat
 
   await fireEvent.press(view.getByRole('button', { name: 'Configurar duração' }));
   expect(view.getByTestId('study-duration-25').props.accessibilityState.checked).toBe(true);
-  expect(view.getAllByRole('radio')).toHaveLength(3);
+  expect(view.getAllByRole('radio')).toHaveLength(4);
   await fireEvent.press(view.getByTestId('study-duration-15'));
   await waitFor(() => expect(view.getByTestId('study-duration-15').props.accessibilityState.checked).toBe(true));
   await fireEvent.press(view.getByTestId('study-session-start'));
@@ -168,7 +168,7 @@ it('opens and closes the focus duration options by tapping the same gear', async
   const gear = view.getByRole('button', { name: 'Configurar duração' });
   expect(view.queryByRole('radio')).toBeNull();
   await fireEvent.press(gear);
-  expect(view.getAllByRole('radio')).toHaveLength(3);
+  expect(view.getAllByRole('radio')).toHaveLength(4);
   await fireEvent.press(gear);
   expect(view.queryByRole('radio')).toBeNull();
   view.unmount();
@@ -634,7 +634,7 @@ it('keeps the iPhone forge header and duration choices in the visible stage', as
 
   expect(view.getByTestId('study-session-safe-area').props.edges.top).toBe('off');
   await fireEvent.press(view.getByRole('button', { name: 'Configurar duração' }));
-  expect(within(view.getByTestId('study-session-stage')).getAllByRole('radio')).toHaveLength(3);
+  expect(within(view.getByTestId('study-session-stage')).getAllByRole('radio')).toHaveLength(4);
   view.unmount();
 });
 
