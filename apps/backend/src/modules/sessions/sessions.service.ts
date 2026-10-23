@@ -24,7 +24,7 @@ import {
   saoPauloPreviousDayKey,
 } from '../../shared/time/sao-paulo-calendar';
 import { buildCadence, calculateStreaks, groupActivityByDay } from './domain/session-metrics';
-import type { FinishedSessionOfDay } from '../objectives/domain/daily-objectives';
+import { COUNTED_SESSION_SQL, type FinishedSessionOfDay } from './domain/counted-session';
 import { FOCUS_CYCLE_LENGTH, focusCycle, type FocusCycle } from './domain/focus-cycle';
 import { decodeDatetimeCursor, encodeDatetimeCursor } from '../../shared/pagination/datetime-cursor';
 
@@ -182,8 +182,7 @@ export class SessionsService {
         dayStart: saoPauloDayStart(dayKey),
         nextDayStart: saoPauloDayStart(saoPauloNextDayKey(dayKey)),
       })
-      .andWhere('session.discardedReason IS NULL')
-      .andWhere("(session.state IS NULL OR session.state IN ('completed', 'stopped_early'))")
+      .andWhere(COUNTED_SESSION_SQL)
       .getRawMany<{ validSeconds: number | string }>();
     return rows.map((row) => ({ validSeconds: Number(row.validSeconds) }));
   }
@@ -231,8 +230,7 @@ export class SessionsService {
       .addSelect('COALESCE(SUM(session.durationValidSeconds), 0)', 'validSeconds')
       .where('session.userId = :userId', { userId })
       .andWhere('session.endedAt IS NOT NULL')
-      .andWhere('session.discardedReason IS NULL')
-      .andWhere("(session.state IS NULL OR session.state IN ('completed', 'stopped_early'))")
+      .andWhere(COUNTED_SESSION_SQL)
       .groupBy("DATE_FORMAT(session.endedAt, '%Y-%m-%d %H')")
       .addGroupBy('session.kind')
       .getRawMany<{ hour: string; kind: StudySession['kind']; sessionCount: string; validSeconds: string }>();
@@ -347,8 +345,7 @@ export class SessionsService {
       .where('session.userId = :userId', { userId })
       .andWhere('session.id != :excludeSessionId', { excludeSessionId })
       .andWhere('session.startedAt >= :startOfDay', { startOfDay })
-      .andWhere('session.discardedReason IS NULL')
-      .andWhere("(session.state IS NULL OR session.state IN ('completed', 'stopped_early'))")
+      .andWhere(COUNTED_SESSION_SQL)
       .getRawOne<{ total: string }>();
 
     return Number(row?.total ?? 0);

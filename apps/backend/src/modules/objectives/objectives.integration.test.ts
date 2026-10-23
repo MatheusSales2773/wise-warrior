@@ -13,6 +13,7 @@ import type { JwtPayload } from '../auth/strategies/jwt.strategy';
 import { CoinBalance } from '../economy/entities/coin-balance.entity';
 import { CoinLedgerEntry } from '../economy/entities/coin-ledger-entry.entity';
 import { EconomyService } from '../economy/economy.service';
+import { xpForDuration } from '../sessions/domain/xp-rate';
 import { Character } from '../progression/entities/character.entity';
 import { ProgressionService } from '../progression/progression.service';
 import type { RealtimeGateway } from '../realtime/realtime.gateway';
@@ -60,11 +61,12 @@ describe('Daily objectives pay Moedas when a Study Session ends', () => {
   /** Finished sessions ending at each instant, with the given terminal shape and valid seconds. */
   const seedSessions = async (
     endedAts: string[],
-    shape: { state?: 'completed' | 'stopped_early' | 'cancelled' | 'discarded'; kind?: 'cycle' | 'free'; validSeconds?: number } = {},
+    shape: { state?: 'completed' | 'stopped_early' | 'cancelled' | 'discarded'; kind?: 'cycle' | 'free'; mode?: 'solo' | 'guild'; cappedReason?: 'daily-limit' | 'continuous-limit'; validSeconds?: number } = {},
   ) => {
     await dataSource!.getRepository(StudySession).insert(endedAts.map((endedAt) => ({
       userId,
-      mode: 'solo' as const,
+      mode: shape.mode ?? 'solo' as const,
+      cappedReason: shape.cappedReason ?? null,
       kind: shape.kind ?? 'cycle',
       state: shape.state ?? 'completed',
       discardedReason: shape.state === 'discarded' ? 'heartbeat-gap' : null,
@@ -209,6 +211,28 @@ describe('Daily objectives pay Moedas when a Study Session ends', () => {
     await seedSessions(['2026-09-18T12:00:00.000Z'], { state: 'stopped_early' });
 
     expect((await dailyObjectives()).daily.items.find(({ id }) => id === 'four-sessions')?.progress).toBe(2);
+  });
+
+  it('counts a truncated session and a guild-mode session like any other', async () => {
+    await seedSessions(['2026-09-18T11:00:00.000Z'], { cappedReason: 'daily-limit' });
+    await seedSessions(['2026-09-18T12:00:00.000Z'], { mode: 'guild' });
+
+    expect((await dailyObjectives()).daily.items.find(({ id }) => id === 'four-sessions')?.progress).toBe(2);
+  });
+
+  it('never grants XP or Raid contribution for an Objetivo: the XP is the focus of the live session alone', async () => {
+    await seedSessions(['2026-09-18T11:00:00.000Z', '2026-09-18T12:00:00.000Z', '2026-09-18T13:00:00.000Z']);
+
+    expect((await completeSessionEndingAt('fourth', '2026-09-18T15:00:00.000Z')).status).toBe(200);
+
+    expect(await objectiveEntries()).toContainEqual(['four-sessions:2026-09-18', 15]);
+    const character = await dataSource!.getRepository(Character).findOneByOrFail({ userId });
+    expect(character.xpTotal).toBe(xpForDuration(900));
+  });
+
+  it('answers 401 to an unauthenticated read', async () => {
+    const response = await fetch(`${baseUrl}/api/v1/objectives`);
+    expect(response.status).toBe(401);
   });
 
   it('does not advance with cancellations or discarded sessions', async () => {

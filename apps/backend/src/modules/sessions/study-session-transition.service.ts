@@ -28,6 +28,7 @@ import {
   StudySessionTransitionPolicyError,
   type StudySessionCommandAction,
 } from './domain/study-session-time';
+import { COUNTED_SESSION_SQL } from './domain/counted-session';
 import { countSessions } from './domain/session-counts';
 import type { SessionCounts } from '../users/domain/unlock-condition';
 import type { XpApplicationResult } from '../progression/domain/progression-policy';
@@ -388,8 +389,7 @@ export class StudySessionTransitionService {
       .addSelect('COUNT(session.id)', 'sessionCount')
       .where('session.userId = :userId', { userId })
       .andWhere('session.endedAt IS NOT NULL')
-      .andWhere('session.discardedReason IS NULL')
-      .andWhere("(session.state IS NULL OR session.state IN ('completed', 'stopped_early'))")
+      .andWhere(COUNTED_SESSION_SQL)
       .groupBy("DATE_FORMAT(session.endedAt, '%Y-%m-%d %H')")
       .getRawMany<{ hour: string; sessionCount: string }>();
     return countSessions(rows.map((row) => ({ hour: row.hour, sessionCount: Number(row.sessionCount), validSeconds: 0 })));
@@ -429,15 +429,14 @@ export class StudySessionTransitionService {
     if (excludeStudySessionId !== null) query.andWhere('session.id != :excludeStudySessionId', { excludeStudySessionId });
     const row = await query
       .andWhere('session.startedAt >= :startOfDay', { startOfDay })
-      .andWhere('session.discardedReason IS NULL')
-      .andWhere("(session.state IS NULL OR session.state IN ('completed', 'stopped_early'))")
+      .andWhere(COUNTED_SESSION_SQL)
       .getRawOne<{ total: string }>();
 
     return Number(row?.total ?? 0);
   }
 }
 
-/** Cancellation and discarded sessions never count towards the session Badges. */
+/** Cancellation and discarded sessions never count towards the session Badges. Same rule as `COUNTED_SESSION_SQL`. */
 function countsAsFinishedSession(session: StudySession): boolean {
   return session.endedAt != null
     && session.discardedReason == null

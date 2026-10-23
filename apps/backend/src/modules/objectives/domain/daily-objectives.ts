@@ -1,3 +1,6 @@
+import { Logger } from '@nestjs/common';
+import type { FinishedSessionOfDay } from '../../sessions/domain/counted-session';
+
 /**
  * Objetivos diários de Crônicas (ADR-014): lista fixa, igual para todos, configurável no servidor.
  * Pagam Moedas, nunca XP nem Contribuição de Raid.
@@ -11,11 +14,6 @@ export interface DailyObjectiveDefinition {
   /** Só conta a sessão com pelo menos estes minutos de foco válido; sem o campo, toda sessão conta. */
   minValidMinutes?: number;
   coins: number;
-}
-
-/** O que o Objetivo lê de cada Study Session não descartada que terminou no dia. */
-export interface FinishedSessionOfDay {
-  validSeconds: number;
 }
 
 export interface DailyObjectiveProgress {
@@ -49,13 +47,25 @@ function isDefinition(value: unknown): value is DailyObjectiveDefinition {
 export function getDailyObjectives(): readonly DailyObjectiveDefinition[] {
   const raw = process.env.DAILY_OBJECTIVES?.trim();
   if (!raw) return DEFAULT_DAILY_OBJECTIVES;
+  const parsed = parseObjectives(raw);
+  if (parsed) return parsed;
+  // Um erro de digitação na configuração não pode passar em silêncio: avisa uma vez por valor e usa o padrão.
+  if (raw !== warnedRaw) {
+    warnedRaw = raw;
+    new Logger('DailyObjectives').warn('DAILY_OBJECTIVES é inválida; usando a lista padrão da ADR-014');
+  }
+  return DEFAULT_DAILY_OBJECTIVES;
+}
+
+let warnedRaw: string | undefined;
+
+function parseObjectives(raw: string): DailyObjectiveDefinition[] | null {
   try {
     const parsed: unknown = JSON.parse(raw);
-    if (!Array.isArray(parsed) || parsed.length === 0 || !parsed.every(isDefinition)) return DEFAULT_DAILY_OBJECTIVES;
-    if (new Set(parsed.map(({ id }) => id)).size !== parsed.length) return DEFAULT_DAILY_OBJECTIVES;
-    return parsed;
+    if (!Array.isArray(parsed) || parsed.length === 0 || !parsed.every(isDefinition)) return null;
+    return new Set(parsed.map(({ id }) => id)).size === parsed.length ? parsed : null;
   } catch {
-    return DEFAULT_DAILY_OBJECTIVES;
+    return null;
   }
 }
 
