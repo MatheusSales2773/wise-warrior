@@ -1546,7 +1546,7 @@ components:
       type: object
       required: [id, title, progress, target, coins, completed]
       properties:
-        id: { type: string, maxLength: 32, example: four-sessions }
+        id: { type: string, maxLength: 32, example: four-sessions, description: "Estável. `four-sessions` ('Conclua 4 sessões hoje') é o Objetivo que o Dashboard, o Personagem e a Forja mostram como sessões de hoje." }
         title: { type: string, example: Conclua 4 sessões hoje }
         progress: { type: integer, minimum: 0, description: "Limitado a `target`" }
         target: { type: integer, minimum: 1 }

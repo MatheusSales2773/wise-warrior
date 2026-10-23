@@ -1,4 +1,3 @@
-import type { SessionsObjective } from '@/features/chronicles/queries';
 import type { UserProfile } from './api';
 
 export function formatXp(value: number): string {
@@ -37,8 +36,8 @@ export function levelProgressPercent(profile: Pick<UserProfile, 'xpTotal' | 'lev
 }
 
 /** Progress and target come from the "Conclua 4 sessões hoje" Objetivo; without it only the session count is known. */
-export function formatSessionsToday(sessionsToday: number, objective: SessionsObjective | undefined): { value: string; spoken: string } {
-  if (objective && objective.target > 0) {
+export function formatSessionsToday(sessionsToday: number, objective: { progress: number; target: number } | undefined): { value: string; spoken: string } {
+  if (objective) {
     return { value: `${objective.progress} / ${objective.target}`, spoken: `${objective.progress} de ${objective.target}` };
   }
   return { value: `${sessionsToday}`, spoken: `${sessionsToday}` };

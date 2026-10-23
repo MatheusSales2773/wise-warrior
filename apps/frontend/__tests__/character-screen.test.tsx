@@ -172,7 +172,7 @@ describe('CharacterScreen', () => {
       expect(screen.getByRole('progressbar', { name: 'Progresso para o nível 15' }).props.accessibilityValue).toEqual({ min: 0, max: 3_000, now: 1_950 });
 
       await waitFor(() => expect(screen.getByLabelText('27 dias seguidos')).toBeTruthy());
-      await waitFor(() => expect(screen.getByLabelText('2/4 sessões hoje')).toBeTruthy());
+      await waitFor(() => expect(screen.getByLabelText('2 / 4 sessões hoje')).toBeTruthy());
       expect(screen.getByLabelText('128,4k XP total')).toBeTruthy();
     });
 

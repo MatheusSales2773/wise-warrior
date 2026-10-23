@@ -4,7 +4,7 @@ import { ProgressBar, WiseIcon, theme, type SemanticColor, type WiseIconName } f
 import { controlStyles } from '@/design-system/components/control-styles';
 import type { SessionMetrics, UserProfile } from '@/features/dashboard/api';
 import { useSessionsObjective } from '@/features/chronicles/queries';
-import { formatXp } from '@/features/dashboard/formatters';
+import { formatSessionsToday, formatXp } from '@/features/dashboard/formatters';
 import type { EquippedItems } from './catalog';
 import { formatCompactXp } from './formatters';
 
@@ -68,7 +68,7 @@ export function SummaryRow({ compact = false, metrics, user }: { compact?: boole
   return <View accessibilityLabel="Resumo" role="region" style={styles.summary} testID="character-summary">
     <Stat color="feedbackEnergy" compact={compact} icon="flame" label={metrics?.currentStreakDays === 1 ? 'dia seguido' : 'dias seguidos'} value={metrics ? String(metrics.currentStreakDays) : '—'} />
     <View style={styles.statDivider} />
-    <Stat color="accentPrimary" compact={compact} icon="hammer-outline" label="sessões hoje" value={metrics ? (objective ? `${objective.progress}/${objective.target}` : String(metrics.sessionsToday)) : '—'} />
+    <Stat color="accentPrimary" compact={compact} icon="hammer-outline" label="sessões hoje" value={metrics ? formatSessionsToday(metrics.sessionsToday, objective).value : '—'} />
     <View style={styles.statDivider} />
     <Stat color="accentHighlight" compact={compact} icon="sparkles" label="XP total" value={formatCompactXp(user.xpTotal)} />
   </View>;

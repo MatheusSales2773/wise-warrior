@@ -13,7 +13,7 @@ export const objectivesQueryOptions = () => queryOptions({
   retry: false,
 });
 
-/** The daily Objetivo that counts finished sessions; the Dashboard shows its progress and target. */
+/** The daily Objetivo that counts finished sessions; the Dashboard shows its progress and target. Its id is part of the contract (`docs/api/openapi.yaml`, pinned by `daily-objectives.spec.ts`). */
 export const SESSIONS_OBJECTIVE_ID = 'four-sessions';
 
 export type SessionsObjective = { progress: number; target: number };

@@ -326,12 +326,12 @@ function SessionModeOptions({ mode, disabled, onSelect }: {
   );
 }
 
-/** "Hoje" pill of the Forja header: sessions concluded today against the daily goal. Hidden until known. */
+/** "Hoje" pill of the Forja header: sessions concluded today against the "Conclua 4 sessões hoje" Objetivo. Hidden until known. */
 function TodayPill() {
   const { data: metrics } = useQuery(sessionMetricsQueryOptions());
   const objective = useSessionsObjective();
   if (!metrics) return null;
-  const goal = objective ? Math.min(8, Math.max(0, Math.trunc(objective.target))) : 0;
+  const goal = objective ? Math.min(8, objective.target) : 0;
   const { value, spoken } = formatSessionsToday(metrics.sessionsToday, objective);
   return (
     <View accessibilityLabel={`Hoje: ${spoken} sessões`} accessible style={styles.todayPill} testID="study-session-today">
