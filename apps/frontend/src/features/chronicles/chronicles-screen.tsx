@@ -67,7 +67,7 @@ export function ChroniclesScreen() {
 function ObjectivesEmpty() {
   return <View style={styles.empty} testID="chronicles-objectives-empty">
     <WiseText accessibilityRole="header" aria-level={2} variant="subtitle">Objetivos a caminho</WiseText>
-    <WiseText color="textSecondary" variant="body">Em breve suas metas do dia e da semana aparecem aqui. Enquanto isso, o Diário guarda tudo o que você já estudou.</WiseText>
+    <WiseText color="textSecondary" variant="body">As metas do dia e da semana chegam numa próxima atualização. Enquanto isso, o Diário guarda tudo o que você já estudou.</WiseText>
   </View>;
 }
 

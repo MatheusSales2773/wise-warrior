@@ -29,7 +29,10 @@ import { decodeDatetimeCursor, encodeDatetimeCursor } from '../../shared/paginat
 
 const RECENT_SUBJECTS_LIMIT = 6;
 
-/** What each Diário filter keeps, on top of dropping cancellations. A truncated session is capped, so it never counts as plain completed. */
+/**
+ * What each Diário filter keeps, on top of dropping cancellations. A truncated session is capped, so it never counts as plain completed.
+ * These fragments are interpolated into the SQL: the keys are safe only because `SessionHistoryQueryDto` validates `state` with `@IsIn`.
+ */
 const HISTORY_STATE_FILTER: Record<SessionHistoryState | 'all', string> = {
   all: '',
   completed: `AND session.capped_reason IS NULL AND (session.state IS NULL OR session.state IN ('completed', 'stopped_early'))`,

@@ -8,7 +8,7 @@ export const dashboardKeys = {
   recentActivity: () => ['dashboard', 'recent-activity'] as const,
   metrics: () => ['dashboard', 'metrics'] as const,
   // Under the dashboard key: XP earned on any device (progress:xpUpdated) refreshes every history too.
-  history: (scope: string) => ['dashboard', 'history', scope] as const,
+  history: (scope: { date?: string; state?: string } = {}) => ['dashboard', 'history', scope] as const,
 };
 
 const SAO_PAULO_DAY = new Intl.DateTimeFormat('en-CA', {
@@ -22,7 +22,7 @@ export function saoPauloDay(at: number = Date.now()): string {
 
 /** One day of the history (`date`), or the whole Diário across days, optionally narrowed to one outcome. */
 export const sessionHistoryQueryOptions = ({ date, state }: { date?: string; state?: SessionHistoryState } = {}) => infiniteQueryOptions({
-  queryKey: dashboardKeys.history(`${date ?? 'all'}:${state ?? 'all'}`),
+  queryKey: dashboardKeys.history({ date, state }),
   queryFn: ({ pageParam, signal }) => getSessionHistory({ date, state, cursor: pageParam, signal }),
   initialPageParam: null as string | null,
   getNextPageParam: (lastPage) => lastPage.nextCursor,

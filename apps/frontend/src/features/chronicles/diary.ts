@@ -1,5 +1,5 @@
 import type { SessionHistoryItem } from '@/features/dashboard/api';
-import { formatCappedReason, formatXp } from '@/features/dashboard/formatters';
+import { formatCappedReason, formatDuration, formatXp } from '@/features/dashboard/formatters';
 import { saoPauloDay } from '@/features/dashboard/queries';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -56,4 +56,11 @@ export function diaryStatus(item: SessionHistoryItem): string {
 /** XP of a row: "+400 XP", or "—" when the session did not count. */
 export function diaryXp(item: SessionHistoryItem): string {
   return isDiscarded(item) ? '—' : `+${formatXp(item.xpAwarded)} XP`;
+}
+
+/** The spoken description of a row. */
+export function rowLabel(item: SessionHistoryItem): string {
+  const subject = item.subject?.trim() || 'Sem matéria';
+  const mode = item.mode === 'guild' ? 'Guilda' : 'Solo';
+  return `${sessionClock(item.endedAt)}. ${subject}. ${diaryStatus(item)}. ${mode}. ${formatDuration(item.durationValidSeconds)}. ${isDiscarded(item) ? 'Sem XP' : diaryXp(item)}.`;
 }

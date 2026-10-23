@@ -6,7 +6,7 @@ import type { SessionHistoryItem, SessionHistoryState } from '@/features/dashboa
 import { formatDuration } from '@/features/dashboard/formatters';
 import { sessionHistoryQueryOptions } from '@/features/dashboard/queries';
 import { useFocusRing } from '@/features/character/character-parts';
-import { diaryStatus, diaryXp, groupByDay, isDiscarded, isTruncated, sessionClock } from './diary';
+import { diaryStatus, diaryXp, groupByDay, isDiscarded, isTruncated, rowLabel, sessionClock } from './diary';
 
 type Filter = 'all' | SessionHistoryState;
 
@@ -81,12 +81,6 @@ function FilterChip({ active, id, label, onPress }: { active: boolean; id: Filte
   >
     <Text style={[styles.chipLabel, active && styles.chipLabelActive]}>{label}</Text>
   </Pressable>;
-}
-
-function rowLabel(item: SessionHistoryItem): string {
-  const subject = item.subject?.trim() || 'Sem matéria';
-  const mode = item.mode === 'guild' ? 'Guilda' : 'Solo';
-  return `${sessionClock(item.endedAt)}. ${subject}. ${diaryStatus(item)}. ${mode}. ${formatDuration(item.durationValidSeconds)}. ${isDiscarded(item) ? 'Sem XP' : diaryXp(item)}.`;
 }
 
 function Row({ desktop, item }: { desktop: boolean; item: SessionHistoryItem }) {
