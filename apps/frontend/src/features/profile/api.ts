@@ -11,7 +11,12 @@ export type DeviceSession = {
 export type CosmeticCategory = 'avatar' | 'badge' | 'title' | 'accessory' | 'weapon';
 
 /** `slug` `*` vale para qualquer Raid. */
-export type UnlockCondition = { type: 'level'; level: number } | { type: 'raid'; slug: string } | { type: 'purchase' };
+export type UnlockCondition =
+  | { type: 'level'; level: number }
+  | { type: 'raid'; slug: string }
+  | { type: 'purchase' }
+  | { type: 'sessions'; count: number }
+  | { type: 'early-sessions'; count: number };
 
 export type CatalogCosmeticItem = {
   id: string;

@@ -26,6 +26,8 @@ import {
   StudySessionTransitionPolicyError,
   type StudySessionCommandAction,
 } from './domain/study-session-time';
+import { countSessions } from './domain/session-counts';
+import type { SessionCounts } from '../users/domain/unlock-condition';
 import type { XpApplicationResult } from '../progression/domain/progression-policy';
 
 export type StudySessionClock = { now(): Date };
@@ -354,6 +356,9 @@ export class StudySessionTransitionService {
         ref: studySessionId,
       });
     }
+    if (countsAsFinishedSession(saved)) {
+      await this.users.unlockSessionBadges(manager, userId, await this.countFinishedSessions(manager, userId));
+    }
     if (saved.mode === 'guild' && saved.raidId) {
       raidContributionOutcome = await this.raids.recordContributionInTransaction(manager, {
         raidId: saved.raidId,
@@ -364,6 +369,22 @@ export class StudySessionTransitionService {
       });
     }
     return { xpGained: xpAwarded, progressionResult, coinMovement, raidContributionOutcome };
+  }
+
+  /** Finished, non-discarded Study Sessions of the user (the one just saved included), bucketed by UTC hour like the metrics. */
+  private async countFinishedSessions(manager: EntityManager, userId: string): Promise<SessionCounts> {
+    const rows = await manager
+      .getRepository(StudySession)
+      .createQueryBuilder('session')
+      .select("DATE_FORMAT(session.endedAt, '%Y-%m-%d %H')", 'hour')
+      .addSelect('COUNT(session.id)', 'sessionCount')
+      .where('session.userId = :userId', { userId })
+      .andWhere('session.endedAt IS NOT NULL')
+      .andWhere('session.discardedReason IS NULL')
+      .andWhere("(session.state IS NULL OR session.state IN ('completed', 'stopped_early'))")
+      .groupBy("DATE_FORMAT(session.endedAt, '%Y-%m-%d %H')")
+      .getRawMany<{ hour: string; sessionCount: string }>();
+    return countSessions(rows.map((row) => ({ hour: row.hour, sessionCount: Number(row.sessionCount), validSeconds: 0 })));
   }
 
   private publishTerminalEffects(userId: string, effects: TerminalEffects): void {
@@ -403,6 +424,13 @@ export class StudySessionTransitionService {
 
     return Number(row?.total ?? 0);
   }
+}
+
+/** Cancellation and discarded sessions never count towards the session Badges. */
+function countsAsFinishedSession(session: StudySession): boolean {
+  return session.endedAt != null
+    && session.discardedReason == null
+    && (session.state == null || session.state === 'completed' || session.state === 'stopped_early');
 }
 
 function raidContributionFeedback(outcome: RaidContributionOutcome | null): RaidContributionFeedback | null {

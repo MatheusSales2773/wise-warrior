@@ -19,7 +19,9 @@ import { UserCosmeticItem } from './entities/user-cosmetic-item.entity';
 import {
   isStarterItem,
   isUnlockedAtLevel,
+  isUnlockedBySessionCounts,
   parseUnlockCondition,
+  SessionCounts,
   UnlockCondition,
 } from './domain/unlock-condition';
 
@@ -118,6 +120,18 @@ export class UsersService {
   }
 
   /**
+   * Desbloqueio por hábito de estudo: concede todo Cosmetic Item cujas condições de contagem de Study Sessions
+   * `counts` já cumpra e que ainda não esteja no Inventário. Roda na transação do término da sessão e é
+   * idempotente pelo índice único (usuário + item).
+   */
+  async unlockSessionBadges(manager: EntityManager, userId: string, counts: SessionCounts): Promise<void> {
+    const unlocked = (await this.readCatalog(manager.getRepository(CosmeticItem)))
+      .filter(({ condition }) => isUnlockedBySessionCounts(condition, counts));
+    if (unlocked.length === 0) return;
+    await this.grantToInventory(manager, unlocked.map(({ item }) => ({ userId, cosmeticItemId: item.id })));
+  }
+
+  /**
    * Desbloqueio por Recompensa de Raid (#117, #169): cada usuário recebe os Cosmetic Items da Missão (`itemIds`, do
    * `RaidsService`). Roda na transação de quem chama, é idempotente pelo índice único (usuário + item), pula o que
    * o usuário já tem e nunca equipa.
@@ -164,7 +178,7 @@ export class UsersService {
   }
 
   /**
-   * O Desbloqueio idempotente, comum a nível, Raid e Compra: insere no Inventário na transação de quem chama e, pelo
+   * O Desbloqueio idempotente, comum a nível, Raid, Compra e hábito de estudo: insere no Inventário na transação de quem chama e, pelo
    * índice único (usuário + item), repetir um par não duplica nem reequipa nada.
    */
   private async grantToInventory(

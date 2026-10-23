@@ -1376,6 +1376,18 @@ components:
           description: Item da Loja, desbloqueado pela Compra (ADR-012).
           properties:
             type: { type: string, const: purchase }
+        - type: object
+          required: [type, count]
+          description: Badge por hábito de estudo (ADR-014), desbloqueado no término da sessão que alcança a contagem de Study Sessions não descartadas.
+          properties:
+            type: { type: string, const: sessions }
+            count: { type: integer, minimum: 1 }
+        - type: object
+          required: [type, count]
+          description: Badge por hábito de estudo (ADR-014), por Study Sessions terminadas antes das 7h de São Paulo.
+          properties:
+            type: { type: string, const: early-sessions }
+            count: { type: integer, minimum: 1 }
 
     ShopItem:
       type: object
