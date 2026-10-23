@@ -221,7 +221,7 @@ describe('SessionsService', () => {
       expect(result.currentStreakDays).toBe(3);
       expect(result.longestStreakDays).toBe(3);
       expect(result.sessionsToday).toBe(4);
-      expect(result.dailyGoal).toBe(4);
+      expect(result).not.toHaveProperty('dailyGoal');
       expect(result.validSecondsToday).toBe(3600);
       expect(result.todayByKind).toEqual({
         cycle: { sessionCount: 3, validSeconds: 3000 },

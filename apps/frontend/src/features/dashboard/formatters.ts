@@ -1,4 +1,5 @@
-import type { SessionMetrics, UserProfile } from './api';
+import type { SessionsObjective } from '@/features/chronicles/queries';
+import type { UserProfile } from './api';
 
 export function formatXp(value: number): string {
   return new Intl.NumberFormat('pt-BR').format(value);
@@ -35,9 +36,10 @@ export function levelProgressPercent(profile: Pick<UserProfile, 'xpTotal' | 'lev
   return Math.min(100, Math.round(((profile.xpTotal - profile.levelStartXp) / Math.max(1, profile.nextLevelXp - profile.levelStartXp)) * 100));
 }
 
-export function formatSessionsToday(metrics: Pick<SessionMetrics, 'sessionsToday' | 'dailyGoal'>): { value: string; spoken: string } {
-  const { sessionsToday } = metrics;
-  const goal = Math.max(0, metrics.dailyGoal);
-  if (goal > 0) return { value: `${sessionsToday} / ${goal}`, spoken: `${sessionsToday} de ${goal}` };
+/** Progress and target come from the "Conclua 4 sessões hoje" Objetivo; without it only the session count is known. */
+export function formatSessionsToday(sessionsToday: number, objective: SessionsObjective | undefined): { value: string; spoken: string } {
+  if (objective && objective.target > 0) {
+    return { value: `${objective.progress} / ${objective.target}`, spoken: `${objective.progress} de ${objective.target}` };
+  }
   return { value: `${sessionsToday}`, spoken: `${sessionsToday}` };
 }

@@ -22,7 +22,7 @@ const item = (id: string, overrides: Partial<SessionHistoryItem> = {}): SessionH
 });
 
 const week = (minutes: number[]): SessionMetrics => ({
-  currentStreakDays: 2, longestStreakDays: 5, sessionsToday: 1, dailyGoal: 4, validSecondsToday: minutes[minutes.length - 1]! * 60,
+  currentStreakDays: 2, longestStreakDays: 5, sessionsToday: 1, validSecondsToday: minutes[minutes.length - 1]! * 60,
   cadence: {
     windowStart: '2026-08-22', windowEnd: '2026-10-16',
     days: minutes.map((value, index) => ({

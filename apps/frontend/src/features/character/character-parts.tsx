@@ -3,6 +3,7 @@ import { Platform, StyleSheet, Text, View } from 'react-native';
 import { ProgressBar, WiseIcon, theme, type SemanticColor, type WiseIconName } from '@/design-system';
 import { controlStyles } from '@/design-system/components/control-styles';
 import type { SessionMetrics, UserProfile } from '@/features/dashboard/api';
+import { useSessionsObjective } from '@/features/chronicles/queries';
 import { formatXp } from '@/features/dashboard/formatters';
 import type { EquippedItems } from './catalog';
 import { formatCompactXp } from './formatters';
@@ -63,11 +64,11 @@ function Stat({ color, compact, icon, label, value }: { color: SemanticColor; co
 }
 
 export function SummaryRow({ compact = false, metrics, user }: { compact?: boolean; metrics: SessionMetrics | undefined; user: UserProfile }) {
-  const goal = metrics ? Math.max(0, metrics.dailyGoal) : 0;
+  const objective = useSessionsObjective();
   return <View accessibilityLabel="Resumo" role="region" style={styles.summary} testID="character-summary">
     <Stat color="feedbackEnergy" compact={compact} icon="flame" label={metrics?.currentStreakDays === 1 ? 'dia seguido' : 'dias seguidos'} value={metrics ? String(metrics.currentStreakDays) : '—'} />
     <View style={styles.statDivider} />
-    <Stat color="accentPrimary" compact={compact} icon="hammer-outline" label="sessões hoje" value={metrics ? `${metrics.sessionsToday}${goal ? `/${goal}` : ''}` : '—'} />
+    <Stat color="accentPrimary" compact={compact} icon="hammer-outline" label="sessões hoje" value={metrics ? (objective ? `${objective.progress}/${objective.target}` : String(metrics.sessionsToday)) : '—'} />
     <View style={styles.statDivider} />
     <Stat color="accentHighlight" compact={compact} icon="sparkles" label="XP total" value={formatCompactXp(user.xpTotal)} />
   </View>;

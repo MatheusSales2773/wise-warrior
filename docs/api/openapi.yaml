@@ -1792,13 +1792,14 @@ components:
 
     SessionMetrics:
       type: object
-      description: Métricas calculadas no calendário UTC; sessões ativas ou descartadas não são contabilizadas.
-      required: [currentStreakDays, longestStreakDays, sessionsToday, dailyGoal, validSecondsToday, todayByKind, cadence]
+      description: |
+        Métricas calculadas no calendário de São Paulo; sessões ativas ou descartadas não são contabilizadas.
+        Não traz meta diária: o Dashboard lê o alvo e o progresso do Objetivo `four-sessions` em `GET /objectives`.
+      required: [currentStreakDays, longestStreakDays, sessionsToday, validSecondsToday, todayByKind, cadence]
       properties:
         currentStreakDays: { type: integer, minimum: 0 }
         longestStreakDays: { type: integer, minimum: 0 }
         sessionsToday: { type: integer, minimum: 0 }
-        dailyGoal: { type: integer, const: 4 }
         validSecondsToday: { type: integer, minimum: 0 }
         todayByKind:
           type: object

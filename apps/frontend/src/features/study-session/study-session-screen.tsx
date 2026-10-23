@@ -24,6 +24,7 @@ import { stopSessionSounds, unlockSessionSounds } from './sounds';
 import { formatRemainingTime, remainingStudySeconds } from './timer';
 import { MAX_SUBJECT_LENGTH, validateSubject, type SubjectValidation } from './subject';
 import { FeedbackMessage } from '@/design-system/components/FeedbackMessage';
+import { useSessionsObjective } from '@/features/chronicles/queries';
 import { sessionMetricsQueryOptions } from '@/features/dashboard/queries';
 import { useDevicePreference, useDevicePreferencesLoaded } from '@/core/preferences/device-preferences';
 import { useIsOnline } from '@/core/query/online-manager';
@@ -328,15 +329,16 @@ function SessionModeOptions({ mode, disabled, onSelect }: {
 /** "Hoje" pill of the Forja header: sessions concluded today against the daily goal. Hidden until known. */
 function TodayPill() {
   const { data: metrics } = useQuery(sessionMetricsQueryOptions());
+  const objective = useSessionsObjective();
   if (!metrics) return null;
-  const goal = Math.min(8, Math.max(0, Math.trunc(metrics.dailyGoal)));
-  const { value, spoken } = formatSessionsToday(metrics);
+  const goal = objective ? Math.min(8, Math.max(0, Math.trunc(objective.target))) : 0;
+  const { value, spoken } = formatSessionsToday(metrics.sessionsToday, objective);
   return (
     <View accessibilityLabel={`Hoje: ${spoken} sessões`} accessible style={styles.todayPill} testID="study-session-today">
       <Text allowFontScaling style={styles.todayLabel}>Hoje</Text>
       <View style={styles.todayBars}>
         {Array.from({ length: goal }, (_, index) => (
-          <View key={index} style={[styles.todayBar, index < metrics.sessionsToday && styles.todayBarDone]} />
+          <View key={index} style={[styles.todayBar, index < (objective?.progress ?? 0) && styles.todayBarDone]} />
         ))}
       </View>
       <Text allowFontScaling style={styles.todayValue}>{value}</Text>

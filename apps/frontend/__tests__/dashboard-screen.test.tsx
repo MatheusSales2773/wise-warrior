@@ -4,6 +4,7 @@ import { AccessibilityInfo, Platform, StyleSheet } from 'react-native';
 import { DashboardScreen } from '@/features/dashboard/dashboard-screen';
 import { theme } from '@/design-system';
 import { getMyProfile, getRecentStudySessions, getSessionMetrics, type UserProfile, type RecentStudySession, type SessionMetrics } from '@/features/dashboard/api';
+import { getObjectives, type Objectives } from '@/features/chronicles/api';
 import { dashboardKeys } from '@/features/dashboard/queries';
 import { resetMockWindowDimensions, setMockWindowDimensions } from '../test-utils/window-dimensions';
 
@@ -14,6 +15,8 @@ jest.mock('@/features/dashboard/api', () => ({
   getRecentStudySessions: jest.fn(),
   getSessionMetrics: jest.fn(),
 }));
+
+jest.mock('@/features/chronicles/api', () => ({ getObjectives: jest.fn() }));
 
 const profile: UserProfile = {
   id: 'user-1', email: 'wise@example.com', displayName: 'Aventureiro', planTier: 'free',
@@ -26,7 +29,7 @@ const session: RecentStudySession = {
 };
 const cadenceStart = new Date('2026-07-24T00:00:00.000Z');
 const metrics: SessionMetrics = {
-  currentStreakDays: 4, longestStreakDays: 9, sessionsToday: 2, dailyGoal: 4, validSecondsToday: 3_600,
+  currentStreakDays: 4, longestStreakDays: 9, sessionsToday: 2, validSecondsToday: 3_600,
   cadence: { windowStart: '2026-07-24', windowEnd: '2026-09-17', days: Array.from({ length: 56 }, (_, index) => {
     const date = new Date(cadenceStart);
     date.setUTCDate(date.getUTCDate() + index);
@@ -34,6 +37,13 @@ const metrics: SessionMetrics = {
   }) },
 };
 
+const objectives = (target = 4, progress = 2): Objectives => ({
+  daily: {
+    date: '2026-09-17', renewsAt: '2026-09-18T03:00:00.000Z',
+    items: [{ id: 'four-sessions', title: 'Conclua 4 sessões hoje', progress, target, coins: 15, completed: progress >= target }],
+  },
+});
+const mockedObjectives = getObjectives as jest.MockedFunction<typeof getObjectives>;
 const mockedProfile = getMyProfile as jest.MockedFunction<typeof getMyProfile>;
 const mockedActivity = getRecentStudySessions as jest.MockedFunction<typeof getRecentStudySessions>;
 
@@ -50,6 +60,7 @@ async function renderDashboard() {
 
 beforeEach(() => {
   mockedMetrics.mockResolvedValue(metrics);
+  mockedObjectives.mockResolvedValue(objectives());
 });
 
 afterEach(() => {
@@ -387,6 +398,26 @@ describe('DashboardScreen', () => {
     expect(screen.getByLabelText(new RegExp(`${subject}.*Concluída.*guilda.*25 min`))).toBeTruthy();
   });
 
+  it('follows the target of the "Conclua 4 sessões hoje" Objetivo set on the server', async () => {
+    mockedProfile.mockResolvedValue(profile);
+    mockedActivity.mockResolvedValue([]);
+    mockedObjectives.mockResolvedValue(objectives(6, 3));
+    await renderDashboard();
+
+    expect(await screen.findByText('3 / 6')).toBeTruthy();
+    expect(screen.getByLabelText(/Sessões hoje: 3 de 6/)).toBeTruthy();
+  });
+
+  it('shows only the session count while the Objetivo cannot be loaded', async () => {
+    mockedProfile.mockResolvedValue(profile);
+    mockedActivity.mockResolvedValue([]);
+    mockedObjectives.mockRejectedValue(new Error('offline'));
+    await renderDashboard();
+
+    await waitFor(() => expect(screen.getByLabelText(/Sessões hoje: 2;/)).toBeTruthy());
+    expect(screen.queryByText('2 / 4')).toBeNull();
+  });
+
   it('renders the streak metrics and 56-cell cadence card with accessible summaries', async () => {
     mockedProfile.mockResolvedValue(profile);
     mockedActivity.mockResolvedValue([]);
@@ -394,7 +425,7 @@ describe('DashboardScreen', () => {
 
     await waitFor(() => expect(screen.getByTestId('dashboard-cadence')).toBeTruthy());
     expect(screen.getByText('4 dias')).toBeTruthy();
-    expect(screen.getByText('2 / 4')).toBeTruthy();
+    expect(await screen.findByText('2 / 4')).toBeTruthy();
     expect(screen.getByText(/60 min de foco válido/)).toBeTruthy();
     expect(screen.getByText(/Período: 24\/07 a 17\/09/)).toBeTruthy();
     expect(screen.getAllByTestId(/^dashboard-cadence-cell-/)).toHaveLength(56);
