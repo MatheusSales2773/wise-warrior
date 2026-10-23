@@ -25,7 +25,7 @@ import {
   saoPauloWeekAt,
 } from '../../shared/time/sao-paulo-calendar';
 import { buildCadence, calculateStreaks, groupActivityByDay } from './domain/session-metrics';
-import { COUNTED_SESSION_SQL, type FinishedSessionOfDay } from './domain/counted-session';
+import { COUNTED_SESSION_SQL, type FinishedSessionOfDay, type FinishedSessionOfWeek } from './domain/counted-session';
 import { countFinishedSessions } from './finished-session-counts';
 import type { SessionCounts } from '../users/domain/unlock-condition';
 import { buildWeekSummary } from './domain/week-summary';
@@ -195,6 +195,28 @@ export class SessionsService {
   /** Study Sessions não descartadas que terminaram, e as terminadas antes das 7h de São Paulo: o que os Marcos de Badge medem (ADR-014). */
   countFinishedSessions(userId: string): Promise<SessionCounts> {
     return countFinishedSessions(this.studySessions.manager, userId);
+  }
+
+  /**
+   * Study Sessions that ended in the São Paulo week (Monday to Sunday) of `instant` and counted. The weekly Objetivos
+   * of Crônicas read the week from here (ADR-014). `manager` joins the caller's transaction like `finishedSessionsOfDay`.
+   */
+  async finishedSessionsOfWeek(userId: string, instant: Date, manager?: EntityManager): Promise<FinishedSessionOfWeek[]> {
+    const week = saoPauloWeekAt(instant);
+    const rows = await (manager ?? this.studySessions.manager)
+      .getRepository(StudySession)
+      .createQueryBuilder('session')
+      .select('session.endedAt', 'endedAt')
+      .addSelect('session.subject', 'subject')
+      .addSelect('session.durationValidSeconds', 'validSeconds')
+      .where('session.userId = :userId', { userId })
+      .andWhere('session.endedAt >= :start AND session.endedAt < :nextStart', {
+        start: week.startsAt,
+        nextStart: new Date(week.endsAt.getTime() + 1000),
+      })
+      .andWhere(COUNTED_SESSION_SQL)
+      .getRawMany<{ endedAt: Date; subject: string | null; validSeconds: number | string }>();
+    return rows.map((row) => ({ endedAt: new Date(row.endedAt), subject: row.subject, validSeconds: Number(row.validSeconds) }));
   }
 
   /**

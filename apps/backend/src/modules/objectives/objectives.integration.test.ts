@@ -34,7 +34,7 @@ import { MilestonesService } from './milestones.service';
 import { ObjectivesController } from './objectives.controller';
 import { ObjectivesService } from './objectives.service';
 
-describe('Daily objectives pay Moedas when a Study Session ends', () => {
+describe('Objetivos pay Moedas when a Study Session ends', () => {
   jest.setTimeout(30_000);
 
   let database: IntegrationDatabase | undefined;
@@ -63,13 +63,14 @@ describe('Daily objectives pay Moedas when a Study Session ends', () => {
   /** Finished sessions ending at each instant, with the given terminal shape and valid seconds. */
   const seedSessions = async (
     endedAts: string[],
-    shape: { state?: 'completed' | 'stopped_early' | 'cancelled' | 'discarded'; kind?: 'cycle' | 'free'; mode?: 'solo' | 'guild'; cappedReason?: 'daily-limit' | 'continuous-limit'; validSeconds?: number } = {},
+    shape: { state?: 'completed' | 'stopped_early' | 'cancelled' | 'discarded'; kind?: 'cycle' | 'free'; mode?: 'solo' | 'guild'; cappedReason?: 'daily-limit' | 'continuous-limit'; validSeconds?: number; subject?: string | null } = {},
   ) => {
     await dataSource!.getRepository(StudySession).insert(endedAts.map((endedAt) => ({
       userId,
       mode: shape.mode ?? 'solo' as const,
       cappedReason: shape.cappedReason ?? null,
       kind: shape.kind ?? 'cycle',
+      subject: shape.subject ?? null,
       state: shape.state ?? 'completed',
       discardedReason: shape.state === 'discarded' ? 'heartbeat-gap' : null,
       startedAt: new Date(new Date(endedAt).getTime() - 900_000),
@@ -103,6 +104,14 @@ describe('Daily objectives pay Moedas when a Study Session ends', () => {
     return await response.json() as {
       daily: { date: string; renewsAt: string; items: Array<{ id: string; progress: number; target: number; completed: boolean; coins: number; title: string }> };
     };
+  };
+
+  const weeklyObjectives = async () => {
+    const response = await send('GET', '/objectives');
+    expect(response.status).toBe(200);
+    return (await response.json() as {
+      weekly: { weekStart: string; renewsAt: string; items: Array<{ id: string; progress: number; target: number; unit: string; completed: boolean; coins: number; title: string }> };
+    }).weekly;
   };
 
   beforeEach(async () => {
@@ -278,7 +287,7 @@ describe('Daily objectives pay Moedas when a Study Session ends', () => {
 
   it('never pays the same objective twice for a day, even when reprocessed', async () => {
     await seedSessions(['2026-09-18T12:00:00.000Z']);
-    const settle = () => dataSource!.transaction((manager) => objectives.settleDailyInTransaction(manager, userId, new Date('2026-09-18T12:00:00.000Z')));
+    const settle = () => dataSource!.transaction((manager) => objectives.settleInTransaction(manager, userId, new Date('2026-09-18T12:00:00.000Z')));
 
     const first = await settle();
     const second = await settle();
@@ -351,6 +360,101 @@ describe('Daily objectives pay Moedas when a Study Session ends', () => {
 
     it('needs authentication', async () => {
       expect((await fetch(`${baseUrl}/api/v1/milestones`)).status).toBe(401);
+    });
+  });
+
+  describe('weekly', () => {
+    // 2026-09-14 is a Monday in São Paulo; `now` starts on Friday the 18th.
+    const weeklyEntries = async () => (await objectiveEntries()).filter(([ref]) => String(ref).includes('2026-09-14'));
+
+    it('lists the three objectives with coins, targets and the Monday renewal', async () => {
+      const weekly = await weeklyObjectives();
+      expect(weekly.weekStart).toBe('2026-09-14');
+      expect(weekly.renewsAt).toBe('2026-09-21T03:00:00.000Z');
+      expect(weekly.items.map(({ title, coins, target, unit }) => [title, coins, target, unit])).toEqual([
+        ['Estude em 5 dias diferentes', 40, 5, 'days'],
+        ['Estude 5h nesta semana', 50, 300, 'minutes'],
+        ['Estude 3 matérias diferentes', 30, 3, 'subjects'],
+      ]);
+    });
+
+    it('pays "5 dias diferentes" once, on the 5th day, and not for several sessions on one day', async () => {
+      await seedSessions(['2026-09-14T15:00:00.000Z', '2026-09-14T16:00:00.000Z', '2026-09-15T15:00:00.000Z', '2026-09-16T15:00:00.000Z', '2026-09-17T15:00:00.000Z'], { validSeconds: 60 });
+      expect((await completeSessionEndingAt('d5', '2026-09-17T18:00:00.000Z')).status).toBe(200);
+      expect((await weeklyObjectives()).items[0]).toMatchObject({ progress: 4, completed: false });
+      expect(await weeklyEntries()).toEqual([]);
+
+      expect((await completeSessionEndingAt('d6', '2026-09-18T15:00:00.000Z')).status).toBe(200);
+      expect((await completeSessionEndingAt('d7', '2026-09-19T15:00:00.000Z')).status).toBe(200);
+
+      expect(await weeklyEntries()).toEqual([['weekly:five-days:2026-09-14', 40]]);
+      expect((await weeklyObjectives()).items[0]).toMatchObject({ progress: 5, completed: true });
+    });
+
+    it('pays "5h nesta semana" when the valid focus of the week reaches 300 minutes', async () => {
+      await seedSessions(['2026-09-14T15:00:00.000Z', '2026-09-15T15:00:00.000Z'], { validSeconds: 8100 });
+      await seedSessions(['2026-09-16T15:00:00.000Z'], { validSeconds: 1200 });
+      expect((await weeklyObjectives()).items[1]).toMatchObject({ progress: 290, completed: false });
+
+      expect((await completeSessionEndingAt('h', '2026-09-18T15:00:00.000Z', 900)).status).toBe(200);
+
+      expect(await weeklyEntries()).toEqual([['weekly:five-hours:2026-09-14', 50]]);
+    });
+
+    it('pays "3 matérias diferentes" grouping subjects like the Diário', async () => {
+      await seedSessions(['2026-09-14T15:00:00.000Z'], { subject: 'Cálculo' });
+      await seedSessions(['2026-09-15T15:00:00.000Z'], { subject: ' cálculo ' });
+      await seedSessions(['2026-09-16T15:00:00.000Z'], { subject: 'Física' });
+      await seedSessions(['2026-09-16T16:00:00.000Z']);
+      expect((await weeklyObjectives()).items[2]).toMatchObject({ progress: 2, completed: false });
+
+      await seedSessions(['2026-09-16T17:00:00.000Z'], { subject: 'História' });
+      expect((await completeSessionEndingAt('s', '2026-09-16T18:00:00.000Z')).status).toBe(200);
+
+      expect(await weeklyEntries()).toEqual([['weekly:three-subjects:2026-09-14', 30]]);
+    });
+
+    it('is reachable in solo mode and never grants XP or Raid contribution', async () => {
+      await seedSessions(['2026-09-14T15:00:00.000Z', '2026-09-15T15:00:00.000Z', '2026-09-16T15:00:00.000Z', '2026-09-17T15:00:00.000Z'], { mode: 'solo', validSeconds: 60 });
+      expect((await completeSessionEndingAt('solo', '2026-09-18T15:00:00.000Z')).status).toBe(200);
+      expect(await weeklyEntries()).toEqual([['weekly:five-days:2026-09-14', 40]]);
+    });
+
+    it('ignores cancellations and discarded sessions', async () => {
+      await seedSessions(['2026-09-14T15:00:00.000Z', '2026-09-15T15:00:00.000Z'], { state: 'discarded', subject: 'Cálculo' });
+      await seedSessions(['2026-09-16T15:00:00.000Z'], { state: 'cancelled', subject: 'Física' });
+
+      expect((await weeklyObjectives()).items.map(({ progress }) => progress)).toEqual([0, 0, 0]);
+    });
+
+    it('turns the week from Sunday 23:59:59 to Monday 00:00 in São Paulo', async () => {
+      // Sunday 2026-09-20 23:59:59 SP is 2026-09-21T02:59:59Z: still the week of the 14th.
+      await seedSessions(['2026-09-14T15:00:00.000Z', '2026-09-15T15:00:00.000Z', '2026-09-16T15:00:00.000Z', '2026-09-17T15:00:00.000Z'], { validSeconds: 60 });
+      expect((await completeSessionEndingAt('sunday', '2026-09-21T02:59:59.000Z')).status).toBe(200);
+      expect(await weeklyEntries()).toEqual([['weekly:five-days:2026-09-14', 40]]);
+
+      now = new Date('2026-09-21T02:59:59.000Z');
+      expect((await weeklyObjectives()).items[0]).toMatchObject({ progress: 5, completed: true });
+
+      // Monday 00:00 SP starts a fresh week: nothing carries over and nothing is paid again.
+      expect((await completeSessionEndingAt('monday', '2026-09-21T03:00:00.000Z')).status).toBe(200);
+      const weekly = await weeklyObjectives();
+      expect(weekly.weekStart).toBe('2026-09-21');
+      expect(weekly.renewsAt).toBe('2026-09-28T03:00:00.000Z');
+      expect(weekly.items.map(({ progress }) => progress)).toEqual([1, 15, 0]);
+      expect((await objectiveEntries()).filter(([ref]) => String(ref).startsWith('weekly:five-'))).toEqual([['weekly:five-days:2026-09-14', 40]]);
+    });
+
+    it('never pays the same objective twice in a week, even when reprocessed', async () => {
+      await seedSessions(['2026-09-14T15:00:00.000Z', '2026-09-15T15:00:00.000Z', '2026-09-16T15:00:00.000Z', '2026-09-17T15:00:00.000Z', '2026-09-18T15:00:00.000Z'], { validSeconds: 60 });
+      const settle = () => dataSource!.transaction((manager) => objectives.settleInTransaction(manager, userId, new Date('2026-09-18T15:00:00.000Z')));
+
+      const first = await settle();
+      const second = await settle();
+
+      expect(first.filter((movement) => movement.applied)).toHaveLength(2);
+      expect(second.filter((movement) => movement.applied)).toHaveLength(0);
+      expect(await weeklyEntries()).toEqual([['weekly:five-days:2026-09-14', 40]]);
     });
   });
 });

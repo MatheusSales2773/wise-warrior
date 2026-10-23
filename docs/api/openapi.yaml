@@ -726,15 +726,17 @@ paths:
     get:
       summary: Objetivos de Crônicas do usuário autenticado
       description: >
-        Os Objetivos diários de hoje (dia de São Paulo) com o progresso de quem pede (ADR-014). A lista e as Moedas
-        vêm de configuração do servidor, iguais para todos. Cumprir um Objetivo credita as Moedas automaticamente,
-        uma vez por Objetivo por dia, no término da Study Session que o cumpre, com a origem `objective` no Extrato.
+        Os Objetivos diários de hoje (dia de São Paulo) e os semanais da semana corrente, de segunda a domingo de São
+        Paulo, com o progresso de quem pede (ADR-014). A lista e as Moedas vêm de configuração do servidor, iguais para
+        todos, e todos são alcançáveis sem Guild. Cumprir um Objetivo credita as Moedas automaticamente, uma vez por
+        Objetivo por dia (diários) ou por semana (semanais), no término da Study Session que o cumpre, com a origem
+        `objective` no Extrato (`ref` `<id>:<dia>` ou `weekly:<id>:<segunda>`).
         Objetivos nunca dão XP nem Contribuição de Raid. Cancelamento e Sessão descartada não avançam o progresso.
       operationId: getObjectives
       tags: [Objectives]
       responses:
         "200":
-          description: Objetivos diários
+          description: Objetivos diários e semanais
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Objectives" }
@@ -1572,10 +1574,32 @@ components:
         coins: { type: integer, minimum: 0, description: "Moedas pagas uma vez, quando o Objetivo é cumprido" }
         completed: { type: boolean }
 
+    WeeklyObjective:
+      allOf:
+        - $ref: "#/components/schemas/DailyObjective"
+        - type: object
+          required: [unit]
+          properties:
+            unit:
+              type: string
+              enum: [days, minutes, subjects]
+              description: >
+                O que `progress` e `target` contam: dias de São Paulo com sessão, minutos de foco válido ou
+                matérias distintas (mesmo agrupamento do Diário; sessão sem matéria não conta).
+
     Objectives:
       type: object
-      required: [daily]
+      required: [daily, weekly]
       properties:
+        weekly:
+          type: object
+          required: [weekStart, renewsAt, items]
+          properties:
+            weekStart: { type: string, format: date, description: "Segunda-feira da semana de São Paulo coberta" }
+            renewsAt: { type: string, format: date-time, description: "Segunda 00:00 de São Paulo em que os Objetivos renovam" }
+            items:
+              type: array
+              items: { $ref: "#/components/schemas/WeeklyObjective" }
         daily:
           type: object
           required: [date, renewsAt, items]

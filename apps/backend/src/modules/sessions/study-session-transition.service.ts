@@ -365,7 +365,7 @@ export class StudySessionTransitionService {
     if (countsAsFinishedSession(saved)) {
       await this.users.unlockSessionBadges(manager, userId, await countFinishedSessions(manager, userId));
       // Objetivos pagam Moedas no mesmo commit, e nunca XP nem Contribuição (ADR-014).
-      objectiveCoinMovements = await this.objectives.settleDailyInTransaction(manager, userId, saved.endedAt!);
+      objectiveCoinMovements = await this.objectives.settleInTransaction(manager, userId, saved.endedAt!);
     }
     if (saved.mode === 'guild' && saved.raidId) {
       raidContributionOutcome = await this.raids.recordContributionInTransaction(manager, {

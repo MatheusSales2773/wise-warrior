@@ -120,7 +120,7 @@ describe('Study Session de modo Guilda against MySQL', () => {
         ProgressionService,
         StudySessionStartService,
         StudySessionTransitionService,
-        { provide: ObjectivesService, useValue: { settleDailyInTransaction: async () => [] } },
+        { provide: ObjectivesService, useValue: { settleInTransaction: async () => [] } },
         StudySessionEventsService,
         repo(Guild), repo(GuildMembership), repo(Raid), repo(RaidContribution), repo(RaidParticipation), repo(Mission), repo(MissionRewardItem),
         repo(User), repo(CosmeticItem), repo(UserCosmeticItem), repo(Character),

@@ -9,7 +9,7 @@ import { Objectives } from './objectives';
 import { WeekCards } from './week-cards';
 import { weekRangeLabel } from './diary';
 
-/* Crônicas: Objetivos e Diário (ADR-014). Os Objetivos semanais chegam em fatia própria. */
+/* Crônicas: Objetivos, Marcos e Diário (ADR-014). */
 
 type Section = 'objetivos' | 'diario';
 
@@ -65,7 +65,7 @@ export function ChroniclesScreen() {
             <WeekCards desktop={desktop} />
           </View>
           : <View style={[styles.diaryLayout, desktop && styles.diaryLayoutDesktop]}>
-            <View style={desktop ? styles.diaryDesktop : undefined}><Objectives /></View>
+            <View style={desktop ? styles.diaryDesktop : undefined}><Objectives desktop={desktop} /></View>
             <View style={desktop ? styles.milestonesDesktop : undefined}><Milestones desktop={desktop} /></View>
           </View>}
       </View>
