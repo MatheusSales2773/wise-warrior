@@ -278,7 +278,7 @@ components:
           enum: [running, paused, ended]
           description: >
             Estado grosso para o cliente saber se a sessão ainda ocupa o slot ativo. `ended` cobre conclusão,
-            encerramento antecipado, cancelamento e sessão descartada; o REST continua sendo a fonte dos detalhes.
+            encerramento antecipado, parada de um Foco livre, cancelamento e sessão descartada; o REST continua sendo a fonte dos detalhes.
     EquipmentChanged:
       type: object
       required: [category, cosmeticItemId]

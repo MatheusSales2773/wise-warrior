@@ -32,11 +32,12 @@ import { KeepBadgesOffSale1788460080000 } from './1788460080000-keep-badges-off-
 import { SeedCosmeticItemsForSale1788460140000 } from './1788460140000-seed-cosmetic-items-for-sale';
 import { SeedMissionsForSale1788460200000 } from './1788460200000-seed-missions-for-sale';
 import { AddWeaponCategory1788460440000, STAFF_ID } from './1788460440000-add-weapon-category';
+import { AddStudySessionKind1788460500000 } from './1788460500000-add-study-session-kind';
 import {
   CEM_SESSOES_ID,
   MADRUGADOR_ID,
-  SessionCountBadgeConditions1788460500000,
-} from './1788460500000-session-count-badge-conditions';
+  SessionCountBadgeConditions1788460560000,
+} from './1788460560000-session-count-badge-conditions';
 import { saoPauloWeekAt } from '../shared/time/sao-paulo-calendar';
 
 const ITEMS_FOR_SALE = [
@@ -1614,9 +1615,40 @@ describe('TypeORM migrations against an empty MySQL schema', () => {
     expect(await weapons()).toEqual(expectedWeapons);
   });
 
+  it('marks existing Study Sessions as Ciclo and reverts the kind column', async () => {
+    database = await createIntegrationDatabase('wise_migrations_test');
+    initialDataSource = new DataSource(database!.options(migrationsBefore(AddStudySessionKind1788460500000)));
+    await initialDataSource.initialize();
+    await initialDataSource.runMigrations();
+    await database!.admin.query(
+      `INSERT INTO ${database!.identifier}.users (id, email, password_hash, display_name, plan_tier)
+       VALUES ('kind-user', 'kind@example.com', 'hash', 'Kind', 'free')`,
+    );
+    await database!.admin.query(
+      `INSERT INTO ${database!.identifier}.study_sessions (id, user_id, subject, mode, planned_duration_seconds)
+       VALUES ('kind-legacy', 'kind-user', 'Cálculo', 'solo', NULL)`,
+    );
+    await initialDataSource.destroy();
+    initialDataSource = undefined;
+
+    dataSource = new DataSource(database!.options(migrationsThrough(AddStudySessionKind1788460500000)));
+    await dataSource.initialize();
+    await dataSource.runMigrations();
+    expect(await rows(database!.admin, `SELECT kind, planned_duration_seconds FROM ${database!.identifier}.study_sessions`))
+      .toEqual([{ kind: 'cycle', planned_duration_seconds: null }]);
+
+    await revertThrough(dataSource, AddStudySessionKind1788460500000);
+    const columns = await rows(
+      database!.admin,
+      'SELECT COLUMN_NAME FROM information_schema.columns WHERE table_schema = ? AND table_name = ? AND COLUMN_NAME = ?',
+      [database!.name, 'study_sessions', 'kind'],
+    );
+    expect(columns).toEqual([]);
+  });
+
   it('moves Madrugador and Cem Sessões to session counts and keeps the Badges already in the Inventário', async () => {
     database = await createIntegrationDatabase('wise_migrations_test');
-    initialDataSource = new DataSource(database.options(migrationsBefore(SessionCountBadgeConditions1788460500000)));
+    initialDataSource = new DataSource(database.options(migrationsBefore(SessionCountBadgeConditions1788460560000)));
     await initialDataSource.initialize();
     await initialDataSource.runMigrations();
     await database.admin.query(
@@ -1631,7 +1663,7 @@ describe('TypeORM migrations against an empty MySQL schema', () => {
     await initialDataSource.destroy();
     initialDataSource = undefined;
 
-    dataSource = new DataSource(database.options(migrationsThrough(SessionCountBadgeConditions1788460500000)));
+    dataSource = new DataSource(database.options(migrationsThrough(SessionCountBadgeConditions1788460560000)));
     await dataSource.initialize();
     await dataSource.runMigrations();
 
@@ -1648,7 +1680,7 @@ describe('TypeORM migrations against an empty MySQL schema', () => {
     expect(await conditions()).toEqual([['Cem Sessões', 'sessions:100'], ['Madrugador', 'early-sessions:5']]);
     expect(await owned()).toEqual([[MADRUGADOR_ID, 1]]);
 
-    await revertThrough(dataSource, SessionCountBadgeConditions1788460500000);
+    await revertThrough(dataSource, SessionCountBadgeConditions1788460560000);
     expect(await conditions()).toEqual([['Cem Sessões', 'level:12'], ['Madrugador', 'level:3']]);
     expect(await owned()).toEqual([[MADRUGADOR_ID, 1]]);
 

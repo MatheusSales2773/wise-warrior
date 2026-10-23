@@ -455,9 +455,12 @@ paths:
       summary: Inicia uma Study Session solo ou de modo Guilda
       description: >
         Aceita presets de 900, 1500 ou 3000 segundos; o padrão defensivo é
-        1500. Idempotency-Key é única por usuário entre inícios e transições.
+        1500. Com `kind: free` inicia um Foco livre, sem `plannedDurationSeconds`
+        (enviá-lo é 400): o snapshot volta `running` com `plannedDurationSeconds: null` e
+        `runDeadlineAt` no teto, o menor entre o limite contínuo e o saldo diário restante
+        (ADR-011). Sem saldo diário, o início devolve 409 `daily-limit-reached`. Idempotency-Key é única por usuário entre inícios e transições.
         Um replay idêntico devolve o snapshot original; reutilizar a chave por
-        outro comando, com duração, Matéria ou modo diferente devolve
+        outro comando, com duração, Matéria, modo ou tipo diferente devolve
         conflito estável. No modo `guild`, `raidId` precisa ser a Raid ativa da
         Guild do usuário e ele precisa ser Participante: quem não é Participante
         ou é de outra Guild recebe 403, e uma Raid encerrada recebe 409
@@ -1516,7 +1519,18 @@ components:
       type: object
       additionalProperties: false
       properties:
-        plannedDurationSeconds: { type: integer, enum: [900, 1500, 3000], default: 1500 }
+        kind:
+          type: string
+          enum: [cycle, free]
+          default: cycle
+          description: >
+            `cycle` (Ciclo) tem duração planejada; `free` (Foco livre) conta para cima até o usuário parar
+            ou o teto do antifraude. Ausente é `cycle`.
+        plannedDurationSeconds:
+          type: integer
+          enum: [900, 1500, 3000]
+          default: 1500
+          description: "Só no Ciclo. Enviado junto de `kind: free`, a API responde 400."
         subject:
           type: [string, "null"]
           description: >
@@ -1567,22 +1581,29 @@ components:
 
     StudySessionSnapshot:
       type: object
-      required: [id, mode, raidId, subject, state, plannedDurationSeconds, startedAt, runDeadlineAt, pausedAt, pausedTotalSeconds, durationValidSeconds, remainingSeconds, serverNow, version, endedAt, xpAwarded, terminalReason, discardedReason, cappedReason, canControl]
+      required: [id, kind, mode, raidId, subject, state, plannedDurationSeconds, startedAt, runDeadlineAt, pausedAt, pausedTotalSeconds, durationValidSeconds, remainingSeconds, serverNow, version, endedAt, xpAwarded, terminalReason, discardedReason, cappedReason, canControl]
       properties:
         id: { type: string, format: uuid }
+        kind: { type: string, enum: [cycle, free], description: "Ciclo ou Foco livre" }
         mode: { type: string, enum: [solo, guild] }
         raidId: { type: [string, "null"], format: uuid, description: A Raid que recebe a Contribuição; null no modo solo }
         subject:
           type: [string, "null"]
           description: Matéria normalizada definida no início; null é Sem matéria. Não muda depois do início.
         state: { type: string, enum: [running, paused, completed, stopped_early, cancelled, discarded] }
-        plannedDurationSeconds: { type: integer, enum: [900, 1500, 3000] }
+        plannedDurationSeconds:
+          type: [integer, "null"]
+          enum: [900, 1500, 3000, null]
+          description: null no Foco livre, que não tem duração planejada.
         startedAt: { type: string, format: date-time }
-        runDeadlineAt: { type: [string, "null"], format: date-time }
+        runDeadlineAt:
+          type: [string, "null"]
+          format: date-time
+          description: No Ciclo, o fim do foco; no Foco livre, o teto do antifraude (limite contínuo ou saldo diário), recalculado ao retomar.
         pausedAt: { type: [string, "null"], format: date-time }
         pausedTotalSeconds: { type: integer, minimum: 0 }
         durationValidSeconds: { type: integer, minimum: 0 }
-        remainingSeconds: { type: integer, minimum: 0 }
+        remainingSeconds: { type: integer, minimum: 0, description: "Sem significado no Foco livre (sempre 0); o cliente conta para cima." }
         serverNow: { type: string, format: date-time }
         version: { type: integer, minimum: 1 }
         endedAt:
@@ -1600,6 +1621,7 @@ components:
           description: Sempre true. Mantido por compatibilidade; qualquer Session autenticada do usuário controla a Study Session (D-006).
       example:
         id: 00000000-0000-4000-8000-000000000074
+        kind: cycle
         mode: solo
         raidId: null
         subject: null
@@ -1639,10 +1661,11 @@ components:
 
     RecentStudySession:
       type: object
-      required: [id, subject, mode, state, startedAt, endedAt, durationValidSeconds, xpAwarded, discardedReason, cappedReason]
+      required: [id, subject, kind, mode, state, startedAt, endedAt, durationValidSeconds, xpAwarded, discardedReason, cappedReason]
       properties:
         id: { type: string, format: uuid }
         subject: { type: [string, "null"] }
+        kind: { type: string, enum: [cycle, free] }
         mode: { type: string, enum: [solo, guild] }
         state: { type: [string, "null"], enum: [running, paused, completed, stopped_early, cancelled, discarded, null] }
         startedAt: { type: string, format: date-time }
@@ -1665,7 +1688,7 @@ components:
               type: [integer, "null"]
               minimum: 1
               maximum: 4
-              description: Posição do foco concluído por inteiro no ciclo Pomodoro; null para os outros desfechos
+              description: Posição do Ciclo concluído por inteiro no ciclo Pomodoro; null para os outros desfechos, inclusive todo Foco livre
 
     StudySessionHistoryPage:
       type: object
@@ -1700,14 +1723,28 @@ components:
     SessionMetrics:
       type: object
       description: Métricas calculadas no calendário UTC; sessões ativas ou descartadas não são contabilizadas.
-      required: [currentStreakDays, longestStreakDays, sessionsToday, dailyGoal, validSecondsToday, cadence]
+      required: [currentStreakDays, longestStreakDays, sessionsToday, dailyGoal, validSecondsToday, todayByKind, cadence]
       properties:
         currentStreakDays: { type: integer, minimum: 0 }
         longestStreakDays: { type: integer, minimum: 0 }
         sessionsToday: { type: integer, minimum: 0 }
         dailyGoal: { type: integer, const: 4 }
         validSecondsToday: { type: integer, minimum: 0 }
+        todayByKind:
+          type: object
+          description: Sessões e segundos válidos de hoje por tipo; `sessionsToday` e `validSecondsToday` somam os dois.
+          required: [cycle, free]
+          properties:
+            cycle: { $ref: "#/components/schemas/SessionMetricsKindTotals" }
+            free: { $ref: "#/components/schemas/SessionMetricsKindTotals" }
         cadence: { $ref: "#/components/schemas/SessionMetricsCadence" }
+
+    SessionMetricsKindTotals:
+      type: object
+      required: [sessionCount, validSeconds]
+      properties:
+        sessionCount: { type: integer, minimum: 0 }
+        validSeconds: { type: integer, minimum: 0 }
 
     SessionMetricsCadence:
       type: object
@@ -2035,7 +2072,7 @@ components:
         application/problem+json:
           schema: { $ref: "#/components/schemas/Problem" }
     StudySessionStartConflict:
-      description: Study Session ativa, Raid encerrada no modo Guilda ou reutilização incompatível de Idempotency-Key.
+      description: Study Session ativa, saldo diário esgotado no Foco livre, Raid encerrada no modo Guilda ou reutilização incompatível de Idempotency-Key.
       content:
         application/problem+json:
           schema: { $ref: "#/components/schemas/Problem" }
@@ -2054,7 +2091,15 @@ components:
                 type: https://wise.app/errors/idempotency-key-reused
                 title: ConflictException
                 status: 409
-                detail: Idempotency-Key já foi usada com outra duração, Matéria ou modo
+                detail: Idempotency-Key já foi usada com outra duração, Matéria, modo ou tipo
+                instance: /api/v1/sessions
+            dailyLimitReached:
+              summary: O saldo diário do antifraude já foi usado (só para Foco livre)
+              value:
+                type: https://wise.app/errors/daily-limit-reached
+                title: ConflictException
+                status: 409
+                detail: O limite diário de foco já foi atingido
                 instance: /api/v1/sessions
             raidEnded:
               summary: A Raid da sessão de modo Guilda já foi encerrada
