@@ -33,7 +33,7 @@ import { SeedCosmeticItemsForSale1788460140000 } from './1788460140000-seed-cosm
 import { SeedMissionsForSale1788460200000 } from './1788460200000-seed-missions-for-sale';
 import { AddWeaponCategory1788460440000, STAFF_ID } from './1788460440000-add-weapon-category';
 import { AddStudySessionKind1788460500000 } from './1788460500000-add-study-session-kind';
-import { raidWeekAt } from '../modules/raids/domain/raid-week';
+import { saoPauloWeekAt } from '../shared/time/sao-paulo-calendar';
 
 const ITEMS_FOR_SALE = [
   ['c05e71c0-0000-4000-8000-000000000101', 'Marcador de Fita', 30, 'accessory'],
@@ -1154,7 +1154,7 @@ describe('TypeORM migrations against an empty MySQL schema', () => {
 
     dataSource = new DataSource(database.options(migrationsThrough(AddGuildMissionChoice1788460020000)));
     await dataSource.initialize();
-    const before = raidWeekAt(new Date());
+    const before = saoPauloWeekAt(new Date());
     await dataSource.runMigrations();
 
     const missions = await rows(

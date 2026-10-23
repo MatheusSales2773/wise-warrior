@@ -11,6 +11,7 @@ import { UsersService } from '../users/users.service';
 import { Guild } from '../guilds/entities/guild.entity';
 import { Mission } from '../raids/entities/mission.entity';
 import { Raid } from '../raids/entities/raid.entity';
+import { saoPauloDayKey } from '../../shared/time/sao-paulo-calendar';
 import { StudySession } from './entities/study-session.entity';
 import { SessionsService } from './sessions.service';
 import { StudySessionStartService } from './study-session-start.service';
@@ -170,7 +171,7 @@ describe('Foco livre against MySQL', () => {
 
     const sessions = new SessionsService(dataSource!.getRepository(StudySession), {} as never, {} as never);
     expect(await sessions.focusCycle(userId)).toMatchObject({ completedInCycle: 3 });
-    const history = await sessions.history(userId, { date: clock.toISOString().slice(0, 10) } as never, clock);
+    const history = await sessions.history(userId, { date: saoPauloDayKey(clock) } as never, clock);
     expect(history.items.filter((item) => item.kind === 'free')).toHaveLength(1);
     expect(history.items.find((item) => item.kind === 'free')!.cyclePosition).toBeNull();
   });

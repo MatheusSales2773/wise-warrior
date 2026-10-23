@@ -3,7 +3,7 @@ import { StyleSheet, Text, View } from 'react-native';
 import { FeedbackMessage, WiseButton, WiseCard, WiseText, theme } from '@/design-system';
 import type { CadenceDay, SessionHistoryItem } from '@/features/dashboard/api';
 import { formatCappedReason, formatDuration } from '@/features/dashboard/formatters';
-import { sessionHistoryQueryOptions, sessionMetricsQueryOptions, utcDay } from '@/features/dashboard/queries';
+import { sessionHistoryQueryOptions, sessionMetricsQueryOptions, saoPauloDay } from '@/features/dashboard/queries';
 
 
 /** Focuses in a Pomodoro cycle, as `/sessions/cycle` reports in `cycleLength` (D-027). */
@@ -47,7 +47,7 @@ function HistoryItem({ item }: { item: SessionHistoryItem }) {
 }
 
 function TodayHistory() {
-  const history = useInfiniteQuery(sessionHistoryQueryOptions(utcDay()));
+  const history = useInfiniteQuery(sessionHistoryQueryOptions(saoPauloDay()));
   const items = history.data?.pages.flatMap((page) => page.items) ?? [];
 
   const body = (() => {

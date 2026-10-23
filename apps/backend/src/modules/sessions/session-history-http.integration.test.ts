@@ -131,14 +131,14 @@ describe('Histórico do dia (GET /sessions/history) against MySQL', () => {
     expect((await history('?date=2026-09-01&limit=51')).status).toBe(400);
   });
 
-  it('lists every outcome of the UTC day, newest first, with what the user needs to read it', async () => {
-    const early = await record(ana, '2026-09-01T00:00:00.000Z', 'completed');
+  it('lists every outcome of the São Paulo day, newest first, with what the user needs to read it', async () => {
+    const early = await record(ana, '2026-09-01T03:00:00.000Z', 'completed');
     const stopped = await record(ana, '2026-09-01T10:00:00.000Z', 'stopped_early');
     const discarded = await record(ana, '2026-09-01T11:00:00.000Z', 'discarded', { discardedReason: 'heartbeat-gap', xpAwarded: 0 });
     const capped = await record(ana, '2026-09-01T12:00:00.000Z', 'stopped_early', { cappedReason: 'daily-limit' });
-    const cancelled = await record(ana, '2026-09-01T23:59:59.999Z', 'cancelled');
-    await record(ana, '2026-08-31T23:59:59.999Z', 'completed'); // the day before
-    await record(ana, '2026-09-02T00:00:00.000Z', 'completed'); // the day after
+    const cancelled = await record(ana, '2026-09-02T02:59:59.999Z', 'cancelled');
+    await record(ana, '2026-09-01T02:59:59.999Z', 'completed'); // 23:59:59 of the day before in São Paulo
+    await record(ana, '2026-09-02T03:00:00.000Z', 'completed'); // midnight of the day after in São Paulo
     await record(ana, null, 'running'); // not ended yet
     await record(bruno, '2026-09-01T12:00:00.000Z', 'completed'); // someone else
 
@@ -150,7 +150,7 @@ describe('Histórico do dia (GET /sessions/history) against MySQL', () => {
     expect(result.items.find((item) => item.id === discarded)).toMatchObject({ state: 'discarded', discardedReason: 'heartbeat-gap', xpAwarded: 0, cyclePosition: null });
     expect(result.items.find((item) => item.id === capped)).toMatchObject({ cappedReason: 'daily-limit', cyclePosition: null });
     expect(result.items.find((item) => item.id === early)).toMatchObject({ subject: 'Cálculo', durationValidSeconds: 1500, xpAwarded: 250 });
-    expect(new Date(result.items[0]!.endedAt).toISOString()).toBe('2026-09-01T23:59:59.999Z');
+    expect(new Date(result.items[0]!.endedAt).toISOString()).toBe('2026-09-02T02:59:59.999Z');
   });
 
   it('numbers each focus completed in full in the Pomodoro cycle, counting across days', async () => {
@@ -188,6 +188,19 @@ describe('Histórico do dia (GET /sessions/history) against MySQL', () => {
     expect(pages).toBe(3);
     expect(new Set(seen).size).toBe(5);
     expect([...seen].sort()).toEqual([...ids].sort());
+  });
+
+  it('pages across the São Paulo midnight without leaking the neighbouring days', async () => {
+    const last = await record(ana, '2026-09-02T02:59:59.999Z', 'completed');
+    const first = await record(ana, '2026-09-01T03:00:00.000Z', 'completed');
+    await record(ana, '2026-09-01T02:59:59.999Z', 'completed'); // 23:59:59 of the day before
+    await record(ana, '2026-09-02T03:00:00.000Z', 'completed'); // 00:00 of the day after
+
+    const one = await page('?date=2026-09-01&limit=1');
+    expect(one.items.map((item) => item.id)).toEqual([last]);
+    const two = await page(`?date=2026-09-01&limit=1&cursor=${one.nextCursor}`);
+    expect(two.items.map((item) => item.id)).toEqual([first]);
+    expect(two.nextCursor).toBeNull();
   });
 
   it('returns an empty page for a day without sessions', async () => {

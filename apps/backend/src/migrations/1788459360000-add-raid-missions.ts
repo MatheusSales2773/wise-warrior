@@ -1,5 +1,6 @@
 import { MigrationInterface, QueryRunner, Table } from 'typeorm';
-import { missionIndexForWeek, proportionalGoalXp, raidWeekAt } from '../modules/raids/domain/raid-week';
+import { missionIndexForWeek, proportionalGoalXp } from '../modules/raids/domain/raid-week';
+import { saoPauloWeekAt } from '../shared/time/sao-paulo-calendar';
 
 /** Catálogo inicial de Missões (#110). Os ids são fixos para que o seed seja versionado. */
 const MISSIONS = [
@@ -92,7 +93,7 @@ export class AddRaidMissions1788459360000 implements MigrationInterface {
     await queryRunner.query('ALTER TABLE raids ADD COLUMN mission_id varchar(36) NULL AFTER guild_id');
     const historical = (await queryRunner.query('SELECT id, starts_at FROM raids')) as Array<{ id: string; starts_at: Date }>;
     for (const raid of historical) {
-      const week = raidWeekAt(new Date(raid.starts_at));
+      const week = saoPauloWeekAt(new Date(raid.starts_at));
       await queryRunner.query('UPDATE raids SET mission_id = ? WHERE id = ?', [
         MISSIONS[missionIndexForWeek(week.number, MISSIONS.length)]!.id,
         raid.id,
@@ -108,7 +109,7 @@ export class AddRaidMissions1788459360000 implements MigrationInterface {
 
     // As Guilds que já existem recebem a Raid da semana corrente, com a meta proporcional ao que falta.
     const now = new Date();
-    const week = raidWeekAt(now);
+    const week = saoPauloWeekAt(now);
     const guilds = (await queryRunner.query(
       `SELECT g.id, COUNT(m.id) AS members FROM guilds g
        LEFT JOIN guild_memberships m ON m.guild_id = g.id

@@ -40,7 +40,7 @@ export type SessionHistoryItem = RecentStudySession & {
 };
 
 export type SessionHistoryPage = {
-  /** The UTC day listed, the same calendar day the metrics use. */
+  /** The São Paulo day listed, the same calendar day the metrics use. */
   date: string;
   items: SessionHistoryItem[];
   nextCursor: string | null;
