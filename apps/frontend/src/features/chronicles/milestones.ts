@@ -11,15 +11,14 @@ const FORJA = 'c05e71c0-0000-4000-8000-00000000000b';
 const raidOf = (raid: string): MilestoneCopy['describe'] => ({ progress, target }) => `Vença a Raid ${raid} · ${progress} de ${target}`;
 
 const copyById: Record<string, MilestoneCopy> = {
-  [MADRUGADOR]: { short: 'Madrugador', describe: ({ target }) => `${target} sessões antes das 7h` },
+  [MADRUGADOR]: { short: 'Madrugador', describe: ({ progress, target, earned }) => (earned ? `${target} sessões antes das 7h` : `${progress} de ${target} sessões antes das 7h`) },
   [CEM_SESSOES]: { short: 'Cem Sessões', describe: ({ progress, target }) => `${progress} de ${target} sessões` },
   [GRIMORIO]: { short: 'Grimório', describe: raidOf('Cerco ao Grimório') },
   [FORJA]: { short: 'Forja', describe: raidOf('Forja dos Sábios') },
 };
 
-/** Uma linha do card no desktop: "87 de 100 sessões". Madrugador pendente mostra o avanço, não só o alvo. */
+/** Uma linha do card no desktop: "87 de 100 sessões". */
 export function milestoneDescription(milestone: Milestone): string {
-  if (milestone.id === MADRUGADOR && !milestone.earned) return `${milestone.progress} de ${milestone.target} sessões antes das 7h`;
   return (copyById[milestone.id]?.describe ?? (({ progress, target }) => `${progress} de ${target}`))(milestone);
 }
 
@@ -27,8 +26,11 @@ export function milestoneDescription(milestone: Milestone): string {
 export const milestoneShortName = (milestone: Milestone): string => copyById[milestone.id]?.short ?? milestone.name;
 
 /** O rodapé do bloco no celular: ✓ conquistado, "87%" nas sessões, "0/1" na Raid. */
-export function milestoneBadge(milestone: Milestone): string {
+export function milestoneFooter(milestone: Milestone): string {
   if (milestone.earned) return '✓';
   if (milestone.target > 1) return `${Math.floor((milestone.progress / milestone.target) * 100)}%`;
   return `${milestone.progress}/${milestone.target}`;
 }
+
+/** O rótulo acessível de um Marco: "Madrugador. Conquistado." ou o progresso. */
+export const milestoneLabel = (milestone: Milestone): string => `${milestone.name}. ${milestone.earned ? 'Conquistado' : milestoneDescription(milestone)}.`;

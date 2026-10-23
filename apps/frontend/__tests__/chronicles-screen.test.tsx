@@ -228,6 +228,19 @@ describe('Crônicas', () => {
         expect(screen.getByTestId('milestone-' + FORJA + '-description')).toHaveTextContent('Vença a Raid Forja dos Sábios · 0 de 1');
       });
 
+      it('shows the Brasão da Forja as Conquistado, with 1 de 1, once its Raid is won', async () => {
+        mockedMilestones.mockResolvedValue({
+          earned: 2,
+          total: 4,
+          items: [MILESTONES.items[0]!, MILESTONES.items[1]!, MILESTONES.items[2]!, { ...MILESTONES.items[3]!, progress: 1, earned: true }],
+        });
+        await openObjectives();
+
+        await screen.findByTestId('milestones');
+        expect(within(screen.getByTestId('milestone-' + FORJA)).getByText('Conquistado')).toBeTruthy();
+        expect(screen.getByTestId('milestone-' + FORJA + '-description')).toHaveTextContent('Vença a Raid Forja dos Sábios · 1 de 1');
+      });
+
       it('shows a Raid Marco as 1 de 1 once it is won', async () => {
         mockedMilestones.mockResolvedValue({
           earned: 2,

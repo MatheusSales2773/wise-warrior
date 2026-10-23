@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { SessionsService } from '../sessions/sessions.service';
+import { MILESTONE_BADGE_IDS } from '../users/domain/milestone';
 import { UsersService } from '../users/users.service';
 import type { MilestonesResponseDto } from './dto/milestones-response.dto';
 
@@ -13,6 +14,6 @@ export class MilestonesService {
 
   async list(userId: string): Promise<MilestonesResponseDto> {
     const items = await this.users.listMilestones(userId, await this.sessions.countFinishedSessions(userId));
-    return { earned: items.filter(({ earned }) => earned).length, total: items.length, items };
+    return { earned: items.filter(({ earned }) => earned).length, total: MILESTONE_BADGE_IDS.length, items };
   }
 }

@@ -1,11 +1,7 @@
-export class MilestoneDto {
-  id: string;
-  name: string;
-  /** Limitado a `target`; igual a `target` quando o Badge já foi conquistado. */
-  progress: number;
-  target: number;
-  earned: boolean;
-}
+import type { Milestone } from '../../users/users.service';
+
+/** `progress` é limitado a `target` e igual a `target` quando o Badge já foi conquistado. */
+export type MilestoneDto = Milestone;
 
 export class MilestonesResponseDto {
   /** Quantos Badges do Catálogo estão no Inventário. */

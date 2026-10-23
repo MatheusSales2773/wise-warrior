@@ -307,6 +307,7 @@ describe('Daily objectives pay Moedas when a Study Session ends', () => {
 
     expect(await objectiveEntries()).toEqual([['one-session:2026-09-18', 5]]);
   });
+
   describe('Marcos', () => {
     type MilestonesBody = { earned: number; total: number; items: Array<{ name: string; progress: number; target: number; earned: boolean }> };
     const milestones = async () => {

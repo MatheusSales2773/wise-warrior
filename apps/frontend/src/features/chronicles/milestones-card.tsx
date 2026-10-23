@@ -5,7 +5,7 @@ import { cosmeticSprite } from '@/features/character/catalog';
 import { PixelSprite } from '@/features/character/PixelSprite';
 import { itemSprites } from '@/features/character/sprites';
 import type { Milestone } from './api';
-import { milestoneBadge, milestoneDescription, milestoneShortName } from './milestones';
+import { milestoneDescription, milestoneFooter, milestoneLabel, milestoneShortName } from './milestones';
 import { milestonesQueryOptions } from './queries';
 
 const mono = 'JetBrainsMono-Medium';
@@ -27,27 +27,21 @@ export function Milestones({ desktop }: { desktop: boolean }) {
   }
 
   const { earned, total, items } = milestones.data;
-  const count = <Text accessibilityLabel={`${earned} de ${total} conquistados`} style={styles.count} testID="milestones-count">{earned} de {total}</Text>;
-  const heading = <Text accessibilityRole="header" aria-level={2} style={styles.heading}>◈ Marcos</Text>;
-
-  if (desktop) {
-    return <View accessibilityLabel="Marcos" role="region" style={styles.card} testID="milestones">
-      <View style={styles.header}>{heading}{count}</View>
-      {items.map((milestone) => <MilestoneRow key={milestone.id} milestone={milestone} />)}
-    </View>;
-  }
-  return <View accessibilityLabel="Marcos" role="region" style={styles.mobile} testID="milestones">
-    <View style={styles.header}>{heading}{count}</View>
-    <View style={styles.blocks}>
-      {items.map((milestone) => <MilestoneBlock key={milestone.id} milestone={milestone} />)}
+  return <View accessibilityLabel="Marcos" role="region" style={desktop ? styles.card : styles.mobile} testID="milestones">
+    <View style={styles.header}>
+      <Text accessibilityRole="header" aria-level={2} style={styles.heading}>◈ Marcos</Text>
+      <Text accessibilityLabel={`${earned} de ${total} conquistados`} style={styles.count} testID="milestones-count">{earned} de {total}</Text>
     </View>
+    {desktop
+      ? items.map((milestone) => <MilestoneRow key={milestone.id} milestone={milestone} />)
+      : <View style={styles.blocks}>{items.map((milestone) => <MilestoneBlock key={milestone.id} milestone={milestone} />)}</View>}
   </View>;
 }
 
 function MilestoneRow({ milestone }: { milestone: Milestone }) {
   const { earned, id } = milestone;
   const description = milestoneDescription(milestone);
-  return <View accessible accessibilityLabel={`${milestone.name}. ${earned ? 'Conquistado' : description}.`} style={styles.row} testID={`milestone-${id}`}>
+  return <View accessible accessibilityLabel={milestoneLabel(milestone)} style={styles.row} testID={`milestone-${id}`}>
     <View style={[styles.sprite, earned && styles.spriteEarned]}>
       <PixelSprite opacity={earned ? 1 : 0.6} scale={PIXEL} sprite={spriteOf(milestone)} />
     </View>
@@ -64,11 +58,11 @@ function MilestoneRow({ milestone }: { milestone: Milestone }) {
 
 function MilestoneBlock({ milestone }: { milestone: Milestone }) {
   const { earned, id } = milestone;
-  const badge = milestoneBadge(milestone);
-  return <View accessible accessibilityLabel={`${milestone.name}. ${earned ? 'Conquistado' : milestoneDescription(milestone)}.`} style={[styles.block, earned && styles.blockEarned]} testID={`milestone-${id}`}>
+  const footer = milestoneFooter(milestone);
+  return <View accessible accessibilityLabel={milestoneLabel(milestone)} style={[styles.block, earned && styles.blockEarned]} testID={`milestone-${id}`}>
     <PixelSprite opacity={earned ? 1 : 0.6} scale={MOBILE_PIXEL} sprite={spriteOf(milestone)} />
     <Text numberOfLines={1} style={styles.blockName}>{milestoneShortName(milestone)}</Text>
-    <Text style={[styles.blockBadge, earned && styles.blockBadgeEarned]} testID={`milestone-${id}-badge`}>{badge}</Text>
+    <Text style={[styles.blockBadge, earned && styles.blockBadgeEarned]} testID={`milestone-${id}-badge`}>{footer}</Text>
   </View>;
 }
 

@@ -4,7 +4,7 @@ import { COUNTED_SESSION_SQL } from './domain/counted-session';
 import { countSessions } from './domain/session-counts';
 import { StudySession } from './entities/study-session.entity';
 
-/** Finished, non-discarded Study Sessions of the user (a session just saved in `manager`'s transaction included), bucketed by UTC hour like the metrics. */
+/** Study Sessions não descartadas que terminaram (a que acabou de ser salva na transação de `manager` incluída), agrupadas por hora UTC como as métricas. */
 export async function countFinishedSessions(manager: EntityManager, userId: string): Promise<SessionCounts> {
   const rows = await manager
     .getRepository(StudySession)
