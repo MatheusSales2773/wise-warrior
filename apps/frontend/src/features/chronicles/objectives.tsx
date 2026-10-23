@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { FeedbackMessage, ProgressBar, WiseButton, WiseIcon, WiseText, theme } from '@/design-system';
-import type { DailyObjective } from './api';
+import type { DailyObjective, WeeklyObjective } from './api';
 import { objectivesQueryOptions } from './queries';
 
 const MINUTE_MS = 60_000;
@@ -13,6 +13,19 @@ export function renewalLabel(renewsAt: string, at: number = Date.now()): string 
   const minutes = Math.max(0, Math.floor((Date.parse(renewsAt) - at) / MINUTE_MS));
   const pad = (value: number) => String(value).padStart(2, '0');
   return `Renova em ${pad(Math.floor(minutes / 60))}h ${pad(minutes % 60)}min`;
+}
+
+/** The two numbers of a progress count; focus minutes read as hours with a decimal comma: "3,1" of "5h". */
+function countParts({ progress, target, unit }: Pick<WeeklyObjective, 'progress' | 'target'> & { unit?: WeeklyObjective['unit'] }) {
+  if (unit !== 'minutes') return { done: String(progress), total: String(target) };
+  const hours = (minutes: number) => String(Math.floor((minutes / 60) * 10) / 10).replace('.', ',');
+  return { done: hours(progress), total: `${hours(target)}h` };
+}
+
+/** "3,1/5h", "2/3": the count shown beside the bar. */
+export function countLabel(progress: number, target: number, unit?: WeeklyObjective['unit']): string {
+  const { done, total } = countParts({ progress, target, unit });
+  return `${done}/${total}`;
 }
 
 const coinsLabel = (coins: number) => `+${coins} ${coins === 1 ? 'Moeda' : 'Moedas'}`;
@@ -27,8 +40,8 @@ function useNow(): number {
   return now;
 }
 
-/** Objetivos de hoje (ADR-014): paid in Moedas the moment they are met, so there is nothing to claim. */
-export function Objectives() {
+/** Objetivos de hoje e da semana (ADR-014): pagos em Moedas no instante em que são cumpridos, sem nada a resgatar. */
+export function Objectives({ desktop = true }: { desktop?: boolean }) {
   const objectives = useQuery(objectivesQueryOptions());
   const now = useNow();
 
@@ -40,19 +53,46 @@ export function Objectives() {
     </View>;
   }
 
-  const { daily } = objectives.data;
-  return <View accessibilityLabel="Objetivos de hoje" role="region" style={styles.card} testID="objectives-daily">
-    <View style={styles.header}>
-      <Text accessibilityRole="header" aria-level={2} style={styles.heading}>◈ Objetivos de hoje</Text>
-      <Text style={styles.renewal} testID="objectives-renewal">{renewalLabel(daily.renewsAt, now)}</Text>
-    </View>
-    {daily.items.map((objective) => <Objective key={objective.id} objective={objective} />)}
+  const { daily, weekly } = objectives.data;
+  return <View style={styles.stack}>
+    <ObjectivesCard
+      heading="Objetivos de hoje"
+      items={daily.items}
+      renewal={renewalLabel(daily.renewsAt, now)}
+      renewalTestID="objectives-renewal"
+      testID="objectives-daily"
+    />
+    <ObjectivesCard
+      heading={desktop ? 'Objetivos da semana' : 'Semana'}
+      items={weekly.items}
+      renewal="Renova segunda"
+      renewalTestID="objectives-weekly-renewal"
+      testID="objectives-weekly"
+    />
   </View>;
 }
 
-function Objective({ objective }: { objective: DailyObjective }) {
+function ObjectivesCard({ heading, items, renewal, renewalTestID, testID }: {
+  heading: string;
+  items: (DailyObjective | WeeklyObjective)[];
+  renewal: string;
+  renewalTestID: string;
+  testID: string;
+}) {
+  return <View accessibilityLabel={heading} role="region" style={styles.card} testID={testID}>
+    <View style={styles.header}>
+      <Text accessibilityRole="header" aria-level={2} style={styles.heading}>◈ {heading}</Text>
+      <Text style={styles.renewal} testID={renewalTestID}>{renewal}</Text>
+    </View>
+    {items.map((objective) => <Objective key={objective.id} objective={objective} />)}
+  </View>;
+}
+
+function Objective({ objective }: { objective: DailyObjective | WeeklyObjective }) {
   const { completed, id } = objective;
-  const label = `${objective.title}. ${completed ? 'Cumprido' : `${objective.progress} de ${objective.target}`}. ${coinsLabel(objective.coins)}.`;
+  const unit = 'unit' in objective ? objective.unit : undefined;
+  const { done, total } = countParts({ progress: objective.progress, target: objective.target, unit });
+  const label = `${objective.title}. ${completed ? 'Cumprido' : `${done} de ${total}`}. ${coinsLabel(objective.coins)}.`;
   return <View accessible accessibilityLabel={label} style={styles.row} testID={`objective-${id}`}>
     {completed
       ? <WiseIcon color="feedbackSuccess" name="checkmark-circle" size="emblem" />
@@ -63,7 +103,7 @@ function Objective({ objective }: { objective: DailyObjective }) {
         <View style={styles.bar}>
           <ProgressBar maximumValue={objective.target} size="hairline" testID={`objective-${id}-bar`} tone={completed ? 'success' : 'accent'} value={objective.progress} />
         </View>
-        <Text style={styles.count} testID={`objective-${id}-count`}>{objective.progress}/{objective.target}</Text>
+        <Text style={styles.count} testID={`objective-${id}-count`}>{done}/{total}</Text>
       </View>
     </View>
     <Text style={[styles.coins, completed && styles.coinsDone]}>{coinsLabel(objective.coins)}</Text>

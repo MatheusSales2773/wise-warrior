@@ -61,7 +61,7 @@ describe('Foco livre against MySQL', () => {
     const progression = new ProgressionService(dataSource.getRepository(Character), gateway, users);
     const economy = new EconomyService(dataSource.getRepository(CoinBalance), dataSource.getRepository(CoinLedgerEntry), gateway);
     const events = new StudySessionEventsService(gateway);
-    transitions = new StudySessionTransitionService(dataSource, { now: () => new Date(clock) }, progression, raids as never, economy, users, events, { settleDailyInTransaction: async () => [] } as never);
+    transitions = new StudySessionTransitionService(dataSource, { now: () => new Date(clock) }, progression, raids as never, economy, users, events, { settleInTransaction: async () => [] } as never);
     start = new StudySessionStartService(dataSource, users, raids as never, transitions, events);
   });
 

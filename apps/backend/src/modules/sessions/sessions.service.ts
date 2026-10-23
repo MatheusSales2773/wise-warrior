@@ -25,7 +25,7 @@ import {
   saoPauloWeekAt,
 } from '../../shared/time/sao-paulo-calendar';
 import { buildCadence, calculateStreaks, groupActivityByDay } from './domain/session-metrics';
-import { COUNTED_SESSION_SQL, type FinishedSessionOfDay } from './domain/counted-session';
+import { COUNTED_SESSION_SQL, type FinishedSessionOfDay, type FinishedSessionOfWeek } from './domain/counted-session';
 import { buildWeekSummary } from './domain/week-summary';
 import type { WeekSummaryResponseDto } from './dto/week-summary-response.dto';
 import { FOCUS_CYCLE_LENGTH, focusCycle, type FocusCycle } from './domain/focus-cycle';
@@ -188,6 +188,28 @@ export class SessionsService {
       .andWhere(COUNTED_SESSION_SQL)
       .getRawMany<{ validSeconds: number | string }>();
     return rows.map((row) => ({ validSeconds: Number(row.validSeconds) }));
+  }
+
+  /**
+   * Study Sessions that ended in the São Paulo week (Monday to Sunday) of `instant` and counted. The weekly Objetivos
+   * of Crônicas read the week from here (ADR-014). `manager` joins the caller's transaction like `finishedSessionsOfDay`.
+   */
+  async finishedSessionsOfWeek(userId: string, instant: Date, manager?: EntityManager): Promise<FinishedSessionOfWeek[]> {
+    const week = saoPauloWeekAt(instant);
+    const rows = await (manager ?? this.studySessions.manager)
+      .getRepository(StudySession)
+      .createQueryBuilder('session')
+      .select('session.endedAt', 'endedAt')
+      .addSelect('session.subject', 'subject')
+      .addSelect('session.durationValidSeconds', 'validSeconds')
+      .where('session.userId = :userId', { userId })
+      .andWhere('session.endedAt >= :start AND session.endedAt < :nextStart', {
+        start: week.startsAt,
+        nextStart: new Date(week.endsAt.getTime() + 1000),
+      })
+      .andWhere(COUNTED_SESSION_SQL)
+      .getRawMany<{ endedAt: Date; subject: string | null; validSeconds: number | string }>();
+    return rows.map((row) => ({ endedAt: new Date(row.endedAt), subject: row.subject, validSeconds: Number(row.validSeconds) }));
   }
 
   /**

@@ -110,7 +110,7 @@ describe('Study Session transitions against MySQL', () => {
       economy,
       users,
       new StudySessionEventsService(realtime as unknown as RealtimeGateway),
-      { settleDailyInTransaction: async () => [] } as never,
+      { settleInTransaction: async () => [] } as never,
     );
   });
 

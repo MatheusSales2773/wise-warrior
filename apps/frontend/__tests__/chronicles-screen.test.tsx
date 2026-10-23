@@ -1,9 +1,10 @@
+import { Dimensions, Platform } from 'react-native';
 import { fireEvent, render, screen, within } from '@testing-library/react-native';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { getSessionHistory, getWeekSummary, type SessionHistoryItem, type WeekSummary } from '@/features/dashboard/api';
 import { ChroniclesScreen } from '@/features/chronicles/chronicles-screen';
 import { getObjectives, type Objectives } from '@/features/chronicles/api';
-import { renewalLabel } from '@/features/chronicles/objectives';
+import { countLabel, renewalLabel } from '@/features/chronicles/objectives';
 import { formatFocusTime, weekBars } from '@/features/chronicles/week';
 import { dayHeading, diaryStatus, diaryXp, groupByDay, weekRangeLabel } from '@/features/chronicles/diary';
 
@@ -29,7 +30,18 @@ const WEEK: WeekSummary = {
   subjects: [{ subject: 'Cálculo II', validSeconds: 13200 }, { subject: 'Sem matéria', validSeconds: 6600 }],
 };
 
-const objectives = (progress: [number, number, number]): Objectives => ({
+const weekly = (progress: [number, number, number]): Objectives['weekly'] => ({
+  weekStart: '2026-10-19',
+  renewsAt: '2026-10-26T03:00:00.000Z',
+  items: [
+    { id: 'five-days', title: 'Estude em 5 dias diferentes', progress: progress[0], target: 5, unit: 'days', coins: 40, completed: progress[0] >= 5 },
+    { id: 'five-hours', title: 'Estude 5h nesta semana', progress: progress[1], target: 300, unit: 'minutes', coins: 50, completed: progress[1] >= 300 },
+    { id: 'three-subjects', title: 'Estude 3 matérias diferentes', progress: progress[2], target: 3, unit: 'subjects', coins: 30, completed: progress[2] >= 3 },
+  ],
+});
+
+const objectives = (progress: [number, number, number], weeklyProgress: [number, number, number] = [0, 0, 0]): Objectives => ({
+  weekly: weekly(weeklyProgress),
   daily: {
     date: '2026-10-22',
     renewsAt: '2026-10-23T03:00:00.000Z',
@@ -52,7 +64,13 @@ async function renderChronicles() {
   return render(<QueryClientProvider client={client}><ChroniclesScreen /></QueryClientProvider>);
 }
 
+const setViewport = (width: number, os: 'web' | 'ios' = 'web') => {
+  Object.defineProperty(Platform, 'OS', { configurable: true, writable: true, value: os });
+  Dimensions.set({ window: { width, height: 900, scale: 1, fontScale: 1 } });
+};
+
 beforeEach(() => {
+  setViewport(390, 'ios');
   mockedWeek.mockResolvedValue(WEEK);
   jest.spyOn(Date, 'now').mockReturnValue(Date.parse('2026-10-22T18:00:00.000Z'));
 });
@@ -100,6 +118,14 @@ describe('Objetivos helpers', () => {
     expect(renewalLabel('2026-10-22T18:07:00.000Z', at)).toBe('Renova em 00h 07min');
     expect(renewalLabel('2026-10-22T17:00:00.000Z', at)).toBe('Renova em 00h 00min');
   });
+
+  it('writes the focus objective in hours with a decimal comma, and the others as plain counts', () => {
+    expect(countLabel(186, 300, 'minutes')).toBe('3,1/5h');
+    expect(countLabel(300, 300, 'minutes')).toBe('5/5h');
+    expect(countLabel(0, 300, 'minutes')).toBe('0/5h');
+    expect(countLabel(4, 5, 'days')).toBe('4/5');
+    expect(countLabel(2, 3, 'subjects')).toBe('2/3');
+  });
 });
 
 describe('Crônicas', () => {
@@ -143,6 +169,38 @@ describe('Crônicas', () => {
     expect(within(screen.getByTestId('objective-four-sessions')).getByText('+15 Moedas')).toBeTruthy();
     expect(within(screen.getByTestId('objective-four-sessions')).queryByRole('button')).toBeNull();
     expect(screen.queryByText(/Resgatar/)).toBeNull();
+  });
+
+  it('shows the week\'s Objetivos with the "Renova segunda" notice, progress and Moedas', async () => {
+    setViewport(1440);
+    mockedHistory.mockResolvedValue({ items: [], nextCursor: null });
+    mockedObjectives.mockResolvedValue(objectives([0, 0, 0], [5, 186, 2]));
+    await renderChronicles();
+    await fireEvent.press(screen.getByTestId('chronicles-tab-objetivos'));
+
+    const card = await screen.findByTestId('objectives-weekly');
+    expect(within(card).getByText('◈ Objetivos da semana')).toBeTruthy();
+    expect(screen.getByTestId('objectives-weekly-renewal')).toHaveTextContent('Renova segunda');
+    expect(screen.getByTestId('objective-five-days-count')).toHaveTextContent('5/5');
+    expect(screen.getByTestId('objective-five-hours-count')).toHaveTextContent('3,1/5h');
+    expect(screen.getByTestId('objective-three-subjects-count')).toHaveTextContent('2/3');
+    const done = screen.getByTestId('objective-five-days');
+    expect(within(done).getByText('+40 Moedas')).toBeTruthy();
+    expect(done.props.accessibilityLabel).toContain('Cumprido');
+    expect(within(screen.getByTestId('objective-five-hours')).getByText('+50 Moedas')).toBeTruthy();
+    expect(screen.getByTestId('objective-five-hours').props.accessibilityLabel).toContain('3,1 de 5h');
+    expect(screen.queryByText(/Resgatar/)).toBeNull();
+  });
+
+  it('titles the weekly card just "Semana" on a phone', async () => {
+    mockedHistory.mockResolvedValue({ items: [], nextCursor: null });
+    mockedObjectives.mockResolvedValue(objectives([0, 0, 0]));
+    await renderChronicles();
+    await fireEvent.press(screen.getByTestId('chronicles-tab-objetivos'));
+
+    const card = await screen.findByTestId('objectives-weekly');
+    expect(within(card).getByText('◈ Semana')).toBeTruthy();
+    expect(within(card).getByText('Renova segunda')).toBeTruthy();
   });
 
   it('offers a retry when the Objetivos fail to load', async () => {

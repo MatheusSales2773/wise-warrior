@@ -74,7 +74,7 @@ export function statementDetail(entry: CoinStatementItem): string {
     case 'purchase': return `${time} · ${entry.origin.ref.startsWith('mission:') ? 'Missão' : 'Item'}`;
     case 'raid-win': return `${time} · Recompensa de Raid`;
     case 'signup': return `${time} · Ao entrar na fortaleza`;
-    case 'objective': return `${time} · Objetivo diário`;
+    case 'objective': return `${time} · ${entry.origin.ref.startsWith('weekly:') ? 'Objetivo semanal' : 'Objetivo diário'}`;
     default: return time;
   }
 }
