@@ -1,10 +1,13 @@
-import type { StudySessionState, StudySessionTerminalReason } from '../entities/study-session.entity';
+import type { StudySessionKind, StudySessionState, StudySessionTerminalReason } from '../entities/study-session.entity';
 import { MIN_FOCUS_SECONDS_FOR_XP, xpForDuration } from './xp-rate';
 import { validateStudySessionFocusSeconds, type CappedReason } from './session-validator';
+import { getMaxContinuousSessionSeconds, getMaxDailySeconds } from './economy-config';
 
 const MILLISECONDS_PER_SECOND = 1000;
 
 export type StudySessionTimeFields = {
+  /** Ausente é Ciclo: sessões e recibos anteriores ao Foco livre não têm `kind`. */
+  kind?: StudySessionKind | null;
   startedAt: Date;
   plannedDurationSeconds?: number | null;
   state?: StudySessionState | null;
@@ -39,7 +42,7 @@ export type StudySessionTime = {
 };
 
 export type StudySessionStopResult = {
-  state: 'cancelled' | 'stopped_early';
+  state: 'completed' | 'cancelled' | 'stopped_early';
   durationValidSeconds: number;
   xpAwarded: number;
   cappedReason: CappedReason | null;
@@ -52,6 +55,22 @@ export type StudySessionCompletionResult = {
   xpAwarded: number;
   cappedReason: CappedReason | null;
 };
+
+/**
+ * Teto do Foco livre (ADR-011): o limite contínuo e o saldo diário restante, o que acabar primeiro, descontado o foco
+ * que a sessão já acumulou. Sem saldo o teto é zero e a sessão não deve começar.
+ */
+export function freeFocusCeilingSeconds(priorDailySeconds: number, focusedSeconds = 0): number {
+  const available = Math.min(
+    getMaxContinuousSessionSeconds(),
+    Math.max(0, getMaxDailySeconds() - priorDailySeconds),
+  );
+  return Math.max(0, available - focusedSeconds);
+}
+
+export function isFreeFocus(session: Pick<StudySessionTimeFields, 'kind'>): boolean {
+  return session.kind === 'free';
+}
 
 export function getStudySessionTime(session: StudySessionTimeFields, now: Date): StudySessionTime {
   if (isTerminalStudySessionState(session.state)) {
@@ -93,6 +112,7 @@ export function applyStudySessionTransition(
   session: StudySessionTimeFields,
   action: StudySessionTransitionAction,
   now: Date,
+  priorDailySeconds = 0,
 ): void {
   if (action === 'pause') {
     if (session.state !== 'running' || !session.runDeadlineAt) {
@@ -113,7 +133,15 @@ export function applyStudySessionTransition(
     throw new StudySessionTransitionPolicyError('invalid-state');
   }
 
-  const remainingMilliseconds = session.runDeadlineAt.getTime() - session.pausedAt.getTime();
+  const pausedRemainingMilliseconds = session.runDeadlineAt.getTime() - session.pausedAt.getTime();
+  if (pausedRemainingMilliseconds <= 0) {
+    throw new StudySessionTransitionPolicyError('deadline-passed');
+  }
+  // O teto do Foco livre é recalculado ao retomar: o saldo diário pode ter mudado durante a pausa.
+  const remainingMilliseconds = isFreeFocus(session)
+    ? freeFocusCeilingSeconds(priorDailySeconds, getStudySessionTime(session, session.pausedAt).durationValidSeconds)
+      * MILLISECONDS_PER_SECOND
+    : pausedRemainingMilliseconds;
   if (remainingMilliseconds <= 0) {
     throw new StudySessionTransitionPolicyError('deadline-passed');
   }
@@ -137,7 +165,8 @@ export function applyStudySessionStop(
   if (session.state !== 'running' && session.state !== 'paused') {
     throw new StudySessionTransitionPolicyError('invalid-state');
   }
-  if (!session.plannedDurationSeconds || !session.runDeadlineAt) {
+  const free = isFreeFocus(session);
+  if ((!free && !session.plannedDurationSeconds) || !session.runDeadlineAt) {
     throw new StudySessionTransitionPolicyError('invalid-state');
   }
   if (session.state === 'paused' && !session.pausedAt) {
@@ -148,7 +177,7 @@ export function applyStudySessionStop(
   }
 
   const time = getStudySessionTime(session, now);
-  if (time.durationValidSeconds >= session.plannedDurationSeconds) {
+  if (!free && time.durationValidSeconds >= session.plannedDurationSeconds!) {
     throw new StudySessionTransitionPolicyError('deadline-passed');
   }
 
@@ -161,7 +190,8 @@ export function applyStudySessionStop(
     ? validateStudySessionFocusSeconds(time.durationValidSeconds, priorDailySeconds)
     : { validSeconds: 0, cappedReason: null };
   const validSeconds = validation.validSeconds;
-  const nextState = validSeconds < MIN_FOCUS_SECONDS_FOR_XP ? 'cancelled' : 'stopped_early';
+  // Parar um Foco livre é concluí-lo; só o Ciclo tem Encerramento antecipado.
+  const nextState = validSeconds < MIN_FOCUS_SECONDS_FOR_XP ? 'cancelled' : free ? 'completed' : 'stopped_early';
   const xpAwarded = nextState === 'cancelled' ? 0 : xpForDuration(validSeconds);
 
   session.state = nextState;
@@ -188,19 +218,23 @@ export function applyStudySessionComplete(
   now: Date,
   priorDailySeconds: number,
 ): StudySessionCompletionResult {
+  const free = isFreeFocus(session);
   if (
     session.state !== 'running'
-    || !session.plannedDurationSeconds
+    || (!free && !session.plannedDurationSeconds)
     || !session.runDeadlineAt
   ) {
     throw new StudySessionTransitionPolicyError('invalid-state');
   }
 
+  if (free) return completeFreeFocusAtCeiling(session, now, priorDailySeconds);
+
+  const planned = session.plannedDurationSeconds!;
   const time = getStudySessionTime(session, now);
-  const focusCandidateSeconds = Math.min(session.plannedDurationSeconds, time.durationValidSeconds);
+  const focusCandidateSeconds = Math.min(planned, time.durationValidSeconds);
   if (
     now.getTime() < session.runDeadlineAt.getTime()
-    || focusCandidateSeconds < session.plannedDurationSeconds
+    || focusCandidateSeconds < planned
   ) {
     throw new StudySessionTransitionPolicyError('completion-too-early');
   }
@@ -217,6 +251,47 @@ export function applyStudySessionComplete(
   session.state = result.state;
   // The focus ended at the canonical deadline, even when the completion is recorded later.
   session.endedAt = session.runDeadlineAt;
+  session.pausedAt = null;
+  session.pausedTotalMilliseconds = totalPausedMilliseconds;
+  session.pausedTotalSeconds = Math.floor(totalPausedMilliseconds / MILLISECONDS_PER_SECOND);
+  session.durationValidSeconds = result.durationValidSeconds;
+  session.xpAwarded = result.xpAwarded;
+  session.terminalReason = 'auto-complete';
+  session.cappedReason = result.cappedReason;
+  session.version = (session.version ?? 1) + 1;
+
+  return result;
+}
+
+/** O teto é o fim canônico do Foco livre; o foco conta até ele, mesmo que a conclusão seja gravada depois. */
+function completeFreeFocusAtCeiling(
+  session: StudySessionTimeFields,
+  now: Date,
+  priorDailySeconds: number,
+): StudySessionCompletionResult {
+  const ceiling = session.runDeadlineAt!;
+  if (now.getTime() < ceiling.getTime()) {
+    throw new StudySessionTransitionPolicyError('completion-too-early');
+  }
+
+  const focusSeconds = getStudySessionTime(session, ceiling).durationValidSeconds;
+  const validation = validateStudySessionFocusSeconds(focusSeconds, priorDailySeconds);
+  // O teto já respeita os dois limites, então o validador não trunca; o motivo é o limite que o definiu.
+  const dailyBalance = Math.max(0, getMaxDailySeconds() - priorDailySeconds);
+  const cappedReason: CappedReason | null = validation.cappedReason
+    ?? (validation.validSeconds >= dailyBalance
+      ? 'daily-limit'
+      : validation.validSeconds >= getMaxContinuousSessionSeconds() ? 'continuous-limit' : null);
+  const totalPausedMilliseconds = getRecordedPausedMilliseconds(session);
+  const result: StudySessionCompletionResult = {
+    state: validation.validSeconds < MIN_FOCUS_SECONDS_FOR_XP ? 'cancelled' : 'completed',
+    durationValidSeconds: validation.validSeconds,
+    xpAwarded: xpForDuration(validation.validSeconds),
+    cappedReason,
+  };
+
+  session.state = result.state;
+  session.endedAt = ceiling;
   session.pausedAt = null;
   session.pausedTotalMilliseconds = totalPausedMilliseconds;
   session.pausedTotalSeconds = Math.floor(totalPausedMilliseconds / MILLISECONDS_PER_SECOND);

@@ -21,6 +21,7 @@ type HistoryPage = {
   items: Array<{
     id: string;
     subject: string | null;
+    kind: string;
     state: string | null;
     startedAt: string;
     endedAt: string;
@@ -252,5 +253,14 @@ describe('Diário (GET /sessions/history) against MySQL', () => {
 
   it('rejects an unknown filter', async () => {
     expect((await history('?state=cancelled')).status).toBe(400);
+  });
+
+  it('lists a Foco livre as completed and keeps it out of the Pomodoro cycle', async () => {
+    const free = await record(ana, '2026-09-01T10:00:00.000Z', 'stopped_early', { kind: 'free', plannedDurationSeconds: null });
+
+    const result = await page('?state=completed');
+
+    expect(result.items.map((item) => item.id)).toEqual([free]);
+    expect(result.items[0]).toMatchObject({ kind: 'free', cyclePosition: null });
   });
 });

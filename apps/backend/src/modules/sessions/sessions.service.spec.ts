@@ -159,7 +159,7 @@ describe('SessionsService', () => {
     it('returns only the public fields of up to five ended sessions', async () => {
       mockRepo.find.mockResolvedValue([
         {
-          id: 'session-1', userId: 'user-1', subject: 'Cálculo', mode: 'solo',
+          id: 'session-1', userId: 'user-1', subject: 'Cálculo', kind: 'cycle', mode: 'solo',
           startedAt: new Date('2026-01-01T10:00:00Z'), endedAt: new Date('2026-01-01T10:25:00Z'),
           durationValidSeconds: 1500, xpAwarded: 25, discardedReason: null,
           lastHeartbeatAt: new Date(), raidId: 'internal-raid',
@@ -176,7 +176,7 @@ describe('SessionsService', () => {
         }),
       ]);
       expect(Object.keys(result[0]!)).toEqual([
-        'id', 'subject', 'mode', 'state', 'startedAt', 'endedAt', 'durationValidSeconds', 'xpAwarded', 'discardedReason', 'cappedReason',
+        'id', 'subject', 'kind', 'mode', 'state', 'startedAt', 'endedAt', 'durationValidSeconds', 'xpAwarded', 'discardedReason', 'cappedReason',
       ]);
       expect(mockRepo.find).toHaveBeenCalledWith({
         where: { userId: 'user-1', endedAt: expect.anything() },
@@ -192,14 +192,15 @@ describe('SessionsService', () => {
   });
 
   describe('metrics', () => {
-    const hour = (utcHour: string, sessionCount: number, validSeconds: number) => ({
-      hour: utcHour, sessionCount: String(sessionCount), validSeconds: String(validSeconds),
+    const hour = (utcHour: string, sessionCount: number, validSeconds: number, kind = 'cycle') => ({
+      hour: utcHour, kind, sessionCount: String(sessionCount), validSeconds: String(validSeconds),
     });
     const builderReturning = (rows: unknown[]) => {
       const builder = queryBuilderReturning(0) as ReturnType<typeof queryBuilderReturning> & Record<string, jest.Mock>;
       builder.select = jest.fn().mockReturnThis();
       builder.addSelect = jest.fn().mockReturnThis();
       builder.groupBy = jest.fn().mockReturnThis();
+      builder.addGroupBy = jest.fn().mockReturnThis();
       builder.getRawMany = jest.fn().mockResolvedValue(rows);
       mockRepo.createQueryBuilder.mockReturnValueOnce(builder);
       return builder;
@@ -210,7 +211,8 @@ describe('SessionsService', () => {
         hour('2026-09-15 15', 1, 600),
         hour('2026-09-16 15', 2, 1800),
         hour('2026-09-17 12', 2, 1800),
-        hour('2026-09-17 14', 2, 1800),
+        hour('2026-09-17 14', 1, 1200),
+        hour('2026-09-17 14', 1, 600, 'free'),
       ]);
 
       const result = await service.metrics('user-1', new Date('2026-09-17T23:59:59.999Z'));
@@ -220,6 +222,10 @@ describe('SessionsService', () => {
       expect(result.sessionsToday).toBe(4);
       expect(result.dailyGoal).toBe(4);
       expect(result.validSecondsToday).toBe(3600);
+      expect(result.todayByKind).toEqual({
+        cycle: { sessionCount: 3, validSeconds: 3000 },
+        free: { sessionCount: 1, validSeconds: 600 },
+      });
       expect(result.cadence.windowStart).toBe('2026-07-24');
       expect(result.cadence.days).toHaveLength(56);
       expect(result.cadence.days.at(-1)).toEqual({
