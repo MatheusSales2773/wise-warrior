@@ -12,6 +12,11 @@ export type DailyObjective = {
   completed: boolean;
 };
 
+export type WeeklyObjective = DailyObjective & {
+  /** O que `progress` e `target` contam: dias, minutos de foco válido ou matérias. */
+  unit: 'days' | 'minutes' | 'subjects';
+};
+
 export type Objectives = {
   daily: {
     /** O dia de São Paulo (`YYYY-MM-DD`) coberto. */
@@ -19,6 +24,13 @@ export type Objectives = {
     /** ISO 8601: a meia-noite de São Paulo em que os Objetivos renovam. */
     renewsAt: string;
     items: DailyObjective[];
+  };
+  weekly: {
+    /** A segunda-feira (`YYYY-MM-DD`) da semana de São Paulo coberta. */
+    weekStart: string;
+    /** ISO 8601: a segunda 00:00 de São Paulo em que os Objetivos renovam. */
+    renewsAt: string;
+    items: WeeklyObjective[];
   };
 };
 

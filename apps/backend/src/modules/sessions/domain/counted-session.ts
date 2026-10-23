@@ -10,3 +10,10 @@ export interface FinishedSessionOfDay {
  */
 export const COUNTED_SESSION_SQL =
   "session.discardedReason IS NULL AND (session.state IS NULL OR session.state IN ('completed', 'stopped_early'))";
+
+/** What a Study Session of a São Paulo week exposes to the weekly Objetivos (ADR-014). */
+export interface FinishedSessionOfWeek {
+  endedAt: Date;
+  validSeconds: number;
+  subject: string | null;
+}
