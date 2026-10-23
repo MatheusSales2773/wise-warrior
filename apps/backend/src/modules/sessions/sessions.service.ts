@@ -261,7 +261,6 @@ export class SessionsService {
     return {
       ...streaks,
       sessionsToday: todayActivity?.sessionCount ?? 0,
-      dailyGoal: 4,
       validSecondsToday: todayActivity?.validSeconds ?? 0,
       todayByKind: { cycle: todayOfKind('cycle'), free: todayOfKind('free') },
       cadence: { windowStart, windowEnd: today, days: cadence },

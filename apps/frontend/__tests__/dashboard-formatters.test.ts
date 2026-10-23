@@ -32,10 +32,12 @@ describe('dashboard formatters', () => {
     expect(levelProgressPercent({ xpTotal: 100, levelStartXp: 100, nextLevelXp: 100 })).toBe(0);
   });
 
-  it('describes sessions today against the daily goal', () => {
-    expect(formatSessionsToday({ sessionsToday: 3, dailyGoal: 5 })).toEqual({ value: '3 / 5', spoken: '3 de 5' });
-    expect(formatSessionsToday({ sessionsToday: 0, dailyGoal: 5 })).toEqual({ value: '0 / 5', spoken: '0 de 5' });
-    expect(formatSessionsToday({ sessionsToday: 3, dailyGoal: 0 })).toEqual({ value: '3', spoken: '3' });
-    expect(formatSessionsToday({ sessionsToday: 3, dailyGoal: -2 })).toEqual({ value: '3', spoken: '3' });
+  it('describes the progress and target of the "Conclua 4 sessões hoje" Objetivo', () => {
+    expect(formatSessionsToday(3, { progress: 3, target: 5 })).toEqual({ value: '3 / 5', spoken: '3 de 5' });
+    expect(formatSessionsToday(0, { progress: 0, target: 5 })).toEqual({ value: '0 / 5', spoken: '0 de 5' });
+  });
+
+  it('shows only the session count while the Objetivo is unknown', () => {
+    expect(formatSessionsToday(3, undefined)).toEqual({ value: '3', spoken: '3' });
   });
 });

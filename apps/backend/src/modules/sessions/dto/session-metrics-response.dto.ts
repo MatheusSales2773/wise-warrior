@@ -22,7 +22,6 @@ export class SessionMetricsResponseDto {
   currentStreakDays: number;
   longestStreakDays: number;
   sessionsToday: number;
-  dailyGoal: 4;
   validSecondsToday: number;
   /** Hoje, por tipo: `cycle` (Ciclo) e `free` (Foco livre). */
   todayByKind: { cycle: SessionMetricsKindTotalsDto; free: SessionMetricsKindTotalsDto };

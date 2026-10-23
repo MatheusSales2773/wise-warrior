@@ -1,4 +1,4 @@
-import { queryOptions } from '@tanstack/react-query';
+import { queryOptions, useQuery } from '@tanstack/react-query';
 import { getObjectives } from './api';
 
 export const chroniclesKeys = {
@@ -12,3 +12,15 @@ export const objectivesQueryOptions = () => queryOptions({
   staleTime: 30_000,
   retry: false,
 });
+
+/** The daily Objetivo that counts finished sessions; the Dashboard shows its progress and target. Its id is part of the contract (`docs/api/openapi.yaml`, pinned by `daily-objectives.spec.ts`). */
+export const SESSIONS_OBJECTIVE_ID = 'four-sessions';
+
+export type SessionsObjective = { progress: number; target: number };
+
+/** Shares the Crônicas query, so a change on the server reaches the Dashboard and Crônicas together. */
+export function useSessionsObjective(): SessionsObjective | undefined {
+  const { data } = useQuery(objectivesQueryOptions());
+  const objective = data?.daily.items.find(({ id }) => id === SESSIONS_OBJECTIVE_ID);
+  return objective && { progress: objective.progress, target: objective.target };
+}

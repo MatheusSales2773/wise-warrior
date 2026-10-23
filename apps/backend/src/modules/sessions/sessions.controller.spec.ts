@@ -6,10 +6,10 @@ import type { Response } from 'express';
 
 describe('SessionsController metrics contract', () => {
   it('passes the authenticated user to the metrics service', async () => {
-    const sessions = { metrics: jest.fn().mockResolvedValue({ dailyGoal: 4 }) } as unknown as SessionsService;
+    const sessions = { metrics: jest.fn().mockResolvedValue({ sessionsToday: 4 }) } as unknown as SessionsService;
     const controller = new SessionsController(sessions, {} as never, {} as never);
 
-    await expect(controller.metrics({ sub: 'user-1' } as never)).resolves.toEqual({ dailyGoal: 4 });
+    await expect(controller.metrics({ sub: 'user-1' } as never)).resolves.toEqual({ sessionsToday: 4 });
     expect(sessions.metrics).toHaveBeenCalledWith('user-1');
   });
 });

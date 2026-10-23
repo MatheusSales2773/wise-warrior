@@ -5,6 +5,7 @@ import { useEffect, useRef, useState, type PropsWithChildren } from 'react';
 import { AccessibilityInfo, Platform, Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import Svg, { Defs, Path, RadialGradient, Rect, Stop } from 'react-native-svg';
 import { FeedbackMessage, ProgressBar, Screen, WiseButton, WiseCard, WiseText, isDesktopLayout, theme, type WiseCardProps } from '@/design-system';
+import { useSessionsObjective } from '@/features/chronicles/queries';
 import { GuildSigil } from '@/features/guild/guild-emblem';
 import { formatCadenceDate, formatCappedReason, formatDayCount, formatDiscardReason, formatDuration, formatSessionDate, formatSessionsToday, formatXp, levelProgressPercent } from './formatters';
 import type { CadenceDay, RecentStudySession, SessionMetrics } from './api';
@@ -192,6 +193,7 @@ function ActivityCard({ query }: { query: UseQueryResult<RecentStudySession[]> }
 }
 
 function MetricsCard({ query }: { query: UseQueryResult<SessionMetrics> }) {
+  const objective = useSessionsObjective();
   const retryInFlight = useRef<Promise<unknown> | null>(null);
   const retry = () => {
     if (retryInFlight.current) return retryInFlight.current;
@@ -208,7 +210,7 @@ function MetricsCard({ query }: { query: UseQueryResult<SessionMetrics> }) {
 
   const metrics = query.data;
   if (!metrics) return null;
-  const sessionsToday = formatSessionsToday(metrics);
+  const sessionsToday = formatSessionsToday(metrics.sessionsToday, objective);
   return <View style={styles.metricsGrid} testID="dashboard-metrics">
     <WiseCard accessibilityLabel={`Streak: ${metrics.currentStreakDays} dias; recorde pessoal de ${metrics.longestStreakDays} dias`} role="region" style={styles.metricCard} testID="dashboard-streak">
       <View style={styles.metricContent}>

@@ -5,6 +5,7 @@ import { ApiError } from '@/core/api/api-error';
 import { theme } from '@/design-system';
 import { CharacterScreen } from '@/features/character/character-screen';
 import { getMyProfile, getSessionMetrics, type SessionMetrics, type UserProfile } from '@/features/dashboard/api';
+import { getObjectives, type Objectives } from '@/features/chronicles/api';
 import {
   equipCosmeticItem,
   listCosmeticsCatalog,
@@ -21,6 +22,7 @@ jest.mock('@/features/dashboard/api', () => ({
   getRecentStudySessions: jest.fn(),
   getSessionMetrics: jest.fn(),
 }));
+jest.mock('@/features/chronicles/api', () => ({ getObjectives: jest.fn() }));
 jest.mock('@/features/profile/api', () => ({
   equipCosmeticItem: jest.fn(),
   unequipCosmeticItem: jest.fn(),
@@ -63,9 +65,16 @@ const profile: UserProfile = {
   ],
 };
 const metrics: SessionMetrics = {
-  currentStreakDays: 27, longestStreakDays: 30, sessionsToday: 2, dailyGoal: 4, validSecondsToday: 3_000,
+  currentStreakDays: 27, longestStreakDays: 30, sessionsToday: 2, validSecondsToday: 3_000,
   cadence: { windowStart: '2026-08-01', windowEnd: '2026-09-25', days: [] },
 };
+const objectives = (target = 4, progress = 2): Objectives => ({
+  daily: {
+    date: '2026-09-17', renewsAt: '2026-09-18T03:00:00.000Z',
+    items: [{ id: 'four-sessions', title: 'Conclua 4 sessões hoje', progress, target, coins: 15, completed: progress >= target }],
+  },
+});
+const mockedObjectives = getObjectives as jest.MockedFunction<typeof getObjectives>;
 const mockedProfile = getMyProfile as jest.MockedFunction<typeof getMyProfile>;
 const mockedMetrics = getSessionMetrics as jest.MockedFunction<typeof getSessionMetrics>;
 const mockedCatalog = listCosmeticsCatalog as jest.MockedFunction<typeof listCosmeticsCatalog>;
@@ -104,6 +113,7 @@ beforeEach(() => {
   resetMockWindowDimensions();
   useWidth(1440);
   mockedMetrics.mockResolvedValue(metrics);
+  mockedObjectives.mockResolvedValue(objectives());
   mockedCatalog.mockResolvedValue(catalog);
   mockedEquip.mockResolvedValue(undefined);
   mockedUnequip.mockResolvedValue(undefined);
@@ -162,7 +172,7 @@ describe('CharacterScreen', () => {
       expect(screen.getByRole('progressbar', { name: 'Progresso para o nível 15' }).props.accessibilityValue).toEqual({ min: 0, max: 3_000, now: 1_950 });
 
       await waitFor(() => expect(screen.getByLabelText('27 dias seguidos')).toBeTruthy());
-      expect(screen.getByLabelText('2/4 sessões hoje')).toBeTruthy();
+      await waitFor(() => expect(screen.getByLabelText('2 / 4 sessões hoje')).toBeTruthy());
       expect(screen.getByLabelText('128,4k XP total')).toBeTruthy();
     });
 

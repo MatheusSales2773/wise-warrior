@@ -61,7 +61,6 @@ export type SessionMetrics = {
   currentStreakDays: number;
   longestStreakDays: number;
   sessionsToday: number;
-  dailyGoal: number;
   validSecondsToday: number;
   cadence: {
     windowStart: string;
