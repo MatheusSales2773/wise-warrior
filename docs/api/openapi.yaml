@@ -740,6 +740,25 @@ paths:
               schema: { $ref: "#/components/schemas/Objectives" }
         "401": { $ref: "#/components/responses/Unauthorized" }
 
+  /milestones:
+    get:
+      summary: Marcos de Crônicas do usuário autenticado
+      description: >
+        Os 4 Marcos (ADR-014): Madrugador, Cem Sessões, Marcador do Grimório e Brasão da Forja, nessa ordem. Cada
+        Marco é a Condição de desbloqueio de um Badge do Catálogo com o progresso de quem pede. Madrugador conta
+        Study Sessions terminadas antes das 7h de São Paulo, Cem Sessões conta Study Sessions não descartadas, e os
+        Badges de Raid valem 0 de 1 ou 1 de 1. Um Badge no Inventário vem com `earned` e `progress` igual a `target`.
+        Acessórios, como o Selo dos Madrugadores, não são Marcos. `earned` do topo conta os Badges do Inventário.
+      operationId: getMilestones
+      tags: [Objectives]
+      responses:
+        "200":
+          description: Marcos
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Milestones" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
   /sessions/week:
     get:
       summary: Resumo da semana corrente de São Paulo, de segunda a domingo
@@ -1566,6 +1585,26 @@ components:
             items:
               type: array
               items: { $ref: "#/components/schemas/DailyObjective" }
+
+    Milestone:
+      type: object
+      required: [id, name, progress, target, earned]
+      properties:
+        id: { type: string, format: uuid, description: "Id do Badge no Catálogo" }
+        name: { type: string, example: Cem Sessões }
+        progress: { type: integer, minimum: 0, description: "Limitado a `target`; igual a `target` quando `earned`" }
+        target: { type: integer, minimum: 1 }
+        earned: { type: boolean, description: "O Badge está no Inventário" }
+
+    Milestones:
+      type: object
+      required: [earned, total, items]
+      properties:
+        earned: { type: integer, minimum: 0, description: "Badges do Inventário entre os Marcos (o N de \"N de 4\")" }
+        total: { type: integer, minimum: 0 }
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/Milestone" }
 
     CoinStatementPage:
       type: object

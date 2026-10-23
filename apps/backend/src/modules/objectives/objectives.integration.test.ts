@@ -29,6 +29,8 @@ import { UserCosmeticItem } from '../users/entities/user-cosmetic-item.entity';
 import { UsersService } from '../users/users.service';
 import { HttpExceptionFilter } from '../../shared/filters/http-exception.filter';
 import { APPLICATION_MIGRATIONS, createIntegrationDatabase, type IntegrationDatabase } from '../../test/integration-database';
+import { MilestonesController } from './milestones.controller';
+import { MilestonesService } from './milestones.service';
 import { ObjectivesController } from './objectives.controller';
 import { ObjectivesService } from './objectives.service';
 
@@ -142,12 +144,13 @@ describe('Daily objectives pay Moedas when a Study Session ends', () => {
       dataSource, { now: () => new Date(now) }, progression, {} as never, economy, users, events, objectives,
     );
     const moduleRef = await Test.createTestingModule({
-      controllers: [SessionsController, ObjectivesController],
+      controllers: [SessionsController, ObjectivesController, MilestonesController],
       providers: [
         { provide: SessionsService, useValue: { usesCanonicalStudySessionState: async () => true } },
         { provide: StudySessionStartService, useValue: new StudySessionStartService(dataSource, users, {} as never, transitions, events) },
         { provide: StudySessionTransitionService, useValue: transitions },
         { provide: ObjectivesService, useValue: objectives },
+        { provide: MilestonesService, useValue: new MilestonesService(users, sessions) },
       ],
     })
       .overrideGuard(RateLimitGuard)
@@ -303,5 +306,50 @@ describe('Daily objectives pay Moedas when a Study Session ends', () => {
     await send('POST', `/sessions/${id}/complete`, 'replay-complete', { expectedVersion: 1 });
 
     expect(await objectiveEntries()).toEqual([['one-session:2026-09-18', 5]]);
+  });
+  describe('Marcos', () => {
+    type MilestonesBody = { earned: number; total: number; items: Array<{ name: string; progress: number; target: number; earned: boolean }> };
+    const milestones = async () => {
+      const response = await send('GET', '/milestones');
+      expect(response.status).toBe(200);
+      return await response.json() as MilestonesBody;
+    };
+    const byName = (body: MilestonesBody, name: string) => body.items.find((item) => item.name === name)!;
+    const grant = (cosmeticItemId: string) => dataSource!.getRepository(UserCosmeticItem).insert({ userId, cosmeticItemId, equipped: false });
+
+    it('lists the four Badges of the Catálogo, without Acessórios, in progress', async () => {
+      await seedSessions(['2026-09-10T15:00:00.000Z', '2026-09-11T15:00:00.000Z', '2026-09-12T09:00:00.000Z']);
+
+      const body = await milestones();
+
+      expect(body.items.map((item) => item.name)).toEqual(['Madrugador', 'Cem Sessões', 'Marcador do Grimório', 'Brasão da Forja']);
+      expect(body).toMatchObject({ earned: 0, total: 4 });
+      expect(byName(body, 'Madrugador')).toMatchObject({ progress: 1, target: 5, earned: false });
+      expect(byName(body, 'Cem Sessões')).toMatchObject({ progress: 3, target: 100, earned: false });
+      expect(byName(body, 'Marcador do Grimório')).toMatchObject({ progress: 0, target: 1, earned: false });
+    });
+
+    it('ignores cancelled and discarded sessions', async () => {
+      await seedSessions(['2026-09-10T15:00:00.000Z'], { state: 'cancelled' });
+      await seedSessions(['2026-09-11T15:00:00.000Z'], { state: 'discarded' });
+
+      expect(byName(await milestones(), 'Cem Sessões').progress).toBe(0);
+    });
+
+    it('shows a Badge in the Inventário as Conquistado and counts it in "N de 4"', async () => {
+      await grant('c05e71c0-0000-4000-8000-000000000009');
+      await grant('c05e71c0-0000-4000-8000-000000000003');
+
+      const body = await milestones();
+
+      expect(body.earned).toBe(2);
+      expect(byName(body, 'Marcador do Grimório')).toMatchObject({ progress: 1, target: 1, earned: true });
+      expect(byName(body, 'Madrugador')).toMatchObject({ progress: 5, target: 5, earned: true });
+      expect(byName(body, 'Brasão da Forja')).toMatchObject({ progress: 0, target: 1, earned: false });
+    });
+
+    it('needs authentication', async () => {
+      expect((await fetch(`${baseUrl}/api/v1/milestones`)).status).toBe(401);
+    });
   });
 });

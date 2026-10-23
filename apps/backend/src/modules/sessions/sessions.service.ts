@@ -26,6 +26,8 @@ import {
 } from '../../shared/time/sao-paulo-calendar';
 import { buildCadence, calculateStreaks, groupActivityByDay } from './domain/session-metrics';
 import { COUNTED_SESSION_SQL, type FinishedSessionOfDay } from './domain/counted-session';
+import { countFinishedSessions } from './finished-session-counts';
+import type { SessionCounts } from '../users/domain/unlock-condition';
 import { buildWeekSummary } from './domain/week-summary';
 import type { WeekSummaryResponseDto } from './dto/week-summary-response.dto';
 import { FOCUS_CYCLE_LENGTH, focusCycle, type FocusCycle } from './domain/focus-cycle';
@@ -188,6 +190,11 @@ export class SessionsService {
       .andWhere(COUNTED_SESSION_SQL)
       .getRawMany<{ validSeconds: number | string }>();
     return rows.map((row) => ({ validSeconds: Number(row.validSeconds) }));
+  }
+
+  /** Study Sessions não descartadas que terminaram, e as terminadas antes das 7h de São Paulo: o que os Marcos de Badge medem (ADR-014). */
+  countFinishedSessions(userId: string): Promise<SessionCounts> {
+    return countFinishedSessions(this.studySessions.manager, userId);
   }
 
   /**

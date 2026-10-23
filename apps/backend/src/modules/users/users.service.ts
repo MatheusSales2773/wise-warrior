@@ -24,6 +24,7 @@ import {
   SessionCounts,
   UnlockCondition,
 } from './domain/unlock-condition';
+import { MILESTONE_BADGE_IDS, milestoneProgress } from './domain/milestone';
 
 export interface UserProfile {
   id: string;
@@ -77,6 +78,16 @@ export interface CatalogCosmeticItem {
   /** Item de Compra à venda; false para os demais e para os Fora de venda. */
   forSale: boolean;
   unlockCondition: UnlockCondition;
+}
+
+/** Um Marco (ADR-014): um Badge do Catálogo com o progresso até a sua Condição de desbloqueio. */
+export interface Milestone {
+  id: string;
+  name: string;
+  progress: number;
+  target: number;
+  /** O Badge está no Inventário. */
+  earned: boolean;
 }
 
 @Injectable()
@@ -273,6 +284,23 @@ export class UsersService {
       forSale: item.forSale,
       unlockCondition: condition,
     }));
+  }
+
+  /**
+   * Os Marcos do usuário (`MILESTONE_BADGE_IDS`, na ordem de Crônicas) com o progresso até a Condição de
+   * desbloqueio, segundo as `counts` de Study Sessions.
+   */
+  async listMilestones(userId: string, counts: SessionCounts): Promise<Milestone[]> {
+    const [catalog, inventory] = await Promise.all([
+      this.readCatalog(this.cosmeticItems),
+      this.userCosmetics.find({ where: { userId } }),
+    ]);
+    const owned = new Set(inventory.map((row) => row.cosmeticItemId));
+    return MILESTONE_BADGE_IDS.flatMap((id) => {
+      const entry = catalog.find(({ item }) => item.id === id);
+      const progress = entry && milestoneProgress(entry.condition, counts, owned.has(id));
+      return entry && progress ? [{ id, name: entry.item.name, ...progress, earned: owned.has(id) }] : [];
+    });
   }
 
   /** Itens com Condição de desbloqueio fora do formato ficam fora do Catálogo, sem derrubar o resto. */
