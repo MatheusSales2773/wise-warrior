@@ -14,12 +14,12 @@ const DAY_MONTH = new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: '2-d
 
 /** A Foco livre is marked "Livre" in the Histórico; completed in full, that is all there is to say. */
 export function historyOutcome(item: SessionHistoryItem): string {
-  const outcome = cycleOutcome(item);
+  const outcome = baseOutcome(item);
   if (item.kind !== 'free') return outcome;
   return item.state === 'completed' && !item.cappedReason ? 'Livre' : `Livre · ${outcome}`;
 }
 
-function cycleOutcome(item: SessionHistoryItem): string {
+function baseOutcome(item: SessionHistoryItem): string {
   if (item.state === 'discarded') return 'Não contabilizada pelo antifraude';
   if (item.cappedReason) return formatCappedReason(item.cappedReason);
   switch (item.state) {

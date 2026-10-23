@@ -1,5 +1,5 @@
 import { getAuthenticatedHttpClient } from '@/core/api/api-client';
-import type { FocusChoice } from './focus-choice';
+import type { FocusChoice, StudySessionKind } from './focus-choice';
 import { beginStudySessionCommand, settleStudySessionCommand, type PendingStudySessionCommand } from './pending-command';
 
 export const STUDY_SESSION_PRESETS = [900, 1500, 3000] as const;
@@ -11,7 +11,7 @@ export type RaidContributionFeedback = {
 export type StudySessionSnapshot = {
   id: string;
   /** Absent on responses from older servers, which only know the Ciclo. */
-  kind?: 'cycle' | 'free';
+  kind?: StudySessionKind;
   mode: 'solo' | 'guild';
   raidId: string | null;
   subject: string | null;

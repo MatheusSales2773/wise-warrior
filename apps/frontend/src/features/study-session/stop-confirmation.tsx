@@ -1,3 +1,4 @@
+import type { StudySessionKind } from './focus-choice';
 import { Platform, StyleSheet, View, useWindowDimensions } from 'react-native';
 import { WiseButton, WiseDialog, WiseText, isDesktopLayout } from '@/design-system';
 
@@ -7,9 +8,9 @@ export const EARLY_STOP_MIN_SECONDS = 300;
 export type StopKind = 'cancel' | 'early-end' | 'free-end';
 
 /** A Foco livre has no planned end, so stopping it from 5 minutes on is concluding it, not ending early. */
-export function stopKindFor(validFocusSeconds: number, free = false): StopKind {
+export function stopKindFor(validFocusSeconds: number, sessionKind: StudySessionKind = 'cycle'): StopKind {
   if (validFocusSeconds < EARLY_STOP_MIN_SECONDS) return 'cancel';
-  return free ? 'free-end' : 'early-end';
+  return sessionKind === 'free' ? 'free-end' : 'early-end';
 }
 
 /** What the Forja calls each way of ending a Study Session early, on its control and in the dialog that asks first. */

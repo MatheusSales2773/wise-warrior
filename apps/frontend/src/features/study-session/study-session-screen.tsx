@@ -16,7 +16,7 @@ import {
   type StudySessionTransitionAction,
   type StudySessionTransitionRequest,
 } from './api';
-import { FOCUS_CHOICES, FREE_FOCUS, type FocusChoice } from './focus-choice';
+import { FOCUS_CHOICES, FREE_FOCUS, focusChoiceLabel, plannedSeconds, type FocusChoice } from './focus-choice';
 import { activeStudySessionQueryKey, invalidateStudySessionResult, recentStudySessionSubjectsQueryKey, useActiveStudySession, useFocusCycle, useRecentStudySessionSubjects } from './queries';
 import { BREAK_SECONDS, breakRemainingSeconds, clearBreak, currentBreak, startBreak, type BreakKind, type BreakRun } from './pomodoro-break';
 import { stopSessionSounds, unlockSessionSounds } from './sounds';
@@ -145,11 +145,11 @@ function ForgeAction({ label, icon, onPress, primary = false, disabled = false, 
   );
 }
 
-/** A Ciclo counts down `remaining` of `duration`; a Foco livre has no target and counts `elapsed` up. */
-function ForgeTimer({ remaining, duration, elapsed, phase, size, testID, accessibilityLabel }: {
-  remaining?: number;
-  duration?: number;
-  elapsed?: number;
+/** A Ciclo counts `remaining` down against its `duration`; a Foco livre has no target and counts `elapsed` up. */
+type TimerReading = { remaining: number; duration: number } | { elapsed: number };
+
+function ForgeTimer({ reading, phase, size, testID, accessibilityLabel }: {
+  reading: TimerReading;
   phase: string;
   size: number;
   testID?: string;
@@ -157,8 +157,8 @@ function ForgeTimer({ remaining, duration, elapsed, phase, size, testID, accessi
 }) {
   const radius = 154;
   const circumference = 2 * Math.PI * radius;
-  const progressive = elapsed !== undefined;
-  const progress = progressive ? 0 : Math.max(0, Math.min(1, ((duration ?? 1) - (remaining ?? 0)) / (duration ?? 1)));
+  // Without a target there is nothing for the ring to fill: it stays an empty track.
+  const progress = 'elapsed' in reading ? 0 : Math.max(0, Math.min(1, (reading.duration - reading.remaining) / reading.duration));
 
   return (
     <View style={[styles.timerRingWrap, { width: size, height: size }]}>
@@ -174,8 +174,8 @@ function ForgeTimer({ remaining, duration, elapsed, phase, size, testID, accessi
       </Svg>
       <View style={styles.timerCenter}>
         <Text allowFontScaling style={styles.timerPhase}>◈ {phase} ◈</Text>
-        <Text accessibilityLiveRegion="none" aria-live="off" accessibilityLabel={accessibilityLabel} style={[styles.timerDigits, { fontSize: size < 290 ? 56 : 80, lineHeight: size < 290 ? 64 : 88 }]} testID={testID}>{progressive ? formatElapsedTime(elapsed) : formatRemainingTime(remaining ?? 0)}</Text>
-        <Text allowFontScaling style={styles.timerTarget}>{progressive ? 'tempo de foco' : `/ ${formatRemainingTime(duration ?? 0)}`}</Text>
+        <Text accessibilityLiveRegion="none" aria-live="off" accessibilityLabel={accessibilityLabel} style={[styles.timerDigits, { fontSize: size < 290 ? 56 : 80, lineHeight: size < 290 ? 64 : 88 }]} testID={testID}>{'elapsed' in reading ? formatElapsedTime(reading.elapsed) : formatRemainingTime(reading.remaining)}</Text>
+        <Text allowFontScaling style={styles.timerTarget}>{'elapsed' in reading ? 'tempo de foco' : `/ ${formatRemainingTime(reading.duration)}`}</Text>
       </View>
     </View>
   );
@@ -212,7 +212,7 @@ function DurationSettings({ selected, focusedDuration, startPending, onSelect, o
           ]}
           testID={duration === FREE_FOCUS ? 'study-duration-free' : `study-duration-${duration / 60}`}
         >
-          <WiseText variant="label">{duration === FREE_FOCUS ? 'Livre' : `${duration / 60} min`}</WiseText>
+          <WiseText variant="label">{focusChoiceLabel(duration)}</WiseText>
         </Pressable>
       ))}
     </View>
@@ -397,8 +397,7 @@ function BreakStage({ run, remaining, ringSize, onSkip, onFinish }: {
       </View>
       <View style={styles.stageBody}>
         <ForgeTimer
-          remaining={remaining}
-          duration={run.durationSeconds}
+          reading={{ remaining, duration: run.durationSeconds }}
           phase={copy.phase}
           size={ringSize}
           testID="study-session-break-timer"
@@ -712,14 +711,16 @@ export function StudySessionScreen({ initialMode = 'solo' }: { initialMode?: Ses
 
   const freeSnapshot = snapshot !== null && isFreeFocus(snapshot);
   // A Foco livre reports no remaining time; what is left is the time to the antifraude ceiling, which is when it concludes.
+  const effectiveNow = snapshot && now === 0 ? snapshot.receivedAtMs : now;
   const projectedRemaining = snapshot
-    ? now === 0 && !freeSnapshot ? snapshot.remainingSeconds : remainingStudySeconds(snapshot, now === 0 ? snapshot.receivedAtMs : now, clockOffset)
-    : selected === FREE_FOCUS ? 0 : selected;
-  const elapsed = snapshot ? elapsedStudySeconds(snapshot, now === 0 ? snapshot.receivedAtMs : now, clockOffset) : 0;
+    ? now === 0 && !freeSnapshot ? snapshot.remainingSeconds : remainingStudySeconds(snapshot, effectiveNow, clockOffset)
+    : plannedSeconds(selected);
+  const elapsed = snapshot ? elapsedStudySeconds(snapshot, effectiveNow, clockOffset) : 0;
   const remaining = completionPending || completionRetryAvailable || (completionWaiting && !activeSnapshot)
     ? 0
     : projectedRemaining;
-  const plannedDuration = snapshot ? snapshot.plannedDurationSeconds ?? 0 : selected === FREE_FOCUS ? 0 : selected;
+  const plannedDuration = snapshot ? snapshot.plannedDurationSeconds ?? 0 : plannedSeconds(selected);
+  const plannedLabel = freeSnapshot ? 'Livre' : `${plannedDuration / 60} min`;
   const phase = snapshot?.state === 'paused'
     ? 'PAUSADA'
     : freeSnapshot
@@ -763,7 +764,7 @@ export function StudySessionScreen({ initialMode = 'solo' }: { initialMode?: Ses
     : snapshot?.state === 'running'
       ? Math.max(snapshot.durationValidSeconds, plannedDuration - remaining)
       : snapshot?.durationValidSeconds ?? 0;
-  const stopKind = stopKindFor(validFocusSeconds, freeSnapshot);
+  const stopKind = stopKindFor(validFocusSeconds, snapshot?.kind);
   const stopLabel = STOP_COPY[stopKind].label;
   const pendingNonStopAction = pendingAction && pendingAction !== 'stop' ? pendingAction : null;
   const retryAvailable = Boolean(retryTransition && transition.isError && !transition.isPending);
@@ -986,33 +987,24 @@ export function StudySessionScreen({ initialMode = 'solo' }: { initialMode?: Ses
               </Text>
               <Text accessibilityRole="header" allowFontScaling style={styles.stageTitle}>{snapshot.state === 'paused' ? 'Sessão pausada' : 'Sessão em andamento'}</Text>
               <Text allowFontScaling style={styles.stageMeta}>
-                {freeSnapshot ? 'Foco livre' : `${plannedDuration / 60} min de foco`}{snapshot.mode === 'guild' ? ' · Sessão de guilda' : ''}
+                {freeSnapshot ? 'Foco livre' : `${plannedLabel} de foco`}{snapshot.mode === 'guild' ? ' · Sessão de guilda' : ''}
               </Text>
             </View>
             <View style={styles.stageBody}>
-              {freeSnapshot ? (
-                <ForgeTimer
-                  elapsed={elapsed}
-                  phase={phase}
-                  size={ringSize}
-                  testID="study-session-timer"
-                  accessibilityLabel={`Tempo de foco: ${Math.floor(elapsed / 3600)} horas, ${Math.floor((elapsed % 3600) / 60)} minutos e ${elapsed % 60} segundos. Foco livre ${snapshot.state === 'paused' ? 'pausado' : 'em andamento'}.`}
-                />
-              ) : (
-                <ForgeTimer
-                  remaining={remaining}
-                  duration={plannedDuration}
-                  phase={phase}
-                  size={ringSize}
-                  testID="study-session-timer"
-                  accessibilityLabel={`Tempo restante: ${Math.floor(remaining / 60)} minutos e ${remaining % 60} segundos. Sessão ${snapshot.state === 'paused' ? 'pausada' : 'em andamento'}.`}
-                />
-              )}
+              <ForgeTimer
+                reading={freeSnapshot ? { elapsed } : { remaining, duration: plannedDuration }}
+                phase={phase}
+                size={ringSize}
+                testID="study-session-timer"
+                accessibilityLabel={freeSnapshot
+                  ? `Tempo de foco: ${Math.floor(elapsed / 3600)} horas, ${Math.floor((elapsed % 3600) / 60)} minutos e ${elapsed % 60} segundos. Foco livre ${snapshot.state === 'paused' ? 'pausado' : 'em andamento'}.`
+                  : `Tempo restante: ${Math.floor(remaining / 60)} minutos e ${remaining % 60} segundos. Sessão ${snapshot.state === 'paused' ? 'pausada' : 'em andamento'}.`}
+              />
             </View>
             <View style={[styles.stageActions, width < 450 && styles.stageActionsCompact]}>
             {settingsOpen && !wideLayout ? <WiseCard style={styles.inlineSettingsCard}>
               <ForgeCardTitle>Configurações da sessão</ForgeCardTitle>
-              <View style={styles.statRow}><Text allowFontScaling style={[styles.cardCopy, { color: theme.color.textSecondary }]}>Tempo de foco</Text><WiseText color="accentHighlight" variant="mono">{freeSnapshot ? 'Livre' : `${plannedDuration / 60} min`}</WiseText></View>
+              <View style={styles.statRow}><Text allowFontScaling style={[styles.cardCopy, { color: theme.color.textSecondary }]}>Tempo de foco</Text><WiseText color="accentHighlight" variant="mono">{plannedLabel}</WiseText></View>
               <Text allowFontScaling style={[styles.cardCopy, { color: theme.color.textSecondary }]}>A duração não pode ser alterada durante a sessão.</Text>
               <WiseButton label="Fechar configurações" onPress={() => setSettingsOpen(false)} variant="secondary" />
             </WiseCard> : null}
@@ -1118,20 +1110,20 @@ export function StudySessionScreen({ initialMode = 'solo' }: { initialMode?: Ses
           <View style={[styles.sideColumn, wideLayout && styles.sideColumnWide]}>
             {settingsOpen && wideLayout ? <WiseCard style={styles.sideCard}>
               <ForgeCardTitle>Configurações da sessão</ForgeCardTitle>
-              <View style={styles.statRow}><Text allowFontScaling style={[styles.cardCopy, { color: theme.color.textSecondary }]}>Tempo de foco</Text><WiseText color="accentHighlight" variant="mono">{freeSnapshot ? 'Livre' : `${plannedDuration / 60} min`}</WiseText></View>
+              <View style={styles.statRow}><Text allowFontScaling style={[styles.cardCopy, { color: theme.color.textSecondary }]}>Tempo de foco</Text><WiseText color="accentHighlight" variant="mono">{plannedLabel}</WiseText></View>
               <Text allowFontScaling style={[styles.cardCopy, { color: theme.color.textSecondary }]}>A duração não pode ser alterada durante a sessão.</Text>
               <WiseButton label="Fechar configurações" onPress={() => setSettingsOpen(false)} variant="secondary" />
             </WiseCard> : <>
             <WiseCard style={styles.sideCard}>
               <ForgeCardTitle>Sua sessão</ForgeCardTitle>
-              <View style={styles.statRow}><Text allowFontScaling style={[styles.cardCopy, { color: theme.color.textSecondary }]}>Duração planejada</Text><WiseText color="accentHighlight" variant="mono">{freeSnapshot ? 'Livre' : `${plannedDuration / 60} min`}</WiseText></View>
+              <View style={styles.statRow}><Text allowFontScaling style={[styles.cardCopy, { color: theme.color.textSecondary }]}>Duração planejada</Text><WiseText color="accentHighlight" variant="mono">{plannedLabel}</WiseText></View>
               <View style={styles.statRow}><Text allowFontScaling style={[styles.cardCopy, { color: theme.color.textSecondary }]}>Foco válido</Text><WiseText color="accentHighlight" variant="mono">{formatElapsedTime(validFocusSeconds)}</WiseText></View>
               <Text allowFontScaling style={[styles.cardCopy, { color: theme.color.textTertiary }]}>O tempo e a conclusão são confirmados pelo servidor.</Text>
             </WiseCard>
             <WiseCard style={styles.sideCard}>
               <ForgeCardTitle>Como funciona</ForgeCardTitle>
               <Text allowFontScaling style={[styles.cardCopy, { color: theme.color.textSecondary }]}>Pause quando precisar. Ao retomar, o contador continua de onde parou.</Text>
-              <Text allowFontScaling style={[styles.cardCopy, { color: theme.color.textSecondary }]}>{freeSnapshot ? 'Pare quando quiser: o foco livre também conclui sozinho no limite do antifraude. Com menos de 5 minutos, não concede XP.' : 'Sessões encerradas antes de 5 minutos não concedem XP.'}</Text>
+              <Text allowFontScaling style={[styles.cardCopy, { color: theme.color.textSecondary }]}>Sessões encerradas antes de 5 minutos não concedem XP.</Text>
             </WiseCard>
             </>}
           </View>
@@ -1143,12 +1135,10 @@ export function StudySessionScreen({ initialMode = 'solo' }: { initialMode?: Ses
             <ForgeStageGradient />
             <View style={styles.stageHeader}>
               <Text accessibilityRole="header" allowFontScaling style={styles.stageTitle}>PREPARE SUA FORJA</Text>
-              <Text allowFontScaling style={styles.stageMeta}>{selected === FREE_FOCUS ? 'Foco livre selecionado' : `${selected / 60} min selecionados`}</Text>
+              <Text allowFontScaling style={styles.stageMeta}>{selected === FREE_FOCUS ? 'Foco livre selecionado' : `${focusChoiceLabel(selected)} selecionados`}</Text>
             </View>
             <View style={styles.stageBody}>
-              {selected === FREE_FOCUS
-                ? <ForgeTimer elapsed={0} phase={phase} size={ringSize} />
-                : <ForgeTimer remaining={selected} duration={selected} phase={phase} size={ringSize} />}
+              <ForgeTimer reading={selected === FREE_FOCUS ? { elapsed: 0 } : { remaining: selected, duration: selected }} phase={phase} size={ringSize} />
             </View>
             <View style={styles.subjectSection}>
               <WiseField
@@ -1198,7 +1188,7 @@ export function StudySessionScreen({ initialMode = 'solo' }: { initialMode?: Ses
                 <FeedbackMessage
                   variant="error"
                   title="Limite diário de foco atingido"
-                  message="Você já usou todo o tempo de foco permitido hoje. Volte amanhã para iniciar um novo foco."
+                  message="O tempo de foco permitido por dia foi usado. Não é possível iniciar um novo foco agora."
                   testID="study-session-daily-limit"
                 />
               ) : start.isError ? <WiseText color="feedbackDanger" variant="body">Não foi possível confirmar o início. Tente novamente.</WiseText> : null}
