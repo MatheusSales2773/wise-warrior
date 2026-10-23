@@ -15,7 +15,7 @@ const CAPA = 'c05e71c0-0000-4000-8000-0000000005a1';
 const LANTERNA = 'c05e71c0-0000-4000-8000-0000000005a2';
 const COROA = 'c05e71c0-0000-4000-8000-0000000005a3';
 const RAID_ITEM = 'c05e71c0-0000-4000-8000-000000000007'; // seeded: Selo dos Madrugadores, raid:*
-const LEVEL_ITEM = 'c05e71c0-0000-4000-8000-000000000003'; // seeded: Madrugador, level:3
+const LEVEL_ITEM = 'c05e71c0-0000-4000-8000-000000000003'; // seeded: Madrugador, early-sessions:5 (not a Purchase item)
 const PREMIUM_ITEM = 'c05e71c0-0000-4000-8000-000000000008'; // seeded: Mestre da Aurora, premium
 const NOT_FOR_SALE = 'c05e71c0-0000-4000-8000-0000000005a4'; // purchase condition, but not for sale
 

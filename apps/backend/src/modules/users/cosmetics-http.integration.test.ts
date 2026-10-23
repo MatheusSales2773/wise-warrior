@@ -258,14 +258,14 @@ describe('Cosmetics Catalog HTTP contract against MySQL', () => {
       ['Caçador de Monstros', false, false],
       ['Cajado', false, false],
       ['Capuz do Erudito', true, false],
-      ['Cem Sessões', true, false],
+      ['Cem Sessões', false, false],
       ['Chave da Torre', false, false],
       ['Espada', true, false],
       ['Estudante Crepuscular', true, false],
       ['Guardião das Páginas', false, false],
       ['Lanterna do Silêncio', false, false],
       ['Lanterna do Vigia', false, false],
-      ['Madrugador', true, false],
+      ['Madrugador', false, false],
       ['Manto da Vigília', true, false],
       ['Manto Estelar', false, false],
       ['Marcador de Fita', false, false],
@@ -279,7 +279,7 @@ describe('Cosmetics Catalog HTTP contract against MySQL', () => {
       ['Sino da Torre', false, false],
       ['Túnica do Viajante', false, false],
     ]);
-    expect(await dataSource!.getRepository(UserCosmeticItem).count({ where: { userId: veteran } })).toBe(7);
+    expect(await dataSource!.getRepository(UserCosmeticItem).count({ where: { userId: veteran } })).toBe(5);
 
     // Tolerating the repeated (user + item) row must not hide other failures, such as an unknown user.
     await expect(dataSource!.transaction((manager) => users.unlockCosmeticItems(

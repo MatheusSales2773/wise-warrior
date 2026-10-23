@@ -48,6 +48,11 @@ export function saoPauloDayKey(instant: Date): string {
   return dayFormat.format(instant);
 }
 
+/** The São Paulo wall-clock hour (0-23) of an instant. */
+export function saoPauloHour(instant: Date): number {
+  return new Date(zonedWallClockMs(instant.getTime())).getUTCHours();
+}
+
 /** The instant at which a São Paulo calendar day (`YYYY-MM-DD`) begins. */
 export function saoPauloDayStart(dayKey: string): Date {
   return new Date(instantAtWallClock(Date.parse(`${dayKey}T00:00:00Z`)));

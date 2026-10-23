@@ -2,12 +2,21 @@ import {
   isSaoPauloDayKey,
   saoPauloDayKey,
   saoPauloDayStart,
+  saoPauloHour,
   saoPauloNextDayKey,
   saoPauloPreviousDayKey,
   saoPauloWeekAt,
 } from './sao-paulo-calendar';
 
 describe('São Paulo calendar', () => {
+  describe('saoPauloHour', () => {
+    it('reads the São Paulo wall-clock hour, not the UTC one', () => {
+      expect(saoPauloHour(new Date('2026-09-18T09:59:59Z'))).toBe(6);
+      expect(saoPauloHour(new Date('2026-09-18T10:00:00Z'))).toBe(7);
+      expect(saoPauloHour(new Date('2026-09-18T02:30:00Z'))).toBe(23);
+    });
+  });
+
   describe('saoPauloDayKey', () => {
     it('puts 23:00 in São Paulo (02:00 UTC of the next day) on the São Paulo day', () => {
       expect(saoPauloDayKey(new Date('2026-09-18T02:00:00Z'))).toBe('2026-09-17');

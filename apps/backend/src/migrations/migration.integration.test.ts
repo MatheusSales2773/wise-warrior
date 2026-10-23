@@ -32,6 +32,11 @@ import { KeepBadgesOffSale1788460080000 } from './1788460080000-keep-badges-off-
 import { SeedCosmeticItemsForSale1788460140000 } from './1788460140000-seed-cosmetic-items-for-sale';
 import { SeedMissionsForSale1788460200000 } from './1788460200000-seed-missions-for-sale';
 import { AddWeaponCategory1788460440000, STAFF_ID } from './1788460440000-add-weapon-category';
+import {
+  CEM_SESSOES_ID,
+  MADRUGADOR_ID,
+  SessionCountBadgeConditions1788460500000,
+} from './1788460500000-session-count-badge-conditions';
 import { saoPauloWeekAt } from '../shared/time/sao-paulo-calendar';
 
 const ITEMS_FOR_SALE = [
@@ -1607,5 +1612,47 @@ describe('TypeORM migrations against an empty MySQL schema', () => {
 
     await dataSource.runMigrations();
     expect(await weapons()).toEqual(expectedWeapons);
+  });
+
+  it('moves Madrugador and Cem Sessões to session counts and keeps the Badges already in the Inventário', async () => {
+    database = await createIntegrationDatabase('wise_migrations_test');
+    initialDataSource = new DataSource(database.options(migrationsBefore(SessionCountBadgeConditions1788460500000)));
+    await initialDataSource.initialize();
+    await initialDataSource.runMigrations();
+    await database.admin.query(
+      `INSERT INTO ${database.identifier}.users (id, email, password_hash, display_name, plan_tier)
+       VALUES ('veteran', 'veteran@example.com', 'hash', 'veteran', 'free')`,
+    );
+    await database.admin.query(
+      `INSERT INTO ${database.identifier}.user_cosmetic_items (id, user_id, cosmetic_item_id, equipped)
+       VALUES ('veteran-madrugador', 'veteran', ?, 1)`,
+      [MADRUGADOR_ID],
+    );
+    await initialDataSource.destroy();
+    initialDataSource = undefined;
+
+    dataSource = new DataSource(database.options(migrationsThrough(SessionCountBadgeConditions1788460500000)));
+    await dataSource.initialize();
+    await dataSource.runMigrations();
+
+    const conditions = async () => (await rows(
+      database!.admin,
+      `SELECT name, unlock_condition FROM ${database!.identifier}.cosmetic_items WHERE id IN (?, ?) ORDER BY name`,
+      [MADRUGADOR_ID, CEM_SESSOES_ID],
+    )).map((row) => [row.name, row.unlock_condition]);
+    const owned = async () => (await rows(
+      database!.admin,
+      `SELECT cosmetic_item_id, equipped FROM ${database!.identifier}.user_cosmetic_items WHERE user_id = 'veteran'`,
+    )).map((row) => [row.cosmetic_item_id, Number(row.equipped)]);
+
+    expect(await conditions()).toEqual([['Cem Sessões', 'sessions:100'], ['Madrugador', 'early-sessions:5']]);
+    expect(await owned()).toEqual([[MADRUGADOR_ID, 1]]);
+
+    await revertThrough(dataSource, SessionCountBadgeConditions1788460500000);
+    expect(await conditions()).toEqual([['Cem Sessões', 'level:12'], ['Madrugador', 'level:3']]);
+    expect(await owned()).toEqual([[MADRUGADOR_ID, 1]]);
+
+    await dataSource.runMigrations();
+    expect(await conditions()).toEqual([['Cem Sessões', 'sessions:100'], ['Madrugador', 'early-sessions:5']]);
   });
 });

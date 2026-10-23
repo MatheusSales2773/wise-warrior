@@ -15,10 +15,12 @@ export function describeUnlockCondition(item: Pick<CatalogCosmeticItem, 'unlockC
   const condition: UnlockCondition = item.unlockCondition;
   if (condition.type === 'level') return `Alcance o nível ${condition.level}`;
   if (condition.type === 'purchase') return item.forSale ? 'À venda na Loja' : 'Fora de venda';
+  if (condition.type === 'sessions') return `Conclua ${condition.count} Study Sessions`;
+  if (condition.type === 'early-sessions') return `Conclua ${condition.count} Study Sessions antes das 7h`;
   return condition.slug === '*' ? 'Conclua uma Raid com sua Guilda' : `Conclua a Raid ${condition.slug}`;
 }
 
-export type CosmeticItemState = 'equipped' | 'unlocked' | 'lockedByLevel' | 'lockedByPurchase' | 'lockedByRaid' | 'offSale';
+export type CosmeticItemState = 'equipped' | 'unlocked' | 'lockedByLevel' | 'lockedBySessions' | 'lockedByPurchase' | 'lockedByRaid' | 'offSale';
 
 export function cosmeticItemState(item: CatalogCosmeticItem): CosmeticItemState {
   if (item.equipped) return 'equipped';
@@ -27,10 +29,12 @@ export function cosmeticItemState(item: CatalogCosmeticItem): CosmeticItemState 
     case 'level': return 'lockedByLevel';
     case 'purchase': return item.forSale ? 'lockedByPurchase' : 'offSale';
     case 'raid': return 'lockedByRaid';
+    case 'sessions':
+    case 'early-sessions': return 'lockedBySessions';
   }
 }
 
-const STATE_ORDER: Record<CosmeticItemState, number> = { equipped: 0, unlocked: 1, lockedByLevel: 2, lockedByPurchase: 3, lockedByRaid: 4, offSale: 5 };
+const STATE_ORDER: Record<CosmeticItemState, number> = { equipped: 0, unlocked: 1, lockedByLevel: 2, lockedBySessions: 3, lockedByPurchase: 4, lockedByRaid: 5, offSale: 6 };
 
 function conditionLevel(item: CatalogCosmeticItem): number {
   return item.unlockCondition.type === 'level' ? item.unlockCondition.level : 0;
@@ -57,8 +61,10 @@ export function describeNextUnlock(items: CatalogCosmeticItem[], level: number):
 /** Sem item por nível à frente, diz de onde vêm os que restam: Raids, Loja ou nenhum lugar (Fora de venda). */
 function describeRemainingSources(items: CatalogCosmeticItem[]): string {
   const states = new Set(items.map(cosmeticItemState));
+  const sessions = states.has('lockedBySessions');
   const raids = states.has('lockedByRaid');
   const shop = states.has('lockedByPurchase');
+  if (sessions && !raids && !shop) return 'Os itens desta categoria são conquistados estudando.';
   if (raids && shop) return 'Os itens desta categoria são conquistados em Raids com sua Guilda ou comprados na Loja.';
   if (raids) return 'Os itens desta categoria são conquistados em Raids com sua Guilda.';
   if (shop) return 'Os itens desta categoria são comprados na Loja.';

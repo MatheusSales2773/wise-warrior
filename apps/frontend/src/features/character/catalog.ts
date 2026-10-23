@@ -96,6 +96,7 @@ function ownedCaption(item: CatalogCosmeticItem): string {
   const { unlockCondition } = item;
   if (unlockCondition.type === 'raid') return 'Conquistado em Raid';
   if (unlockCondition.type === 'purchase') return 'Comprado na Loja';
+  if (unlockCondition.type === 'sessions' || unlockCondition.type === 'early-sessions') return 'Conquistado estudando';
   if (unlockCondition.level <= 1) return `${equipmentCategoryById[item.category].label} inicial`;
   return `Liberado no nível ${unlockCondition.level}`;
 }

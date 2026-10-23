@@ -2,7 +2,7 @@ import { render, screen } from '@testing-library/react-native';
 import { cosmeticSprite, equipmentCategoryById, equippedItems, optionsFor } from '@/features/character/catalog';
 import { formatCompactXp } from '@/features/character/formatters';
 import type { CatalogCosmeticItem } from '@/features/profile/api';
-import { cosmeticItemState, describeDevice, describeNextUnlock } from '@/features/profile/formatters';
+import { cosmeticItemState, describeDevice, describeNextUnlock, describeUnlockCondition } from '@/features/profile/formatters';
 import { avatarLayerFor } from '@/features/character/layered-hero';
 import { PixelSprite } from '@/features/character/PixelSprite';
 import { accessoryLayers, avatarLayers, heroBody, heroSprites, itemSprites, companionSprites, initialAvatarLayer, type PixelSpriteData } from '@/features/character/sprites';
@@ -34,6 +34,23 @@ describe('character catalog', () => {
       ['Sábio', 'locked', 'Alcance o nível 30'],
       ['Guardião', 'locked', 'Conclua uma Raid com sua Guilda'],
     ]);
+  });
+
+  it('shows the session-count unlock conditions, ahead of Raid and Loja items', () => {
+    const badges = [
+      item('Selo', 'badge', { type: 'raid', slug: '*' }),
+      item('Cem Sessões', 'badge', { type: 'sessions', count: 100 }),
+      item('Madrugador', 'badge', { type: 'early-sessions', count: 5 }, { unlocked: true }),
+    ];
+
+    expect(optionsFor(badges, 'badge', 'free').map((option) => [option.item.name, option.availability.kind, option.caption])).toEqual([
+      ['Madrugador', 'owned', 'Conquistado estudando'],
+      ['Cem Sessões', 'locked', 'Conclua 100 Study Sessions'],
+      ['Selo', 'locked', 'Conclua uma Raid com sua Guilda'],
+    ]);
+    expect(describeUnlockCondition(badges[2]!)).toBe('Conclua 5 Study Sessions antes das 7h');
+    expect(cosmeticItemState(badges[1]!)).toBe('lockedBySessions');
+    expect(describeNextUnlock([badges[1]!], 1)).toBe('Os itens desta categoria são conquistados estudando.');
   });
 
   it('captions the three Purchase states without falling into the Raid case', () => {
