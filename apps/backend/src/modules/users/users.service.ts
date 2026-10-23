@@ -178,7 +178,7 @@ export class UsersService {
   }
 
   /**
-   * O Desbloqueio idempotente, comum a nível, Raid, Compra e hábito de estudo e hábito de estudo: insere no Inventário na transação de quem chama e, pelo
+   * O Desbloqueio idempotente, comum a nível, Raid, Compra e hábito de estudo: insere no Inventário na transação de quem chama e, pelo
    * índice único (usuário + item), repetir um par não duplica nem reequipa nada.
    */
   private async grantToInventory(
