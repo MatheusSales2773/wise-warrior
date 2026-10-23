@@ -122,6 +122,7 @@ describe('Cosmetic Item unlock on level-up through the Study Session API', () =>
       new EconomyService(dataSource.getRepository(CoinBalance), dataSource.getRepository(CoinLedgerEntry), realtime),
       users,
       events,
+      { settleDailyInTransaction: async () => [] } as never,
     );
     const moduleRef = await Test.createTestingModule({
       controllers: [SessionsController, UsersController],

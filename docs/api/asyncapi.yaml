@@ -262,7 +262,7 @@ components:
           type: object
           required: [type, ref]
           properties:
-            type: { type: string, enum: [study-session, raid-win, purchase, signup, migration] }
+            type: { type: string, enum: [study-session, raid-win, purchase, signup, migration, objective] }
             ref: { type: string, maxLength: 64 }
     StudySessionChanged:
       type: object

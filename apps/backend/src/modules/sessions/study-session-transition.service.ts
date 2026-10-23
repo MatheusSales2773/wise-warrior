@@ -4,12 +4,14 @@ import {
   Inject,
   Injectable,
   NotFoundException,
+  forwardRef,
 } from '@nestjs/common';
 import { DataSource, type EntityManager } from 'typeorm';
 import { ProgressionService } from '../progression/progression.service';
 import { RaidsService, type RaidContributionOutcome } from '../raids/raids.service';
 import { EconomyService } from '../economy/economy.service';
 import { UsersService } from '../users/users.service';
+import { ObjectivesService } from '../objectives/objectives.service';
 import type { CoinMovementResult } from '../economy/domain/coin-origin';
 import { StudySession } from './entities/study-session.entity';
 import type { StudySessionSnapshot } from './study-session-snapshot';
@@ -52,6 +54,7 @@ type TerminalEffects = {
   xpGained: number;
   progressionResult: XpApplicationResult | null;
   coinMovement: CoinMovementResult | null;
+  objectiveCoinMovements: CoinMovementResult[];
   raidContributionOutcome: RaidContributionOutcome | null;
 };
 
@@ -67,6 +70,7 @@ const NO_TERMINAL_EFFECTS: TerminalEffects = {
   xpGained: 0,
   progressionResult: null,
   coinMovement: null,
+  objectiveCoinMovements: [],
   raidContributionOutcome: null,
 };
 
@@ -113,6 +117,7 @@ export class StudySessionTransitionService {
     private readonly economy: EconomyService,
     private readonly users: UsersService,
     private readonly events: StudySessionEventsService,
+    @Inject(forwardRef(() => ObjectivesService)) private readonly objectives: ObjectivesService,
   ) {}
 
   pause(command: StudySessionTransitionContext): Promise<StudySessionTransitionResult> {
@@ -343,6 +348,7 @@ export class StudySessionTransitionService {
     const { userId, id: studySessionId } = saved;
     let progressionResult: XpApplicationResult | null = null;
     let coinMovement: CoinMovementResult | null = null;
+    let objectiveCoinMovements: CoinMovementResult[] = [];
     let raidContributionOutcome: RaidContributionOutcome | null = null;
     await manager.query(
       'DELETE FROM active_study_sessions WHERE user_id = ? AND study_session_id = ?',
@@ -358,6 +364,8 @@ export class StudySessionTransitionService {
     }
     if (countsAsFinishedSession(saved)) {
       await this.users.unlockSessionBadges(manager, userId, await this.countFinishedSessions(manager, userId));
+      // Objetivos pagam Moedas no mesmo commit, e nunca XP nem Contribuição (ADR-014).
+      objectiveCoinMovements = await this.objectives.settleDailyInTransaction(manager, userId, saved.endedAt!);
     }
     if (saved.mode === 'guild' && saved.raidId) {
       raidContributionOutcome = await this.raids.recordContributionInTransaction(manager, {
@@ -368,7 +376,7 @@ export class StudySessionTransitionService {
         endedAt: saved.endedAt!,
       });
     }
-    return { xpGained: xpAwarded, progressionResult, coinMovement, raidContributionOutcome };
+    return { xpGained: xpAwarded, progressionResult, coinMovement, objectiveCoinMovements, raidContributionOutcome };
   }
 
   /** Finished, non-discarded Study Sessions of the user (the one just saved included), bucketed by UTC hour like the metrics. */
@@ -393,6 +401,9 @@ export class StudySessionTransitionService {
     }
     if (effects.coinMovement?.applied) {
       this.economy.publishBalanceChanged(userId, effects.coinMovement);
+    }
+    for (const movement of effects.objectiveCoinMovements) {
+      if (movement.applied) this.economy.publishBalanceChanged(userId, movement);
     }
     if (effects.raidContributionOutcome) this.raids.publishContribution(effects.raidContributionOutcome);
   }

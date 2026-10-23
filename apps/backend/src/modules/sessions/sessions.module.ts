@@ -8,6 +8,7 @@ import { RaidsModule } from '../raids/raids.module';
 import { StudySessionStartService } from './study-session-start.service';
 import { UsersModule } from '../users/users.module';
 import { EconomyModule } from '../economy/economy.module';
+import { ObjectivesModule } from '../objectives/objectives.module';
 import { RealtimeModule } from '../realtime/realtime.module';
 import { StudySessionTransitionService, STUDY_SESSION_CLOCK } from './study-session-transition.service';
 import { StudySessionEventsService } from './study-session-events.service';
@@ -19,6 +20,7 @@ import { StudySessionEventsService } from './study-session-events.service';
     RaidsModule,
     UsersModule,
     EconomyModule,
+    forwardRef(() => ObjectivesModule),
     forwardRef(() => RealtimeModule),
   ],
   controllers: [SessionsController],

@@ -5,7 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { IsNull, Not, Repository } from 'typeorm';
+import { type EntityManager, IsNull, Not, Repository } from 'typeorm';
 import { StudySession } from './entities/study-session.entity';
 import { validateSessionDuration } from './domain/session-validator';
 import { xpForDuration } from './domain/xp-rate';
@@ -24,6 +24,7 @@ import {
   saoPauloPreviousDayKey,
 } from '../../shared/time/sao-paulo-calendar';
 import { buildCadence, calculateStreaks, groupActivityByDay } from './domain/session-metrics';
+import type { FinishedSessionOfDay } from '../objectives/domain/daily-objectives';
 import { FOCUS_CYCLE_LENGTH, focusCycle, type FocusCycle } from './domain/focus-cycle';
 import { decodeDatetimeCursor, encodeDatetimeCursor } from '../../shared/pagination/datetime-cursor';
 
@@ -165,6 +166,26 @@ export class SessionsService {
       discardedReason: session.discardedReason ?? null,
       cappedReason: session.cappedReason ?? null,
     }));
+  }
+
+  /**
+   * Study Sessions that ended on a São Paulo day and counted: not cancelled, not discarded. Crônicas' Objetivos
+   * read the day from here (ADR-014). `manager` joins the caller's transaction, which sees the session it just saved.
+   */
+  async finishedSessionsOfDay(userId: string, dayKey: string, manager?: EntityManager): Promise<FinishedSessionOfDay[]> {
+    const rows = await (manager ?? this.studySessions.manager)
+      .getRepository(StudySession)
+      .createQueryBuilder('session')
+      .select('session.durationValidSeconds', 'validSeconds')
+      .where('session.userId = :userId', { userId })
+      .andWhere('session.endedAt >= :dayStart AND session.endedAt < :nextDayStart', {
+        dayStart: saoPauloDayStart(dayKey),
+        nextDayStart: saoPauloDayStart(saoPauloNextDayKey(dayKey)),
+      })
+      .andWhere('session.discardedReason IS NULL')
+      .andWhere("(session.state IS NULL OR session.state IN ('completed', 'stopped_early'))")
+      .getRawMany<{ validSeconds: number | string }>();
+    return rows.map((row) => ({ validSeconds: Number(row.validSeconds) }));
   }
 
   /**

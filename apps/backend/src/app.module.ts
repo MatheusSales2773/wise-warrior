@@ -7,6 +7,7 @@ import { AuthModule } from './modules/auth/auth.module';
 import { UsersModule } from './modules/users/users.module';
 import { ProgressionModule } from './modules/progression/progression.module';
 import { SessionsModule } from './modules/sessions/sessions.module';
+import { ObjectivesModule } from './modules/objectives/objectives.module';
 import { GuildsModule } from './modules/guilds/guilds.module';
 import { RaidsModule } from './modules/raids/raids.module';
 import { ShopModule } from './modules/shop/shop.module';
@@ -38,6 +39,7 @@ import { RateLimitModule } from './shared/security/rate-limit';
     UsersModule,
     ProgressionModule,
     SessionsModule,
+    ObjectivesModule,
     GuildsModule,
     RaidsModule,
     ShopModule,

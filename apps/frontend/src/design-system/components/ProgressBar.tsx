@@ -11,8 +11,8 @@ export type ProgressBarProps = {
   testID?: string;
   /** `tall` matches the framed prototype bar: inset track, hairline border and gold gradient fill; `slim` is its 10px variant and `hairline` its 4px one. */
   size?: 'default' | 'tall' | 'slim' | 'hairline';
-  /** Gradient of a framed bar: gold by default, red for a boss's remaining life. */
-  tone?: 'accent' | 'danger';
+  /** Gradient of a framed bar: gold by default, red for a boss's remaining life, green for a goal already met. */
+  tone?: 'accent' | 'danger' | 'success';
 } & ({ indeterminate: true; value?: never } | { indeterminate?: false; value: number });
 
 export function ProgressBar({ minimumValue = 0, maximumValue = 100, value, indeterminate = false, accessibilityLabel, testID, size = 'default', tone = 'accent' }: ProgressBarProps) {
@@ -39,7 +39,9 @@ export function ProgressBar({ minimumValue = 0, maximumValue = 100, value, indet
   const framed = size !== 'default';
   const gradient = tone === 'danger'
     ? [theme.color.feedbackDangerMuted, theme.color.feedbackDanger] as const
-    : [theme.color.accentMuted, theme.color.accentPrimary] as const;
+    : tone === 'success'
+      ? [SUCCESS_GRADIENT_START, theme.color.feedbackSuccess] as const
+      : [theme.color.accentMuted, theme.color.accentPrimary] as const;
   const fraction = maximumValue > minimumValue
     ? Math.max(0, Math.min(1, ((value ?? minimumValue) - minimumValue) / (maximumValue - minimumValue)))
     : 0;
@@ -70,6 +72,9 @@ export function ProgressBar({ minimumValue = 0, maximumValue = 100, value, indet
     </View>
   );
 }
+
+/** Dark end of the met-goal gradient; the public palette has no dim green, so it stays local to the bar. */
+const SUCCESS_GRADIENT_START = '#2f6b4a';
 
 const styles = StyleSheet.create({
   track: { height: theme.space.inlineTight, overflow: 'hidden', borderRadius: theme.radius.pill, backgroundColor: theme.color.surfaceCard },

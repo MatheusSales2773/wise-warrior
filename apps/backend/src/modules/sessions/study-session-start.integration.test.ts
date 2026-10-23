@@ -48,6 +48,7 @@ describe('canonical Study Session start against MySQL', () => {
       {} as never,
       new StudySessionTransitionService(
         dataSource!, { now: clock }, progression, {} as never, economy, users, events,
+        { settleDailyInTransaction: async () => [] } as never,
       ),
       events,
     );
@@ -204,6 +205,7 @@ describe('canonical Study Session start against MySQL', () => {
       {} as never,
       lockingUsers(),
       new StudySessionEventsService(realtime as unknown as RealtimeGateway),
+      { settleDailyInTransaction: async () => [] } as never,
     );
     const paused = await transitions.pause({
       userId, authSessionId: 'device-a', studySessionId: started.id, dto: { expectedVersion: 1 }, idempotencyKey: 'subject-pause',
@@ -276,6 +278,7 @@ describe('canonical Study Session start against MySQL', () => {
       {} as never,
       lockingUsers(),
       new StudySessionEventsService(realtime as unknown as RealtimeGateway),
+      { settleDailyInTransaction: async () => [] } as never,
     );
     const pause = (idempotencyKey: string) => transitionService.pause({
       userId,

@@ -1,12 +1,13 @@
 import { useState } from 'react';
 import { Platform, ScrollView, StyleSheet, Text, View, useWindowDimensions, type NativeScrollEvent, type NativeSyntheticEvent } from 'react-native';
-import { WiseText, isDesktopLayout, theme } from '@/design-system';
+import { isDesktopLayout, theme } from '@/design-system';
 import { TabList } from '@/features/guild/guild-tabs';
 import { saoPauloDay } from '@/features/dashboard/queries';
 import { Diary } from './diary-list';
+import { Objectives } from './objectives';
 import { weekRangeLabel } from './diary';
 
-/* Crônicas: Objetivos e Diário (ADR-014). Os Objetivos chegam numa fatia própria; até lá a aba mostra um estado vazio. */
+/* Crônicas: Objetivos e Diário (ADR-014). Os Objetivos semanais e os Marcos chegam em fatias próprias. */
 
 type Section = 'objetivos' | 'diario';
 
@@ -58,16 +59,9 @@ export function ChroniclesScreen() {
         </View>
         {section === 'diario'
           ? <View style={desktop ? styles.diaryDesktop : undefined}><Diary desktop={desktop} loadMore={nearEnd} /></View>
-          : <ObjectivesEmpty />}
+          : <View style={desktop ? styles.diaryDesktop : undefined}><Objectives /></View>}
       </View>
     </ScrollView>
-  </View>;
-}
-
-function ObjectivesEmpty() {
-  return <View style={styles.empty} testID="chronicles-objectives-empty">
-    <WiseText accessibilityRole="header" aria-level={2} variant="subtitle">Objetivos a caminho</WiseText>
-    <WiseText color="textSecondary" variant="body">As metas do dia e da semana chegam numa próxima atualização. Enquanto isso, o Diário guarda tudo o que você já estudou.</WiseText>
   </View>;
 }
 
@@ -84,5 +78,4 @@ const styles = StyleSheet.create({
   title: { fontFamily: cinzel, fontSize: 32, lineHeight: 40, letterSpacing: 1, color: theme.color.textPrimary },
   titleCompact: { fontFamily: cinzel, fontSize: 24, lineHeight: 32, color: theme.color.textPrimary },
   diaryDesktop: { maxWidth: DIARY_MAX },
-  empty: { gap: 8, padding: 22, borderRadius: theme.radius.card, borderWidth: theme.border.standard, borderColor: theme.color.borderSubtle, backgroundColor: theme.color.surfaceCard },
 });

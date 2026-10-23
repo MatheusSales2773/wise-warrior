@@ -68,7 +68,7 @@ describe('Study Session HTTP contract against MySQL', () => {
     const progression = new ProgressionService(dataSource.getRepository(Character), gateway, users);
     const economy = new EconomyService(dataSource.getRepository(CoinBalance), dataSource.getRepository(CoinLedgerEntry), gateway);
     const events = new StudySessionEventsService(gateway);
-    const transitions = new StudySessionTransitionService(dataSource, { now: () => new Date(now) }, progression, {} as never, economy, users, events);
+    const transitions = new StudySessionTransitionService(dataSource, { now: () => new Date(now) }, progression, {} as never, economy, users, events, { settleDailyInTransaction: async () => [] } as never);
     const start = new StudySessionStartService(dataSource, users, {} as never, transitions, events);
     const controllerModule = await Test.createTestingModule({
       controllers: [SessionsController],

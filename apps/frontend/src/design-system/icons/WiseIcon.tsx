@@ -30,6 +30,7 @@ export const wiseIconNames = [
   'book',
   'bag-handle-outline',
   'checkmark',
+  'checkmark-circle',
   'arrow-forward',
   'settings-outline',
   'settings',
