@@ -57,10 +57,10 @@ describe('Foco livre on the Forja', () => {
     const view = await renderStudySession();
     await view.findByTestId('study-session-setup');
 
-    await fireEvent.press(view.getByRole('button', { name: 'Configurar duração' }));
     await fireEvent.press(view.getByTestId('study-duration-free'));
     await waitFor(() => expect(view.getByTestId('study-duration-free').props.accessibilityState.checked).toBe(true));
-    expect(view.getByText('Foco livre selecionado')).toBeTruthy();
+    expect(view.getByText('00:00')).toBeTruthy();
+    expect(view.getByText('conta até você parar')).toBeTruthy();
     await fireEvent.press(view.getByTestId('study-session-start'));
     await waitFor(() => expect(start).toHaveBeenCalledWith('free', expect.any(String), null));
     await view.findByTestId('study-session-active');
@@ -94,7 +94,6 @@ describe('Foco livre on the Forja', () => {
     const view = await renderStudySession();
     await view.findByTestId('study-session-setup');
 
-    await fireEvent.press(view.getByRole('button', { name: 'Configurar duração' }));
     await fireEvent.press(view.getByTestId('study-duration-free'));
     await fireEvent.press(view.getByTestId('study-session-start'));
 

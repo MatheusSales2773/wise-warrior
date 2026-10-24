@@ -12,6 +12,9 @@ import { sessionMetricsQueryOptions } from '@/features/dashboard/queries';
 import { formatElapsedTime, formatRemainingTime } from './timer';
 import { styles } from './forge-styles';
 
+/** The pill draws at most this many bars, however high the daily Objetivo goes. */
+const TODAY_BARS_LIMIT = 8;
+
 export function ForgePageGradient() {
   return (
     <Svg aria-hidden pointerEvents="none" style={StyleSheet.absoluteFill} testID="study-session-page-gradient" width="100%" height="100%">
@@ -52,7 +55,7 @@ export function ForgeCardTitle({ children }: { children: string }) {
   );
 }
 
-export function ForgeAction({ label, icon, onPress, primary = false, disabled = false, loading = false, testID, iconOnly = false, expanded }: {
+export function ForgeAction({ label, icon, onPress, primary = false, disabled = false, loading = false, testID, iconOnly = false, expanded, fullWidth = false }: {
   label: string;
   icon: 'stop' | 'pause' | 'play' | 'settings-outline';
   onPress: () => void;
@@ -62,6 +65,7 @@ export function ForgeAction({ label, icon, onPress, primary = false, disabled = 
   testID?: string;
   iconOnly?: boolean;
   expanded?: boolean;
+  fullWidth?: boolean;
 }) {
   const { width } = useWindowDimensions();
   const [focused, setFocused] = useState(false);
@@ -80,7 +84,7 @@ export function ForgeAction({ label, icon, onPress, primary = false, disabled = 
       onPress={onPress}
       onFocus={() => setFocused(true)}
       onBlur={() => setFocused(false)}
-      style={[styles.actionButton, primary ? styles.actionButtonPrimary : styles.actionButtonIcon, primary && width < 450 && styles.actionButtonPrimaryCompact, iconOnly && styles.actionButtonIcon, blocked && styles.actionButtonDisabled, focused && Platform.OS === 'web' && controlStyles.webFocus]}
+      style={[styles.actionButton, primary ? styles.actionButtonPrimary : styles.actionButtonIcon, primary && width < 450 && styles.actionButtonPrimaryCompact, fullWidth && styles.actionButtonFull, iconOnly && styles.actionButtonIcon, blocked && styles.actionButtonDisabled, focused && Platform.OS === 'web' && controlStyles.webFocus]}
       testID={testID}
     >
       {primary ? <LinearGradient colors={[theme.color.accentPrimary, theme.color.accentMuted]} start={{ x: 0, y: 0 }} end={{ x: 0, y: 1 }} style={styles.actionGradient} testID="study-session-primary-gradient">{content}</LinearGradient> : content}
@@ -91,12 +95,14 @@ export function ForgeAction({ label, icon, onPress, primary = false, disabled = 
 /** A Ciclo counts `remaining` down against its `duration`; a Foco livre has no target and counts `elapsed` up. */
 export type TimerReading = { remaining: number; duration: number } | { elapsed: number };
 
-export function ForgeTimer({ reading, phase, size, testID, accessibilityLabel }: {
+export function ForgeTimer({ reading, phase, size, testID, accessibilityLabel, elapsedCaption = 'tempo de foco' }: {
   reading: TimerReading;
   phase: string;
   size: number;
   testID?: string;
   accessibilityLabel?: string;
+  /** What sits under a counting-up reading: the Foco livre says what it is, the Pronta says when it ends. */
+  elapsedCaption?: string;
 }) {
   const radius = 154;
   const circumference = 2 * Math.PI * radius;
@@ -118,28 +124,45 @@ export function ForgeTimer({ reading, phase, size, testID, accessibilityLabel }:
       <View style={styles.timerCenter}>
         <Text allowFontScaling style={styles.timerPhase}>◈ {phase} ◈</Text>
         <Text accessibilityLiveRegion="none" aria-live="off" accessibilityLabel={accessibilityLabel} style={[styles.timerDigits, { fontSize: size < 290 ? 56 : 80, lineHeight: size < 290 ? 64 : 88 }]} testID={testID}>{'elapsed' in reading ? formatElapsedTime(reading.elapsed) : formatRemainingTime(reading.remaining)}</Text>
-        <Text allowFontScaling style={styles.timerTarget}>{'elapsed' in reading ? 'tempo de foco' : `/ ${formatRemainingTime(reading.duration)}`}</Text>
+        <Text allowFontScaling style={styles.timerTarget}>{'elapsed' in reading ? elapsedCaption : `/ ${formatRemainingTime(reading.duration)}`}</Text>
       </View>
     </View>
   );
 }
 
 /** "Hoje" pill of the Forja header: sessions concluded today against the "Conclua 4 sessões hoje" Objetivo. Hidden until known. */
-export function TodayPill() {
+export function TodayPill({ compact = false }: { compact?: boolean }) {
   const { data: metrics } = useQuery(sessionMetricsQueryOptions());
   const objective = useSessionsObjective();
   if (!metrics) return null;
-  const goal = objective ? Math.min(8, objective.target) : 0;
+  const goal = objective ? Math.min(TODAY_BARS_LIMIT, objective.target) : 0;
   const { value, spoken } = formatSessionsToday(metrics.sessionsToday, objective);
   return (
-    <View accessibilityLabel={`Hoje: ${spoken} sessões`} accessible style={styles.todayPill} testID="study-session-today">
-      <Text allowFontScaling style={styles.todayLabel}>Hoje</Text>
-      <View style={styles.todayBars}>
+    <View accessibilityLabel={`Hoje: ${spoken} sessões`} accessible style={[styles.todayPill, compact && styles.todayPillCompact]} testID="study-session-today">
+      {compact ? null : <Text allowFontScaling style={styles.todayLabel}>Hoje</Text>}
+      <View style={[styles.todayBars, compact && styles.todayBarsCompact]}>
         {Array.from({ length: goal }, (_, index) => (
-          <View key={index} style={[styles.todayBar, index < (objective?.progress ?? 0) && styles.todayBarDone]} />
+          <View key={index} style={[styles.todayBar, compact && styles.todayBarCompact, index < (objective?.progress ?? 0) && styles.todayBarDone]} />
         ))}
       </View>
-      <Text allowFontScaling style={styles.todayValue}>{value}</Text>
+      <Text allowFontScaling style={styles.todayValue}>{compact ? `${spoken} hoje` : value}</Text>
+    </View>
+  );
+}
+
+/** The page heading: "Sessão Pomodoro" over the title with the "Hoje" pill beside it, compact on a phone. */
+export function ForgeHeader({ compact }: { compact: boolean }) {
+  return (
+    <View style={[styles.pageHeader, !compact && styles.pageHeaderWide]}>
+      {compact ? (
+        <Text accessibilityRole="header" allowFontScaling style={styles.pageTitleCompact}>Forja</Text>
+      ) : (
+        <View style={styles.pageHeaderTitles}>
+          <Text aria-hidden accessibilityElementsHidden importantForAccessibility="no" style={styles.pageEyebrow}>◈ Sessão Pomodoro</Text>
+          <Text accessibilityRole="header" allowFontScaling style={styles.pageTitle}>Forja</Text>
+        </View>
+      )}
+      <TodayPill compact={compact} />
     </View>
   );
 }

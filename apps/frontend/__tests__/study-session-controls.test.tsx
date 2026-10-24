@@ -121,9 +121,9 @@ it('stops with the projected label, shows the confirmed result, then offers a ne
   getActive.mockResolvedValue(snapshot);
   stop.mockResolvedValue(cancelled);
   const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 30_000 }, mutations: { retry: false, gcTime: 0 } } });
-  client.setQueryData(dashboardKeys.profile(), { xpTotal: 0 });
+  client.setQueryData(dashboardKeys.profile(), { xpTotal: 0, displayName: 'Knightshade', equipped: [] });
   client.setQueryData(dashboardKeys.recentActivity(), []);
-  client.setQueryData(dashboardKeys.metrics(), { sessionsToday: 0 });
+  client.setQueryData(dashboardKeys.metrics(), { sessionsToday: 0, currentStreakDays: 0, validSecondsToday: 0 });
   const { view } = await renderStudySession(client);
 
   await view.findByRole('button', { name: 'Cancelar sessão' });
@@ -329,7 +329,6 @@ it('shows a visible keyboard focus ring on duration presets', async () => {
     getActive.mockResolvedValue(null);
     const { view } = await renderStudySession();
     await view.findByTestId('study-session-setup');
-    await fireEvent.press(view.getByRole('button', { name: 'Configurar duração' }));
     const preset = view.getByRole('radio', { name: '15 minutos' });
     await fireEvent(preset, 'focus');
     expect(StyleSheet.flatten(preset.props.style)).toMatchObject({
