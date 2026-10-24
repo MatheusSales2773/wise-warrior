@@ -32,6 +32,7 @@ import { AddRaidDragonFury1788460320000 } from '../migrations/1788460320000-add-
 import { AddRaidMissionOwner1788460380000 } from '../migrations/1788460380000-add-raid-mission-owner';
 import { AddWeaponCategory1788460440000 } from '../migrations/1788460440000-add-weapon-category';
 import { AddStudySessionKind1788460500000 } from '../migrations/1788460500000-add-study-session-kind';
+import { AddStudySessionPauseCount1788460680000 } from '../migrations/1788460680000-add-study-session-pause-count';
 import { SessionCountBadgeConditions1788460560000 } from '../migrations/1788460560000-session-count-badge-conditions';
 import { AddObjectiveCoinOrigin1788460620000 } from '../migrations/1788460620000-add-objective-coin-origin';
 
@@ -70,6 +71,7 @@ export const APPLICATION_MIGRATIONS: MigrationClass[] = [
   AddStudySessionKind1788460500000,
   SessionCountBadgeConditions1788460560000,
   AddObjectiveCoinOrigin1788460620000,
+  AddStudySessionPauseCount1788460680000,
 ];
 
 function positionOf(migration: MigrationClass): number {

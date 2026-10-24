@@ -266,13 +266,17 @@ components:
             ref: { type: string, maxLength: 64 }
     StudySessionChanged:
       type: object
-      required: [studySessionId, version, state]
+      required: [studySessionId, version, pauseCount, state]
       properties:
         studySessionId: { type: string, format: uuid }
         version:
           type: integer
           minimum: 1
           description: Versão canônica depois da mudança; o dispositivo que já aplicou essa versão ignora o evento
+        pauseCount:
+          type: integer
+          minimum: 0
+          description: Pausas aplicadas à Study Session depois da mudança
         state:
           type: string
           enum: [running, paused, ended]

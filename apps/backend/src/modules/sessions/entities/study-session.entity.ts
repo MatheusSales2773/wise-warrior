@@ -76,6 +76,10 @@ export class StudySession {
   @Column({ type: 'int', default: 1 })
   version: number;
 
+  /** Pausas aplicadas; retomar, encerrar e concluir não alteram. */
+  @Column({ name: 'pause_count', type: 'int', default: 0 })
+  pauseCount: number;
+
   @Column({ name: 'terminal_reason', type: 'varchar', length: 120, nullable: true })
   terminalReason?: StudySessionTerminalReason | null;
 

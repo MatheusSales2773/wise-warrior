@@ -138,6 +138,7 @@ export class StudySessionStartService {
         pausedAt: null,
         pausedTotalSeconds: 0,
         version: 1,
+        pauseCount: 0,
         terminalReason: null,
         initiatingSessionId: authSessionId,
         durationValidSeconds: 0,
