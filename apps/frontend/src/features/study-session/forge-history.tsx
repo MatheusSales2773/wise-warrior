@@ -147,11 +147,11 @@ function WeeklyFocusChart() {
   );
 }
 
-/** Histórico do dia and the week, below the Forja (#17). Both refresh when XP lands on any device. */
-export function ForgeHistory({ wide }: { wide: boolean }) {
+/** Histórico do dia and the week, below the Forja (#17). Both refresh when XP lands on any device. The Pronta lists the day in its own card, so it leaves it out here. */
+export function ForgeHistory({ wide, showToday = true }: { wide: boolean; showToday?: boolean }) {
   return (
     <View style={[styles.section, wide && styles.sectionWide]} testID="forge-history-section">
-      <TodayHistory />
+      {showToday ? <TodayHistory /> : null}
       <WeeklyFocusChart />
     </View>
   );

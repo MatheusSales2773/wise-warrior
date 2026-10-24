@@ -12,7 +12,7 @@ import {
   type StudySessionTransitionAction,
   type StudySessionTransitionRequest,
 } from './api';
-import { FREE_FOCUS, focusChoiceLabel, plannedSeconds, type FocusChoice } from './focus-choice';
+import { FREE_FOCUS, plannedSeconds, type FocusChoice } from './focus-choice';
 import { activeStudySessionQueryKey, invalidateStudySessionResult, recentStudySessionSubjectsQueryKey, useActiveStudySession, useFocusCycle } from './queries';
 import { breakRemainingSeconds, clearBreak, currentBreak, startBreak, type BreakKind, type BreakRun } from './pomodoro-break';
 import { stopSessionSounds, unlockSessionSounds } from './sounds';
@@ -23,8 +23,9 @@ import { useIsOnline } from '@/core/query/online-manager';
 import { ForgeHistory } from './forge-history';
 import { ForgeAnvil, ForgeColumns } from './forge-anvil';
 import { BreakOffer, BreakStage } from './forge-break';
-import { ForgePrepCard, ForgeSetupSupport, type ForgeRaid, type SessionMode } from './forge-prep-card';
-import { ForgePageGradient, TodayPill } from './forge-primitives';
+import { ForgePrepCard, ForgeStartButton, type ForgeRaid, type SessionMode } from './forge-prep-card';
+import { ForgePageGradient, ForgeHeader } from './forge-primitives';
+import { ForgeReadyHero, ForgeReadySummary, ForgeRulesCard, ForgeTodayCard } from './forge-ready';
 import { ForgeActiveSupport, ForgeSessionCard, type ForgeSessionControl } from './forge-session-card';
 import { styles } from './forge-styles';
 import { STOP_COPY, stopKindFor, type StopKind } from './stop-confirmation';
@@ -71,6 +72,8 @@ const DAILY_LIMIT_REACHED = 'https://wise.app/errors/daily-limit-reached';
 export type { SessionMode } from './forge-prep-card';
 
 const NO_SUBJECT_LABEL = 'Sem matéria';
+/** Below this width the Forja is the phone layout: compact header, preparation without a card, start button in the footer. */
+const COMPACT_WIDTH = 600;
 
 function subjectError(validation: SubjectValidation): string | undefined {
   if (validation.status === 'too-long') return `A Matéria tem ${validation.length} caracteres; o máximo é ${MAX_SUBJECT_LENGTH}.`;
@@ -103,6 +106,7 @@ function isVersionConflict(error: unknown): boolean {
 export function StudySessionScreen({ initialMode = 'solo' }: { initialMode?: SessionMode } = {}) {
   const { width } = useWindowDimensions();
   const wideLayout = width >= 1140;
+  const compactLayout = width < COMPACT_WIDTH;
   const ringSize = wideLayout ? 340 : Platform.OS === 'web' ? Math.min(310, width * 0.78) : Math.min(264, width * 0.68);
   const queryClient = useQueryClient();
   const [defaultDuration] = useDevicePreference('defaultFocusDuration');
@@ -121,7 +125,6 @@ export function StudySessionScreen({ initialMode = 'solo' }: { initialMode?: Ses
   const [raidEndedNotice, setRaidEndedNotice] = useState(false);
   const forgeRaid = useForgeRaid();
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [focusedDuration, setFocusedDuration] = useState<FocusChoice | null>(null);
   const [now, setNow] = useState(0);
   const [breakRun, setBreakRun] = useState<BreakRun | null>(() => currentBreak(queryClient));
   const [sawActiveSession, setSawActiveSession] = useState(false);
@@ -602,10 +605,37 @@ export function StudySessionScreen({ initialMode = 'solo' }: { initialMode?: Ses
     setSelected(duration);
   };
 
+  const showSetup = !displayedTerminalResult && !breakRun && !active.isPending && !active.isError && !snapshot;
+  const startDisabled = subjectValidation.status !== 'valid' || waitingForDefault;
+  const prepCard = (
+    <ForgePrepCard
+      compact={compactLayout}
+      selected={selected}
+      startPending={start.isPending}
+      startLabel={startLabel}
+      startDisabled={startDisabled}
+      subjectInput={subjectInput}
+      subjectMessage={subjectMessage}
+      selectedSubject={subjectValidation.status === 'valid' ? subjectValidation.subject : null}
+      forgeRaid={forgeRaid}
+      sessionMode={sessionMode}
+      raidEndedNotice={raidEndedNotice}
+      dailyLimitReached={dailyLimitReached}
+      startFailed={start.isError}
+      onChangeSubject={changeSubject}
+      onChangeMode={changeSessionMode}
+      onSelectDuration={selectDuration}
+      onStart={begin}
+    />
+  );
+  const startFooter = showSetup && compactLayout
+    ? <View style={styles.footerBar}><ForgeStartButton disabled={startDisabled} label={startLabel} loading={start.isPending} onPress={begin} /></View>
+    : undefined;
+
   return (
-    <Screen avoidKeyboard backgroundOverlay={<ForgePageGradient />} hasBottomNavigation safeAreaEdges={['right', 'left']} testID="study-session" title="Forja" contentContainerStyle={styles.screenContent}>
+    <Screen avoidKeyboard footer={startFooter} backgroundOverlay={<ForgePageGradient />} hasBottomNavigation safeAreaEdges={['right', 'left']} testID="study-session" title="Forja" titleHidden contentContainerStyle={styles.screenContent}>
       <View style={styles.layout}>
-        <TodayPill />
+        <ForgeHeader compact={compactLayout} />
         {showSync ? <ForgeSyncIndicator onRetry={() => void refreshActive()} status={syncStatus} /> : null}
         {remoteEndNotice ? (
           <WiseText accessibilityLiveRegion="polite" aria-live="polite" color="textSecondary" testID="study-session-remote-end" variant="body">
@@ -734,51 +764,30 @@ export function StudySessionScreen({ initialMode = 'solo' }: { initialMode?: Ses
             support={<ForgeActiveSupport wide={wideLayout} settingsOpen={settingsOpen} plannedLabel={plannedLabel} validFocusSeconds={validFocusSeconds} pauseCount={snapshot.pauseCount} onCloseSettings={() => setSettingsOpen(false)} />}
           />
         ) : null}
-        {!displayedTerminalResult && !breakRun && !active.isPending && !active.isError && !snapshot ? (
+        {showSetup ? (
           <ForgeColumns
             wide={wideLayout}
             testID="study-session-setup"
             anvil={
               <ForgeAnvil
                 wide={wideLayout}
-                header={<>
-                  <Text accessibilityRole="header" allowFontScaling style={styles.stageTitle}>PREPARE SUA FORJA</Text>
-                  <Text allowFontScaling style={styles.stageMeta}>{selected === FREE_FOCUS ? 'Foco livre selecionado' : `${focusChoiceLabel(selected)} selecionados`}</Text>
-                </>}
                 reading={selected === FREE_FOCUS ? { elapsed: 0 } : { remaining: selected, duration: selected }}
+                elapsedCaption="conta até você parar"
                 phase={phase}
                 ringSize={ringSize}
               >
-                <ForgePrepCard
-                  wide={wideLayout}
-                  selected={selected}
-                  focusedDuration={focusedDuration}
-                  settingsOpen={settingsOpen}
-                  startPending={start.isPending}
-                  startLabel={startLabel}
-                  startDisabled={subjectValidation.status !== 'valid' || waitingForDefault}
-                  subjectInput={subjectInput}
-                  subjectMessage={subjectMessage}
-                  selectedSubject={subjectValidation.status === 'valid' ? subjectValidation.subject : null}
-                  forgeRaid={forgeRaid}
-                  sessionMode={sessionMode}
-                  raidEndedNotice={raidEndedNotice}
-                  dailyLimitReached={dailyLimitReached}
-                  startFailed={start.isError}
-                  onChangeSubject={changeSubject}
-                  onChangeMode={changeSessionMode}
-                  onSelectDuration={selectDuration}
-                  onFocusDuration={setFocusedDuration}
-                  onToggleSettings={() => setSettingsOpen((open) => !open)}
-                  onCloseSettings={() => setSettingsOpen(false)}
-                  onStart={begin}
-                />
+                <ForgeReadyHero compact={compactLayout} />
+                {compactLayout ? prepCard : <ForgeReadySummary selected={selected} />}
               </ForgeAnvil>
             }
-            support={<ForgeSetupSupport wide={wideLayout} settingsOpen={settingsOpen} selected={selected} focusedDuration={focusedDuration} startPending={start.isPending} onSelect={selectDuration} onFocus={setFocusedDuration} onClose={() => setSettingsOpen(false)} />}
+            support={<>
+              {compactLayout ? null : prepCard}
+              <ForgeRulesCard />
+              <ForgeTodayCard />
+            </>}
           />
         ) : null}
-        <ForgeHistory wide={wideLayout} />
+        <ForgeHistory showToday={!showSetup} wide={wideLayout} />
       </View>
     </Screen>
   );

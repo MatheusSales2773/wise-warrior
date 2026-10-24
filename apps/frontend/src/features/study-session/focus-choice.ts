@@ -17,3 +17,11 @@ export function plannedSeconds(choice: FocusChoice): number {
 }
 
 export const FOCUS_CHOICES: readonly FocusChoice[] = [...STUDY_SESSION_PRESETS, FREE_FOCUS];
+
+/** XP a minute of valid focus is worth; the server grants it, the Forja only shows the estimate. */
+export const XP_PER_FOCUS_MINUTE = 10;
+
+/** XP a Ciclo of `choice` concludes with, or `null` for a Foco livre, whose XP depends on when the user stops. */
+export function estimatedXp(choice: FocusChoice): number | null {
+  return choice === FREE_FOCUS ? null : (choice / 60) * XP_PER_FOCUS_MINUTE;
+}

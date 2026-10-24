@@ -5,23 +5,24 @@ import { ForgeStageGradient, ForgeTimer, type TimerReading } from './forge-primi
 import { styles } from './forge-styles';
 
 /** The Bigorna: the ring timer under a header. `children` is the space below it for the Herói, the summary and the card's own controls. */
-export function ForgeAnvil({ wide, header, reading, phase, ringSize, timerTestID, timerAccessibilityLabel, children, testID = 'study-session-stage' }: {
+export function ForgeAnvil({ wide, header, reading, phase, ringSize, timerTestID, timerAccessibilityLabel, elapsedCaption, children, testID = 'study-session-stage' }: {
   wide: boolean;
-  header: ReactNode;
+  header?: ReactNode;
   reading: TimerReading;
   phase: string;
   ringSize: number;
   timerTestID?: string;
   timerAccessibilityLabel?: string;
+  elapsedCaption?: string;
   children?: ReactNode;
   testID?: string;
 }) {
   return (
     <WiseCard style={[styles.stage, wide && styles.stageWide]} testID={testID}>
       <ForgeStageGradient />
-      <View style={styles.stageHeader}>{header}</View>
+      {header ? <View style={styles.stageHeader}>{header}</View> : null}
       <View style={styles.stageBody}>
-        <ForgeTimer reading={reading} phase={phase} size={ringSize} testID={timerTestID} accessibilityLabel={timerAccessibilityLabel} />
+        <ForgeTimer reading={reading} phase={phase} size={ringSize} testID={timerTestID} accessibilityLabel={timerAccessibilityLabel} elapsedCaption={elapsedCaption} />
       </View>
       {children}
     </WiseCard>

@@ -1,6 +1,6 @@
 import { useState } from 'react';
-import { Platform, Pressable, Text, View, useWindowDimensions } from 'react-native';
-import { WiseButton, WiseCard, WiseField, WiseText, theme } from '@/design-system';
+import { Platform, Pressable, ScrollView, Text, View } from 'react-native';
+import { WiseCard, WiseField, WiseText, theme } from '@/design-system';
 import { controlStyles } from '@/design-system/components/control-styles';
 import { FeedbackMessage } from '@/design-system/components/FeedbackMessage';
 import { useDevicePreference, useDevicePreferencesLoaded } from '@/core/preferences/device-preferences';
@@ -10,49 +10,62 @@ import { useRecentStudySessionSubjects } from './queries';
 import { ForgeAction, ForgeCardTitle } from './forge-primitives';
 import { styles } from './forge-styles';
 
-export function DurationSettings({ selected, focusedDuration, startPending, onSelect, onFocus, onClose, inline = false }: {
-  selected: FocusChoice;
-  focusedDuration: FocusChoice | null;
-  startPending: boolean;
-  onSelect: (duration: FocusChoice) => void;
-  onFocus: (duration: FocusChoice | null) => void;
-  onClose: () => void;
-  inline?: boolean;
+type SegmentOption<T extends string | number> = { value: T; label: string; accessibilityLabel?: string; testID: string };
+
+/** A radiogroup of mutually exclusive options: the Forja's Duração and Modo. Arrow-key focus is the platform's own. */
+function ForgeSegmented<T extends string | number>({ label, options, value, disabled, onSelect, testID }: {
+  label: string;
+  options: readonly SegmentOption<T>[];
+  value: T;
+  disabled: boolean;
+  onSelect: (value: T) => void;
+  testID?: string;
 }) {
-  return <WiseCard style={inline ? styles.inlineSettingsCard : styles.sideCard}>
-    <ForgeCardTitle>Quanto tempo você vai focar?</ForgeCardTitle>
-    <View style={styles.presets} accessibilityRole="radiogroup">
-      {FOCUS_CHOICES.map((duration) => (
-        <Pressable
-          accessibilityLabel={duration === FREE_FOCUS ? 'Foco livre, sem duração definida' : `${duration / 60} minutos`}
-          accessibilityRole="radio"
-          accessibilityState={{ checked: selected === duration, disabled: startPending }}
-          aria-checked={selected === duration}
-          aria-disabled={startPending}
-          disabled={startPending}
-          key={duration}
-          onPress={() => onSelect(duration)}
-          onFocus={() => onFocus(duration)}
-          onBlur={() => onFocus(focusedDuration === duration ? null : focusedDuration)}
-          style={[
-            styles.preset,
-            selected === duration && styles.selected,
-            focusedDuration === duration && Platform.OS === 'web' && controlStyles.webFocus,
-          ]}
-          testID={duration === FREE_FOCUS ? 'study-duration-free' : `study-duration-${duration / 60}`}
-        >
-          <WiseText variant="label">{focusChoiceLabel(duration)}</WiseText>
-        </Pressable>
-      ))}
+  const [focused, setFocused] = useState<T | null>(null);
+  return (
+    <View accessibilityLabel={label} accessibilityRole="radiogroup" style={styles.segmented} testID={testID}>
+      {options.map((option) => {
+        const checked = option.value === value;
+        return (
+          <Pressable
+            accessibilityLabel={option.accessibilityLabel ?? option.label}
+            accessibilityRole="radio"
+            accessibilityState={{ checked, disabled }}
+            aria-checked={checked}
+            aria-disabled={disabled}
+            disabled={disabled}
+            key={option.value}
+            onBlur={() => setFocused((current) => (current === option.value ? null : current))}
+            onFocus={() => setFocused(option.value)}
+            onPress={() => onSelect(option.value)}
+            style={[styles.segment, checked && styles.segmentActive, focused === option.value && Platform.OS === 'web' && controlStyles.webFocus]}
+            testID={option.testID}
+          >
+            <Text allowFontScaling numberOfLines={1} style={[styles.segmentText, checked && styles.segmentTextActive]}>{option.label}</Text>
+          </Pressable>
+        );
+      })}
     </View>
-    {inline ? null : <Text allowFontScaling style={[styles.cardCopy, { color: theme.color.textSecondary }]}>Escolha uma duração, ou Livre para contar até parar, e inicie sua sessão.</Text>}
-    <WiseButton label="Fechar configurações" onPress={onClose} variant="secondary" />
-  </WiseCard>;
+  );
 }
+
+const DURATION_OPTIONS: readonly SegmentOption<FocusChoice>[] = FOCUS_CHOICES.map((duration) => ({
+  value: duration,
+  label: focusChoiceLabel(duration),
+  accessibilityLabel: duration === FREE_FOCUS ? 'Foco livre, sem duração definida' : `${duration / 60} minutos`,
+  testID: duration === FREE_FOCUS ? 'study-duration-free' : `study-duration-${duration / 60}`,
+}));
+
+const MODE_OPTIONS: readonly SegmentOption<SessionMode>[] = [
+  { value: 'solo', label: 'Solo', accessibilityLabel: 'Sessão solo', testID: 'study-session-mode-solo' },
+  { value: 'guild', label: 'Guilda', accessibilityLabel: 'Sessão de guilda', testID: 'study-session-mode-guild' },
+];
 
 type RecentSubjectSuggestionsProps = {
   selectedSubject: string | null;
   disabled: boolean;
+  /** A phone scrolls the chips sideways instead of wrapping them. */
+  compact: boolean;
   onSelect: (subject: string) => void;
 };
 
@@ -64,13 +77,13 @@ function RecentSubjectSuggestions(props: RecentSubjectSuggestionsProps) {
 }
 
 /** Loading, failure and an empty history render nothing: suggestions must never get in the way of starting. */
-function RecentSubjectSuggestionList({ selectedSubject, disabled, onSelect }: RecentSubjectSuggestionsProps) {
+function RecentSubjectSuggestionList({ selectedSubject, disabled, compact, onSelect }: RecentSubjectSuggestionsProps) {
   const { data: subjects } = useRecentStudySessionSubjects();
   const [focusedSubject, setFocusedSubject] = useState<string | null>(null);
   if (!subjects?.length) return null;
 
-  return (
-    <View accessibilityLabel="Matérias recentes" role="group" style={styles.suggestions} testID="study-session-subject-suggestions">
+  const chips = (
+    <View accessibilityLabel="Matérias recentes" role="group" style={compact ? styles.suggestionsScroll : styles.suggestions} testID="study-session-subject-suggestions">
       {subjects.map((subject) => {
         const selected = subject === selectedSubject;
         return (
@@ -97,51 +110,16 @@ function RecentSubjectSuggestionList({ selectedSubject, disabled, onSelect }: Re
       })}
     </View>
   );
+  return compact ? <ScrollView horizontal showsHorizontalScrollIndicator={false} testID="study-session-subject-scroll">{chips}</ScrollView> : chips;
 }
 
 export type SessionMode = 'solo' | 'guild';
 export type ForgeRaid = { guildId: string; raid: ActiveRaid };
 
-function SessionModeOptions({ mode, disabled, onSelect }: {
-  mode: SessionMode;
-  disabled: boolean;
-  onSelect: (mode: SessionMode) => void;
-}) {
-  const [focusedMode, setFocusedMode] = useState<SessionMode | null>(null);
-  const options: { value: SessionMode; label: string }[] = [
-    { value: 'solo', label: 'Sessão solo' },
-    { value: 'guild', label: 'Sessão de guilda' },
-  ];
-  return (
-    <View accessibilityLabel="Tipo de sessão" accessibilityRole="radiogroup" style={styles.presets} testID="study-session-mode">
-      {options.map((option) => (
-        <Pressable
-          accessibilityLabel={option.label}
-          accessibilityRole="radio"
-          accessibilityState={{ checked: mode === option.value, disabled }}
-          aria-checked={mode === option.value}
-          aria-disabled={disabled}
-          disabled={disabled}
-          key={option.value}
-          onBlur={() => setFocusedMode((current) => (current === option.value ? null : current))}
-          onFocus={() => setFocusedMode(option.value)}
-          onPress={() => onSelect(option.value)}
-          style={[styles.preset, mode === option.value && styles.selected, focusedMode === option.value && Platform.OS === 'web' && controlStyles.webFocus]}
-          testID={`study-session-mode-${option.value}`}
-        >
-          <WiseText variant="label">{option.label}</WiseText>
-        </Pressable>
-      ))}
-    </View>
-  );
-}
-
-
 export type ForgePrepCardProps = {
-  wide: boolean;
+  /** A phone: no card, the chips scroll sideways and the start button lives in the screen's footer. */
+  compact: boolean;
   selected: FocusChoice;
-  focusedDuration: FocusChoice | null;
-  settingsOpen: boolean;
   startPending: boolean;
   startLabel: string;
   startDisabled: boolean;
@@ -156,87 +134,80 @@ export type ForgePrepCardProps = {
   onChangeSubject: (text: string) => void;
   onChangeMode: (mode: SessionMode) => void;
   onSelectDuration: (duration: FocusChoice) => void;
-  onFocusDuration: (duration: FocusChoice | null) => void;
-  onToggleSettings: () => void;
-  onCloseSettings: () => void;
   onStart: () => void;
 };
 
-/** What sits under the Bigorna while a session is being prepared: Matéria, mode, duration and start. */
+/** The start button: inside the "Prepare sua forja" card, or pinned above the tab bar on a phone. */
+export function ForgeStartButton({ label, loading, disabled, onPress }: { label: string; loading: boolean; disabled: boolean; onPress: () => void }) {
+  return <ForgeAction fullWidth icon="play" primary label={label} loading={loading} disabled={disabled} onPress={onPress} testID="study-session-start" />;
+}
+
+function StartFeedback({ raidEndedNotice, dailyLimitReached, startFailed }: Pick<ForgePrepCardProps, 'raidEndedNotice' | 'dailyLimitReached' | 'startFailed'>) {
+  if (raidEndedNotice) {
+    return <FeedbackMessage
+      variant="error"
+      title="A Raid foi encerrada"
+      message="Não foi possível iniciar a sessão de guilda. Você pode iniciar uma sessão solo."
+      testID="study-session-raid-ended"
+    />;
+  }
+  if (dailyLimitReached) {
+    return <FeedbackMessage
+      variant="error"
+      title="Limite diário de foco atingido"
+      message="O tempo de foco permitido por dia foi usado. Não é possível iniciar um novo foco agora."
+      testID="study-session-daily-limit"
+    />;
+  }
+  return startFailed ? <WiseText color="feedbackDanger" variant="body">Não foi possível confirmar o início. Tente novamente.</WiseText> : null;
+}
+
+/** Duração, Matéria and, with an active Raid, Modo: the "Prepare sua forja" card on a wide screen, bare fields on a phone. */
 export function ForgePrepCard(props: ForgePrepCardProps) {
-  const { width } = useWindowDimensions();
-  const { forgeRaid, settingsOpen, startPending } = props;
-  return <>
-    <View style={styles.subjectSection}>
+  const { compact, forgeRaid, startPending } = props;
+  const durations = <ForgeSegmented disabled={startPending} label="Duração" onSelect={props.onSelectDuration} options={DURATION_OPTIONS} testID="study-session-duration" value={props.selected} />;
+  const subject = (
+    <View style={styles.fieldGroup}>
       <WiseField
         autoCapitalize="sentences"
         editable={!startPending}
         error={props.subjectMessage}
-        label="Matéria (opcional)"
+        hint={compact ? undefined : 'OPCIONAL'}
+        label={compact ? 'Matéria (opcional)' : 'Matéria'}
         onChangeText={props.onChangeSubject}
         placeholder="Ex.: Cálculo II"
         returnKeyType="done"
         testID="study-session-subject-input"
         value={props.subjectInput}
       />
-      <RecentSubjectSuggestions
-        disabled={startPending}
-        onSelect={props.onChangeSubject}
-        selectedSubject={props.selectedSubject}
-      />
+      <RecentSubjectSuggestions compact={compact} disabled={startPending} onSelect={props.onChangeSubject} selectedSubject={props.selectedSubject} />
     </View>
-    {forgeRaid ? (
-      <View style={styles.subjectSection}>
-        <SessionModeOptions disabled={startPending} mode={props.sessionMode} onSelect={props.onChangeMode} />
-        {props.sessionMode === 'guild' ? (
-          <Text allowFontScaling style={[styles.cardCopy, { color: theme.color.textSecondary }]} testID="study-session-guild-raid">
-            {forgeRaid.raid.me.participating
-              ? `O XP desta sessão conta para a Raid ${forgeRaid.raid.mission.name}.`
-              : `Você vai confirmar sua participação na Raid ${forgeRaid.raid.mission.name} e começar a sessão.`}
-          </Text>
-        ) : null}
-      </View>
-    ) : null}
-    <View style={[styles.stageActions, width < 450 && styles.stageActionsCompact]}>
-      {settingsOpen && !props.wide ? <DurationSettings selected={props.selected} focusedDuration={props.focusedDuration} startPending={startPending} onSelect={props.onSelectDuration} onFocus={props.onFocusDuration} onClose={props.onCloseSettings} inline /> : null}
-      <View style={[styles.actionRow, width < 450 && styles.actionRowCompact]}>
-        <View style={styles.actionButtonPlaceholder} />
-        <ForgeAction icon="play" primary label={props.startLabel} loading={startPending} disabled={props.startDisabled} onPress={props.onStart} testID="study-session-start" />
-        <ForgeAction icon="settings-outline" iconOnly label="Configurar duração" expanded={settingsOpen} onPress={props.onToggleSettings} />
-      </View>
-      {props.raidEndedNotice ? (
-        <FeedbackMessage
-          variant="error"
-          title="A Raid foi encerrada"
-          message="Não foi possível iniciar a sessão de guilda. Você pode iniciar uma sessão solo."
-          testID="study-session-raid-ended"
-        />
-      ) : props.dailyLimitReached ? (
-        <FeedbackMessage
-          variant="error"
-          title="Limite diário de foco atingido"
-          message="O tempo de foco permitido por dia foi usado. Não é possível iniciar um novo foco agora."
-          testID="study-session-daily-limit"
-        />
-      ) : props.startFailed ? <WiseText color="feedbackDanger" variant="body">Não foi possível confirmar o início. Tente novamente.</WiseText> : null}
+  );
+  const mode = forgeRaid ? (
+    <View style={styles.fieldGroup}>
+      <ForgeSegmented disabled={startPending} label="Tipo de sessão" onSelect={props.onChangeMode} options={MODE_OPTIONS} testID="study-session-mode" value={props.sessionMode} />
+      {props.sessionMode === 'guild' ? (
+        <Text allowFontScaling style={[styles.cardCopy, { color: theme.color.textSecondary }]} testID="study-session-guild-raid">
+          {forgeRaid.raid.me.participating
+            ? `O XP desta sessão conta para a Raid ${forgeRaid.raid.mission.name}.`
+            : `Você vai confirmar sua participação na Raid ${forgeRaid.raid.mission.name} e começar a sessão.`}
+        </Text>
+      ) : null}
     </View>
-  </>;
-}
+  ) : null;
+  const feedback = <StartFeedback dailyLimitReached={props.dailyLimitReached} raidEndedNotice={props.raidEndedNotice} startFailed={props.startFailed} />;
 
-/** Setup's support column: the duration picker replaces the card on a wide screen while the settings are open. */
-export function ForgeSetupSupport({ wide, settingsOpen, ...duration }: {
-  wide: boolean;
-  settingsOpen: boolean;
-  selected: FocusChoice;
-  focusedDuration: FocusChoice | null;
-  startPending: boolean;
-  onSelect: (duration: FocusChoice) => void;
-  onFocus: (duration: FocusChoice | null) => void;
-  onClose: () => void;
-}) {
-  return settingsOpen && wide ? <DurationSettings {...duration} /> : <WiseCard style={styles.sideCard}>
-    <ForgeCardTitle>Seu progresso</ForgeCardTitle>
-    <Text allowFontScaling style={[styles.cardCopy, { color: theme.color.textSecondary }]}>O foco válido e o XP aparecem ao concluir a sessão.</Text>
-    <Text allowFontScaling style={[styles.cardCopy, { color: theme.color.textTertiary }]}>Se encerrar antes de 5 minutos, a sessão não concede XP.</Text>
-  </WiseCard>;
+  if (compact) {
+    return <View style={styles.prepFlat}>{durations}{subject}{mode}{feedback}</View>;
+  }
+  return (
+    <WiseCard style={styles.prepCard} testID="study-session-prep">
+      <ForgeCardTitle>Prepare sua forja</ForgeCardTitle>
+      <View style={styles.fieldGroup}><Text allowFontScaling style={styles.fieldLabel}>Duração</Text>{durations}</View>
+      {subject}
+      {mode ? <View style={styles.fieldGroup}><Text allowFontScaling style={styles.fieldLabel}>Modo</Text>{mode}</View> : null}
+      <ForgeStartButton disabled={props.startDisabled} label={props.startLabel} loading={startPending} onPress={props.onStart} />
+      {feedback}
+    </WiseCard>
+  );
 }
