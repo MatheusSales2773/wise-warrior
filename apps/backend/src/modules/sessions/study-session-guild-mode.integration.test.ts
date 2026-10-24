@@ -592,6 +592,14 @@ describe('Study Session de modo Guilda against MySQL', () => {
       expect(result.raidContribution).toBeNull();
     });
 
+    it('counts the pauses of a guild-mode session', async () => {
+      const session = await joinAndStart(bruno, 'count-pause');
+
+      const paused = await call('POST', `/sessions/${session.id}/pause`, bruno, { expectedVersion: 1 }, 'count-pause-action');
+
+      expect(await paused.json()).toMatchObject({ mode: 'guild', pauseCount: 1 });
+    });
+
     it('includes null raidContribution for resume transitions', async () => {
       const session = await joinAndStart(bruno, 'feedback-resume');
       await call('POST', `/sessions/${session.id}/pause`, bruno, { expectedVersion: 1 }, 'pause-first');

@@ -1715,7 +1715,7 @@ components:
 
     StudySessionSnapshot:
       type: object
-      required: [id, kind, mode, raidId, subject, state, plannedDurationSeconds, startedAt, runDeadlineAt, pausedAt, pausedTotalSeconds, durationValidSeconds, remainingSeconds, serverNow, version, endedAt, xpAwarded, terminalReason, discardedReason, cappedReason, canControl]
+      required: [id, kind, mode, raidId, subject, state, plannedDurationSeconds, startedAt, runDeadlineAt, pausedAt, pausedTotalSeconds, durationValidSeconds, remainingSeconds, serverNow, version, pauseCount, endedAt, xpAwarded, terminalReason, discardedReason, cappedReason, canControl]
       properties:
         id: { type: string, format: uuid }
         kind: { type: string, enum: [cycle, free], description: "Ciclo ou Foco livre" }
@@ -1740,6 +1740,10 @@ components:
         remainingSeconds: { type: integer, minimum: 0, description: "Sem significado no Foco livre (sempre 0); o cliente conta para cima." }
         serverNow: { type: string, format: date-time }
         version: { type: integer, minimum: 1 }
+        pauseCount:
+          type: integer
+          minimum: 0
+          description: Pausas aplicadas à Study Session; retomar, encerrar e concluir não alteram. Igual em todos os dispositivos.
         endedAt:
           type: [string, "null"]
           format: date-time
@@ -1769,6 +1773,7 @@ components:
         remainingSeconds: 1500
         serverNow: "2026-09-23T12:00:00.000Z"
         version: 1
+        pauseCount: 0
         endedAt: null
         xpAwarded: 0
         terminalReason: null

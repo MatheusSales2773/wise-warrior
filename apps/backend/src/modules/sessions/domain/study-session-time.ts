@@ -17,6 +17,7 @@ export type StudySessionTimeFields = {
   pausedTotalMilliseconds?: number | string | null;
   durationValidSeconds?: number | null;
   version?: number | null;
+  pauseCount?: number | null;
   endedAt?: Date | null;
   terminalReason?: StudySessionTerminalReason | null;
   discardedReason?: string | null;
@@ -125,6 +126,7 @@ export function applyStudySessionTransition(
     session.pausedAt = now;
     session.state = 'paused';
     session.durationValidSeconds = getStudySessionTime(session, now).durationValidSeconds;
+    session.pauseCount = (session.pauseCount ?? 0) + 1;
     session.version = (session.version ?? 1) + 1;
     return;
   }

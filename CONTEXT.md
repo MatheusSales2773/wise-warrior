@@ -90,6 +90,10 @@ _Avoid_: pomodoro (como substantivo para o ciclo inteiro), rodada
 Uma Study Session sem duração planejada, em que o tempo conta para cima até o usuário parar. Parar com pelo menos 5 minutos completos de foco a conclui; com menos, é Cancelamento. Combina com o modo solo ou guilda, gera XP, Moedas e Contribuição como um Ciclo, mas não avança a cadência Pomodoro nem oferece pausa curta ou longa. Ao atingir o limite contínuo ou o limite diário do antifraude, conclui sozinho.
 _Avoid_: modo livre (o modo é solo ou guilda), cronômetro livre, sessão aberta
 
+**Pausa da Study Session** (contagem de pausas):
+Cada vez que o usuário pausa a Study Session em andamento. O servidor soma 1 à contagem a cada pausa aplicada; retomar, encerrar e concluir não alteram o número, e um replay da mesma Idempotency-Key não soma de novo. O valor (`pauseCount`) é o mesmo em todos os dispositivos. Não é a pausa curta ou longa do Pomodoro, que é local ao cliente.
+_Avoid_: interrupção, descanso (quando se refere à pausa da sessão)
+
 **Encerramento antecipado**:
 O ato de encerrar manualmente um Ciclo antes da duração planejada, com pelo menos 5 minutos completos de foco acumulado. Concede XP proporcional ao tempo válido. Um Foco livre não tem Encerramento antecipado: parar é concluí-lo.
 _Avoid_: cancelamento (reservado para menos de 5 minutos), interrupção

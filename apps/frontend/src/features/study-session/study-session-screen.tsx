@@ -1120,6 +1120,12 @@ export function StudySessionScreen({ initialMode = 'solo' }: { initialMode?: Ses
               <ForgeCardTitle>Sua sessão</ForgeCardTitle>
               <View style={styles.statRow}><Text allowFontScaling style={[styles.cardCopy, { color: theme.color.textSecondary }]}>Duração planejada</Text><WiseText color="accentHighlight" variant="mono">{plannedLabel}</WiseText></View>
               <View style={styles.statRow}><Text allowFontScaling style={[styles.cardCopy, { color: theme.color.textSecondary }]}>Foco válido</Text><WiseText color="accentHighlight" variant="mono">{formatElapsedTime(validFocusSeconds)}</WiseText></View>
+              {snapshot.pauseCount != null ? (
+                <View style={styles.statRow} testID="study-session-pause-count">
+                  <Text allowFontScaling style={[styles.cardCopy, { color: theme.color.textSecondary }]}>Pausas</Text>
+                  <WiseText color="accentHighlight" variant="mono">{snapshot.pauseCount}</WiseText>
+                </View>
+              ) : null}
               <Text allowFontScaling style={[styles.cardCopy, { color: theme.color.textTertiary }]}>O tempo e a conclusão são confirmados pelo servidor.</Text>
             </WiseCard>
             <WiseCard style={styles.sideCard}>

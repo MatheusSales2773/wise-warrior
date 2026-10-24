@@ -46,6 +46,8 @@ export type CoinsChangedEvent = {
 export type StudySessionChangedEvent = {
   studySessionId: string;
   version: number;
+  /** Absent on events from older servers. */
+  pauseCount?: number;
   /** `ended` means the session left the active slot; the REST snapshot has the details. */
   state: 'running' | 'paused' | 'ended';
 };
