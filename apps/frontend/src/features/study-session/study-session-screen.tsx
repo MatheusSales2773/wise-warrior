@@ -633,7 +633,7 @@ export function StudySessionScreen({ initialMode = 'solo' }: { initialMode?: Ses
     : undefined;
 
   return (
-    <Screen avoidKeyboard footer={startFooter} backgroundOverlay={<ForgePageGradient />} hasBottomNavigation safeAreaEdges={['right', 'left']} testID="study-session" title="Forja" titleHidden contentContainerStyle={styles.screenContent}>
+    <Screen avoidKeyboard backgroundOverlay={<ForgePageGradient />} footer={startFooter} hasBottomNavigation safeAreaEdges={['right', 'left']} testID="study-session" title="Forja" titleHidden contentContainerStyle={styles.screenContent}>
       <View style={styles.layout}>
         <ForgeHeader compact={compactLayout} />
         {showSync ? <ForgeSyncIndicator onRetry={() => void refreshActive()} status={syncStatus} /> : null}

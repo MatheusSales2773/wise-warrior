@@ -12,6 +12,9 @@ import { sessionMetricsQueryOptions } from '@/features/dashboard/queries';
 import { formatElapsedTime, formatRemainingTime } from './timer';
 import { styles } from './forge-styles';
 
+/** The pill draws at most this many bars, however high the daily Objetivo goes. */
+const TODAY_BARS_LIMIT = 8;
+
 export function ForgePageGradient() {
   return (
     <Svg aria-hidden pointerEvents="none" style={StyleSheet.absoluteFill} testID="study-session-page-gradient" width="100%" height="100%">
@@ -132,7 +135,7 @@ export function TodayPill({ compact = false }: { compact?: boolean }) {
   const { data: metrics } = useQuery(sessionMetricsQueryOptions());
   const objective = useSessionsObjective();
   if (!metrics) return null;
-  const goal = objective ? Math.min(8, objective.target) : 0;
+  const goal = objective ? Math.min(TODAY_BARS_LIMIT, objective.target) : 0;
   const { value, spoken } = formatSessionsToday(metrics.sessionsToday, objective);
   return (
     <View accessibilityLabel={`Hoje: ${spoken} sessões`} accessible style={[styles.todayPill, compact && styles.todayPillCompact]} testID="study-session-today">

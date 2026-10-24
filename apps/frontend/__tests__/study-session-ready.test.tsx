@@ -1,6 +1,7 @@
 import { fireEvent, render, waitFor } from '@testing-library/react-native';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Dimensions } from 'react-native';
+import { ApiError } from '@/core/api/api-error';
 import { StudySessionScreen } from '@/features/study-session/study-session-screen';
 import { getActiveStudySession, getRecentStudySessionSubjects, startStudySession } from '@/features/study-session/api';
 import { estimatedXp, XP_PER_FOCUS_MINUTE } from '@/features/study-session/focus-choice';
@@ -219,6 +220,39 @@ describe('Modo', () => {
     await fireEvent.press(view.getByTestId('study-session-mode-guild'));
     expect(view.getByTestId('study-session-mode-guild').props.accessibilityState.checked).toBe(true);
     expect(view.getByText('O XP desta sessão conta para a Raid Torre de Marfim.')).toBeTruthy();
+    view.unmount();
+  });
+});
+
+describe('Modo Guilda on the Pronta', () => {
+  const raid = { id: 'raid-1', status: 'active', mission: { name: 'Torre de Marfim' }, me: { participating: true } } as unknown as ActiveRaid;
+
+  async function renderWithRaid() {
+    myGuild.mockResolvedValue({ guild: { id: 'guild-1' } } as MyGuild);
+    activeRaid.mockResolvedValue(raid);
+    const view = await renderReady();
+    await view.findByLabelText('Tipo de sessão');
+    return view;
+  }
+
+  it('starts a session for the Raid from the guild option', async () => {
+    start.mockResolvedValue({ id: 'study-1' } as never);
+    const view = await renderWithRaid();
+
+    await fireEvent.press(view.getByTestId('study-session-mode-guild'));
+    await fireEvent.press(view.getByTestId('study-session-start'));
+    await waitFor(() => expect(start).toHaveBeenCalledWith(1500, expect.any(String), null, 'raid-1'));
+    view.unmount();
+  });
+
+  it('warns and falls back to solo when the Raid ended before the start', async () => {
+    start.mockRejectedValue(new ApiError('conflict', { status: 409, problemType: 'https://wise.app/errors/raid-ended' }));
+    const view = await renderWithRaid();
+
+    await fireEvent.press(view.getByTestId('study-session-mode-guild'));
+    await fireEvent.press(view.getByTestId('study-session-start'));
+    expect(await view.findByTestId('study-session-raid-ended')).toBeTruthy();
+    expect(view.getByTestId('study-session-mode-solo').props.accessibilityState.checked).toBe(true);
     view.unmount();
   });
 });

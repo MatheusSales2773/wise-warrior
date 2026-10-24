@@ -15,6 +15,8 @@ import { formatRemainingTime } from './timer';
 const HERO_SCALE = { regular: 6, compact: 4 } as const;
 /** The most sessions the Hoje card lists; the rest stay in the Diário. */
 const TODAY_CARD_LIMIT = 5;
+/** The shadow under the Herói is this many grid cells wide. */
+const HERO_SHADOW_CELLS = 20;
 
 /** The Herói over the anvil with the equipped Cosmetic Items, named below. Without a profile there is no Herói to show. */
 export function ForgeReadyHero({ compact }: { compact: boolean }) {
@@ -25,7 +27,7 @@ export function ForgeReadyHero({ compact }: { compact: boolean }) {
   return (
     <View style={styles.heroStage} testID="study-session-hero">
       <LayeredHero equipped={equipped} scale={scale} />
-      <View style={[styles.heroShadow, { width: scale * 20 }]} />
+      <View style={[styles.heroShadow, { width: scale * HERO_SHADOW_CELLS }]} />
       {compact ? null : (
         <Text allowFontScaling style={styles.heroCaption} testID="study-session-hero-caption">
           <Text style={styles.heroCaptionName}>{profile.displayName}</Text> aguarda na bigorna
@@ -35,7 +37,7 @@ export function ForgeReadyHero({ compact }: { compact: boolean }) {
   );
 }
 
-/** "1h 10min", "25min": the valid focus of the day in the summary's terms. */
+/** "1h 10min", "25min": the valid focus of the day as the summary shows it (the Diário's `formatFocusTime` writes "1h 10"). */
 export function formatFocusToday(seconds: number): string {
   const minutes = Math.floor(seconds / 60);
   const hours = Math.floor(minutes / 60);
@@ -64,11 +66,15 @@ function SummaryCell({ cell, last }: { cell: SummaryCellData; last: boolean }) {
 export function ForgeReadySummary({ selected }: { selected: FocusChoice }) {
   const { data: metrics } = useQuery(sessionMetricsQueryOptions());
   const xp = estimatedXp(selected);
-  const cells: SummaryCellData[] = [
-    xp === null
-      ? { key: 'xp', icon: 'sparkles', color: theme.color.accentHighlight, value: `${XP_PER_FOCUS_MINUTE} XP`, label: 'por minuto de foco', spoken: `${XP_PER_FOCUS_MINUTE} XP por minuto de foco` }
-      : { key: 'xp', icon: 'sparkles', color: theme.color.accentHighlight, value: `+${xp} XP`, label: 'estimado', spoken: `Estimativa: ${xp} XP` },
-  ];
+  const xpCell: SummaryCellData = {
+    key: 'xp',
+    icon: 'sparkles',
+    color: theme.color.accentHighlight,
+    ...(xp === null
+      ? { value: `${XP_PER_FOCUS_MINUTE} XP`, label: 'por minuto de foco', spoken: `${XP_PER_FOCUS_MINUTE} XP por minuto de foco` }
+      : { value: `+${xp} XP`, label: 'estimado', spoken: `Estimativa: ${xp} XP` }),
+  };
+  const cells: SummaryCellData[] = [xpCell];
   if (metrics) {
     cells.push(
       { key: 'constancy', icon: 'flame', color: theme.color.feedbackEnergy, value: formatDayCount(metrics.currentStreakDays), label: 'constância', spoken: `Constância: ${formatDayCount(metrics.currentStreakDays)}` },
@@ -82,7 +88,8 @@ export function ForgeReadySummary({ selected }: { selected: FocusChoice }) {
   );
 }
 
-function RuleRow({ icon, color, children }: { icon: 'checkmark' | 'time-outline' | 'flame'; color: string; children: string }) {
+/** An icon and one line of copy: the rules, and the sessions of the day. */
+function NoteRow({ icon, color, children }: { icon: 'checkmark' | 'time-outline' | 'flame'; color: string; children: string }) {
   return (
     <View style={styles.ruleRow}>
       <Ionicons accessibilityElementsHidden color={color} importantForAccessibility="no" name={icon} size={16} />
@@ -95,9 +102,9 @@ export function ForgeRulesCard() {
   return (
     <WiseCard style={styles.sideCard} testID="study-session-rules">
       <ForgeCardTitle>Regras da forja</ForgeCardTitle>
-      <RuleRow color={theme.color.feedbackSuccess} icon="checkmark">XP e foco válido são confirmados ao concluir.</RuleRow>
-      <RuleRow color={theme.color.textSecondary} icon="time-outline">Encerrar antes de 5 minutos não concede XP.</RuleRow>
-      <RuleRow color={theme.color.feedbackEnergy} icon="flame">Terminar uma sessão por dia mantém sua constância.</RuleRow>
+      <NoteRow color={theme.color.feedbackSuccess} icon="checkmark">XP e foco válido são confirmados ao concluir.</NoteRow>
+      <NoteRow color={theme.color.textSecondary} icon="time-outline">Encerrar antes de 5 minutos não concede XP.</NoteRow>
+      <NoteRow color={theme.color.feedbackEnergy} icon="flame">Terminar uma sessão por dia mantém sua constância.</NoteRow>
     </WiseCard>
   );
 }
@@ -112,11 +119,12 @@ export function ForgeTodayCard() {
       <ForgeCardTitle>Hoje</ForgeCardTitle>
       {items.length === 0 ? <Text allowFontScaling style={styles.ruleText}>Nenhuma sessão encerrada hoje.</Text> : null}
       {items.map((item) => {
+        // A clock marks a session that did not conclude in full (stopped early, cancelled, discarded).
         const counted = item.state === 'completed';
         return (
-          <RuleRow color={counted ? theme.color.feedbackSuccess : theme.color.textSecondary} icon={counted ? 'checkmark' : 'time-outline'} key={item.id}>
+          <NoteRow color={counted ? theme.color.feedbackSuccess : theme.color.textSecondary} icon={counted ? 'checkmark' : 'time-outline'} key={item.id}>
             {`${item.subject?.trim() || 'Sem matéria'} · ${formatRemainingTime(item.durationValidSeconds)} · +${item.xpAwarded} XP`}
-          </RuleRow>
+          </NoteRow>
         );
       })}
     </WiseCard>
