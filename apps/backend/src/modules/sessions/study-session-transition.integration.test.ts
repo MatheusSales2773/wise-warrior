@@ -258,13 +258,26 @@ describe('Study Session transitions against MySQL', () => {
     expect(stopped.pauseCount).toBe(2);
   });
 
+  it('keeps the count when the paused session resumes and completes at its deadline', async () => {
+    now = new Date(now.getTime() + 300_000);
+    await transition('pause', 1, 'complete-count-pause');
+    now = new Date(now.getTime() + 60_000);
+    const resumed = await transition('resume', 2, 'complete-count-resume');
+    now = new Date(resumed.runDeadlineAt!.getTime());
+
+    const completed = await transition('complete', 3, 'complete-count');
+    expect(completed).toMatchObject({ state: 'completed', pauseCount: 1 });
+  });
+
   it('counts exactly one pause for concurrent pause commands', async () => {
     now = new Date(now.getTime() + 300_000);
-    await Promise.allSettled([
+    const results = await Promise.allSettled([
       transition('pause', 1, 'count-concurrent-a'),
       transition('pause', 1, 'count-concurrent-b'),
     ]);
 
+    expect(results.filter((result) => result.status === 'fulfilled')).toHaveLength(1);
+    expect(results.filter((result) => result.status === 'rejected')).toHaveLength(1);
     const persisted = await dataSource!.getRepository(StudySession).findOneByOrFail({ id: studySessionId });
     expect(persisted.pauseCount).toBe(1);
   });

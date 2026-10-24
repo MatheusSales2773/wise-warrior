@@ -159,6 +159,21 @@ describe('Foco livre against MySQL', () => {
     expect(resumed.runDeadlineAt!.getTime()).toBe(started.runDeadlineAt!.getTime() + 1_800_000);
   });
 
+  it('counts the pauses of a Foco livre and keeps the count on resume and stop', async () => {
+    const started = await startFree();
+    expect(started.pauseCount).toBe(0);
+    clock = new Date(started.startedAt.getTime() + 600_000);
+    const paused = await command('pause', started);
+    clock = new Date(clock.getTime() + 60_000);
+    const resumed = await command('resume', paused);
+    clock = new Date(clock.getTime() + 60_000);
+    const pausedAgain = await command('pause', resumed);
+    expect([paused.pauseCount, resumed.pauseCount, pausedAgain.pauseCount]).toEqual([1, 1, 2]);
+    clock = new Date(clock.getTime() + 60_000);
+    const stopped = await command('stop', pausedAgain);
+    expect(stopped.pauseCount).toBe(2);
+  });
+
   it('does not advance the cadence', async () => {
     for (let index = 0; index < 3; index += 1) {
       const cycle = await start.start(userId, 'device-a', {}, key());

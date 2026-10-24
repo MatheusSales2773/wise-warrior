@@ -26,7 +26,7 @@ export type StudySessionSnapshot = {
   remainingSeconds: number;
   serverNow: string;
   version: number;
-  /** Pausas aplicadas; absent on responses from older servers. */
+  /** Pauses applied to the session; absent on responses from older servers. */
   pauseCount?: number;
   endedAt: string | null;
   xpAwarded: number;
