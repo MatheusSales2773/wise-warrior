@@ -339,6 +339,34 @@ describe('Study Session HTTP contract against MySQL', () => {
     expect(await active.json()).toMatchObject({ id: nextSnapshot.id, state: 'paused' });
   });
 
+  it('serves the pause count from start, transitions and the active read of every device', async () => {
+    const send = (method: 'GET' | 'POST', path: string, authenticatedSessionId: string, idempotencyKey?: string, body?: unknown) =>
+      fetch(`${baseUrl}/api/v1${path}`, {
+        method,
+        headers: {
+          ...authHeaders(authenticatedSessionId),
+          ...(idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : {}),
+          ...(body === undefined ? {} : { 'content-type': 'application/json' }),
+        },
+        ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+      });
+    const json = async (response: Response) => await response.json() as { id: string; pauseCount: number; version: number };
+
+    const started = await json(await send('POST', '/sessions', ownerSessionId, 'count-start', { plannedDurationSeconds: 900 }));
+    expect(started.pauseCount).toBe(0);
+
+    const paused = await json(await send('POST', `/sessions/${started.id}/pause`, ownerSessionId, 'count-pause-a', { expectedVersion: 1 }));
+    expect(paused.pauseCount).toBe(1);
+    expect((await json(await send('GET', '/sessions/active', otherSessionId))).pauseCount).toBe(1);
+
+    const resumed = await json(await send('POST', `/sessions/${started.id}/resume`, otherSessionId, 'count-resume-a', { expectedVersion: paused.version }));
+    expect(resumed.pauseCount).toBe(1);
+
+    const pausedAgain = await json(await send('POST', `/sessions/${started.id}/pause`, ownerSessionId, 'count-pause-b', { expectedVersion: resumed.version }));
+    expect(pausedAgain.pauseCount).toBe(2);
+    expect((await json(await send('GET', '/sessions/active', ownerSessionId))).pauseCount).toBe(2);
+  });
+
   it('ends a late client completion at the deadline and caps it by the focus of the deadline day', async () => {
     await dataSource!.getRepository(Character).insert({ userId, level: 1, xpTotal: 0 });
     const started = await fetch(`${baseUrl}/api/v1/sessions`, {

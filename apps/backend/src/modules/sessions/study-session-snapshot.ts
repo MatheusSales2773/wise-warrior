@@ -22,6 +22,8 @@ export type StudySessionSnapshot = {
   remainingSeconds: number;
   serverNow: Date;
   version: number;
+  /** Pausas aplicadas à sessão, iguais em todos os dispositivos. */
+  pauseCount: number;
   endedAt: Date | null;
   xpAwarded: number;
   terminalReason: StudySessionTerminalReason | null;
@@ -51,6 +53,7 @@ export function studySessionSnapshot(session: StudySession, now: Date): StudySes
     remainingSeconds: deadline && kind === 'cycle' ? time.remainingSeconds : 0,
     serverNow: now,
     version: session.version ?? 1,
+    pauseCount: session.pauseCount ?? 0,
     endedAt: session.endedAt ?? null,
     xpAwarded: session.xpAwarded ?? 0,
     terminalReason: session.terminalReason ?? null,
@@ -67,6 +70,7 @@ export function deserializeStudySessionSnapshot(value: StudySessionSnapshot | st
     ...original,
     kind: original.kind ?? 'cycle', // receipts written before the Foco livre have no kind
     raidId: original.raidId ?? null, // receipts written before the guild mode have no raidId
+    pauseCount: original.pauseCount ?? 0, // receipts written before the pause count have no pauseCount
     startedAt: new Date(original.startedAt),
     runDeadlineAt: original.runDeadlineAt ? new Date(original.runDeadlineAt) : null,
     pausedAt: original.pausedAt ? new Date(original.pausedAt) : null,

@@ -292,6 +292,36 @@ describe('Matéria on the Forja', () => {
   });
 });
 
+describe('Pausas on the Forja', () => {
+  afterEach(() => clearCompletionIntent());
+
+  it('shows the pause count from the snapshot in the session card', async () => {
+    getActive.mockResolvedValue({ ...snapshot, pauseCount: 3 });
+    const { view } = await renderStudySession();
+    await view.findByTestId('study-session-active');
+    expect(view.getByText('Pausas')).toBeTruthy();
+    expect(view.getByTestId('study-session-pause-count')).toHaveTextContent(/^Pausas\s*3$/);
+    view.unmount();
+  });
+
+  it('shows 0 for a session never paused', async () => {
+    getActive.mockResolvedValue({ ...snapshot, pauseCount: 0 });
+    const { view } = await renderStudySession();
+    await view.findByTestId('study-session-active');
+    expect(view.getByTestId('study-session-pause-count')).toHaveTextContent(/^Pausas\s*0$/);
+    view.unmount();
+  });
+
+  it('hides the Pausas row when an older server does not send the field', async () => {
+    getActive.mockResolvedValue(snapshot);
+    const { view } = await renderStudySession();
+    await view.findByTestId('study-session-active');
+    expect(view.queryByText('Pausas')).toBeNull();
+    expect(view.queryByTestId('study-session-pause-count')).toBeNull();
+    view.unmount();
+  });
+});
+
 describe('Recent Matéria suggestions on the Forja', () => {
   afterEach(() => clearCompletionIntent());
 

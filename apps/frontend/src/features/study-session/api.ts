@@ -26,6 +26,8 @@ export type StudySessionSnapshot = {
   remainingSeconds: number;
   serverNow: string;
   version: number;
+  /** Pauses applied to the session; absent on responses from older servers. */
+  pauseCount?: number;
   endedAt: string | null;
   xpAwarded: number;
   terminalReason: 'manual-stop' | 'auto-complete' | 'legacy-session-without-owner' | null;

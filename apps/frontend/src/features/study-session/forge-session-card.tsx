@@ -126,11 +126,12 @@ export function ForgeSessionCard(props: ForgeSessionCardProps) {
 }
 
 /** Support column while a session runs: its data, or its settings in place of them on a wide screen. */
-export function ForgeActiveSupport({ wide, settingsOpen, plannedLabel, validFocusSeconds, onCloseSettings }: {
+export function ForgeActiveSupport({ wide, settingsOpen, plannedLabel, validFocusSeconds, pauseCount, onCloseSettings }: {
   wide: boolean;
   settingsOpen: boolean;
   plannedLabel: string;
   validFocusSeconds: number;
+  pauseCount: number | undefined;
   onCloseSettings: () => void;
 }) {
   if (settingsOpen && wide) return <SessionSettings plannedLabel={plannedLabel} onClose={onCloseSettings} style={styles.sideCard} />;
@@ -139,6 +140,12 @@ export function ForgeActiveSupport({ wide, settingsOpen, plannedLabel, validFocu
       <ForgeCardTitle>Sua sessão</ForgeCardTitle>
       <View style={styles.statRow}><Text allowFontScaling style={[styles.cardCopy, { color: theme.color.textSecondary }]}>Duração planejada</Text><WiseText color="accentHighlight" variant="mono">{plannedLabel}</WiseText></View>
       <View style={styles.statRow}><Text allowFontScaling style={[styles.cardCopy, { color: theme.color.textSecondary }]}>Foco válido</Text><WiseText color="accentHighlight" variant="mono">{formatElapsedTime(validFocusSeconds)}</WiseText></View>
+      {pauseCount != null ? (
+        <View style={styles.statRow} testID="study-session-pause-count">
+          <Text allowFontScaling style={[styles.cardCopy, { color: theme.color.textSecondary }]}>Pausas</Text>
+          <WiseText color="accentHighlight" variant="mono">{pauseCount}</WiseText>
+        </View>
+      ) : null}
       <Text allowFontScaling style={[styles.cardCopy, { color: theme.color.textTertiary }]}>O tempo e a conclusão são confirmados pelo servidor.</Text>
     </WiseCard>
     <WiseCard style={styles.sideCard}>

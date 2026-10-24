@@ -731,7 +731,7 @@ export function StudySessionScreen({ initialMode = 'solo' }: { initialMode?: Ses
                 />
               </ForgeAnvil>
             }
-            support={<ForgeActiveSupport wide={wideLayout} settingsOpen={settingsOpen} plannedLabel={plannedLabel} validFocusSeconds={validFocusSeconds} onCloseSettings={() => setSettingsOpen(false)} />}
+            support={<ForgeActiveSupport wide={wideLayout} settingsOpen={settingsOpen} plannedLabel={plannedLabel} validFocusSeconds={validFocusSeconds} pauseCount={snapshot.pauseCount} onCloseSettings={() => setSettingsOpen(false)} />}
           />
         ) : null}
         {!displayedTerminalResult && !breakRun && !active.isPending && !active.isError && !snapshot ? (
