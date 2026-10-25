@@ -16,7 +16,7 @@ import { FREE_FOCUS, plannedSeconds, type FocusChoice } from './focus-choice';
 import { activeStudySessionQueryKey, invalidateStudySessionResult, recentStudySessionSubjectsQueryKey, useActiveStudySession, useFocusCycle } from './queries';
 import { breakPrevious, breakRemainingSeconds, clearBreak, currentBreak, startBreak, type BreakKind, type BreakRun } from './pomodoro-break';
 import { stopSessionSounds, unlockSessionSounds } from './sounds';
-import { elapsedStudySeconds, formatElapsedTime, isFreeFocus, remainingStudySeconds } from './timer';
+import { elapsedStudySeconds, formatElapsedTime, isFreeFocus, remainingStudySeconds, studyClockOffset } from './timer';
 import { MAX_SUBJECT_LENGTH, NO_SUBJECT_LABEL, validateSubject, type SubjectValidation } from './subject';
 import { useDevicePreference, useDevicePreferencesLoaded } from '@/core/preferences/device-preferences';
 import { useIsOnline } from '@/core/query/online-manager';
@@ -337,7 +337,7 @@ export function StudySessionScreen({ initialMode = 'solo' }: { initialMode?: Ses
   const completionWaiting = completionIntent?.status === 'waiting';
   const snapshotId = snapshot?.id;
   const snapshotState = snapshot?.state;
-  const clockOffset = snapshot ? new Date(snapshot.serverNow).getTime() - snapshot.receivedAtMs : 0;
+  const clockOffset = snapshot ? studyClockOffset(snapshot) : 0;
   useEffect(() => {
     if (activeSnapshot) syncCompletionIntentWithSnapshot(activeSnapshot);
   }, [activeSnapshot]);
