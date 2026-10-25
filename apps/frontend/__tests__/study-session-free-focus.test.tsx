@@ -6,6 +6,12 @@ import { elapsedStudySeconds, formatElapsedTime } from '@/features/study-session
 import { ApiError } from '@/core/api/api-error';
 
 jest.mock('@/features/study-session/forge-history', () => ({ ForgeHistory: () => null }));
+jest.mock('@/features/dashboard/api', () => ({
+  getMyProfile: jest.fn(async () => { throw new Error('offline'); }),
+  getSessionMetrics: jest.fn(async () => { throw new Error('offline'); }),
+  getSessionHistory: jest.fn(async () => ({ items: [], nextCursor: null })),
+  getRecentStudySessions: jest.fn(async () => []),
+}));
 jest.mock('@/features/guild/api', () => ({
   getMyGuild: jest.fn(async () => null),
   getActiveRaid: jest.fn(async () => null),
@@ -57,10 +63,10 @@ describe('Foco livre on the Forja', () => {
     const view = await renderStudySession();
     await view.findByTestId('study-session-setup');
 
-    await fireEvent.press(view.getByRole('button', { name: 'Configurar duração' }));
     await fireEvent.press(view.getByTestId('study-duration-free'));
     await waitFor(() => expect(view.getByTestId('study-duration-free').props.accessibilityState.checked).toBe(true));
-    expect(view.getByText('Foco livre selecionado')).toBeTruthy();
+    expect(view.getByText('00:00')).toBeTruthy();
+    expect(view.getByText('conta até você parar')).toBeTruthy();
     await fireEvent.press(view.getByTestId('study-session-start'));
     await waitFor(() => expect(start).toHaveBeenCalledWith('free', expect.any(String), null));
     await view.findByTestId('study-session-active');
@@ -95,7 +101,6 @@ describe('Foco livre on the Forja', () => {
     const view = await renderStudySession();
     await view.findByTestId('study-session-setup');
 
-    await fireEvent.press(view.getByRole('button', { name: 'Configurar duração' }));
     await fireEvent.press(view.getByTestId('study-duration-free'));
     await fireEvent.press(view.getByTestId('study-session-start'));
 

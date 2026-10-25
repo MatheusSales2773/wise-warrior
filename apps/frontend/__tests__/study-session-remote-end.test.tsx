@@ -18,6 +18,12 @@ jest.mock('@/core/preferences/preferences-storage', () => ({
   preferencesStorage: { read: jest.fn(async () => null), write: jest.fn(async () => undefined) },
 }));
 jest.mock('@/features/study-session/forge-history', () => ({ ForgeHistory: () => null }));
+jest.mock('@/features/dashboard/api', () => ({
+  getMyProfile: jest.fn(async () => { throw new Error('offline'); }),
+  getSessionMetrics: jest.fn(async () => { throw new Error('offline'); }),
+  getSessionHistory: jest.fn(async () => ({ items: [], nextCursor: null })),
+  getRecentStudySessions: jest.fn(async () => []),
+}));
 jest.mock('@/features/guild/api', () => ({
   getMyGuild: jest.fn(),
   getActiveRaid: jest.fn(),
