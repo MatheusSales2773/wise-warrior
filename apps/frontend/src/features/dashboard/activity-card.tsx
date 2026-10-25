@@ -1,30 +1,14 @@
 import { StyleSheet, Text, View } from 'react-native';
 import { FeedbackMessage, WiseButton, WiseText, theme } from '@/design-system';
 import { CardContent, CardTitle, FramedCard, cardText, mono } from './card-chrome';
-import { formatCappedReason, formatDiscardReason, formatDuration, formatSessionDate, formatXp } from './formatters';
+import { NO_SUBJECT_LABEL } from '@/features/study-session/subject';
+import { formatCappedReason, formatDiscardReason, formatDuration, formatSessionDate, formatSessionMode, formatSessionState, formatXp } from './formatters';
 import type { RecentStudySession } from './api';
 
-const NO_SUBJECT_LABEL = 'Sem matéria';
 const DETAIL_SEPARATOR = ' · ';
 
 function joinDetails(parts: (string | null | undefined)[]): string {
   return parts.filter(Boolean).join(DETAIL_SEPARATOR);
-}
-
-function formatSessionMode(mode: string): string {
-  return mode === 'guild' ? 'guilda' : mode;
-}
-
-function formatSessionState(state: RecentStudySession['state']): string {
-  switch (state) {
-    case 'completed': return 'Concluída';
-    case 'stopped_early': return 'Encerrada antecipadamente';
-    case 'cancelled': return 'Cancelada';
-    case 'discarded': return 'Descartada';
-    case 'paused': return 'Pausada';
-    case 'running': return 'Em andamento';
-    default: return '';
-  }
 }
 
 function describeActivity(session: RecentStudySession) {

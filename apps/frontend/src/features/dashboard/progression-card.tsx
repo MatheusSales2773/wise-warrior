@@ -10,9 +10,8 @@ export type ProgressionCardProps = {
   nextLevelXp: number;
 };
 
-export function ProgressionCard(progression: ProgressionCardProps) {
-  const { level, xpTotal, levelStartXp, nextLevelXp } = progression;
-  const xpPercent = levelProgressPercent(progression);
+export function ProgressionCard({ level, xpTotal, levelStartXp, nextLevelXp }: ProgressionCardProps) {
+  const xpPercent = levelProgressPercent({ xpTotal, levelStartXp, nextLevelXp });
   return <FramedCard accessibilityLabel="Progressão" role="region" testID="dashboard-progression">
     <CardContent>
       <CardTitle ornament={`Nível ${level}`}>Progressão</CardTitle>

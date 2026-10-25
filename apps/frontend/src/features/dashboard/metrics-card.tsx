@@ -2,7 +2,7 @@ import type { PropsWithChildren } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { FeedbackMessage, WiseButton, WiseCard, WiseText, theme } from '@/design-system';
 import { CardContent, CardTitle, mono } from './card-chrome';
-import { formatDayCount, formatDuration, formatSessionsToday } from './formatters';
+import { formatDayCount, formatDuration, formatSessionsToday, type SessionsObjective } from './formatters';
 import type { SessionMetrics } from './api';
 
 function StatLabel({ children }: PropsWithChildren) {
@@ -15,7 +15,7 @@ export type MetricsCardProps = {
   isError: boolean;
   isRefetching: boolean;
   /** Progress and target of the "Conclua 4 sessões hoje" Objetivo, when it has loaded. */
-  sessionsObjective: { progress: number; target: number } | undefined;
+  sessionsObjective: SessionsObjective | undefined;
   onRetry: () => void;
 };
 
