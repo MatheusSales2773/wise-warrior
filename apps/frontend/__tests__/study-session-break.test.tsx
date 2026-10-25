@@ -1,4 +1,5 @@
 import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
+import { Dimensions } from 'react-native';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { StudySessionScreen } from '@/features/study-session/study-session-screen';
 import {
@@ -102,7 +103,12 @@ const advance = (seconds: number) => act(async () => {
   timerTick?.();
 });
 
+const originalWindow = Dimensions.get('window');
+const originalScreen = Dimensions.get('screen');
+
 beforeEach(async () => {
+  // The desktop layout: the phone drops the "◈" around the phase (the mobile break is covered in study-session-after-focus).
+  Dimensions.set({ window: { width: 1440, height: 900, scale: 1, fontScale: 1 }, screen: { width: 1440, height: 900, scale: 1, fontScale: 1 } });
   // The stop confirmation has its own tests (study-session-controls); here the stop control sends the command at once.
   await devicePreferences.set('confirmBeforeStopping', false);
   clearCompletionIntent();
@@ -121,6 +127,7 @@ beforeEach(async () => {
 });
 
 afterEach(() => {
+  Dimensions.set({ window: originalWindow, screen: originalScreen });
   clearCompletionIntent();
   queryClients.splice(0).forEach((client) => client.clear());
   jest.restoreAllMocks();

@@ -138,8 +138,8 @@ it('stops with the projected label, shows the confirmed result, then offers a ne
   await view.findByTestId('study-session-result');
 
   expect(view.getByText('Sessão cancelada')).toBeTruthy();
-  expect(view.getByText('Foco válido: 04:59')).toBeTruthy();
-  expect(view.getByText('XP confirmado: 0')).toBeTruthy();
+  expect(view.getByTestId('study-session-result-timer').props.children).toBe('04:59');
+  expect(view.getByTestId('study-session-strip-xp')).toHaveTextContent(/^\+0 XP/);
   expect(view.queryByTestId('study-session-setup')).toBeNull();
   expect(client.getQueryData(['study-session', 'active'])).toBeNull();
   expect(client.getQueryState(dashboardKeys.profile())?.isInvalidated).toBe(true);
@@ -171,8 +171,8 @@ it('shows the confirmed duration and proportional XP for an early stop', async (
   await fireEvent.press(await view.findByRole('button', { name: 'Encerrar antecipadamente' }));
   await view.findByTestId('study-session-result');
   expect(view.getByText('Sessão encerrada antecipadamente')).toBeTruthy();
-  expect(view.getByText('Foco válido: 05:00')).toBeTruthy();
-  expect(view.getByText('XP confirmado: 50')).toBeTruthy();
+  expect(view.getByTestId('study-session-result-timer').props.children).toBe('05:00');
+  expect(view.getByTestId('study-session-strip-xp')).toHaveTextContent(/^\+50 XP/);
   view.unmount();
 });
 
@@ -420,7 +420,7 @@ it.each([
 
   await fireEvent.press(await view.findByRole('button', { name: 'Cancelar sessão' }));
   await view.findByTestId('study-session-result');
-  expect(view.getByTestId('study-session-result-subject')).toHaveTextContent(shown);
+  expect(view.getByTestId('study-session-result-subject')).toHaveTextContent(new RegExp(`^${shown}`));
   view.unmount();
 });
 
@@ -507,7 +507,7 @@ it('concludes a Foco livre stopped from five minutes, with the confirmed XP', as
   await fireEvent.press(await view.findByRole('button', { name: 'Parar e concluir' }));
   await view.findByTestId('study-session-result');
   expect(view.getByText('Sessão concluída')).toBeTruthy();
-  expect(view.getByText('XP confirmado: 50')).toBeTruthy();
+  expect(view.getByTestId('study-session-strip-xp')).toHaveTextContent(/^\+50 XP/);
   view.unmount();
 });
 

@@ -1,5 +1,8 @@
 export const MAX_SUBJECT_LENGTH = 80;
 
+/** What stands for a session without a Matéria. */
+export const NO_SUBJECT_LABEL = 'Sem matéria';
+
 export type SubjectValidation =
   | { status: 'valid'; subject: string | null }
   | { status: 'too-long'; length: number }

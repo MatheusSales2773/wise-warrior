@@ -95,7 +95,7 @@ export function ForgeAction({ label, icon, onPress, primary = false, disabled = 
 /** A Ciclo counts `remaining` down against its `duration`; a Foco livre has no target and counts `elapsed` up. */
 export type TimerReading = { remaining: number; duration: number } | { elapsed: number };
 
-export function ForgeTimer({ reading, phase, size, testID, accessibilityLabel, caption, dimmed = false, ornate = true }: {
+export function ForgeTimer({ reading, phase, size, testID, accessibilityLabel, caption, dimmed = false, ornate = true, tone = 'focus', progress }: {
   reading: TimerReading;
   phase: string;
   size: number;
@@ -107,11 +107,15 @@ export function ForgeTimer({ reading, phase, size, testID, accessibilityLabel, c
   dimmed?: boolean;
   /** Frames the phase with "◈": left out on the compact layout. */
   ornate?: boolean;
+  /** A break draws its arc in the info colour, so it never reads as a focus. */
+  tone?: 'focus' | 'break';
+  /** The fraction of the ring to fill, when it is not the clock's own: a result's ring is full. */
+  progress?: number;
 }) {
   const radius = 154;
   const circumference = 2 * Math.PI * radius;
   // Without a target there is nothing for the ring to fill: it stays an empty track.
-  const progress = 'elapsed' in reading ? 0 : Math.max(0, Math.min(1, (reading.duration - reading.remaining) / reading.duration));
+  const filled = progress ?? ('elapsed' in reading ? 0 : Math.max(0, Math.min(1, (reading.duration - reading.remaining) / reading.duration)));
 
   return (
     <View style={[styles.timerRingWrap, { width: size, height: size }]}>
@@ -123,7 +127,7 @@ export function ForgeTimer({ reading, phase, size, testID, accessibilityLabel, c
           </SvgGradient>
         </Defs>
         <Circle cx="170" cy="170" r={radius} fill="none" stroke={theme.color.borderSoft} strokeWidth="2" />
-        <Circle cx="170" cy="170" r={radius} fill="none" stroke="url(#forgeRingGradient)" strokeWidth="6" strokeLinecap="round" strokeDasharray={circumference} strokeDashoffset={circumference * (1 - progress)} />
+        <Circle cx="170" cy="170" r={radius} fill="none" stroke={tone === 'break' ? theme.color.feedbackInfo : 'url(#forgeRingGradient)'} strokeWidth="6" strokeLinecap="round" strokeDasharray={circumference} strokeDashoffset={circumference * (1 - filled)} />
       </Svg>
       <View style={styles.timerCenter}>
         <Text allowFontScaling style={styles.timerPhase}>{ornate ? `◈ ${phase} ◈` : phase}</Text>
