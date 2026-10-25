@@ -27,3 +27,30 @@ export async function backdateStudySessionForE2e(studySessionId: string): Promis
     await connection.end();
   }
 }
+
+/**
+ * Makes a running Study Session look finished: its planned duration has elapsed and its deadline is a minute gone,
+ * so the next read of the active session completes it on the server, as when the clock reaches zero.
+ */
+export async function expireStudySessionForE2e(studySessionId: string): Promise<void> {
+  const connection = await mysql.createConnection({
+    host: '127.0.0.1',
+    port: Number(process.env.E2E_DB_PORT),
+    user: 'wise',
+    password: 'wise-e2e-password',
+    database: 'wise_e2e',
+  });
+
+  try {
+    const [result] = await connection.execute<ResultSetHeader>(
+      `UPDATE study_sessions
+       SET started_at = DATE_SUB(NOW(3), INTERVAL planned_duration_seconds + 60 SECOND),
+           run_deadline_at = DATE_SUB(NOW(3), INTERVAL 60 SECOND)
+       WHERE id = ? AND state = 'running'`,
+      [studySessionId],
+    );
+    if (result.affectedRows !== 1) throw new Error('Could not expire the E2E Study Session');
+  } finally {
+    await connection.end();
+  }
+}

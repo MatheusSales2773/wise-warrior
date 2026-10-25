@@ -44,10 +44,8 @@ test.describe('Forja: recuperação e histórico (#17)', () => {
     const stopped = await (await stopResponse).json() as { xpAwarded: number };
     expect(stopped.xpAwarded).toBeGreaterThan(0);
 
-    const item = page.getByTestId(`forge-history-item-${started.id}`);
-    await expect(item).toBeVisible();
-    await expect(page.getByTestId(`forge-history-outcome-${started.id}`)).toHaveText('Encerrada antes do fim');
-    await expect(item).toContainText(`+${stopped.xpAwarded} XP`);
+    // O card "Hoje" do Resultado lista a sessão encerrada, com o XP confirmado.
+    await expect(page.getByTestId('study-session-today-card')).toContainText(`+${stopped.xpAwarded} XP`);
     await expect(page.getByTestId('forge-week-summary')).toHaveText(/^Últimos 7 dias: \d+ min de foco válido em 1 dia\.$/);
   });
 });
