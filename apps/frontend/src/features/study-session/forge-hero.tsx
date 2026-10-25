@@ -21,7 +21,7 @@ const SPARKS = [
  * The Herói at the Bigorna: what they wear, sparks while the clock runs, and a caption that names them. Without the
  * profile the Herói keeps the base look and the caption speaks of "Seu Herói".
  */
-export function ForgeHero({ paused, guild, subject, compact, doing: phrase }: {
+export function ForgeHero({ paused, guild, subject, compact, doing }: {
   paused: boolean;
   guild: boolean;
   subject: string | null;
@@ -31,7 +31,7 @@ export function ForgeHero({ paused, guild, subject, compact, doing: phrase }: {
 }) {
   const { data: profile } = useQuery(profileQueryOptions());
   const name = profile?.displayName ?? 'Seu Herói';
-  const doing = phrase ?? (paused ? 'descansa a marreta' : guild ? 'está forjando para a Raid' : 'está forjando');
+  const action = doing ?? (paused ? 'descansa a marreta' : guild ? 'está forjando para a Raid' : 'está forjando');
   return (
     <View style={styles.hero} testID="study-session-hero">
       <View style={[styles.heroStage, compact && styles.heroStageCompact]}>
@@ -45,7 +45,7 @@ export function ForgeHero({ paused, guild, subject, compact, doing: phrase }: {
         <LayeredHero equipped={equippedItems(profile ?? { equipped: [] })} scale={compact ? 4 : 5} />
       </View>
       <Text allowFontScaling style={styles.heroCaption} testID="study-session-hero-caption">
-        {`${name} ${doing}${subject ? ` · ${subject}` : ''}`}
+        {`${name} ${action}${subject ? ` · ${subject}` : ''}`}
       </Text>
     </View>
   );

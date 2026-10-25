@@ -14,10 +14,10 @@ import {
 } from './api';
 import { FREE_FOCUS, plannedSeconds, type FocusChoice } from './focus-choice';
 import { activeStudySessionQueryKey, invalidateStudySessionResult, recentStudySessionSubjectsQueryKey, useActiveStudySession, useFocusCycle } from './queries';
-import { breakRemainingSeconds, clearBreak, currentBreak, startBreak, type BreakKind, type BreakRun } from './pomodoro-break';
+import { breakPrevious, breakRemainingSeconds, clearBreak, currentBreak, startBreak, type BreakKind, type BreakRun } from './pomodoro-break';
 import { stopSessionSounds, unlockSessionSounds } from './sounds';
 import { elapsedStudySeconds, formatElapsedTime, isFreeFocus, remainingStudySeconds } from './timer';
-import { MAX_SUBJECT_LENGTH, validateSubject, type SubjectValidation } from './subject';
+import { MAX_SUBJECT_LENGTH, NO_SUBJECT_LABEL, validateSubject, type SubjectValidation } from './subject';
 import { useDevicePreference, useDevicePreferencesLoaded } from '@/core/preferences/device-preferences';
 import { useIsOnline } from '@/core/query/online-manager';
 import { ForgeHistory } from './forge-history';
@@ -73,8 +73,6 @@ const RAID_ENDED = 'https://wise.app/errors/raid-ended';
 const DAILY_LIMIT_REACHED = 'https://wise.app/errors/daily-limit-reached';
 
 export type { SessionMode } from './forge-prep-card';
-
-const NO_SUBJECT_LABEL = 'Sem matéria';
 
 function subjectError(validation: SubjectValidation): string | undefined {
   if (validation.status === 'too-long') return `A Matéria tem ${validation.length} caracteres; o máximo é ${MAX_SUBJECT_LENGTH}.`;
@@ -562,12 +560,7 @@ export function StudySessionScreen({ initialMode = 'solo' }: { initialMode?: Ses
     stopSessionSounds();
     const at = Date.now();
     setBreakNow(at);
-    const previous = displayedTerminalResult && {
-      subject: displayedTerminalResult.subject,
-      validSeconds: displayedTerminalResult.durationValidSeconds,
-      xpAwarded: displayedTerminalResult.xpAwarded,
-      completedInCycle: focusCycle.data?.completedInCycle ?? null,
-    };
+    const previous = displayedTerminalResult && breakPrevious(displayedTerminalResult, focusCycle.data?.completedInCycle ?? null);
     setBreakRun(startBreak(queryClient, kind, at, previous ?? undefined));
   };
 
@@ -674,7 +667,7 @@ export function StudySessionScreen({ initialMode = 'solo' }: { initialMode?: Ses
   const breakFooter = breakRun && !activeSnapshot && compactLayout
     ? (
       <View style={styles.footerActions} testID="study-session-footer">
-        <ForgeBreakActions finished={breakRemainingSeconds(breakRun, breakNow) === 0} onFinish={startNewSession} onSkip={startNewSession} />
+        <ForgeBreakActions finished={breakRemainingSeconds(breakRun, breakNow) === 0} onLeave={startNewSession} />
       </View>
     )
     : undefined;
@@ -704,8 +697,7 @@ export function StudySessionScreen({ initialMode = 'solo' }: { initialMode?: Ses
         {breakRun && !activeSnapshot ? (
           <ForgeBreak
             compact={compactLayout}
-            onFinish={startNewSession}
-            onSkip={startNewSession}
+            onLeave={startNewSession}
             remaining={breakRemainingSeconds(breakRun, breakNow)}
             ringSize={ringSize}
             run={breakRun}

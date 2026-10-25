@@ -1,12 +1,13 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { Text, View } from 'react-native';
 import { WiseButton, WiseCard, theme } from '@/design-system';
-import { BREAK_SECONDS, type BreakKind, type BreakPrevious, type BreakRun } from './pomodoro-break';
+import { BREAK_SECONDS, CYCLE_LENGTH, type BreakKind, type BreakPrevious, type BreakRun } from './pomodoro-break';
 import { ForgeAnvil, ForgeColumns } from './forge-anvil';
 import { ForgeHero, ForgeStrip, ForgeSummary } from './forge-hero';
 import { ForgeCardTitle } from './forge-primitives';
 import { ForgeMeanwhileCard, ForgeRow } from './forge-session-card';
 import { styles } from './forge-styles';
+import { NO_SUBJECT_LABEL } from './subject';
 import { formatElapsedTime } from './timer';
 
 const BREAK_COPY: Record<BreakKind, { phase: string; compactPhase: string; action: string; offer: (minutes: number) => string }> = {
@@ -24,15 +25,15 @@ const BREAK_COPY: Record<BreakKind, { phase: string; compactPhase: string; actio
   },
 };
 
-/** The label of the button that starts the break offered after a result. */
-export const breakStartLabel = (kind: BreakKind) => BREAK_COPY[kind].action;
+/** The label of the button that starts the break offered after a result; the phone keeps the short form. */
+export const breakStartLabel = (kind: BreakKind, compact = false) => (compact ? BREAK_COPY[kind].compactPhase : BREAK_COPY[kind].action);
 
 /** The offer line under a result: where the user stands in the cycle of four, and the break that comes next. */
 export function BreakOfferCopy({ kind, completedInCycle }: { kind: BreakKind; completedInCycle: number | null }) {
   return (
     <Text allowFontScaling style={[styles.cardCopy, { color: theme.color.textTertiary }]} testID="study-session-break-offer">
       {'Hora de descansar'}
-      {completedInCycle !== null ? <>{' · '}<Text>{`Forja ${completedInCycle} de 4`}</Text></> : null}
+      {completedInCycle !== null ? <>{' · '}<Text>{`Forja ${completedInCycle} de ${CYCLE_LENGTH}`}</Text></> : null}
       {'. '}
       <Text>{BREAK_COPY[kind].offer(BREAK_SECONDS[kind] / 60)}</Text>
     </Text>
@@ -40,14 +41,14 @@ export function BreakOfferCopy({ kind, completedInCycle }: { kind: BreakKind; co
 }
 
 /** The skip while the break runs, or Nova sessão once it is over. */
-export function ForgeBreakActions({ finished, onSkip, onFinish }: { finished: boolean; onSkip: () => void; onFinish: () => void }) {
+export function ForgeBreakActions({ finished, onLeave }: { finished: boolean; onLeave: () => void }) {
   return finished
-    ? <WiseButton label="Nova sessão" onPress={onFinish} size="large" testID="study-session-break-new" />
+    ? <WiseButton label="Nova sessão" onPress={onLeave} size="large" testID="study-session-break-new" />
     : (
       <WiseButton
         label="Pular pausa"
         leading={<Ionicons name="chevron-forward" size={12} color={theme.color.textPrimary} />}
-        onPress={onSkip}
+        onPress={onLeave}
         variant="secondary"
         testID="study-session-break-skip"
       />
@@ -66,48 +67,43 @@ function BreakCopy({ finished }: { finished: boolean }) {
 }
 
 /** How many focuses are still missing for the long break; none once this break is the long one. */
-function longBreakIn(run: BreakRun, previous: BreakPrevious): string | null {
+function untilLongBreak(run: BreakRun, previous: BreakPrevious): string | null {
   if (run.kind === 'long' || previous.completedInCycle === null) return null;
-  const left = 4 - previous.completedInCycle;
+  const left = CYCLE_LENGTH - previous.completedInCycle;
   return left > 0 ? `após ${left} ${left === 1 ? 'foco' : 'focos'}` : null;
 }
 
 /** "Hora de descansar": the focus that earned the break, and the way out of it. */
-export function ForgeBreakCard({ run, finished, onSkip, onFinish }: {
-  run: BreakRun;
-  finished: boolean;
-  onSkip: () => void;
-  onFinish: () => void;
-}) {
+export function ForgeBreakCard({ run, finished, onLeave }: { run: BreakRun; finished: boolean; onLeave: () => void }) {
   const { previous } = run;
-  const longIn = previous ? longBreakIn(run, previous) : null;
+  const untilLong = previous ? untilLongBreak(run, previous) : null;
   return (
     <WiseCard style={styles.sideCard} testID="study-session-break-card">
       <View style={styles.cardHeader}>
         <ForgeCardTitle>Hora de descansar</ForgeCardTitle>
-        {previous?.completedInCycle != null ? <Text allowFontScaling style={styles.modeTag}>{`FORJA ${previous.completedInCycle} DE 4`}</Text> : null}
+        {previous?.completedInCycle != null ? <Text allowFontScaling style={styles.modeTag}>{`FORJA ${previous.completedInCycle} DE ${CYCLE_LENGTH}`}</Text> : null}
       </View>
       {previous ? <>
-        <ForgeRow label="Última sessão" value={previous.subject ?? 'Sem matéria'} />
+        <ForgeRow label="Última sessão" value={previous.subject ?? NO_SUBJECT_LABEL} />
         <ForgeRow label="Foco válido" value={formatElapsedTime(previous.validSeconds)} />
         <ForgeRow label="XP confirmado" value={`+${previous.xpAwarded}`} />
-        {longIn ? <ForgeRow label="Pausa longa" value={longIn} /> : null}
+        {untilLong ? <ForgeRow label="Pausa longa" value={untilLong} /> : null}
       </> : null}
-      <ForgeBreakActions finished={finished} onSkip={onSkip} onFinish={onFinish} />
+      <ForgeBreakActions finished={finished} onLeave={onLeave} />
       <BreakCopy finished={finished} />
     </WiseCard>
   );
 }
 
 /** The Pausa Pomodoro: the Bigorna counting the break down, and beside it (or pinned, on a phone) the way out. */
-export function ForgeBreak({ run, remaining, wide, compact, ringSize, onSkip, onFinish }: {
+export function ForgeBreak({ run, remaining, wide, compact, ringSize, onLeave }: {
   run: BreakRun;
   remaining: number;
   wide: boolean;
   compact: boolean;
   ringSize: number;
-  onSkip: () => void;
-  onFinish: () => void;
+  /** Skips the running break, or leaves the finished one for a new session. */
+  onLeave: () => void;
 }) {
   const copy = BREAK_COPY[run.kind];
   const finished = remaining === 0;
@@ -137,8 +133,8 @@ export function ForgeBreak({ run, remaining, wide, compact, ringSize, onSkip, on
           {previous && compact ? (
             <ForgeStrip
               cells={[
-                { value: previous.subject ?? 'Sem matéria', label: 'última sessão', testID: 'study-session-strip-subject' },
-                ...(previous.completedInCycle !== null ? [{ value: `${previous.completedInCycle} de 4`, label: 'forja', testID: 'study-session-strip-cycle' }] : []),
+                { value: previous.subject ?? NO_SUBJECT_LABEL, label: 'última sessão', testID: 'study-session-strip-subject' },
+                ...(previous.completedInCycle !== null ? [{ value: `${previous.completedInCycle} de ${CYCLE_LENGTH}`, label: 'forja', testID: 'study-session-strip-cycle' }] : []),
                 { value: `+${previous.xpAwarded} XP`, label: 'confirmado', testID: 'study-session-strip-xp' },
               ]}
             />
@@ -147,7 +143,7 @@ export function ForgeBreak({ run, remaining, wide, compact, ringSize, onSkip, on
         </ForgeAnvil>
       }
       support={<>
-        {compact ? null : <ForgeBreakCard run={run} finished={finished} onSkip={onSkip} onFinish={onFinish} />}
+        {compact ? null : <ForgeBreakCard run={run} finished={finished} onLeave={onLeave} />}
         <ForgeMeanwhileCard raidName={null} afterSession />
       </>}
     />

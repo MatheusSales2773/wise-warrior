@@ -1,12 +1,20 @@
 import { useSyncExternalStore } from 'react';
 import { useQueryClient, type QueryClient } from '@tanstack/react-query';
+import type { StudySessionSnapshot } from './api';
 
 export const BREAK_SECONDS = { short: 300, long: 900 } as const;
+
+/** Focuses in a Pomodoro cycle: the fourth earns the long break. */
+export const CYCLE_LENGTH = 4;
 
 export type BreakKind = keyof typeof BREAK_SECONDS;
 
 /** The focus that earned the break, shown on the break card; `completedInCycle` is null while the cycle is unknown. */
 export type BreakPrevious = { subject: string | null; validSeconds: number; xpAwarded: number; completedInCycle: number | null };
+
+export function breakPrevious(result: Pick<StudySessionSnapshot, 'subject' | 'durationValidSeconds' | 'xpAwarded'>, completedInCycle: number | null): BreakPrevious {
+  return { subject: result.subject, validSeconds: result.durationValidSeconds, xpAwarded: result.xpAwarded, completedInCycle };
+}
 
 /** Breaks are local to the device (D-027): they grant no XP and never occupy a Study Session. */
 export type BreakRun = { kind: BreakKind; durationSeconds: number; deadlineMs: number; previous?: BreakPrevious };

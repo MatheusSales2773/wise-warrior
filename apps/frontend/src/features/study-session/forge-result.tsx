@@ -10,18 +10,21 @@ import { ForgeCardTitle } from './forge-primitives';
 import { ForgeRow } from './forge-session-card';
 import { styles } from './forge-styles';
 import type { BreakKind } from './pomodoro-break';
+import { NO_SUBJECT_LABEL } from './subject';
 import { formatElapsedTime, isFreeFocus } from './timer';
 
-const NO_SUBJECT_LABEL = 'Sem matéria';
-
-const RESULT_COPY: Record<StudySessionTransitionResult['state'], { title: string; compactPhase: string }> = {
+const RESULT_COPY: Partial<Record<StudySessionTransitionResult['state'], { title: string; compactPhase: string }>> = {
   completed: { title: 'Sessão concluída', compactPhase: 'Concluída' },
   stopped_early: { title: 'Sessão encerrada antecipadamente', compactPhase: 'Encerrada' },
   cancelled: { title: 'Sessão cancelada', compactPhase: 'Cancelada' },
   discarded: { title: 'Sessão não contabilizada', compactPhase: 'Não contabilizada' },
-  running: { title: 'Sessão encerrada', compactPhase: 'Encerrada' },
-  paused: { title: 'Sessão encerrada', compactPhase: 'Encerrada' },
 };
+const GENERIC_RESULT_COPY = { title: 'Sessão encerrada', compactPhase: 'Encerrada' };
+
+const resultCopy = (state: StudySessionTransitionResult['state']) => RESULT_COPY[state] ?? GENERIC_RESULT_COPY;
+
+/** "25 min", from the planned duration of a Ciclo. */
+const plannedLabel = (result: StudySessionTransitionResult) => `${(result.plannedDurationSeconds ?? 0) / 60} min`;
 
 /** The break offered after a focus completed in full, and where it leaves the user in the cycle of four. */
 export type ResultOffer = { kind: BreakKind; completedInCycle: number | null; onStart: (kind: BreakKind) => void };
@@ -56,7 +59,7 @@ export function ForgeResultActions({ offer, onNew, compact }: { offer: ResultOff
   const start = offer && startLabel ? (
     <WiseButton
       accessibilityLabel={startLabel}
-      label={compact ? (offer.kind === 'long' ? 'Pausa longa' : 'Pausa curta') : startLabel}
+      label={breakStartLabel(offer.kind, compact)}
       leading={<Ionicons name="time-outline" size={12} color={theme.color.backgroundCanvas} />}
       onPress={() => offer.onStart(offer.kind)}
       testID="study-session-break-start"
@@ -106,11 +109,11 @@ function ResultCard({ result, offer, onNew }: { result: StudySessionTransitionRe
   return (
     <WiseCard style={styles.sideCard} testID="study-session-result-card">
       <View style={styles.cardHeader}>
-        <ForgeCardTitle>{RESULT_COPY[result.state].title}</ForgeCardTitle>
+        <ForgeCardTitle>{resultCopy(result.state).title}</ForgeCardTitle>
         <Text allowFontScaling style={styles.modeTag}>{result.mode === 'guild' ? 'GUILDA' : 'SOLO'}</Text>
       </View>
       <ForgeRow label="Matéria" value={result.subject ?? NO_SUBJECT_LABEL} valueTestID="study-session-result-subject" />
-      {free ? <ForgeRow label="Tipo" value="Foco livre" /> : <ForgeRow label="Duração planejada" value={`${(result.plannedDurationSeconds ?? 0) / 60} min`} />}
+      {free ? <ForgeRow label="Tipo" value="Foco livre" /> : <ForgeRow label="Duração planejada" value={plannedLabel(result)} />}
       <ForgeRow label="Foco válido" value={formatElapsedTime(result.durationValidSeconds)} valueTestID="study-session-result-valid-focus" />
       {result.pauseCount != null ? <ForgeRow label="Pausas" value={String(result.pauseCount)} testID="study-session-pause-count" /> : null}
       <ResultNotes result={result} />
@@ -129,7 +132,7 @@ export function ForgeResult({ result, wide, compact, ringSize, offer, onNew }: {
   offer: ResultOffer | null;
   onNew: () => void;
 }) {
-  const copy = RESULT_COPY[result.state];
+  const copy = resultCopy(result.state);
   const free = isFreeFocus(result);
   const subject = result.subject ?? NO_SUBJECT_LABEL;
   return (
@@ -154,7 +157,7 @@ export function ForgeResult({ result, wide, compact, ringSize, offer, onNew }: {
             <ForgeStrip
               cells={[
                 { value: subject, label: 'matéria', testID: 'study-session-result-subject' },
-                { value: free ? 'Livre' : `${(result.plannedDurationSeconds ?? 0) / 60} min`, label: free ? 'tipo' : 'planejado', testID: 'study-session-strip-planned' },
+                { value: free ? 'Livre' : plannedLabel(result), label: free ? 'tipo' : 'planejado', testID: 'study-session-strip-planned' },
                 { value: `+${result.xpAwarded} XP`, label: 'confirmado', testID: 'study-session-strip-xp' },
               ]}
             />
