@@ -285,3 +285,21 @@ describe('XP and focus of the day', () => {
     expect(formatFocusToday(1500)).toBe('25 min');
   });
 });
+
+describe('"Enquanto isso" rules', () => {
+  const { goalLine, levelLine } = jest.requireActual('@/features/study-session/meanwhile') as typeof import('@/features/study-session/meanwhile');
+
+  it('counts the running session toward the goal and hides it once done', () => {
+    expect(goalLine({ progress: 2, target: 4 })).toBe('Concluindo esta, falta 1 sessão para a meta de 4.');
+    expect(goalLine({ progress: 1, target: 4 })).toBe('Concluindo esta, faltam 2 sessões para a meta de 4.');
+    expect(goalLine({ progress: 3, target: 4 })).toBe('Concluindo esta, você bate a meta de 4.');
+    expect(goalLine({ progress: 4, target: 4 })).toBeNull();
+    expect(goalLine(undefined)).toBeNull();
+  });
+
+  it('names the XP missing for the next level', () => {
+    expect(levelLine(user)).toBe('Faltam 1.050 XP para o nível 15.');
+    expect(levelLine({ ...user, xpTotal: 10_000 })).toBeNull();
+    expect(levelLine(undefined)).toBeNull();
+  });
+});

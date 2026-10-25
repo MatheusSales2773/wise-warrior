@@ -3,11 +3,11 @@ import { useQuery } from '@tanstack/react-query';
 import { Text, View } from 'react-native';
 import { WiseButton, WiseCard, WiseText, theme } from '@/design-system';
 import { FeedbackMessage } from '@/design-system/components/FeedbackMessage';
-import { formatXp } from '@/features/dashboard/formatters';
 import { profileQueryOptions } from '@/features/dashboard/queries';
 import { useSessionsObjective } from '@/features/chronicles/queries';
 import { StopConfirmation, type StopKind } from './stop-confirmation';
 import { ForgeCardTitle } from './forge-primitives';
+import { goalLine, levelLine } from './meanwhile';
 import { styles } from './forge-styles';
 import { formatElapsedTime } from './timer';
 
@@ -56,35 +56,30 @@ export function ForgeSessionActions({ control, stopConfirmation, compact }: {
         );
       case 'retry-transition':
         return <WiseButton label={control.label} onPress={control.onRetry} variant="secondary" testID="study-session-transition-retry" />;
-      case 'controls':
+      case 'controls': {
+        const buttons = [
+          { ...control.main, variant: 'secondary' as const, icon: <Ionicons name={control.main.icon} size={12} color={theme.color.textPrimary} /> },
+          { ...control.stop, variant: 'danger' as const, icon: <Ionicons name="stop" size={12} color={theme.color.feedbackDanger} />, testID: 'study-session-stop' },
+        ];
         return (
           <View style={compact ? styles.actionsCompact : styles.actionsStacked}>
-            <View style={compact ? styles.actionCompactCell : undefined}>
-              <WiseButton
-                accessibilityLabel={control.main.label}
-                label={compact ? shortLabel(control.main.label) : control.main.label}
-                leading={<Ionicons name={control.main.icon} size={12} color={theme.color.textPrimary} />}
-                loading={control.main.loading}
-                disabled={control.main.disabled}
-                onPress={control.main.onPress}
-                testID={control.main.testID}
-                variant="secondary"
-              />
-            </View>
-            <View style={compact ? styles.actionCompactCell : undefined}>
-              <WiseButton
-                accessibilityLabel={control.stop.label}
-                label={compact ? shortLabel(control.stop.label) : control.stop.label}
-                leading={<Ionicons name="stop" size={12} color={theme.color.feedbackDanger} />}
-                loading={control.stop.loading}
-                disabled={control.stop.disabled}
-                onPress={control.stop.onPress}
-                testID="study-session-stop"
-                variant="danger"
-              />
-            </View>
+            {buttons.map(({ icon, variant, label, ...button }) => (
+              <View key={variant} style={compact ? styles.actionCompactCell : undefined}>
+                <WiseButton
+                  accessibilityLabel={label}
+                  label={compact ? shortLabel(label) : label}
+                  leading={icon}
+                  loading={button.loading}
+                  disabled={button.disabled}
+                  onPress={button.onPress}
+                  testID={button.testID}
+                  variant={variant}
+                />
+              </View>
+            ))}
           </View>
         );
+      }
       case 'none':
         return null;
     }
@@ -194,23 +189,13 @@ export function ForgeSessionCard({ guild, subject, free, plannedLabel, validFocu
 export function ForgeMeanwhileCard({ raidName }: { raidName: string | null }) {
   const { data: profile } = useQuery(profileQueryOptions());
   const objective = useSessionsObjective();
-  const lines: { key: string; icon: 'flash' | 'flame' | 'sparkles'; color: string; text: string }[] = [];
-  if (raidName) lines.push({ key: 'raid', icon: 'flash', color: theme.color.accentHighlight, text: `Ao concluir, o XP vira um Golpe na Raid ${raidName}.` });
-  if (objective && objective.progress < objective.target) {
-    const left = objective.target - objective.progress - 1;
-    lines.push({
-      key: 'goal',
-      icon: 'flame',
-      color: theme.color.feedbackEnergy,
-      text: left > 0
-        ? `Concluindo esta, ${left === 1 ? 'falta 1 sessão' : `faltam ${left} sessões`} para a meta de ${objective.target}.`
-        : `Concluindo esta, você bate a meta de ${objective.target}.`,
-    });
-  }
-  const xpLeft = profile ? profile.nextLevelXp - profile.xpTotal : 0;
-  if (profile && xpLeft > 0) {
-    lines.push({ key: 'level', icon: 'sparkles', color: theme.color.accentHighlight, text: `Faltam ${formatXp(xpLeft)} XP para o nível ${profile.level + 1}.` });
-  }
+  const goal = goalLine(objective);
+  const level = levelLine(profile);
+  const lines: { key: string; icon: 'flash' | 'flame' | 'sparkles'; color: string; text: string }[] = [
+    ...(raidName ? [{ key: 'raid', icon: 'flash' as const, color: theme.color.accentHighlight, text: `Ao concluir, o XP vira um Golpe na Raid ${raidName}.` }] : []),
+    ...(goal ? [{ key: 'goal', icon: 'flame' as const, color: theme.color.feedbackEnergy, text: goal }] : []),
+    ...(level ? [{ key: 'level', icon: 'sparkles' as const, color: theme.color.accentHighlight, text: level }] : []),
+  ];
   if (lines.length === 0) return null;
   return (
     <WiseCard style={styles.sideCard} testID="study-session-meanwhile">

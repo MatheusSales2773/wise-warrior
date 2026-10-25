@@ -7,8 +7,8 @@ import { styles } from './forge-styles';
 /** The Bigorna: the ring timer under a header. `children` is the space below it for the Herói, the summary and the card's own controls. */
 export function ForgeAnvil({ wide, header, reading, phase, ringSize, timerTestID, timerAccessibilityLabel, timerCaption, dimmed, ornate, children, testID = 'study-session-stage' }: {
   wide: boolean;
-  /** `null` leaves the card without a header: the v2 Bigorna of a running session opens on the ring. */
-  header: ReactNode;
+  /** Left out, the card opens on the ring, as the v2 Bigorna of a running session does. */
+  header?: ReactNode;
   reading: TimerReading;
   phase: string;
   ringSize: number;

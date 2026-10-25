@@ -105,7 +105,8 @@ function isVersionConflict(error: unknown): boolean {
 export function StudySessionScreen({ initialMode = 'solo' }: { initialMode?: SessionMode } = {}) {
   const { width } = useWindowDimensions();
   const wideLayout = width >= 1140;
-  const compactLayout = !wideLayout;
+  // Below a tablet the Forja takes the mobile arrangement: the actions pinned above the tab bar.
+  const compactLayout = width < 768;
   const ringSize = wideLayout ? 340 : Platform.OS === 'web' ? Math.min(310, width * 0.78) : Math.min(264, width * 0.68);
   const queryClient = useQueryClient();
   const [defaultDuration] = useDevicePreference('defaultFocusDuration');
@@ -721,7 +722,6 @@ export function StudySessionScreen({ initialMode = 'solo' }: { initialMode?: Ses
             anvil={
               <ForgeAnvil
                 wide={wideLayout}
-                header={null}
                 reading={freeSnapshot ? { elapsed } : { remaining, duration: plannedDuration }}
                 phase={phase}
                 ringSize={ringSize}
