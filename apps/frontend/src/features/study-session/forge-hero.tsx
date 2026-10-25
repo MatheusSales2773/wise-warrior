@@ -21,10 +21,17 @@ const SPARKS = [
  * The Herói at the Bigorna: what they wear, sparks while the clock runs, and a caption that names them. Without the
  * profile the Herói keeps the base look and the caption speaks of "Seu Herói".
  */
-export function ForgeHero({ paused, guild, subject, compact }: { paused: boolean; guild: boolean; subject: string | null; compact: boolean }) {
+export function ForgeHero({ paused, guild, subject, compact, doing: phrase }: {
+  paused: boolean;
+  guild: boolean;
+  subject: string | null;
+  compact: boolean;
+  /** What the Herói is doing, when it is not the clock's own: "forjou 25 minutos" on a result. */
+  doing?: string;
+}) {
   const { data: profile } = useQuery(profileQueryOptions());
   const name = profile?.displayName ?? 'Seu Herói';
-  const doing = paused ? 'descansa a marreta' : guild ? 'está forjando para a Raid' : 'está forjando';
+  const doing = phrase ?? (paused ? 'descansa a marreta' : guild ? 'está forjando para a Raid' : 'está forjando');
   return (
     <View style={styles.hero} testID="study-session-hero">
       <View style={[styles.heroStage, compact && styles.heroStageCompact]}>
@@ -57,24 +64,21 @@ function Stat({ icon, color, value, label, testID }: { icon: 'sparkles' | 'flame
 }
 
 /** Desktop summary under the Hero: the XP of the session, the Constância and the focus of today. A cell whose data failed is left out. */
-export function ForgeSummary({ xp, free }: { xp: number; free: boolean }) {
+export function ForgeSummary({ xp, free, xpLabel }: { xp: number; free: boolean; xpLabel?: string }) {
   const { data: metrics } = useQuery(sessionMetricsQueryOptions());
   return (
     <View style={styles.summary} testID="study-session-summary">
-      <Stat icon="sparkles" color={theme.color.accentHighlight} value={`+${xp} XP`} label={free ? 'até agora' : 'ao concluir'} testID="study-session-summary-xp" />
+      <Stat icon="sparkles" color={theme.color.accentHighlight} value={`+${xp} XP`} label={xpLabel ?? (free ? 'até agora' : 'ao concluir')} testID="study-session-summary-xp" />
       {metrics ? <Stat icon="flame" color={theme.color.feedbackEnergy} value={formatDayCount(metrics.currentStreakDays)} label="constância" testID="study-session-summary-streak" /> : null}
       {metrics ? <Stat icon="time-outline" color={theme.color.feedbackInfo} value={formatFocusToday(metrics.validSecondsToday)} label="foco hoje" testID="study-session-summary-today" /> : null}
     </View>
   );
 }
 
-/** Compact summary: the session itself in three columns, Matéria · planned or kind · XP. */
-export function ForgeSessionStrip({ subject, planned, free, xp }: { subject: string; planned: string; free: boolean; xp: number }) {
-  const cells = [
-    { value: subject, label: 'matéria', testID: 'study-session-strip-subject' },
-    { value: planned, label: free ? 'tipo' : 'planejado', testID: 'study-session-strip-planned' },
-    { value: `+${xp} XP`, label: free ? 'até agora' : 'ao concluir', testID: 'study-session-strip-xp' },
-  ];
+type StripCell = { value: string; label: string; testID: string };
+
+/** Compact summary: three cells side by side, a value over its label. */
+export function ForgeStrip({ cells }: { cells: StripCell[] }) {
   return (
     <View style={styles.strip} testID="study-session-strip">
       {cells.map((cell, index) => (
@@ -84,5 +88,18 @@ export function ForgeSessionStrip({ subject, planned, free, xp }: { subject: str
         </View>
       ))}
     </View>
+  );
+}
+
+/** The running session in three columns, Matéria · planned or kind · XP. */
+export function ForgeSessionStrip({ subject, planned, free, xp }: { subject: string; planned: string; free: boolean; xp: number }) {
+  return (
+    <ForgeStrip
+      cells={[
+        { value: subject, label: 'matéria', testID: 'study-session-strip-subject' },
+        { value: planned, label: free ? 'tipo' : 'planejado', testID: 'study-session-strip-planned' },
+        { value: `+${xp} XP`, label: free ? 'até agora' : 'ao concluir', testID: 'study-session-strip-xp' },
+      ]}
+    />
   );
 }

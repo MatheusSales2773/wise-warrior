@@ -73,6 +73,7 @@ export const styles = StyleSheet.create({
   stripCell: { flex: 1, alignItems: 'center', gap: 2, paddingVertical: theme.space.stackTight, paddingHorizontal: theme.space.inlineTight },
   stripCellDivided: { borderLeftWidth: 1, borderLeftColor: theme.color.borderGhost },
   stripValue: { fontFamily: 'Cinzel-SemiBold', fontSize: 14, lineHeight: 20, color: theme.color.textPrimary },
+  srOnly: { position: 'absolute', width: 1, height: 1, overflow: 'hidden', opacity: 0 },
   stageNotice: { paddingHorizontal: theme.space.cardInset, paddingTop: theme.space.stackDefault, alignItems: 'center' },
   stageStatus: { gap: theme.space.stackTight, padding: theme.space.controlInset },
   cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },

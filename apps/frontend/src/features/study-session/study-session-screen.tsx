@@ -16,13 +16,14 @@ import { FREE_FOCUS, plannedSeconds, type FocusChoice } from './focus-choice';
 import { activeStudySessionQueryKey, invalidateStudySessionResult, recentStudySessionSubjectsQueryKey, useActiveStudySession, useFocusCycle } from './queries';
 import { breakRemainingSeconds, clearBreak, currentBreak, startBreak, type BreakKind, type BreakRun } from './pomodoro-break';
 import { stopSessionSounds, unlockSessionSounds } from './sounds';
-import { elapsedStudySeconds, formatElapsedTime, formatRemainingTime, isFreeFocus, remainingStudySeconds } from './timer';
+import { elapsedStudySeconds, formatElapsedTime, isFreeFocus, remainingStudySeconds } from './timer';
 import { MAX_SUBJECT_LENGTH, validateSubject, type SubjectValidation } from './subject';
 import { useDevicePreference, useDevicePreferencesLoaded } from '@/core/preferences/device-preferences';
 import { useIsOnline } from '@/core/query/online-manager';
 import { ForgeHistory } from './forge-history';
 import { ForgeAnvil, ForgeColumns } from './forge-anvil';
-import { BreakOffer, BreakStage } from './forge-break';
+import { ForgeBreak, ForgeBreakActions } from './forge-break';
+import { ForgeResult, ForgeResultActions, type ResultOffer } from './forge-result';
 import { ForgePrepCard, ForgeStartButton, type ForgeRaid, type SessionMode } from './forge-prep-card';
 import { ForgePageGradient, ForgeHeader, TodayPill } from './forge-primitives';
 import { ForgeHero, ForgeSessionStrip, ForgeSummary } from './forge-hero';
@@ -561,10 +562,15 @@ export function StudySessionScreen({ initialMode = 'solo' }: { initialMode?: Ses
     stopSessionSounds();
     const at = Date.now();
     setBreakNow(at);
-    setBreakRun(startBreak(queryClient, kind, at));
+    const previous = displayedTerminalResult && {
+      subject: displayedTerminalResult.subject,
+      validSeconds: displayedTerminalResult.durationValidSeconds,
+      xpAwarded: displayedTerminalResult.xpAwarded,
+      completedInCycle: focusCycle.data?.completedInCycle ?? null,
+    };
+    setBreakRun(startBreak(queryClient, kind, at, previous ?? undefined));
   };
 
-  // A break is offered only after a focus completed in full; early stops and discards skip it.
   const nextBreak: BreakKind = focusCycle.data?.nextBreak ?? 'short';
 
   // #17: where the session stands against the server. Offline, TanStack Query pauses the requests and resumes
@@ -644,6 +650,8 @@ export function StudySessionScreen({ initialMode = 'solo' }: { initialMode?: Ses
     : undefined;
 
   const showActiveForge = snapshot !== null && !displayedTerminalResult;
+  // The Resultado lists the day's sessions in its own Hoje card on a wide screen.
+  const showResult = displayedTerminalResult !== null && !breakRun;
   const stopConfirmation = snapshot && stopDialog?.sessionId === snapshot.id
     ? { kind: stopDialog.kind, onConfirm: confirmStop, onDecline: () => setStopDialog(null) }
     : null;
@@ -656,9 +664,23 @@ export function StudySessionScreen({ initialMode = 'solo' }: { initialMode?: Ses
   />;
   const actions = <ForgeSessionActions control={sessionControl} stopConfirmation={stopConfirmation} compact={compactLayout} />;
 
+  // A break is offered only after a focus completed in full; early stops and discards skip it.
+  const resultOffer: ResultOffer | null = displayedTerminalResult?.state === 'completed' && !isFreeFocus(displayedTerminalResult) && cycleFresh && !focusCycle.isFetching
+    ? { kind: nextBreak, completedInCycle: focusCycle.data?.completedInCycle ?? null, onStart: beginBreak }
+    : null;
+  const resultFooter = displayedTerminalResult && !breakRun && compactLayout
+    ? <View style={styles.footerActions} testID="study-session-footer"><ForgeResultActions compact offer={resultOffer} onNew={startNewSession} /></View>
+    : undefined;
+  const breakFooter = breakRun && !activeSnapshot && compactLayout
+    ? (
+      <View style={styles.footerActions} testID="study-session-footer">
+        <ForgeBreakActions finished={breakRemainingSeconds(breakRun, breakNow) === 0} onFinish={startNewSession} onSkip={startNewSession} />
+      </View>
+    )
+    : undefined;
   const footer = showSetup && phoneSetup
     ? startFooter
-    : showActiveForge && compactLayout ? <View style={styles.footerActions} testID="study-session-footer">{actions}</View> : undefined;
+    : showActiveForge && compactLayout ? <View style={styles.footerActions} testID="study-session-footer">{actions}</View> : breakFooter ?? resultFooter;
 
   return (
     <Screen
@@ -680,71 +702,25 @@ export function StudySessionScreen({ initialMode = 'solo' }: { initialMode?: Ses
           </WiseCard>
         ) : null}
         {breakRun && !activeSnapshot ? (
-          <BreakStage
+          <ForgeBreak
+            compact={compactLayout}
             onFinish={startNewSession}
             onSkip={startNewSession}
             remaining={breakRemainingSeconds(breakRun, breakNow)}
             ringSize={ringSize}
             run={breakRun}
+            wide={wideLayout}
           />
         ) : null}
         {displayedTerminalResult && !breakRun ? (
-          <WiseCard style={styles.messageCard} testID="study-session-result">
-            <WiseText accessibilityLiveRegion="polite" aria-live="polite" variant="subtitle">
-              {displayedTerminalResult.state === 'discarded'
-                ? 'Sessão não contabilizada'
-                : displayedTerminalResult.state === 'completed'
-                  ? 'Sessão concluída'
-                  : displayedTerminalResult.state === 'cancelled'
-                    ? 'Sessão cancelada'
-                    : displayedTerminalResult.state === 'stopped_early'
-                      ? 'Sessão encerrada antecipadamente'
-                      : 'Sessão encerrada'}
-            </WiseText>
-            <WiseText
-              color={displayedTerminalResult.subject ? 'textPrimary' : 'textTertiary'}
-              numberOfLines={3}
-              testID="study-session-result-subject"
-              variant="body"
-            >
-              {displayedTerminalResult.subject ?? NO_SUBJECT_LABEL}
-            </WiseText>
-            <WiseText variant="body">Foco válido: {formatRemainingTime(displayedTerminalResult.durationValidSeconds)}</WiseText>
-            <WiseText variant="body">XP confirmado: {displayedTerminalResult.xpAwarded}</WiseText>
-            {displayedTerminalResult.raidContribution ? (
-              <WiseText accessibilityLiveRegion="polite" aria-live="polite" color={displayedTerminalResult.raidContribution.status === 'counted' ? 'textPrimary' : 'textSecondary'} variant="body" testID="study-session-result-raid-contribution">
-                {displayedTerminalResult.raidContribution.status === 'counted'
-                  ? `+${displayedTerminalResult.raidContribution.xpContributed} XP para a Raid da Guilda.`
-                  : displayedTerminalResult.raidContribution.status === 'outside-raid-window'
-                    ? 'Esta sessão não contou para a Raid: terminou fora da janela da Raid.'
-                    : 'Esta sessão não contou para a Raid: não houve XP validado.'}
-              </WiseText>
-            ) : null}
-            {displayedTerminalResult.state === 'discarded' ? (
-              <WiseText color="textSecondary" variant="body">
-                {displayedTerminalResult.discardedReason === 'continuous-session-exceeds-limit'
-                  ? 'A duração ultrapassou o limite de foco permitido.'
-                  : 'O limite diário de foco foi atingido.'}
-              </WiseText>
-            ) : null}
-            {displayedTerminalResult.state === 'completed' && !isFreeFocus(displayedTerminalResult) && cycleFresh && !focusCycle.isFetching ? (
-              <BreakOffer kind={nextBreak} completedInCycle={focusCycle.data?.completedInCycle ?? null} onStart={beginBreak} />
-            ) : null}
-            {displayedTerminalResult.cappedReason ? (
-              <WiseText color="textSecondary" testID="study-session-result-capped" variant="body">
-                {displayedTerminalResult.cappedReason === 'daily-limit'
-                  ? 'XP limitado pelo teto diário.'
-                  : 'XP limitado ao máximo de sessão contínua.'}
-              </WiseText>
-            ) : null}
-            <WiseButton
-              label="Nova sessão"
-              onPress={startNewSession}
-              size="large"
-              testID="study-session-new"
-              variant={displayedTerminalResult.state === 'completed' ? 'secondary' : 'primary'}
-            />
-          </WiseCard>
+          <ForgeResult
+            compact={compactLayout}
+            offer={resultOffer}
+            onNew={startNewSession}
+            result={displayedTerminalResult}
+            ringSize={ringSize}
+            wide={wideLayout}
+          />
         ) : null}
         {snapshot && showActiveForge ? (
           <ForgeColumns
@@ -814,7 +790,7 @@ export function StudySessionScreen({ initialMode = 'solo' }: { initialMode?: Ses
             </>}
           />
         ) : null}
-        <ForgeHistory showToday={!showSetup} wide={wideLayout} />
+        <ForgeHistory showToday={!showSetup && !(showResult && wideLayout)} wide={wideLayout} />
       </View>
     </Screen>
   );

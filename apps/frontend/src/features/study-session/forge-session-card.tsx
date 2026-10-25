@@ -147,7 +147,7 @@ export function ForgeSessionFeedback({ transitionError, completionError, complet
   </>;
 }
 
-function Row({ label, value, testID, valueTestID }: { label: string; value: string; testID?: string; valueTestID?: string }) {
+export function ForgeRow({ label, value, testID, valueTestID }: { label: string; value: string; testID?: string; valueTestID?: string }) {
   return (
     <View style={styles.statRow} testID={testID}>
       <Text allowFontScaling style={[styles.cardCopy, { color: theme.color.textSecondary }]}>{label}</Text>
@@ -173,10 +173,10 @@ export function ForgeSessionCard({ guild, subject, free, plannedLabel, validFocu
         <ForgeCardTitle>Sessão atual</ForgeCardTitle>
         <Text allowFontScaling style={styles.modeTag} testID="study-session-mode-tag">{guild ? 'GUILDA' : 'SOLO'}</Text>
       </View>
-      <Row label="Matéria" value={subject} valueTestID="study-session-subject" />
-      {free ? <Row label="Tipo" value="Foco livre" /> : <Row label="Duração planejada" value={plannedLabel} />}
-      <Row label="Foco válido" value={formatElapsedTime(validFocusSeconds)} />
-      {pauseCount != null ? <Row label="Pausas" value={String(pauseCount)} testID="study-session-pause-count" /> : null}
+      <ForgeRow label="Matéria" value={subject} valueTestID="study-session-subject" />
+      {free ? <ForgeRow label="Tipo" value="Foco livre" /> : <ForgeRow label="Duração planejada" value={plannedLabel} />}
+      <ForgeRow label="Foco válido" value={formatElapsedTime(validFocusSeconds)} />
+      {pauseCount != null ? <ForgeRow label="Pausas" value={String(pauseCount)} testID="study-session-pause-count" /> : null}
       {children}
     </WiseCard>
   );
@@ -186,10 +186,10 @@ export function ForgeSessionCard({ guild, subject, free, plannedLabel, validFocu
  * "Enquanto isso": what finishing this session does for the day's Objetivo and the next level, and for the Raid in a
  * guild session. A line whose data is missing is left out, and so is the card when none is left.
  */
-export function ForgeMeanwhileCard({ raidName }: { raidName: string | null }) {
+export function ForgeMeanwhileCard({ raidName, afterSession = false }: { raidName: string | null; afterSession?: boolean }) {
   const { data: profile } = useQuery(profileQueryOptions());
   const objective = useSessionsObjective();
-  const goal = goalLine(objective);
+  const goal = goalLine(objective, { counted: afterSession });
   const level = levelLine(profile);
   const lines: { key: string; icon: 'flash' | 'flame' | 'sparkles'; color: string; text: string }[] = [
     ...(raidName ? [{ key: 'raid', icon: 'flash' as const, color: theme.color.accentHighlight, text: `Ao concluir, o XP vira um Golpe na Raid ${raidName}.` }] : []),

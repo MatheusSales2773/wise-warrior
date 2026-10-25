@@ -5,8 +5,11 @@ export const BREAK_SECONDS = { short: 300, long: 900 } as const;
 
 export type BreakKind = keyof typeof BREAK_SECONDS;
 
+/** The focus that earned the break, shown on the break card; `completedInCycle` is null while the cycle is unknown. */
+export type BreakPrevious = { subject: string | null; validSeconds: number; xpAwarded: number; completedInCycle: number | null };
+
 /** Breaks are local to the device (D-027): they grant no XP and never occupy a Study Session. */
-export type BreakRun = { kind: BreakKind; durationSeconds: number; deadlineMs: number };
+export type BreakRun = { kind: BreakKind; durationSeconds: number; deadlineMs: number; previous?: BreakPrevious };
 
 export const breakQueryKey = ['study-session', 'break'] as const;
 
@@ -14,9 +17,9 @@ export const breakQueryKey = ['study-session', 'break'] as const;
  * The running break lives in the query cache: it survives leaving the Forja for another tab, and the
  * cache is cleared on logout and on session expiry, so a break never leaks to the next user.
  */
-export function startBreak(queryClient: QueryClient, kind: BreakKind, nowMs: number): BreakRun {
+export function startBreak(queryClient: QueryClient, kind: BreakKind, nowMs: number, previous?: BreakPrevious): BreakRun {
   const durationSeconds = BREAK_SECONDS[kind];
-  const run: BreakRun = { kind, durationSeconds, deadlineMs: nowMs + durationSeconds * 1000 };
+  const run: BreakRun = { kind, durationSeconds, deadlineMs: nowMs + durationSeconds * 1000, ...(previous ? { previous } : {}) };
   // No query observer holds this entry (useBreakRun listens to the cache), so without this it would be
   // garbage collected after five minutes.
   queryClient.setQueryDefaults(breakQueryKey, { gcTime: Infinity });
