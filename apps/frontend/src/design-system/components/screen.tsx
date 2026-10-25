@@ -26,6 +26,8 @@ export type ScreenProps = ScreenRefreshProps & {
   children?: ReactNode;
   contentContainerStyle?: StyleProp<ViewStyle>;
   contentStyle?: StyleProp<ViewStyle>;
+  /** Pinned under the scrolling content, above the bottom navigation: actions that must stay within reach. */
+  footer?: ReactNode;
   hasBottomNavigation?: boolean;
   keyboardVerticalOffset?: number;
   scrollable?: boolean;
@@ -47,6 +49,7 @@ export function Screen({
   children,
   contentContainerStyle,
   contentStyle,
+  footer,
   hasBottomNavigation = false,
   keyboardVerticalOffset = 0,
   scrollable = true,
@@ -127,6 +130,7 @@ export function Screen({
       ) : (
         body
       )}
+      {footer}
     </SafeAreaView>
   );
 }

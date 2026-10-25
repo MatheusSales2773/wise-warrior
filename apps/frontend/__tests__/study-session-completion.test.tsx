@@ -326,9 +326,9 @@ it('shows a safe reason and zero XP when the server confirms a discarded session
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false, gcTime: 30_000 }, mutations: { retry: false, gcTime: 0 } },
   });
-  client.setQueryData(dashboardKeys.profile(), { xpTotal: 0 });
+  client.setQueryData(dashboardKeys.profile(), { id: 'u-1', email: 'a@b.c', displayName: 'Knightshade', planTier: 'free', level: 14, levelStartXp: 0, nextLevelXp: 1000, xpTotal: 0, title: null, equipped: [] });
   client.setQueryData(dashboardKeys.recentActivity(), []);
-  client.setQueryData(dashboardKeys.metrics(), { sessionsToday: 0 });
+  client.setQueryData(dashboardKeys.metrics(), { currentStreakDays: 0, longestStreakDays: 0, sessionsToday: 0, validSecondsToday: 0, cadence: { windowStart: '2026-09-16', windowEnd: '2026-09-22', days: [] } });
   const { view } = await renderStudySession(client);
 
   await view.findByText('Sessão não contabilizada');
