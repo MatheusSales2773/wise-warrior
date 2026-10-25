@@ -669,4 +669,47 @@ describe('DashboardScreen', () => {
     });
     await waitFor(() => expect(screen.getByText('Dados atualizados')).toBeTruthy());
   });
+
+  it('refreshes profile, activity and metrics from the web "Atualizar dados" button', async () => {
+    jest.replaceProperty(Platform, 'OS', 'web');
+    mockedProfile.mockResolvedValue(profile);
+    mockedActivity.mockResolvedValue([]);
+    await renderDashboard();
+    await waitFor(() => expect(screen.getByTestId('dashboard-activity-empty')).toBeTruthy());
+    await waitFor(() => expect(mockedMetrics).toHaveBeenCalledTimes(1));
+    expect(mockedProfile).toHaveBeenCalledTimes(1);
+    expect(mockedActivity).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      fireEvent.press(screen.getByRole('button', { name: 'Atualizar dados' }));
+    });
+
+    await waitFor(() => expect(screen.getByText('Dados atualizados')).toBeTruthy());
+    expect(mockedProfile).toHaveBeenCalledTimes(2);
+    expect(mockedActivity).toHaveBeenCalledTimes(2);
+    expect(mockedMetrics).toHaveBeenCalledTimes(2);
+    expect(screen.queryByTestId('dashboard-partial-error')).toBeNull();
+  });
+
+  it.each([
+    ['profile', mockedProfile],
+    ['activity', mockedActivity],
+    ['metrics', mockedMetrics],
+  ] as const)('shows the partial failure message when the %s refresh fails', async (_name, failing) => {
+    jest.replaceProperty(Platform, 'OS', 'web');
+    mockedProfile.mockResolvedValue(profile);
+    mockedActivity.mockResolvedValue([]);
+    await renderDashboard();
+    await waitFor(() => expect(screen.getByTestId('dashboard-activity-empty')).toBeTruthy());
+    await waitFor(() => expect(mockedMetrics).toHaveBeenCalledTimes(1));
+    expect(screen.queryByTestId('dashboard-partial-error')).toBeNull();
+
+    (failing as jest.Mock).mockRejectedValueOnce(new Error('offline'));
+    await act(async () => {
+      fireEvent.press(screen.getByRole('button', { name: 'Atualizar dados' }));
+    });
+
+    await waitFor(() => expect(screen.getByTestId('dashboard-partial-error')).toBeTruthy());
+    expect(screen.getByText('Alguns dados não foram atualizados.')).toBeTruthy();
+  });
 });

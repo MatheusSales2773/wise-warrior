@@ -1,4 +1,4 @@
-import type { UserProfile } from './api';
+import type { RecentStudySession, UserProfile } from './api';
 
 export function formatXp(value: number): string {
   return new Intl.NumberFormat('pt-BR').format(value);
@@ -35,10 +35,28 @@ export function levelProgressPercent(profile: Pick<UserProfile, 'xpTotal' | 'lev
   return Math.min(100, Math.round(((profile.xpTotal - profile.levelStartXp) / Math.max(1, profile.nextLevelXp - profile.levelStartXp)) * 100));
 }
 
+export type SessionsObjective = { progress: number; target: number };
+
 /** Progress and target come from the "Conclua 4 sessões hoje" Objetivo; without it only the session count is known. */
-export function formatSessionsToday(sessionsToday: number, objective: { progress: number; target: number } | undefined): { value: string; spoken: string } {
+export function formatSessionsToday(sessionsToday: number, objective: SessionsObjective | undefined): { value: string; spoken: string } {
   if (objective) {
     return { value: `${objective.progress} / ${objective.target}`, spoken: `${objective.progress} de ${objective.target}` };
   }
   return { value: `${sessionsToday}`, spoken: `${sessionsToday}` };
+}
+
+export function formatSessionMode(mode: string): string {
+  return mode === 'guild' ? 'guilda' : mode;
+}
+
+export function formatSessionState(state: RecentStudySession['state']): string {
+  switch (state) {
+    case 'completed': return 'Concluída';
+    case 'stopped_early': return 'Encerrada antecipadamente';
+    case 'cancelled': return 'Cancelada';
+    case 'discarded': return 'Descartada';
+    case 'paused': return 'Pausada';
+    case 'running': return 'Em andamento';
+    default: return '';
+  }
 }
