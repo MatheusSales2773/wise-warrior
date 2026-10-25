@@ -1,4 +1,3 @@
-import { LinearGradient } from 'expo-linear-gradient';
 import { Link } from 'expo-router';
 import type { ReactNode } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
@@ -57,21 +56,23 @@ export type ProfileCardProps = {
 
 export function ProfileCard({ displayName, equipped, coins, action, title, compact, statusMessage, refreshing, showRefreshButton, onRefresh }: ProfileCardProps) {
   return <View accessibilityLabel="Resumo de perfil" role="region" style={styles.heroCard} testID="dashboard-profile">
-    <LinearGradient colors={[theme.color.surfaceCard, theme.color.backgroundOverlay]} end={{ x: 1, y: 0.6 }} pointerEvents="none" start={{ x: 0, y: 0.4 }} style={StyleSheet.absoluteFill} />
-    <DashboardGlow hero />
     <View style={[styles.heroContent, compact && styles.heroContentCompact]} testID="dashboard-profile-content">
+      <View style={styles.identity} testID="dashboard-profile-identity">
       <HeroPortrait compact={compact} equipped={equipped} />
       <View style={styles.heroCopy}>
         <View style={styles.heroGreetingRow}>
-          <Text aria-hidden style={styles.heroGreeting}>✦</Text>
-          <Text accessibilityRole="header" aria-level={2} style={styles.heroGreeting}>Boas-vindas, {displayName}</Text>
+          {compact ? null : <Text aria-hidden style={styles.heroGreeting}>✦</Text>}
+          <Text accessibilityRole="header" aria-level={2} style={[styles.heroGreeting, compact && styles.heroGreetingCompact]}>Boas-vindas, {displayName}</Text>
         </View>
         <Text style={[styles.heroTitle, compact && styles.heroTitleCompact]}>{title || 'Sua jornada começa aqui'}</Text>
         <View testID="dashboard-status" accessibilityLiveRegion="polite" aria-live="polite" aria-atomic style={styles.status}>{statusMessage ? <Text style={[styles.statusText, { color: refreshing ? theme.color.accentPrimary : theme.color.feedbackSuccess }]}>{statusMessage}</Text> : null}</View>
       </View>
       {coins === undefined ? null : <CoinBadge balance={coins} compact={compact} />}
-      {showRefreshButton ? <WiseButton label="Atualizar dados" loading={refreshing} onPress={onRefresh} variant="ghost" /> : null}
-      {action}
+      </View>
+      {showRefreshButton || action ? <View style={styles.actions}>
+        {showRefreshButton ? <WiseButton label="Atualizar dados" loading={refreshing} onPress={onRefresh} variant="ghost" /> : null}
+        {action}
+      </View> : null}
     </View>
   </View>;
 }
@@ -88,18 +89,22 @@ export function ProfileRefreshError({ retrying, onRetry }: { retrying: boolean; 
 
 const styles = StyleSheet.create({
   inlineError: { gap: theme.space.stackDefault },
-  heroCard: { position: 'relative', overflow: 'hidden', borderRadius: theme.radius.control, borderWidth: theme.border.standard, borderColor: theme.color.borderEmphasis, backgroundColor: theme.color.surfaceCard },
-  heroContent: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 24, paddingVertical: 28, paddingHorizontal: 32 },
-  heroContentCompact: { padding: 22, gap: theme.space.controlInset },
+  heroCard: { position: 'relative' },
+  // The identity (Herói, greeting, Título, Moedas) stays on one row; the buttons share it when there is room, else drop below.
+  heroContent: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 16 },
+  heroContentCompact: { gap: theme.space.controlInset },
+  identity: { flexDirection: 'row', alignItems: 'center', flexGrow: 1, flexShrink: 1, flexBasis: 280, minWidth: 0, gap: 16 },
+  actions: { flexDirection: 'row', alignItems: 'center', gap: 16, flexShrink: 0 },
   portrait: { width: 56, height: 56, overflow: 'hidden', borderRadius: 5, borderWidth: theme.border.standard, borderColor: theme.color.accentMuted, backgroundColor: theme.color.surfaceInset },
   portraitCompact: { width: 48, height: 48 },
   portraitSprite: { marginLeft: -4, marginTop: 3 },
   portraitSpriteCompact: { marginLeft: -1, marginTop: 2 },
   coinBadge: { flexShrink: 0, minHeight: theme.layout.touchTarget, justifyContent: 'center', borderRadius: 3, borderWidth: theme.border.standard, borderColor: theme.color.borderEmphasis, backgroundColor: theme.color.surfaceInset, paddingLeft: 14, paddingRight: 16 },
   coinBadgeCompact: { borderRadius: 999, paddingLeft: 9, paddingRight: 10 },
-  heroCopy: { flexShrink: 1, flexGrow: 1, flexBasis: 0, minWidth: 120, maxWidth: 540 },
+  heroCopy: { minWidth: 0, flexShrink: 1, flexGrow: 1 },
   heroGreetingRow: { flexDirection: 'row', flexWrap: 'wrap', gap: theme.space.inlineHairline },
   heroGreeting: { ...display, fontSize: 9, lineHeight: 14, letterSpacing: 2.9, textTransform: 'uppercase', color: theme.color.accentPrimary },
+  heroGreetingCompact: { letterSpacing: 2.2 },
   heroTitle: { ...display, fontSize: 26, lineHeight: 34, letterSpacing: 1, color: theme.color.textPrimary, marginTop: 6, marginBottom: 4 },
   heroTitleCompact: { fontSize: 22, lineHeight: 30 },
   status: { minHeight: 16 },

@@ -215,7 +215,7 @@ describe('DashboardScreen', () => {
     await renderDashboard();
 
     await waitFor(() => expect(screen.getByTestId('dashboard-profile-content')).toBeTruthy());
-    expect(screen.getByTestId('dashboard-profile-content').props.style).toEqual(expect.arrayContaining([expect.objectContaining({ padding: 22 })]));
+    expect(screen.getByTestId('dashboard-profile-identity').props.style).toEqual(expect.objectContaining({ flexShrink: 1, minWidth: 0 }));
     expect(screen.getByTestId('dashboard-grid').props.style).toEqual(expect.arrayContaining([expect.objectContaining({ width: '100%', flexDirection: 'column' })]));
     expect(screen.getByTestId('dashboard-main-column').props.style).toEqual(expect.objectContaining({ minWidth: 0 }));
     expect(screen.getByTestId('dashboard-side-column').props.style).toEqual(expect.arrayContaining([expect.objectContaining({ minWidth: 0 })]));

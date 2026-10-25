@@ -68,7 +68,7 @@ const styles = StyleSheet.create({
   fixedAction: { width: '100%' },
   focusGradient: { minHeight: theme.layout.touchTarget, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: theme.space.inlineTight, paddingHorizontal: 22 },
   focusText: { fontFamily: 'Cinzel-Bold', fontSize: 11, lineHeight: 16, letterSpacing: 2.2, textTransform: 'uppercase', color: theme.color.backgroundCanvas },
-  focusDetail: { fontFamily: 'JetBrainsMono-Bold', fontSize: 11, lineHeight: 16, color: theme.color.backgroundCanvas },
+  focusDetail: { fontFamily: 'JetBrainsMono-SemiBold', fontSize: 11, lineHeight: 16, color: theme.color.backgroundCanvas },
   footer: { gap: 8, paddingHorizontal: 24, paddingVertical: 12, backgroundColor: theme.color.backgroundRaised, borderTopWidth: 1, borderTopColor: theme.color.borderGhost },
   cycleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, overflow: 'hidden' },
   cycleLabel: { fontFamily: 'Inter-Medium', fontSize: 9, lineHeight: 12, letterSpacing: 1.6, textTransform: 'uppercase', color: theme.color.textTertiary },

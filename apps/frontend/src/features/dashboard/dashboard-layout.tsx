@@ -17,26 +17,30 @@ export type DashboardLayoutProps = {
 
 /**
  * The two columns of the Acampamento v2 on desktop and its single-column order on mobile (header, summary, Objetivos,
- * Raid and Próximo Marco, Cadência, Atividade recente, actions). A slot left undefined renders nothing, not even a gap.
+ * Raid and Próximo Marco, Cadência, Atividade recente, actions). On desktop the header spans both columns. A slot left undefined renders nothing, not even a gap.
  */
 export function DashboardLayout({ desktop, header, summary, objectives, highlights, cadence, activity, actions }: DashboardLayoutProps) {
-  return <View testID="dashboard-grid" style={[styles.grid, desktop && styles.desktopGrid]}>
-    <View testID="dashboard-main-column" style={styles.mainColumn}>
-      {header}
-      {summary}
-      {objectives}
-      {desktop ? null : highlights}
-      {cadence}
-    </View>
-    <View style={[styles.sideColumn, desktop && styles.desktopSideColumn]} testID="dashboard-side-column">
-      {desktop ? highlights : null}
-      {activity}
-      {actions}
+  return <View style={styles.page}>
+    {desktop ? header : null}
+    <View testID="dashboard-grid" style={[styles.grid, desktop && styles.desktopGrid]}>
+      <View testID="dashboard-main-column" style={styles.mainColumn}>
+        {desktop ? null : header}
+        {summary}
+        {objectives}
+        {desktop ? null : highlights}
+        {cadence}
+      </View>
+      <View style={[styles.sideColumn, desktop && styles.desktopSideColumn]} testID="dashboard-side-column">
+        {desktop ? highlights : null}
+        {activity}
+        {actions}
+      </View>
     </View>
   </View>;
 }
 
 const styles = StyleSheet.create({
+  page: { width: '100%', gap: 22 },
   grid: { width: '100%', flexDirection: 'column', gap: 22 },
   desktopGrid: { flexDirection: 'row', alignItems: 'flex-start' },
   mainColumn: { flex: 1, minWidth: 0, gap: 18 },
