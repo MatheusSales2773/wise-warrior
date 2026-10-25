@@ -97,7 +97,7 @@ const styles = StyleSheet.create({
   portraitSpriteCompact: { marginLeft: -1, marginTop: 2 },
   coinBadge: { flexShrink: 0, minHeight: theme.layout.touchTarget, justifyContent: 'center', borderRadius: 3, borderWidth: theme.border.standard, borderColor: theme.color.borderEmphasis, backgroundColor: theme.color.surfaceInset, paddingLeft: 14, paddingRight: 16 },
   coinBadgeCompact: { borderRadius: 999, paddingLeft: 9, paddingRight: 10 },
-  heroCopy: { minWidth: 0, flexShrink: 1, flexGrow: 1, flexBasis: 160, maxWidth: 540 },
+  heroCopy: { flexShrink: 1, flexGrow: 1, flexBasis: 0, minWidth: 120, maxWidth: 540 },
   heroGreetingRow: { flexDirection: 'row', flexWrap: 'wrap', gap: theme.space.inlineHairline },
   heroGreeting: { ...display, fontSize: 9, lineHeight: 14, letterSpacing: 2.9, textTransform: 'uppercase', color: theme.color.accentPrimary },
   heroTitle: { ...display, fontSize: 26, lineHeight: 34, letterSpacing: 1, color: theme.color.textPrimary, marginTop: 6, marginBottom: 4 },

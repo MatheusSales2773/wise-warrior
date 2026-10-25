@@ -8,7 +8,7 @@ import { useActiveStudySession, useFocusCycle } from '@/features/study-session/q
 import { ActivityCard } from './activity-card';
 import { CadenceCard } from './cadence-card';
 import { DashboardLayout } from './dashboard-layout';
-import { FocusAction, FocusFooter, useActiveFocusReading } from './focus-action';
+import { FocusAction, FocusFooter, useActiveFocus } from './focus-action';
 import { GuildCard } from './guild-card';
 import { MetricsCard } from './metrics-card';
 import { DashboardGlow, ProfileCard, ProfileRefreshError } from './profile-card';
@@ -21,10 +21,11 @@ export function DashboardScreen() {
   const profile = useQuery(profileQueryOptions());
   const activity = useQuery(recentActivityQueryOptions());
   const metrics = useQuery(sessionMetricsQueryOptions());
+  // A failed query hides only its own part: no balance, no "N/4", or "Iniciar foco" when the active session cannot load.
   const coins = useQuery(coinBalanceQueryOptions());
   const cycle = useFocusCycle();
   const activeSession = useActiveStudySession();
-  const reading = useActiveFocusReading(activeSession.data);
+  const focus = useActiveFocus(activeSession.data);
   const sessionsObjective = useSessionsObjective();
   const { width } = useWindowDimensions();
   // Every query "Atualizar", pull-to-refresh and the partial-failure message cover. A new card's query joins here.
@@ -67,11 +68,10 @@ export function DashboardScreen() {
   // Touch platforms refresh by pulling the screen down; the button is only for web, which has no such gesture.
   const canPullToRefresh = Platform.OS !== 'web';
   const refreshProps = canPullToRefresh ? { refreshing, onRefresh: () => { void refresh(); } } : {};
-  // A failed query hides only its own part: no balance, no "N/4", or "Iniciar foco" when the active session cannot load.
-  const focusAction = <FocusAction cycle={cycle.data} reading={reading} />;
+  const focusAction = <FocusAction cycle={cycle.data} focus={focus} />;
   return <Screen
     backgroundOverlay={<DashboardGlow />}
-    footer={desktop ? undefined : <FocusFooter cycle={cycle.data} reading={reading} />}
+    footer={desktop ? undefined : <FocusFooter cycle={cycle.data} focus={focus} />}
     safeAreaEdges={[]}
     title="Acampamento"
     testID="dashboard"

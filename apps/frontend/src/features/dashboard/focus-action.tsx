@@ -5,7 +5,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 import { theme } from '@/design-system';
 import type { FocusCycle, StudySessionSnapshot } from '@/features/study-session/api';
-import { activeFocusReading, cycleButtonSuffix, cycleCaption, cycleMarkers, resumeAccessibilityLabel, resumeCaption, resumeDetail, type ActiveFocusReading } from './focus-action-model';
+import { activeFocus, cycleMarkers, focusButtonText, focusCaption, type ActiveFocus } from './focus-action-model';
 
 function PlayGlyph({ size = 12 }: { size?: number }) {
   return <Svg aria-hidden width={size} height={size} viewBox="0 0 24 24" fill="none">
@@ -14,7 +14,7 @@ function PlayGlyph({ size = 12 }: { size?: number }) {
 }
 
 /** The active Study Session as the button reads it, ticking each second while it runs; `null` without one. */
-export function useActiveFocusReading(active: StudySessionSnapshot | null | undefined): ActiveFocusReading | null {
+export function useActiveFocus(active: StudySessionSnapshot | null | undefined): ActiveFocus | null {
   const [now, setNow] = useState(() => Date.now());
   const running = active?.state === 'running';
   useEffect(() => {
@@ -22,23 +22,21 @@ export function useActiveFocusReading(active: StudySessionSnapshot | null | unde
     const interval = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(interval);
   }, [running, active?.id]);
-  return active ? activeFocusReading(active, now) : null;
+  return active ? activeFocus(active, now) : null;
 }
 
 type FocusActionProps = {
   /** Unknown while it loads or fails: the button then says only "Iniciar foco". */
   cycle?: FocusCycle;
   /** The active Study Session, which turns the button into "Retomar foco". */
-  reading: ActiveFocusReading | null;
+  focus: ActiveFocus | null;
   /** On the fixed mobile bar, the Ciclo and the session are written above the button, not on it. */
   fixed?: boolean;
 };
 
 /** The main button: "Iniciar foco · 3/4", or "Retomar foco · Matéria · 18:42" with an active Study Session. Opens the Forja. */
-export function FocusAction({ cycle, reading, fixed = false }: FocusActionProps) {
-  const label = reading ? 'Retomar foco' : 'Iniciar foco';
-  const detail = fixed ? null : reading ? `· ${resumeDetail(reading)}` : cycle ? `· ${cycleButtonSuffix(cycle)}` : null;
-  const accessibilityLabel = reading ? resumeAccessibilityLabel(reading) : cycle ? `Iniciar foco, ${cycleButtonSuffix(cycle).replace('/', ' de ')}` : 'Iniciar foco';
+export function FocusAction({ cycle, focus, fixed = false }: FocusActionProps) {
+  const { label, detail, accessibilityLabel } = focusButtonText(cycle, focus, fixed);
   return <Link asChild href="/sessao">
     <Pressable accessibilityRole="link" accessibilityLabel={accessibilityLabel} style={StyleSheet.flatten([styles.focusAction, fixed && styles.fixedAction])} testID="dashboard-focus-action">
       <LinearGradient colors={[theme.color.accentPrimary, theme.color.accentMuted]} end={{ x: 0, y: 1 }} start={{ x: 0, y: 0 }} style={styles.focusGradient}>
@@ -51,17 +49,17 @@ export function FocusAction({ cycle, reading, fixed = false }: FocusActionProps)
 }
 
 /** Mobile: the Ciclo markers and caption above the fixed button. */
-export function FocusFooter({ cycle, reading }: Pick<FocusActionProps, 'cycle' | 'reading'>) {
-  const caption = reading ? resumeCaption(reading) : cycle ? cycleCaption(cycle) : null;
+export function FocusFooter({ cycle, focus }: Pick<FocusActionProps, 'cycle' | 'focus'>) {
+  const caption = focusCaption(cycle, focus);
   return <View style={styles.footer} testID="dashboard-focus-footer">
     {cycle || caption ? <View style={styles.cycleRow} testID="dashboard-cycle">
       {cycle ? <>
         <Text style={styles.cycleLabel}>Ciclo</Text>
         {cycleMarkers(cycle).map((marker, index) => <View key={index} style={[styles.marker, styles[marker]]} testID={`dashboard-cycle-marker-${marker}`} />)}
       </> : null}
-      {caption ? <Text style={[styles.caption, reading && styles.captionActive]} testID="dashboard-cycle-caption">{caption}</Text> : null}
+      {caption ? <Text style={[styles.caption, focus && styles.captionActive]} testID="dashboard-cycle-caption">{caption}</Text> : null}
     </View> : null}
-    <FocusAction cycle={cycle} fixed reading={reading} />
+    <FocusAction cycle={cycle} fixed focus={focus} />
   </View>;
 }
 

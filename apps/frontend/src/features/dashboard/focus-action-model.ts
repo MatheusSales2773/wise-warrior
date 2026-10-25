@@ -9,11 +9,6 @@ export function cycleStep(cycle: FocusCycle): number {
   return Math.min(cycle.completedInCycle + 1, cycle.cycleLength);
 }
 
-/** "3/4", the tail of "Iniciar foco · 3/4". */
-export function cycleButtonSuffix(cycle: FocusCycle): string {
-  return `${cycleStep(cycle)}/${cycle.cycleLength}`;
-}
-
 export function cycleMarkers(cycle: FocusCycle): CycleMarker[] {
   const step = cycleStep(cycle);
   return Array.from({ length: cycle.cycleLength }, (_, index) => (index + 1 < step ? 'done' : index + 1 === step ? 'next' : 'pending'));
@@ -24,7 +19,7 @@ export function cycleCaption(cycle: FocusCycle): string {
 }
 
 /** What the "Retomar foco" button shows of the active Study Session. */
-export type ActiveFocusReading = {
+export type ActiveFocus = {
   subject: string;
   seconds: number;
   /** A Ciclo shows the time left; a Foco livre, the time elapsed. */
@@ -33,7 +28,7 @@ export type ActiveFocusReading = {
 };
 
 /** Same clock as the Forja: the server deadline corrected by the offset the snapshot arrived with. */
-export function activeFocusReading(snapshot: StudySessionSnapshot, localNow: number): ActiveFocusReading {
+export function activeFocus(snapshot: StudySessionSnapshot, localNow: number): ActiveFocus {
   const offset = studyClockOffset(snapshot);
   const free = isFreeFocus(snapshot);
   return {
@@ -44,18 +39,31 @@ export function activeFocusReading(snapshot: StudySessionSnapshot, localNow: num
   };
 }
 
-/** "Cálculo II · 18:42", after "Retomar foco ·". */
-export function resumeDetail(reading: ActiveFocusReading): string {
-  return `${reading.subject} · ${formatElapsedTime(reading.seconds)}`;
+function readingTime(focus: ActiveFocus): string {
+  return `${formatElapsedTime(focus.seconds)} ${focus.kind === 'remaining' ? 'restantes' : 'decorridos'}`;
 }
 
-export function resumeAccessibilityLabel(reading: ActiveFocusReading): string {
-  const time = `${formatElapsedTime(reading.seconds)} ${reading.kind === 'remaining' ? 'restantes' : 'decorridos'}`;
-  return `Retomar foco, ${reading.subject}, ${reading.paused ? 'pausada, ' : ''}${time}`;
+/** The line above the fixed mobile button: the active session, or else the Ciclo; `null` when neither is known. */
+export function focusCaption(cycle: FocusCycle | undefined, focus: ActiveFocus | null): string | null {
+  if (focus) return [focus.subject, focus.paused ? 'pausada' : null, readingTime(focus)].filter(Boolean).join(' · ');
+  return cycle ? cycleCaption(cycle) : null;
 }
 
-/** The line above the fixed mobile button: "Cálculo II · pausada · 18:42 restantes". */
-export function resumeCaption(reading: ActiveFocusReading): string {
-  const time = `${formatElapsedTime(reading.seconds)} ${reading.kind === 'remaining' ? 'restantes' : 'decorridos'}`;
-  return [reading.subject, reading.paused ? 'pausada' : null, time].filter(Boolean).join(' · ');
+/** What the main button says: its label, the mono detail after it (none on the fixed mobile bar) and its spoken name. */
+export function focusButtonText(cycle: FocusCycle | undefined, focus: ActiveFocus | null, fixed: boolean): { label: string; detail: string | null; accessibilityLabel: string } {
+  if (focus) {
+    return {
+      label: 'Retomar foco',
+      detail: fixed ? null : `· ${focus.subject} · ${formatElapsedTime(focus.seconds)}`,
+      accessibilityLabel: `Retomar foco, ${focus.subject}, ${focus.paused ? 'pausada, ' : ''}${readingTime(focus)}`,
+    };
+  }
+  if (cycle) {
+    return {
+      label: 'Iniciar foco',
+      detail: fixed ? null : `· ${cycleStep(cycle)}/${cycle.cycleLength}`,
+      accessibilityLabel: `Iniciar foco, ${cycleStep(cycle)} de ${cycle.cycleLength}`,
+    };
+  }
+  return { label: 'Iniciar foco', detail: null, accessibilityLabel: 'Iniciar foco' };
 }

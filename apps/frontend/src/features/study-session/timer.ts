@@ -1,7 +1,7 @@
 import type { StudySessionSnapshot } from './api';
 
 /** How far the server clock is ahead of this device's, as of the moment the snapshot arrived. */
-export function studyClockOffset(snapshot: Pick<StudySessionSnapshot, 'serverNow' | 'receivedAtMs'>): number {
+export function studyClockOffset(snapshot: StudySessionSnapshot): number {
   return new Date(snapshot.serverNow).getTime() - snapshot.receivedAtMs;
 }
 
