@@ -91,12 +91,18 @@ export function ForgeAction({ label, icon, onPress, primary = false, disabled = 
 /** A Ciclo counts `remaining` down against its `duration`; a Foco livre has no target and counts `elapsed` up. */
 export type TimerReading = { remaining: number; duration: number } | { elapsed: number };
 
-export function ForgeTimer({ reading, phase, size, testID, accessibilityLabel }: {
+export function ForgeTimer({ reading, phase, size, testID, accessibilityLabel, caption, dimmed = false, ornate = true }: {
   reading: TimerReading;
   phase: string;
   size: number;
   testID?: string;
   accessibilityLabel?: string;
+  /** Replaces the line under the digits, which otherwise shows the target ("/ 25:00") or "tempo de foco". */
+  caption?: string;
+  /** A paused session: the ring and its arc fade, as the clock is stopped. */
+  dimmed?: boolean;
+  /** Frames the phase with "◈": left out on the compact layout. */
+  ornate?: boolean;
 }) {
   const radius = 154;
   const circumference = 2 * Math.PI * radius;
@@ -105,7 +111,7 @@ export function ForgeTimer({ reading, phase, size, testID, accessibilityLabel }:
 
   return (
     <View style={[styles.timerRingWrap, { width: size, height: size }]}>
-      <Svg aria-hidden width={size} height={size} viewBox="0 0 340 340" style={styles.timerRing}>
+      <Svg aria-hidden width={size} height={size} viewBox="0 0 340 340" style={[styles.timerRing, dimmed && styles.timerRingDimmed]} testID={testID ? `${testID}-ring` : undefined}>
         <Defs>
           <SvgGradient id="forgeRingGradient" x1="0" y1="0" x2="1" y2="1">
             <Stop offset="0" stopColor={theme.color.accentHighlight} />
@@ -116,9 +122,9 @@ export function ForgeTimer({ reading, phase, size, testID, accessibilityLabel }:
         <Circle cx="170" cy="170" r={radius} fill="none" stroke="url(#forgeRingGradient)" strokeWidth="6" strokeLinecap="round" strokeDasharray={circumference} strokeDashoffset={circumference * (1 - progress)} />
       </Svg>
       <View style={styles.timerCenter}>
-        <Text allowFontScaling style={styles.timerPhase}>◈ {phase} ◈</Text>
+        <Text allowFontScaling style={styles.timerPhase}>{ornate ? `◈ ${phase} ◈` : phase}</Text>
         <Text accessibilityLiveRegion="none" aria-live="off" accessibilityLabel={accessibilityLabel} style={[styles.timerDigits, { fontSize: size < 290 ? 56 : 80, lineHeight: size < 290 ? 64 : 88 }]} testID={testID}>{'elapsed' in reading ? formatElapsedTime(reading.elapsed) : formatRemainingTime(reading.remaining)}</Text>
-        <Text allowFontScaling style={styles.timerTarget}>{'elapsed' in reading ? 'tempo de foco' : `/ ${formatRemainingTime(reading.duration)}`}</Text>
+        <Text allowFontScaling style={styles.timerTarget}>{caption ?? ('elapsed' in reading ? 'tempo de foco' : `/ ${formatRemainingTime(reading.duration)}`)}</Text>
       </View>
     </View>
   );

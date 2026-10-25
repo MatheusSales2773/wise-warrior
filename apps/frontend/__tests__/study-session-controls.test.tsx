@@ -121,9 +121,9 @@ it('stops with the projected label, shows the confirmed result, then offers a ne
   getActive.mockResolvedValue(snapshot);
   stop.mockResolvedValue(cancelled);
   const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 30_000 }, mutations: { retry: false, gcTime: 0 } } });
-  client.setQueryData(dashboardKeys.profile(), { xpTotal: 0 });
+  client.setQueryData(dashboardKeys.profile(), { id: 'u-1', email: 'a@b.c', displayName: 'Knightshade', planTier: 'free', level: 14, levelStartXp: 0, nextLevelXp: 1000, xpTotal: 0, title: null, equipped: [] });
   client.setQueryData(dashboardKeys.recentActivity(), []);
-  client.setQueryData(dashboardKeys.metrics(), { sessionsToday: 0 });
+  client.setQueryData(dashboardKeys.metrics(), { currentStreakDays: 0, longestStreakDays: 0, sessionsToday: 0, validSecondsToday: 0, cadence: { windowStart: '2026-09-16', windowEnd: '2026-09-22', days: [] } });
   const { view } = await renderStudySession(client);
 
   await view.findByRole('button', { name: 'Cancelar sessão' });
@@ -290,7 +290,7 @@ it('refreshes after a stale-version conflict and discards the obsolete retry', a
   await fireEvent.press(view.getByRole('button', { name: 'Pausar sessão' }));
   await view.findByTestId('study-session-transition-error');
   await waitFor(() => expect(getActive).toHaveBeenCalledTimes(2));
-  expect(view.getByText('Sessão em andamento', { exact: true })).toBeTruthy();
+  expect(view.getByText('Em andamento')).toBeTruthy();
   expect(view.getByTestId('study-session-timer').props.accessibilityLabel).toContain('25 minutos e 0 segundos');
   expect(view.getByRole('button', { name: 'Atualizando estado…' })).toBeDisabled();
   expect(view.queryByRole('button', { name: 'Tentar pausar novamente' })).toBeNull();
@@ -499,7 +499,7 @@ it('concludes a Foco livre stopped from five minutes, with the confirmed XP', as
   stop.mockResolvedValue({ ...freeAt(300), state: 'completed', xpAwarded: 50, version: 2, endedAt: '2026-09-22T12:05:00.000Z', terminalReason: 'manual-stop' });
   const { view } = await renderStudySession();
 
-  await fireEvent.press(await view.findByRole('button', { name: 'Parar foco livre' }));
+  await fireEvent.press(await view.findByRole('button', { name: 'Parar e concluir' }));
   await view.findByTestId('study-session-result');
   expect(view.getByText('Sessão concluída')).toBeTruthy();
   expect(view.getByText('XP confirmado: 50')).toBeTruthy();
@@ -511,8 +511,8 @@ it('confirms stopping a Foco livre with its own copy', async () => {
   getActive.mockResolvedValue(freeAt(600));
   const { view } = await renderStudySession();
 
-  await fireEvent.press(await view.findByRole('button', { name: 'Parar foco livre' }));
-  expect(await view.findByText('Parar foco livre?')).toBeTruthy();
+  await fireEvent.press(await view.findByRole('button', { name: 'Parar e concluir' }));
+  expect(await view.findByText('Parar e concluir?')).toBeTruthy();
   expect(view.getByTestId('study-session-stop-confirm')).toBeTruthy();
   expect(stop).not.toHaveBeenCalled();
   view.unmount();

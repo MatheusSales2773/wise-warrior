@@ -566,7 +566,7 @@ describe('Sessão de guilda on the Forja', () => {
 
     await waitFor(() => expect(start).toHaveBeenCalledWith(1500, expect.any(String), null, 'raid-1'));
     expect(joinGuildRaid).not.toHaveBeenCalled();
-    expect(await view.findByText('25 min de foco · Sessão de guilda')).toBeTruthy();
+    expect(await view.findByTestId('study-session-mode-tag')).toHaveTextContent('GUILDA');
     view.unmount();
   });
 
@@ -668,26 +668,21 @@ it('keeps the iPhone forge header and duration choices in the visible stage', as
   view.unmount();
 });
 
-it('shows the fixed duration in settings during an active session', async () => {
-  getActive.mockResolvedValue(snapshot);
-  const { view } = await renderStudySession();
-  await view.findByTestId('study-session-active');
-
-  await fireEvent.press(view.getByRole('button', { name: 'Configurações da sessão' }));
-  expect(view.getByText('A duração não pode ser alterada durante a sessão.')).toBeTruthy();
-  expect(view.queryByRole('radio')).toBeNull();
-  await fireEvent.press(view.getByRole('button', { name: 'Fechar configurações' }));
-  expect(view.queryByText('A duração não pode ser alterada durante a sessão.')).toBeNull();
-  view.unmount();
-});
-
-it('renders the forge with a gold background glow and gold primary action', async () => {
+it('renders the forge with a gold background glow', async () => {
   getActive.mockResolvedValue(snapshot);
   const { view } = await renderStudySession();
   await view.findByTestId('study-session-active');
 
   expect(view.getByTestId('study-session-page-gradient', { includeHiddenElements: true })).toBeTruthy();
   expect(view.getByTestId('study-session-stage-gradient', { includeHiddenElements: true })).toBeTruthy();
+  view.unmount();
+});
+
+it('renders the setup with a gold primary action', async () => {
+  getActive.mockResolvedValue(null);
+  const { view } = await renderStudySession();
+  await view.findByTestId('study-session-setup');
+
   expect(view.getByTestId('study-session-primary-gradient').props.colors).toEqual([processColor('#d4a85a'), processColor('#8a6a3a')]);
   view.unmount();
 });
