@@ -80,7 +80,8 @@ describe('Foco livre on the Forja', () => {
     const timer = await view.findByTestId('study-session-timer');
     expect(timer).toHaveTextContent('02:05');
     expect(timer.props.accessibilityLabel).toBe('Tempo de foco: 0 horas, 2 minutos e 5 segundos. Foco livre em andamento.');
-    expect(view.getByText('Foco livre')).toBeTruthy();
+    expect(view.getByText('foco válido 02:05')).toBeTruthy();
+    expect(view.getByTestId('study-session-strip-planned')).toHaveTextContent('Livretipo');
     expect(view.getByTestId('study-session-pause')).toBeTruthy();
     view.unmount();
   });

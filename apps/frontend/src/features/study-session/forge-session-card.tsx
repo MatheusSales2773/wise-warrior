@@ -1,8 +1,13 @@
-import { Text, View, type StyleProp, type ViewStyle, useWindowDimensions } from 'react-native';
+import Ionicons from '@expo/vector-icons/Ionicons';
+import { useQuery } from '@tanstack/react-query';
+import { Text, View } from 'react-native';
 import { WiseButton, WiseCard, WiseText, theme } from '@/design-system';
 import { FeedbackMessage } from '@/design-system/components/FeedbackMessage';
+import { profileQueryOptions } from '@/features/dashboard/queries';
+import { useSessionsObjective } from '@/features/chronicles/queries';
 import { StopConfirmation, type StopKind } from './stop-confirmation';
-import { ForgeAction, ForgeCardTitle } from './forge-primitives';
+import { ForgeCardTitle } from './forge-primitives';
+import { goalLine, levelLine } from './meanwhile';
 import { styles } from './forge-styles';
 import { formatElapsedTime } from './timer';
 
@@ -19,139 +24,188 @@ export type ForgeSessionControl =
   }
   | { kind: 'none' };
 
-export type ForgeSessionCardProps = {
-  wide: boolean;
-  plannedLabel: string;
-  settingsOpen: boolean;
+/** On the compact layout the buttons share a row, so they show the first word; the accessible name stays whole. */
+function shortLabel(label: string): string {
+  const [first = label] = label.split(' ');
+  const word = first.replace('…', '');
+  return label.endsWith('…') ? `${word}…` : word;
+}
+
+/** Pause/resume and stop of a running or paused session, or the one recovery action that replaces them. */
+export function ForgeSessionActions({ control, stopConfirmation, compact }: {
   control: ForgeSessionControl;
   stopConfirmation: { kind: StopKind; onConfirm: () => void; onDecline: () => void } | null;
+  compact: boolean;
+}) {
+  const body = (() => {
+    switch (control.kind) {
+      case 'retry-completion':
+        return <WiseButton label="Tentar confirmar novamente" onPress={control.onRetry} variant="secondary" testID="study-session-completion-retry" />;
+      case 'refresh-waiting':
+        return <WiseButton label="Atualizar estado" onPress={control.onRefresh} variant="secondary" testID="study-session-completion-refresh" />;
+      case 'refresh-conflict':
+        return (
+          <WiseButton
+            label={control.fetching ? 'Atualizando estado…' : 'Atualizar estado'}
+            loading={control.fetching}
+            disabled={control.fetching}
+            onPress={control.onRefresh}
+            variant="secondary"
+            testID="study-session-completion-refresh"
+          />
+        );
+      case 'retry-transition':
+        return <WiseButton label={control.label} onPress={control.onRetry} variant="secondary" testID="study-session-transition-retry" />;
+      case 'controls': {
+        const buttons = [
+          { ...control.main, variant: 'secondary' as const, icon: <Ionicons name={control.main.icon} size={12} color={theme.color.textPrimary} /> },
+          { ...control.stop, variant: 'danger' as const, icon: <Ionicons name="stop" size={12} color={theme.color.feedbackDanger} />, testID: 'study-session-stop' },
+        ];
+        return (
+          <View style={compact ? styles.actionsCompact : styles.actionsStacked}>
+            {buttons.map(({ icon, variant, label, ...button }) => (
+              <View key={variant} style={compact ? styles.actionCompactCell : undefined}>
+                <WiseButton
+                  accessibilityLabel={label}
+                  label={compact ? shortLabel(label) : label}
+                  leading={icon}
+                  loading={button.loading}
+                  disabled={button.disabled}
+                  onPress={button.onPress}
+                  testID={button.testID}
+                  variant={variant}
+                />
+              </View>
+            ))}
+          </View>
+        );
+      }
+      case 'none':
+        return null;
+    }
+  })();
+  return <>
+    {body}
+    {stopConfirmation ? <StopConfirmation kind={stopConfirmation.kind} onConfirm={stopConfirmation.onConfirm} onDecline={stopConfirmation.onDecline} /> : null}
+  </>;
+}
+
+/** What stopping does, told before the user reaches for the button: a Foco livre has no early end, only a conclusion. */
+export function ForgeStopNotice({ free }: { free: boolean }) {
+  return (
+    <Text allowFontScaling style={[styles.cardCopy, { color: theme.color.textTertiary }]} testID="study-session-stop-notice">
+      {free
+        ? 'Parar conclui o foco livre. Com menos de 5 minutos de foco, não concede XP.'
+        : 'Encerrar antes do fim registra apenas o foco válido até agora.'}
+    </Text>
+  );
+}
+
+export type ForgeSessionFeedbackProps = {
   transitionError: { versionConflict: boolean; needsCanonicalRefresh: boolean; refreshFailed: boolean } | null;
   completionError: boolean;
   completionConflict: { fetching: boolean } | null;
   sessionStatus: string;
-  onToggleSettings: () => void;
-  onCloseSettings: () => void;
 };
 
-/** The settings of a running session: shown inline on a narrow screen, in the support column on a wide one. */
-function SessionSettings({ plannedLabel, onClose, style }: { plannedLabel: string; onClose: () => void; style: StyleProp<ViewStyle> }) {
-  return <WiseCard style={style}>
-    <ForgeCardTitle>Configurações da sessão</ForgeCardTitle>
-    <View style={styles.statRow}><Text allowFontScaling style={[styles.cardCopy, { color: theme.color.textSecondary }]}>Tempo de foco</Text><WiseText color="accentHighlight" variant="mono">{plannedLabel}</WiseText></View>
-    <Text allowFontScaling style={[styles.cardCopy, { color: theme.color.textSecondary }]}>A duração não pode ser alterada durante a sessão.</Text>
-    <WiseButton label="Fechar configurações" onPress={onClose} variant="secondary" />
-  </WiseCard>;
-}
-
-function SessionControls({ control }: { control: ForgeSessionControl }) {
-  switch (control.kind) {
-    case 'retry-completion':
-      return <WiseButton label="Tentar confirmar novamente" onPress={control.onRetry} variant="secondary" testID="study-session-completion-retry" />;
-    case 'refresh-waiting':
-      return <WiseButton label="Atualizar estado" onPress={control.onRefresh} variant="secondary" testID="study-session-completion-refresh" />;
-    case 'refresh-conflict':
-      return (
-        <WiseButton
-          label={control.fetching ? 'Atualizando estado…' : 'Atualizar estado'}
-          loading={control.fetching}
-          disabled={control.fetching}
-          onPress={control.onRefresh}
-          variant="secondary"
-          testID="study-session-completion-refresh"
-        />
-      );
-    case 'retry-transition':
-      return <WiseButton label={control.label} onPress={control.onRetry} variant="secondary" testID="study-session-transition-retry" />;
-    case 'controls':
-      return (
-        <View style={styles.controls}>
-          <ForgeAction icon="stop" iconOnly {...control.stop} testID="study-session-stop" />
-          <ForgeAction primary {...control.main} />
-        </View>
-      );
-    case 'none':
-      return null;
-  }
-}
-
-/** What sits under the Bigorna while a session runs or is paused: controls, their feedback and the status line. */
-export function ForgeSessionCard(props: ForgeSessionCardProps) {
-  const { width } = useWindowDimensions();
-  const { control, stopConfirmation, transitionError, completionConflict } = props;
+/** Errors of the last command or completion, and the status line that announces what the session is doing. */
+export function ForgeSessionFeedback({ transitionError, completionError, completionConflict, sessionStatus }: ForgeSessionFeedbackProps) {
   return <>
-    <View style={[styles.stageActions, width < 450 && styles.stageActionsCompact]}>
-      {props.settingsOpen && !props.wide ? <SessionSettings plannedLabel={props.plannedLabel} onClose={props.onCloseSettings} style={styles.inlineSettingsCard} /> : null}
-      <View style={[styles.actionRow, width < 450 && styles.actionRowCompact]}>
-        <SessionControls control={control} />
-        {stopConfirmation ? <StopConfirmation kind={stopConfirmation.kind} onConfirm={stopConfirmation.onConfirm} onDecline={stopConfirmation.onDecline} /> : null}
-        <ForgeAction icon="settings-outline" iconOnly label="Configurações da sessão" expanded={props.settingsOpen} onPress={props.onToggleSettings} />
-      </View>
-      {transitionError ? (
-        <FeedbackMessage
-          variant="error"
-          title={transitionError.versionConflict ? 'A sessão mudou desde a última confirmação.' : 'Não foi possível confirmar a ação'}
-          message={transitionError.versionConflict
-            ? transitionError.needsCanonicalRefresh
-              ? transitionError.refreshFailed
-                ? 'Não foi possível atualizar o estado. O último snapshot confirmado continua visível; atualize antes de enviar outra ação.'
-                : 'Atualizando o snapshot confirmado para liberar um novo comando seguro.'
-              : 'O estado atual foi carregado. Confira a sessão e envie uma nova ação.'
-            : 'A sessão continua no último estado confirmado. Tente novamente para repetir o mesmo comando com segurança.'}
-          testID="study-session-transition-error"
-        />
-      ) : null}
-      {props.completionError ? (
-        <FeedbackMessage
-          variant="error"
-          title="Não foi possível confirmar a conclusão."
-          message="O último snapshot continua visível. Tente novamente para recuperar o resultado usando a mesma confirmação."
-          testID="study-session-completion-error"
-        />
-      ) : null}
-      {completionConflict ? (
-        <FeedbackMessage
-          variant="error"
-          title="A sessão mudou antes da conclusão."
-          message={completionConflict.fetching
-            ? 'Atualizando o snapshot canônico da sessão.'
-            : 'Atualize o estado para continuar com a versão confirmada pelo servidor.'}
-          testID="study-session-completion-conflict"
-        />
-      ) : null}
-    </View>
-    <View style={styles.stageFeedback}>
-      <WiseText accessibilityLiveRegion="polite" aria-live="polite" testID="study-session-state" variant="body">{props.sessionStatus}</WiseText>
-    </View>
+    {transitionError ? (
+      <FeedbackMessage
+        variant="error"
+        title={transitionError.versionConflict ? 'A sessão mudou desde a última confirmação.' : 'Não foi possível confirmar a ação'}
+        message={transitionError.versionConflict
+          ? transitionError.needsCanonicalRefresh
+            ? transitionError.refreshFailed
+              ? 'Não foi possível atualizar o estado. O último snapshot confirmado continua visível; atualize antes de enviar outra ação.'
+              : 'Atualizando o snapshot confirmado para liberar um novo comando seguro.'
+            : 'O estado atual foi carregado. Confira a sessão e envie uma nova ação.'
+          : 'A sessão continua no último estado confirmado. Tente novamente para repetir o mesmo comando com segurança.'}
+        testID="study-session-transition-error"
+      />
+    ) : null}
+    {completionError ? (
+      <FeedbackMessage
+        variant="error"
+        title="Não foi possível confirmar a conclusão."
+        message="O último snapshot continua visível. Tente novamente para recuperar o resultado usando a mesma confirmação."
+        testID="study-session-completion-error"
+      />
+    ) : null}
+    {completionConflict ? (
+      <FeedbackMessage
+        variant="error"
+        title="A sessão mudou antes da conclusão."
+        message={completionConflict.fetching
+          ? 'Atualizando o snapshot canônico da sessão.'
+          : 'Atualize o estado para continuar com a versão confirmada pelo servidor.'}
+        testID="study-session-completion-conflict"
+      />
+    ) : null}
+    <WiseText accessibilityLiveRegion="polite" aria-live="polite" color="textSecondary" testID="study-session-state" variant="body">{sessionStatus}</WiseText>
   </>;
 }
 
-/** Support column while a session runs: its data, or its settings in place of them on a wide screen. */
-export function ForgeActiveSupport({ wide, settingsOpen, plannedLabel, validFocusSeconds, pauseCount, onCloseSettings }: {
-  wide: boolean;
-  settingsOpen: boolean;
+function Row({ label, value, testID, valueTestID }: { label: string; value: string; testID?: string; valueTestID?: string }) {
+  return (
+    <View style={styles.statRow} testID={testID}>
+      <Text allowFontScaling style={[styles.cardCopy, { color: theme.color.textSecondary }]}>{label}</Text>
+      <WiseText color="accentHighlight" numberOfLines={1} style={styles.rowValue} testID={valueTestID} variant="mono">{value}</WiseText>
+    </View>
+  );
+}
+
+/** "Sessão atual": the facts of the session, and on the wide layout its controls and their feedback. */
+export function ForgeSessionCard({ guild, subject, free, plannedLabel, validFocusSeconds, pauseCount, children }: {
+  guild: boolean;
+  subject: string;
+  free: boolean;
   plannedLabel: string;
   validFocusSeconds: number;
   pauseCount: number | undefined;
-  onCloseSettings: () => void;
+  /** Controls and feedback, only where the layout keeps them in the card. */
+  children?: React.ReactNode;
 }) {
-  if (settingsOpen && wide) return <SessionSettings plannedLabel={plannedLabel} onClose={onCloseSettings} style={styles.sideCard} />;
-  return <>
-    <WiseCard style={styles.sideCard}>
-      <ForgeCardTitle>Sua sessão</ForgeCardTitle>
-      <View style={styles.statRow}><Text allowFontScaling style={[styles.cardCopy, { color: theme.color.textSecondary }]}>Duração planejada</Text><WiseText color="accentHighlight" variant="mono">{plannedLabel}</WiseText></View>
-      <View style={styles.statRow}><Text allowFontScaling style={[styles.cardCopy, { color: theme.color.textSecondary }]}>Foco válido</Text><WiseText color="accentHighlight" variant="mono">{formatElapsedTime(validFocusSeconds)}</WiseText></View>
-      {pauseCount != null ? (
-        <View style={styles.statRow} testID="study-session-pause-count">
-          <Text allowFontScaling style={[styles.cardCopy, { color: theme.color.textSecondary }]}>Pausas</Text>
-          <WiseText color="accentHighlight" variant="mono">{pauseCount}</WiseText>
+  return (
+    <WiseCard style={styles.sideCard} testID="study-session-card">
+      <View style={styles.cardHeader}>
+        <ForgeCardTitle>Sessão atual</ForgeCardTitle>
+        <Text allowFontScaling style={styles.modeTag} testID="study-session-mode-tag">{guild ? 'GUILDA' : 'SOLO'}</Text>
+      </View>
+      <Row label="Matéria" value={subject} valueTestID="study-session-subject" />
+      {free ? <Row label="Tipo" value="Foco livre" /> : <Row label="Duração planejada" value={plannedLabel} />}
+      <Row label="Foco válido" value={formatElapsedTime(validFocusSeconds)} />
+      {pauseCount != null ? <Row label="Pausas" value={String(pauseCount)} testID="study-session-pause-count" /> : null}
+      {children}
+    </WiseCard>
+  );
+}
+
+/**
+ * "Enquanto isso": what finishing this session does for the day's Objetivo and the next level, and for the Raid in a
+ * guild session. A line whose data is missing is left out, and so is the card when none is left.
+ */
+export function ForgeMeanwhileCard({ raidName }: { raidName: string | null }) {
+  const { data: profile } = useQuery(profileQueryOptions());
+  const objective = useSessionsObjective();
+  const goal = goalLine(objective);
+  const level = levelLine(profile);
+  const lines: { key: string; icon: 'flash' | 'flame' | 'sparkles'; color: string; text: string }[] = [
+    ...(raidName ? [{ key: 'raid', icon: 'flash' as const, color: theme.color.accentHighlight, text: `Ao concluir, o XP vira um Golpe na Raid ${raidName}.` }] : []),
+    ...(goal ? [{ key: 'goal', icon: 'flame' as const, color: theme.color.feedbackEnergy, text: goal }] : []),
+    ...(level ? [{ key: 'level', icon: 'sparkles' as const, color: theme.color.accentHighlight, text: level }] : []),
+  ];
+  if (lines.length === 0) return null;
+  return (
+    <WiseCard style={styles.sideCard} testID="study-session-meanwhile">
+      <ForgeCardTitle>Enquanto isso</ForgeCardTitle>
+      {lines.map((line) => (
+        <View key={line.key} style={styles.meanwhileLine} testID={`study-session-meanwhile-${line.key}`}>
+          <Ionicons accessibilityElementsHidden importantForAccessibility="no" name={line.icon} size={16} color={line.color} />
+          <Text allowFontScaling style={[styles.cardCopy, styles.meanwhileText, { color: theme.color.textPrimary }]}>{line.text}</Text>
         </View>
-      ) : null}
-      <Text allowFontScaling style={[styles.cardCopy, { color: theme.color.textTertiary }]}>O tempo e a conclusão são confirmados pelo servidor.</Text>
+      ))}
     </WiseCard>
-    <WiseCard style={styles.sideCard}>
-      <ForgeCardTitle>Como funciona</ForgeCardTitle>
-      <Text allowFontScaling style={[styles.cardCopy, { color: theme.color.textSecondary }]}>Pause quando precisar. Ao retomar, o contador continua de onde parou.</Text>
-      <Text allowFontScaling style={[styles.cardCopy, { color: theme.color.textSecondary }]}>Sessões encerradas antes de 5 minutos não concedem XP.</Text>
-    </WiseCard>
-  </>;
+  );
 }

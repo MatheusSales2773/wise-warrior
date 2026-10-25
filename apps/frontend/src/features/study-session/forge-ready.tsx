@@ -10,6 +10,7 @@ import { XP_PER_FOCUS_MINUTE, estimatedXp, type FocusChoice } from './focus-choi
 import { ForgeCardTitle } from './forge-primitives';
 import { styles } from './forge-styles';
 import { formatRemainingTime } from './timer';
+import { formatFocusToday } from './xp';
 
 /** Hero stage scale: the 16 × 24 grid drawn at 6× on a wide Bigorna, 4× on a phone (integer scales only). */
 const HERO_SCALE = { regular: 6, compact: 4 } as const;
@@ -25,36 +26,28 @@ export function ForgeReadyHero({ compact }: { compact: boolean }) {
   const equipped = equippedItems(profile);
   const scale = compact ? HERO_SCALE.compact : HERO_SCALE.regular;
   return (
-    <View style={styles.heroStage} testID="study-session-hero">
+    <View style={styles.readyHeroStage} testID="study-session-hero">
       <LayeredHero equipped={equipped} scale={scale} />
-      <View style={[styles.heroShadow, { width: scale * HERO_SHADOW_CELLS }]} />
+      <View style={[styles.readyHeroShadow, { width: scale * HERO_SHADOW_CELLS }]} />
       {compact ? null : (
-        <Text allowFontScaling style={styles.heroCaption} testID="study-session-hero-caption">
-          <Text style={styles.heroCaptionName}>{profile.displayName}</Text> aguarda na bigorna
+        <Text allowFontScaling style={styles.readyHeroCaption} testID="study-session-hero-caption">
+          <Text style={styles.readyHeroCaptionName}>{profile.displayName}</Text> aguarda na bigorna
         </Text>
       )}
     </View>
   );
 }
 
-/** "1h 10min", "25min": the valid focus of the day as the summary shows it (the Diário's `formatFocusTime` writes "1h 10"). */
-export function formatFocusToday(seconds: number): string {
-  const minutes = Math.floor(seconds / 60);
-  const hours = Math.floor(minutes / 60);
-  if (hours === 0) return `${minutes}min`;
-  return minutes % 60 === 0 ? `${hours}h` : `${hours}h ${minutes % 60}min`;
-}
-
 type SummaryCellData = { key: string; icon: 'sparkles' | 'flame' | 'time-outline'; color: string; value: string; label: string; spoken: string };
 
 function SummaryCell({ cell, last }: { cell: SummaryCellData; last: boolean }) {
   return (
-    <View accessible accessibilityLabel={cell.spoken} style={[styles.summaryCell, !last && styles.summaryCellDivided]} testID={`study-session-summary-${cell.key}`}>
-      <View style={styles.summaryValueRow}>
+    <View accessible accessibilityLabel={cell.spoken} style={[styles.readySummaryCell, !last && styles.readySummaryCellDivided]} testID={`study-session-summary-${cell.key}`}>
+      <View style={styles.readySummaryValueRow}>
         <Ionicons accessibilityElementsHidden color={cell.color} importantForAccessibility="no" name={cell.icon} size={14} />
-        <Text allowFontScaling style={styles.summaryValue}>{cell.value}</Text>
+        <Text allowFontScaling style={styles.readySummaryValue}>{cell.value}</Text>
       </View>
-      <Text allowFontScaling style={styles.summaryLabel}>{cell.label}</Text>
+      <Text allowFontScaling style={styles.readySummaryLabel}>{cell.label}</Text>
     </View>
   );
 }
@@ -82,7 +75,7 @@ export function ForgeReadySummary({ selected }: { selected: FocusChoice }) {
     );
   }
   return (
-    <View accessibilityLabel="Resumo da sessão" role="group" style={styles.summary} testID="study-session-summary">
+    <View accessibilityLabel="Resumo da sessão" role="group" style={styles.readySummary} testID="study-session-summary">
       {cells.map((cell, index) => <SummaryCell cell={cell} key={cell.key} last={index === cells.length - 1} />)}
     </View>
   );

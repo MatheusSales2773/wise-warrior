@@ -26,7 +26,7 @@ export type ScreenProps = ScreenRefreshProps & {
   children?: ReactNode;
   contentContainerStyle?: StyleProp<ViewStyle>;
   contentStyle?: StyleProp<ViewStyle>;
-  /** Pinned under the scrolling content, just above the bottom navigation. */
+  /** Pinned under the scrolling content, above the bottom navigation: actions that must stay within reach. */
   footer?: ReactNode;
   hasBottomNavigation?: boolean;
   keyboardVerticalOffset?: number;
@@ -126,14 +126,11 @@ export function Screen({
           testID={testID ? `${testID}-keyboard-avoider` : 'screen-keyboard-avoider'}
         >
           {body}
-          {footer}
         </KeyboardAvoidingView>
       ) : (
-        <>
-          {body}
-          {footer}
-        </>
+        body
       )}
+      {footer}
     </SafeAreaView>
   );
 }

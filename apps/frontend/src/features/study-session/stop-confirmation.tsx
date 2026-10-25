@@ -21,7 +21,7 @@ export const STOP_COPY = {
     confirm: 'Sim, encerrar',
   },
   'free-end': {
-    label: 'Parar foco livre',
+    label: 'Parar e concluir',
     message: 'O foco livre termina agora e você recebe XP proporcional ao foco válido.',
     confirm: 'Sim, parar',
   },

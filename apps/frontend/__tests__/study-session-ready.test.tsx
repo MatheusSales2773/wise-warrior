@@ -5,7 +5,7 @@ import { ApiError } from '@/core/api/api-error';
 import { StudySessionScreen } from '@/features/study-session/study-session-screen';
 import { getActiveStudySession, getRecentStudySessionSubjects, startStudySession } from '@/features/study-session/api';
 import { estimatedXp, XP_PER_FOCUS_MINUTE } from '@/features/study-session/focus-choice';
-import { formatFocusToday } from '@/features/study-session/forge-ready';
+import { formatFocusToday } from '@/features/study-session/xp';
 import { getMyProfile, getSessionHistory, getSessionMetrics, type SessionHistoryItem, type SessionMetrics, type UserProfile } from '@/features/dashboard/api';
 import { getActiveRaid, getMyGuild, type ActiveRaid, type MyGuild } from '@/features/guild/api';
 
@@ -83,7 +83,7 @@ describe('estimated XP', () => {
   });
 
   it('formats the valid focus of the day', () => {
-    expect([0, 1500, 3600, 4200].map(formatFocusToday)).toEqual(['0min', '25min', '1h', '1h 10min']);
+    expect([0, 1500, 3600, 4200].map(formatFocusToday)).toEqual(['0 min', '25 min', '1h', '1h 10min']);
   });
 });
 

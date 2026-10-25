@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { AccessibilityInfo, Platform, Text, View, useWindowDimensions } from 'react-native';
+import { AccessibilityInfo, Platform, View, useWindowDimensions } from 'react-native';
 import { Screen, WiseButton, WiseCard, WiseText } from '@/design-system';
 import {
   pauseStudySession,
@@ -16,7 +16,7 @@ import { FREE_FOCUS, plannedSeconds, type FocusChoice } from './focus-choice';
 import { activeStudySessionQueryKey, invalidateStudySessionResult, recentStudySessionSubjectsQueryKey, useActiveStudySession, useFocusCycle } from './queries';
 import { breakRemainingSeconds, clearBreak, currentBreak, startBreak, type BreakKind, type BreakRun } from './pomodoro-break';
 import { stopSessionSounds, unlockSessionSounds } from './sounds';
-import { elapsedStudySeconds, formatRemainingTime, isFreeFocus, remainingStudySeconds } from './timer';
+import { elapsedStudySeconds, formatElapsedTime, formatRemainingTime, isFreeFocus, remainingStudySeconds } from './timer';
 import { MAX_SUBJECT_LENGTH, validateSubject, type SubjectValidation } from './subject';
 import { useDevicePreference, useDevicePreferencesLoaded } from '@/core/preferences/device-preferences';
 import { useIsOnline } from '@/core/query/online-manager';
@@ -24,12 +24,14 @@ import { ForgeHistory } from './forge-history';
 import { ForgeAnvil, ForgeColumns } from './forge-anvil';
 import { BreakOffer, BreakStage } from './forge-break';
 import { ForgePrepCard, ForgeStartButton, type ForgeRaid, type SessionMode } from './forge-prep-card';
-import { ForgePageGradient, ForgeHeader } from './forge-primitives';
+import { ForgePageGradient, ForgeHeader, TodayPill } from './forge-primitives';
+import { ForgeHero, ForgeSessionStrip, ForgeSummary } from './forge-hero';
 import { ForgeReadyHero, ForgeReadySummary, ForgeRulesCard, ForgeTodayCard } from './forge-ready';
-import { ForgeActiveSupport, ForgeSessionCard, type ForgeSessionControl } from './forge-session-card';
+import { ForgeMeanwhileCard, ForgeSessionActions, ForgeSessionCard, ForgeSessionFeedback, ForgeStopNotice, type ForgeSessionControl } from './forge-session-card';
 import { styles } from './forge-styles';
 import { STOP_COPY, stopKindFor, type StopKind } from './stop-confirmation';
 import { ForgeSyncIndicator } from './sync-indicator';
+import { xpForFocus } from './xp';
 import { forgeSyncStatus } from './sync-status';
 import { isApiError } from '@/core/api/api-error';
 import { joinRaid, type ActiveRaid } from '@/features/guild/api';
@@ -72,8 +74,6 @@ const DAILY_LIMIT_REACHED = 'https://wise.app/errors/daily-limit-reached';
 export type { SessionMode } from './forge-prep-card';
 
 const NO_SUBJECT_LABEL = 'Sem matéria';
-/** Below this width the Forja is the phone layout: compact header, preparation without a card, start button in the footer. */
-const COMPACT_WIDTH = 600;
 
 function subjectError(validation: SubjectValidation): string | undefined {
   if (validation.status === 'too-long') return `A Matéria tem ${validation.length} caracteres; o máximo é ${MAX_SUBJECT_LENGTH}.`;
@@ -106,7 +106,10 @@ function isVersionConflict(error: unknown): boolean {
 export function StudySessionScreen({ initialMode = 'solo' }: { initialMode?: SessionMode } = {}) {
   const { width } = useWindowDimensions();
   const wideLayout = width >= 1140;
-  const compactLayout = width < COMPACT_WIDTH;
+  // Below a tablet the Forja takes the mobile arrangement: the actions pinned above the tab bar.
+  const compactLayout = width < 768;
+  // The Pronta only takes the phone arrangement (preparation without a card) below 600; a tablet keeps the card.
+  const phoneSetup = width < 600;
   const ringSize = wideLayout ? 340 : Platform.OS === 'web' ? Math.min(310, width * 0.78) : Math.min(264, width * 0.68);
   const queryClient = useQueryClient();
   const [defaultDuration] = useDevicePreference('defaultFocusDuration');
@@ -124,7 +127,6 @@ export function StudySessionScreen({ initialMode = 'solo' }: { initialMode?: Ses
   const [sessionMode, setSessionMode] = useState<SessionMode>(initialMode);
   const [raidEndedNotice, setRaidEndedNotice] = useState(false);
   const forgeRaid = useForgeRaid();
-  const [settingsOpen, setSettingsOpen] = useState(false);
   const [now, setNow] = useState(0);
   const [breakRun, setBreakRun] = useState<BreakRun | null>(() => currentBreak(queryClient));
   const [sawActiveSession, setSawActiveSession] = useState(false);
@@ -283,7 +285,6 @@ export function StudySessionScreen({ initialMode = 'solo' }: { initialMode?: Ses
       pendingKey.current = null;
       stopSessionSounds();
       setSubjectInput('');
-      setSettingsOpen(false);
       setTerminalResult(null);
       clearBreak(queryClient);
       setBreakRun(null);
@@ -399,13 +400,15 @@ export function StudySessionScreen({ initialMode = 'solo' }: { initialMode?: Ses
     : projectedRemaining;
   const plannedDuration = snapshot ? snapshot.plannedDurationSeconds ?? 0 : plannedSeconds(selected);
   const plannedLabel = freeSnapshot ? 'Livre' : `${plannedDuration / 60} min`;
-  const phase = snapshot?.state === 'paused'
-    ? 'PAUSADA'
-    : freeSnapshot
-      ? 'FOCO LIVRE'
-    : snapshot
-      ? remaining > plannedDuration * 0.5 ? 'AQUECIMENTO' : remaining > plannedDuration * 0.15 ? 'FOCO PROFUNDO' : 'FORJA FINAL'
-      : 'PRONTA PARA COMEÇAR';
+  // The running ring names the state; the setup's keeps its own words. The compact layout drops the ornament and the long forms.
+  const pausedSnapshot = snapshot?.state === 'paused';
+  const phase = !snapshot
+    ? 'PRONTA PARA COMEÇAR'
+    : pausedSnapshot
+      ? compactLayout ? 'Pausada' : freeSnapshot ? 'Foco livre pausado' : 'Sessão pausada'
+      : freeSnapshot
+        ? compactLayout ? 'Foco livre' : 'Foco livre em andamento'
+        : compactLayout ? 'Em andamento' : 'Sessão em andamento';
 
   useEffect(() => {
     if (
@@ -442,6 +445,14 @@ export function StudySessionScreen({ initialMode = 'solo' }: { initialMode?: Ses
     : snapshot?.state === 'running'
       ? Math.max(snapshot.durationValidSeconds, plannedDuration - remaining)
       : snapshot?.durationValidSeconds ?? 0;
+  const timerCaption = compactLayout
+    ? `foco válido ${formatElapsedTime(validFocusSeconds)}`
+    : `${pausedSnapshot ? 'pausada' : freeSnapshot ? 'decorridos' : 'restantes'} · foco válido ${formatElapsedTime(validFocusSeconds)}`;
+  const sessionXp = xpForFocus(freeSnapshot ? validFocusSeconds : plannedDuration);
+  const subjectLabel = snapshot?.subject ?? NO_SUBJECT_LABEL;
+  const raidName = snapshot?.mode === 'guild' && forgeRaid && (!snapshot.raidId || forgeRaid.raid.id === snapshot.raidId)
+    ? forgeRaid.raid.mission.name
+    : null;
   const stopKind = stopKindFor(validFocusSeconds, snapshot?.kind);
   const stopLabel = STOP_COPY[stopKind].label;
   const pendingNonStopAction = pendingAction && pendingAction !== 'stop' ? pendingAction : null;
@@ -609,7 +620,7 @@ export function StudySessionScreen({ initialMode = 'solo' }: { initialMode?: Ses
   const startDisabled = subjectValidation.status !== 'valid' || waitingForDefault;
   const prepCard = (
     <ForgePrepCard
-      compact={compactLayout}
+      compact={phoneSetup}
       selected={selected}
       startPending={start.isPending}
       startLabel={startLabel}
@@ -628,14 +639,33 @@ export function StudySessionScreen({ initialMode = 'solo' }: { initialMode?: Ses
       onStart={begin}
     />
   );
-  const startFooter = showSetup && compactLayout
+  const startFooter = showSetup && phoneSetup
     ? <View style={styles.footerBar}><ForgeStartButton disabled={startDisabled} label={startLabel} loading={start.isPending} onPress={begin} /></View>
     : undefined;
 
+  const showActiveForge = snapshot !== null && !displayedTerminalResult;
+  const stopConfirmation = snapshot && stopDialog?.sessionId === snapshot.id
+    ? { kind: stopDialog.kind, onConfirm: confirmStop, onDecline: () => setStopDialog(null) }
+    : null;
+  const transitionFailure = transition.isError ? { versionConflict, needsCanonicalRefresh, refreshFailed: active.isError && !active.isFetching } : null;
+  const feedback = <ForgeSessionFeedback
+    transitionError={transitionFailure}
+    completionError={completionRetryAvailable}
+    completionConflict={completionStateConflict ? { fetching: active.isFetching } : null}
+    sessionStatus={sessionStatus}
+  />;
+  const actions = <ForgeSessionActions control={sessionControl} stopConfirmation={stopConfirmation} compact={compactLayout} />;
+
+  const footer = showSetup && phoneSetup
+    ? startFooter
+    : showActiveForge && compactLayout ? <View style={styles.footerActions} testID="study-session-footer">{actions}</View> : undefined;
+
   return (
-    <Screen avoidKeyboard backgroundOverlay={<ForgePageGradient />} footer={startFooter} hasBottomNavigation safeAreaEdges={['right', 'left']} testID="study-session" title="Forja" titleHidden contentContainerStyle={styles.screenContent}>
+    <Screen
+      footer={footer}
+      avoidKeyboard backgroundOverlay={<ForgePageGradient />} hasBottomNavigation safeAreaEdges={['right', 'left']} testID="study-session" title="Forja" titleHidden={showSetup} contentContainerStyle={styles.screenContent}>
       <View style={styles.layout}>
-        <ForgeHeader compact={compactLayout} />
+        {showSetup ? <ForgeHeader compact={phoneSetup} /> : <TodayPill />}
         {showSync ? <ForgeSyncIndicator onRetry={() => void refreshActive()} status={syncStatus} /> : null}
         {remoteEndNotice ? (
           <WiseText accessibilityLiveRegion="polite" aria-live="polite" color="textSecondary" testID="study-session-remote-end" variant="body">
@@ -716,52 +746,49 @@ export function StudySessionScreen({ initialMode = 'solo' }: { initialMode?: Ses
             />
           </WiseCard>
         ) : null}
-        {snapshot && !displayedTerminalResult ? (
+        {snapshot && showActiveForge ? (
           <ForgeColumns
             wide={wideLayout}
             testID="study-session-active"
             anvil={
               <ForgeAnvil
                 wide={wideLayout}
-                header={<>
-                  <Text
-                    accessibilityRole="header"
-                    allowFontScaling
-                    numberOfLines={2}
-                    style={snapshot.subject ? styles.subjectTitle : styles.subjectTitleEmpty}
-                    testID="study-session-subject"
-                  >
-                    {snapshot.subject ?? NO_SUBJECT_LABEL}
-                  </Text>
-                  <Text accessibilityRole="header" allowFontScaling style={styles.stageTitle}>{snapshot.state === 'paused' ? 'Sessão pausada' : 'Sessão em andamento'}</Text>
-                  <Text allowFontScaling style={styles.stageMeta}>
-                    {freeSnapshot ? 'Foco livre' : `${plannedLabel} de foco`}{snapshot.mode === 'guild' ? ' · Sessão de guilda' : ''}
-                  </Text>
-                </>}
                 reading={freeSnapshot ? { elapsed } : { remaining, duration: plannedDuration }}
                 phase={phase}
                 ringSize={ringSize}
+                ornate={!compactLayout}
+                dimmed={pausedSnapshot}
+                timerCaption={timerCaption}
                 timerTestID="study-session-timer"
                 timerAccessibilityLabel={freeSnapshot
                   ? `Tempo de foco: ${Math.floor(elapsed / 3600)} horas, ${Math.floor((elapsed % 3600) / 60)} minutos e ${elapsed % 60} segundos. Foco livre ${snapshot.state === 'paused' ? 'pausado' : 'em andamento'}.`
                   : `Tempo restante: ${Math.floor(remaining / 60)} minutos e ${remaining % 60} segundos. Sessão ${snapshot.state === 'paused' ? 'pausada' : 'em andamento'}.`}
               >
-                <ForgeSessionCard
-                  wide={wideLayout}
-                  plannedLabel={plannedLabel}
-                  settingsOpen={settingsOpen}
-                  control={sessionControl}
-                  stopConfirmation={stopDialog?.sessionId === snapshot.id ? { kind: stopDialog.kind, onConfirm: confirmStop, onDecline: () => setStopDialog(null) } : null}
-                  transitionError={transition.isError ? { versionConflict, needsCanonicalRefresh, refreshFailed: active.isError && !active.isFetching } : null}
-                  completionError={completionRetryAvailable}
-                  completionConflict={completionStateConflict ? { fetching: active.isFetching } : null}
-                  sessionStatus={sessionStatus}
-                  onToggleSettings={() => setSettingsOpen((open) => !open)}
-                  onCloseSettings={() => setSettingsOpen(false)}
-                />
+                <ForgeHero compact={compactLayout} guild={snapshot.mode === 'guild'} paused={pausedSnapshot} subject={snapshot.subject} />
+                {compactLayout ? <>
+                  <ForgeSessionStrip subject={subjectLabel} planned={plannedLabel} free={freeSnapshot} xp={sessionXp} />
+                  <View style={styles.stageNotice}><ForgeStopNotice free={freeSnapshot} /></View>
+                  <View style={styles.stageStatus}>{feedback}</View>
+                </> : <ForgeSummary xp={sessionXp} free={freeSnapshot} />}
               </ForgeAnvil>
             }
-            support={<ForgeActiveSupport wide={wideLayout} settingsOpen={settingsOpen} plannedLabel={plannedLabel} validFocusSeconds={validFocusSeconds} pauseCount={snapshot.pauseCount} onCloseSettings={() => setSettingsOpen(false)} />}
+            support={<>
+              <ForgeSessionCard
+                guild={snapshot.mode === 'guild'}
+                subject={subjectLabel}
+                free={freeSnapshot}
+                plannedLabel={plannedLabel}
+                validFocusSeconds={validFocusSeconds}
+                pauseCount={snapshot.pauseCount}
+              >
+                {compactLayout ? null : <>
+                  {actions}
+                  <ForgeStopNotice free={freeSnapshot} />
+                  {feedback}
+                </>}
+              </ForgeSessionCard>
+              <ForgeMeanwhileCard raidName={raidName} />
+            </>}
           />
         ) : null}
         {showSetup ? (
@@ -772,16 +799,16 @@ export function StudySessionScreen({ initialMode = 'solo' }: { initialMode?: Ses
               <ForgeAnvil
                 wide={wideLayout}
                 reading={selected === FREE_FOCUS ? { elapsed: 0 } : { remaining: selected, duration: selected }}
-                elapsedCaption="conta até você parar"
+                timerCaption={selected === FREE_FOCUS ? 'conta até você parar' : undefined}
                 phase={phase}
                 ringSize={ringSize}
               >
-                <ForgeReadyHero compact={compactLayout} />
-                {compactLayout ? prepCard : <ForgeReadySummary selected={selected} />}
+                <ForgeReadyHero compact={phoneSetup} />
+                {phoneSetup ? prepCard : <ForgeReadySummary selected={selected} />}
               </ForgeAnvil>
             }
             support={<>
-              {compactLayout ? null : prepCard}
+              {phoneSetup ? null : prepCard}
               <ForgeRulesCard />
               <ForgeTodayCard />
             </>}
