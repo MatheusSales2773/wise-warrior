@@ -6,6 +6,12 @@ import { elapsedStudySeconds, formatElapsedTime } from '@/features/study-session
 import { ApiError } from '@/core/api/api-error';
 
 jest.mock('@/features/study-session/forge-history', () => ({ ForgeHistory: () => null }));
+jest.mock('@/features/dashboard/api', () => ({
+  getMyProfile: jest.fn(async () => { throw new Error('offline'); }),
+  getSessionMetrics: jest.fn(async () => { throw new Error('offline'); }),
+  getSessionHistory: jest.fn(async () => ({ items: [], nextCursor: null })),
+  getRecentStudySessions: jest.fn(async () => []),
+}));
 jest.mock('@/features/guild/api', () => ({
   getMyGuild: jest.fn(async () => null),
   getActiveRaid: jest.fn(async () => null),

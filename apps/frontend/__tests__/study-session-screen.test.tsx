@@ -14,6 +14,12 @@ import { getActiveRaid, getMyGuild, joinRaid, type ActiveRaid, type MyGuild } fr
 
 // The day history and the week chart have their own tests (forge-history.test.tsx).
 jest.mock('@/features/study-session/forge-history', () => ({ ForgeHistory: () => null }));
+jest.mock('@/features/dashboard/api', () => ({
+  getMyProfile: jest.fn(async () => { throw new Error('offline'); }),
+  getSessionMetrics: jest.fn(async () => { throw new Error('offline'); }),
+  getSessionHistory: jest.fn(async () => ({ items: [], nextCursor: null })),
+  getRecentStudySessions: jest.fn(async () => []),
+}));
 jest.mock('@/features/guild/api', () => ({
   getMyGuild: jest.fn(),
   getActiveRaid: jest.fn(),
