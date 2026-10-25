@@ -44,10 +44,10 @@ test.describe('Forja: recuperação e histórico (#17)', () => {
     const stopped = await (await stopResponse).json() as { xpAwarded: number };
     expect(stopped.xpAwarded).toBeGreaterThan(0);
 
-    // A Pronta lista o dia no card Hoje; o relógio marca a sessão que não concluiu por inteiro.
-    const today = page.getByTestId('study-session-today-card');
-    await expect(today).toContainText('Sem matéria');
-    await expect(today).toContainText(`+${stopped.xpAwarded} XP`);
+    const item = page.getByTestId(`forge-history-item-${started.id}`);
+    await expect(item).toBeVisible();
+    await expect(page.getByTestId(`forge-history-outcome-${started.id}`)).toHaveText('Encerrada antes do fim');
+    await expect(item).toContainText(`+${stopped.xpAwarded} XP`);
     await expect(page.getByTestId('forge-week-summary')).toHaveText(/^Últimos 7 dias: \d+ min de foco válido em 1 dia\.$/);
   });
 });
