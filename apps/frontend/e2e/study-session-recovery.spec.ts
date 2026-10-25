@@ -11,7 +11,7 @@ test.describe('Forja: recuperação e histórico (#17)', () => {
   test('mostra a conexão, sobrevive à queda de rede e à recarga, e lista a sessão no histórico do dia', async ({ page, context }) => {
     await registerThroughUi(page);
     await page.getByTestId('web-sidebar').getByRole('link', { name: 'Forja' }).click();
-    await expect(page.getByTestId('forge-history-empty')).toBeVisible();
+    await expect(page.getByTestId('study-session-today-card')).toContainText('Nenhuma sessão encerrada hoje.');
     await expect(page.getByTestId('forge-week-summary')).toHaveText(/^Últimos 7 dias: 0 min de foco válido em 0 dias\.$/);
 
     const startResponse = page.waitForResponse(isApi('/sessions', 'POST'));
@@ -44,10 +44,10 @@ test.describe('Forja: recuperação e histórico (#17)', () => {
     const stopped = await (await stopResponse).json() as { xpAwarded: number };
     expect(stopped.xpAwarded).toBeGreaterThan(0);
 
-    const item = page.getByTestId(`forge-history-item-${started.id}`);
-    await expect(item).toBeVisible();
-    await expect(page.getByTestId(`forge-history-outcome-${started.id}`)).toHaveText('Encerrada antes do fim');
-    await expect(item).toContainText(`+${stopped.xpAwarded} XP`);
+    // A Pronta lista o dia no card Hoje; o relógio marca a sessão que não concluiu por inteiro.
+    const today = page.getByTestId('study-session-today-card');
+    await expect(today).toContainText('Sem matéria');
+    await expect(today).toContainText(`+${stopped.xpAwarded} XP`);
     await expect(page.getByTestId('forge-week-summary')).toHaveText(/^Últimos 7 dias: \d+ min de foco válido em 1 dia\.$/);
   });
 });
