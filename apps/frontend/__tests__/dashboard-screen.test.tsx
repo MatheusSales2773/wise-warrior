@@ -197,7 +197,7 @@ describe('DashboardScreen', () => {
 
     const raidCard = () => screen.findByTestId('dashboard-raid');
 
-    it('shows the Missão, the Guild, the hours, the Fúria, the last Golpe, the time left and the place on desktop', async () => {
+    it('shows the Missão, the Guild, the Boss life, the Fúria, the last Golpe, the time left and the place on desktop', async () => {
       setMockWindowDimensions({ width: 1200, height: 800, fontScale: 1 });
       mockedGuild.mockResolvedValue(myGuild);
       mockedRaid.mockResolvedValue(activeRaid());
@@ -207,7 +207,8 @@ describe('DashboardScreen', () => {
       expect(within(card).getByText('O Devorador de Horas')).toBeTruthy();
       expect(within(card).getByText('Ordem dos Madrugadores')).toBeTruthy();
       expect(within(card).getByText('RAID')).toBeTruthy();
-      expect(within(card).getByText('138h / 200h')).toBeTruthy();
+      expect(within(card).getByText('Vida do Boss')).toBeTruthy();
+      expect(within(card).getByText('31%')).toBeTruthy();
       expect(within(card).getByTestId('dashboard-raid-bar')).toBeTruthy();
       expect(within(card).getByText('4 de 7 dias com estudo')).toBeTruthy();
       expect(within(card).getByText('O chefe recupera 5% da vida a cada dia sem estudo na guilda.')).toBeTruthy();
@@ -252,7 +253,8 @@ describe('DashboardScreen', () => {
 
       const card = await raidCard();
       expect(within(card).queryByText(/Último golpe/)).toBeNull();
-      expect(within(card).getByText('138h / 200h')).toBeTruthy();
+      expect(within(card).getByText('Vida do Boss')).toBeTruthy();
+      expect(within(card).getByText('31%')).toBeTruthy();
     });
 
     it('leaves the minutes out of the last Golpe when the Study Session is gone', async () => {
@@ -272,7 +274,8 @@ describe('DashboardScreen', () => {
       await renderDashboard();
 
       const card = await raidCard();
-      expect(within(card).getByText('138/200h')).toBeTruthy();
+      expect(within(card).getByText('Vida do Boss')).toBeTruthy();
+      expect(within(card).getByText('31%')).toBeTruthy();
       expect(within(card).getByText('O chefe recupera 5% da vida a cada dia sem estudo na guilda.')).toBeTruthy();
       expect(within(card).getByText('Último golpe: Lia · +400 XP · 40 min')).toBeTruthy();
       expect(within(card).getByLabelText('4 de 7 dias com estudo')).toBeTruthy();

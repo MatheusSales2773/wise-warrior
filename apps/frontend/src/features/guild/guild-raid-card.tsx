@@ -43,7 +43,7 @@ function BossLife({ raid }: { raid: ActiveRaid }) {
   const { percent, label } = bossLifeView(raid);
   return <View style={styles.life}>
     <View style={styles.spread}>
-      <Text style={styles.caption}>VIDA DO DRAGÃO</Text>
+      <Text style={styles.caption}>VIDA DO BOSS</Text>
       <Text style={styles.lifePercent} testID="guild-raid-boss-life-percent">{percent}%</Text>
     </View>
     <ProgressBar accessibilityLabel={label} maximumValue={100} size="slim" testID="guild-raid-boss-life" tone="danger" value={percent} />

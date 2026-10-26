@@ -616,7 +616,7 @@ describe('GuildScreen', () => {
       await renderGuild();
 
       const bar = await screen.findByTestId('guild-raid-boss-life');
-      expect(bar.props.accessibilityLabel).toBe('Vida do dragão: 85%. 0,4h de 1,8h de foco coletivo.');
+      expect(bar.props.accessibilityLabel).toBe('Vida do Boss: 85%. 0,4h de 1,8h de foco coletivo.');
       expect(screen.getByTestId('guild-raid-boss-life-percent')).toHaveTextContent('85%');
       expect(screen.getByTestId('guild-raid-focus-hours')).toHaveTextContent('1,4h de vida · 0,4h de 1,8h de foco coletivo');
     });

@@ -1,4 +1,4 @@
-import { furyDays, furyRule, lastHitText, raidBarMaximum, raidBarValue, raidHours, raidHoursCompact, studyDaysSummary, timeAndPosition } from '@/features/dashboard/raid-card-model';
+import { furyDays, furyRule, lastHitText, studyDaysSummary, timeAndPosition } from '@/features/dashboard/raid-card-model';
 
 const weekDays = ['2026-10-05', '2026-10-06', '2026-10-07', '2026-10-08', '2026-10-09', '2026-10-10', '2026-10-11'];
 
@@ -27,22 +27,6 @@ describe('Fúria rule', () => {
   it('states the percent the boss recovers', () => {
     expect(furyRule(5)).toBe('O chefe recupera 5% da vida a cada dia sem estudo na guilda.');
     expect(furyRule(10)).toBe('O chefe recupera 10% da vida a cada dia sem estudo na guilda.');
-  });
-});
-
-describe('Raid hours', () => {
-  it('converts XP to focus hours with the goal grown by what the Fúria gave back', () => {
-    const raid = { progressXp: 82_800, goalXp: 120_000, regeneratedXp: 0 };
-
-    expect(raidHours(raid)).toBe('138h / 200h');
-    expect(raidHoursCompact(raid)).toBe('138/200h');
-    expect(raidHours({ ...raid, regeneratedXp: 6_000 })).toBe('138h / 210h');
-    expect(raidBarMaximum({ goalXp: 120_000, regeneratedXp: 6_000 })).toBe(126_000);
-    expect(raidBarValue({ ...raid, regeneratedXp: 6_000 })).toBe(82_800);
-  });
-
-  it('keeps the bar inside its range once the Raid went past the goal', () => {
-    expect(raidBarValue({ progressXp: 150_000, goalXp: 120_000, regeneratedXp: 0 })).toBe(120_000);
   });
 });
 
