@@ -89,7 +89,7 @@ describe('raidParty', () => {
 
 describe('raidSceneArt', () => {
   it('uses the default illustration for a slug without art of its own', () => {
-    expect(raidSceneArt('vigilia-da-aurora')).toBe(defaultRaidSceneArt);
+    expect(raidSceneArt('missao-sem-arte')).toBe(defaultRaidSceneArt);
     expect(raidSceneArt('constructor')).toBe(defaultRaidSceneArt);
   });
 });

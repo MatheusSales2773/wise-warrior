@@ -6,7 +6,7 @@ import type { PixelSpriteData } from './sprites';
 type PixelRun = { x: number; y: number; width: number; color: string };
 
 /** `a`–`z` index the first 26 colours and `A`–`Z` the next 26, for scenes with a larger palette. */
-function paletteIndex(key: string): number {
+export function paletteIndex(key: string): number {
   const code = key.charCodeAt(0);
   return code >= 97 ? code - 97 : code - 65 + 26;
 }

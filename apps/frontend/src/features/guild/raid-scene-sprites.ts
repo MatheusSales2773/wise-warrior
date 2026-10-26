@@ -96,12 +96,7 @@ export const raidSceneBackground: PixelSpriteData = {
   ],
 };
 
-/** O dragão e o sopro de fogo, desenhados por cima dos membros. Fica em (103, 36) na cena. */
-export const RAID_SCENE_BOSS_POSITION = { x: 103, y: 36 } as const;
-/** Centro do topo do Golpe mais recente, diante da cabeça do dragão (Figma 06b: "−75" em 690,192 na cena ×6). */
-export const RAID_SCENE_HIT_ANCHOR = { x: 120, y: 32 } as const;
-
-/** Chefe e efeitos da cena. */
+/** O dragão e o sopro de fogo, desenhados por cima dos membros. A posição na cena fica em `defaultRaidSceneArt`. */
 export const raidSceneBoss: PixelSpriteData = {
   palette: ['#ffffff', '#c9cfdc', '#f0c97a', '#f08030', '#1a0a0e', '#f3ead4', '#7d2a2a', '#e06a5a', '#c44545', '#5a1a1e', '#3a0d12', '#d4a85a'],
   rows: [
