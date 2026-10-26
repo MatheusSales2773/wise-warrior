@@ -16,6 +16,10 @@ describe('nextMilestone', () => {
     expect(nextMilestone([milestone('a', 1, 2), milestone('b', 2, 4), milestone('c', 0, 1)])?.id).toBe('a');
   });
 
+  it('breaks a tie between the leaders by the server order even after a lower candidate', () => {
+    expect(nextMilestone([milestone('a', 1, 5), milestone('b', 3, 4), milestone('c', 6, 8)])?.id).toBe('b');
+  });
+
   it('is undefined when every Marco is earned or there are none', () => {
     expect(nextMilestone([milestone('a', 5, 5, true)])).toBeUndefined();
     expect(nextMilestone([])).toBeUndefined();

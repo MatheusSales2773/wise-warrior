@@ -3,8 +3,8 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { FeedbackMessage, ProgressBar, WiseButton, theme } from '@/design-system';
 import { PixelSprite } from '@/features/character/PixelSprite';
 import type { Milestone, Milestones } from '@/features/chronicles/api';
+import { spriteOf } from '@/features/chronicles/milestone-sprite';
 import { milestoneDescription, nextMilestone } from '@/features/chronicles/milestones';
-import { spriteOf } from '@/features/chronicles/milestones-card';
 import { CardContent, FramedCard, SectionHeading, cardText, display, mono } from './card-chrome';
 
 export type NextMilestoneCardProps = {
@@ -15,7 +15,14 @@ export type NextMilestoneCardProps = {
   onRetry: () => void;
 };
 
+/** The Figma's block of the mobile grid is 241 high; the Raid card beside it shares the height. */
+const BLOCK_MIN_HEIGHT = 241;
+const GRID_GAP = 10;
+
 const region = { accessibilityLabel: 'Próximo Marco', role: 'region' } as const;
+
+/** Whether the card shows a Marco block (the mobile grid keeps its left column for the Raid only then). */
+export const hasNextMilestone = (milestones: Milestones | undefined): boolean => !!milestones && nextMilestone(milestones.items) !== undefined;
 
 function SeeMilestones({ small }: { small?: boolean }) {
   return <Link asChild href="/cronicas">
@@ -41,27 +48,24 @@ export function NextMilestoneCard({ desktop, milestones, isPending, isRefetching
   const next = nextMilestone(milestones.items);
   if (!next) {
     const all = milestones.items.length;
-    return <Shell desktop={desktop} testID="dashboard-milestone-done">
+    return <Shell desktop={desktop} showLink={all > 0} testID="dashboard-milestone-done">
       <Text style={cardText.emptyState}>{all === 0 ? 'Nenhum Marco disponível.' : `${all} de ${all} conquistados`}</Text>
+      {desktop || all === 0 ? null : <SeeMilestones small />}
     </Shell>;
   }
-  return <Shell desktop={desktop} testID="dashboard-milestone">
+  return <Shell block desktop={desktop} showLink testID="dashboard-milestone">
     {desktop ? <DesktopMilestone milestone={next} /> : <MobileMilestone milestone={next} />}
   </Shell>;
 }
 
-function Shell({ children, desktop, testID }: { children: React.ReactNode; desktop: boolean; testID: string }) {
-  if (!desktop) {
-    return <View {...region} style={styles.mobileCard} testID={testID}>
-      <Text accessibilityRole="header" aria-level={2} style={styles.mobileHeading}>Próximo marco</Text>
-      {children}
-    </View>;
-  }
+/** Desktop: a framed card with its header and "Ver marcos". Mobile: a plain block; only the Marco block has the grid's fixed height. */
+function Shell({ block, children, desktop, showLink, testID }: { block?: boolean; children: React.ReactNode; desktop: boolean; showLink?: boolean; testID: string }) {
+  if (!desktop) return <View {...region} style={[styles.mobileCard, block && styles.mobileBlock]} testID={testID}>{children}</View>;
   return <FramedCard {...region} testID={testID}>
     <CardContent>
       <View style={styles.header}>
-        <SectionHeading>Próximo marco</SectionHeading>
-        {testID === 'dashboard-milestone' ? <SeeMilestones /> : null}
+        <SectionHeading>Próximo Marco</SectionHeading>
+        {showLink ? <SeeMilestones /> : null}
       </View>
       {children}
     </CardContent>
@@ -70,15 +74,23 @@ function Shell({ children, desktop, testID }: { children: React.ReactNode; deskt
 
 const percent = ({ progress, target }: Milestone) => Math.floor((progress / target) * 100);
 
+function MilestoneBadge({ milestone }: { milestone: Milestone }) {
+  return <View style={styles.badge}><PixelSprite opacity={0.9} scale={4} sprite={spriteOf(milestone)} /></View>;
+}
+
+function MilestoneBar({ milestone, size }: { milestone: Milestone; size: 'tall' | 'hairline' }) {
+  return <ProgressBar maximumValue={milestone.target} size={size} testID="dashboard-milestone-bar" value={milestone.progress} />;
+}
+
 function DesktopMilestone({ milestone }: { milestone: Milestone }) {
   return <View accessible accessibilityLabel={`${milestone.name}. ${milestoneDescription(milestone)}.`} style={styles.row}>
-    <View style={styles.badge}><PixelSprite opacity={0.9} scale={4} sprite={spriteOf(milestone)} /></View>
+    <MilestoneBadge milestone={milestone} />
     <View style={styles.main}>
       <View style={styles.titleLine}>
         <Text style={styles.name}>{milestone.name}</Text>
         <Text style={styles.percent}>{percent(milestone)}%</Text>
       </View>
-      <ProgressBar maximumValue={milestone.target} size="tall" testID="dashboard-milestone-bar" value={milestone.progress} />
+      <MilestoneBar milestone={milestone} size="tall" />
       <Text style={styles.description}>{milestoneDescription(milestone)}</Text>
     </View>
   </View>;
@@ -86,17 +98,19 @@ function DesktopMilestone({ milestone }: { milestone: Milestone }) {
 
 function MobileMilestone({ milestone }: { milestone: Milestone }) {
   return <>
-    <View style={styles.thumb}><View style={styles.badge}><PixelSprite opacity={0.9} scale={4} sprite={spriteOf(milestone)} /></View></View>
+    <View style={styles.thumb}><MilestoneBadge milestone={milestone} /></View>
     <Text style={styles.mobileName}>{milestone.name}</Text>
     <View style={styles.titleLine}>
-      <Text style={styles.eyebrow}>Próximo marco</Text>
+      <Text style={styles.eyebrow}>Próximo Marco</Text>
       <Text style={styles.progressCount}>{milestone.progress}/{milestone.target}</Text>
     </View>
-    <ProgressBar maximumValue={milestone.target} size="hairline" testID="dashboard-milestone-bar" value={milestone.progress} />
+    <MilestoneBar milestone={milestone} size="hairline" />
     <Text style={styles.mobileDescription}>{milestoneDescription(milestone)}</Text>
     <View style={styles.action}><SeeMilestones small /></View>
   </>;
 }
+
+export const milestoneGridGap = GRID_GAP;
 
 const styles = StyleSheet.create({
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: theme.space.stackTight, marginBottom: 16 },
@@ -109,8 +123,8 @@ const styles = StyleSheet.create({
   name: { ...display, fontSize: 13, lineHeight: 18, letterSpacing: 0.6, color: theme.color.textPrimary },
   percent: { ...mono, fontSize: 11, lineHeight: 15, color: theme.color.accentHighlight },
   description: { fontFamily: 'Inter-Regular', fontSize: 11, lineHeight: 14, color: theme.color.textTertiary },
-  mobileCard: { flex: 1, minWidth: 0, minHeight: 241, gap: 8, padding: 12, borderRadius: theme.radius.control, borderWidth: theme.border.standard, borderColor: theme.color.borderSubtle, backgroundColor: theme.color.surfaceCard },
-  mobileHeading: { position: 'absolute', width: 1, height: 1, overflow: 'hidden', opacity: 0 },
+  mobileCard: { flex: 1, minWidth: 0, gap: 8, padding: 12, borderRadius: theme.radius.control, borderWidth: theme.border.standard, borderColor: theme.color.borderSubtle, backgroundColor: theme.color.surfaceCard },
+  mobileBlock: { minHeight: BLOCK_MIN_HEIGHT },
   thumb: { height: 64, alignItems: 'center', justifyContent: 'center', borderRadius: 4, backgroundColor: theme.color.surfaceInset },
   mobileName: { ...display, fontSize: 12, lineHeight: 16, letterSpacing: 0.6, color: theme.color.textPrimary },
   eyebrow: { fontFamily: 'Inter-Medium', fontSize: 9, lineHeight: 11, letterSpacing: 1.6, textTransform: 'uppercase', color: theme.color.textTertiary },

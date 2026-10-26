@@ -11,7 +11,7 @@ import { DashboardLayout } from './dashboard-layout';
 import { FocusAction, FocusFooter, useActiveFocus } from './focus-action';
 import { GuildCard } from './guild-card';
 import { MetricsCard } from './metrics-card';
-import { NextMilestoneCard } from './next-milestone-card';
+import { NextMilestoneCard, hasNextMilestone, milestoneGridGap } from './next-milestone-card';
 import { ObjectivesCard } from './objectives-card';
 import { DashboardGlow, ProfileCard, ProfileRefreshError } from './profile-card';
 import { ProgressionCard } from './progression-card';
@@ -123,7 +123,7 @@ export function DashboardScreen() {
         onRetry={() => void retryObjectives()}
       />}
       highlights={<View style={desktop ? undefined : styles.highlightsGrid} testID="dashboard-highlights">
-        {desktop ? null : <View style={styles.highlightsSpacer} />}
+        {desktop || !hasNextMilestone(milestones.data) ? null : <View style={styles.highlightsSpacer} />}
         <NextMilestoneCard
           desktop={desktop}
           isPending={milestones.isPending}
@@ -149,7 +149,7 @@ const styles = StyleSheet.create({
   loading: { gap: theme.space.stackDefault, padding: theme.space.cardInset },
   errorContent: { gap: theme.space.stackDefault },
   // The left column is the Raid card's; until it lands the Próximo Marco keeps the right one.
-  highlightsGrid: { flexDirection: 'row', gap: 10 },
+  highlightsGrid: { flexDirection: 'row', gap: milestoneGridGap },
   highlightsSpacer: { flex: 1, minWidth: 0 },
   partialError: { marginBottom: theme.space.stackTight },
 });

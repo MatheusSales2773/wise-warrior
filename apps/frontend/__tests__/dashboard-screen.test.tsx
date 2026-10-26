@@ -1127,7 +1127,80 @@ describe('DashboardScreen Objetivos de hoje and Próximo Marco', () => {
     await renderDashboard();
 
     expect(await screen.findByText('2 de 2 conquistados')).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'Ver marcos' }).props.href).toBe('/cronicas');
+  });
+
+  it('says so on mobile too, with the link, filling the whole row of the grid', async () => {
+    setMockWindowDimensions({ width: 390, height: 800, fontScale: 1 });
+    mockedMilestones.mockResolvedValue(milestones([milestone(MADRUGADOR, 'Madrugador', 5, 5, true)]));
+    await renderDashboard();
+
+    const card = await screen.findByTestId('dashboard-milestone-done');
+    expect(within(card).getByText('1 de 1 conquistados')).toBeTruthy();
+    expect(within(card).getByRole('link', { name: 'Ver marcos' }).props.href).toBe('/cronicas');
+    expect(screen.getByTestId('dashboard-highlights').children).toHaveLength(1);
+  });
+
+  it('shows the loading state of each card while its query is pending', async () => {
+    mockedObjectives.mockReturnValue(new Promise(() => {}));
+    mockedMilestones.mockReturnValue(new Promise(() => {}));
+    await renderDashboard();
+
+    expect(await screen.findByText('Carregando os Objetivos…')).toBeTruthy();
+    expect(screen.getByText('Carregando o Marco…')).toBeTruthy();
+    expect(screen.getByTestId('dashboard-progression')).toBeTruthy();
+  });
+
+  it('says when there are no Marcos', async () => {
+    await renderDashboard();
+
+    expect(await screen.findByText('Nenhum Marco disponível.')).toBeTruthy();
     expect(screen.queryByRole('link', { name: 'Ver marcos' })).toBeNull();
+  });
+
+  it('puts Objetivos de hoje after the Progressão in the main column', async () => {
+    setMockWindowDimensions({ width: 1200, height: 800, fontScale: 1 });
+    await renderDashboard();
+    await screen.findByTestId('dashboard-objectives');
+
+    const ids = screen.getByTestId('dashboard-main-column').children.filter((child) => typeof child !== 'string').map((child) => 'props' in child ? child.props.testID : undefined);
+    expect(ids.indexOf('dashboard-objectives')).toBeGreaterThan(ids.indexOf('dashboard-progression'));
+  });
+
+  it('sets the met Objetivo apart on mobile: struck through, labelled Cumprido, green block', async () => {
+    setMockWindowDimensions({ width: 390, height: 800, fontScale: 1 });
+    await renderDashboard();
+
+    const block = await screen.findByTestId('dashboard-objective-one-session');
+    expect(within(block).getByText('✓ Cumprido')).toBeTruthy();
+    expect(StyleSheet.flatten(within(block).getByText('Conclua 1 sessão de foco').props.style).textDecorationLine).toBe('line-through');
+    expect(StyleSheet.flatten(block.props.style).borderColor).toBe(theme.color.feedbackSuccess);
+  });
+
+  it('lets the next Objetivo block peek past the edge of the mobile carousel', async () => {
+    setMockWindowDimensions({ width: 390, height: 800, fontScale: 1 });
+    await renderDashboard();
+
+    const blocks = within(await screen.findByTestId('dashboard-objectives-carousel')).getAllByTestId(/^dashboard-objective-(?!.*-bar)[a-z-]+$/);
+    const widths = blocks.map((block) => StyleSheet.flatten(block.props.style).width);
+    expect(new Set(blocks.map((block) => StyleSheet.flatten(block.props.style).height)).size).toBe(1);
+    // Two whole blocks and a gap fit in the screen; the third starts before the right edge and runs past it.
+    expect(widths[0] + 10 + widths[1] + 10).toBeLessThan(390);
+    expect(widths.reduce((sum, width) => sum + width, 0)).toBeGreaterThan(390 - 2 * 24);
+  });
+
+  it('refreshes the Objetivos and the Marcos when pulling down on iOS', async () => {
+    jest.replaceProperty(Platform, 'OS', 'ios');
+    await renderDashboard();
+    await waitFor(() => expect(mockedMilestones).toHaveBeenCalledTimes(1));
+    const objectivesCalls = mockedObjectives.mock.calls.length;
+
+    await act(async () => { fireEvent(screen.getByTestId('dashboard-scroll'), 'refresh'); });
+
+    await waitFor(() => {
+      expect(mockedMilestones).toHaveBeenCalledTimes(2);
+      expect(mockedObjectives).toHaveBeenCalledTimes(objectivesCalls + 1);
+    });
   });
 
   it('isolates a Marcos failure and retries only its own query', async () => {
