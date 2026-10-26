@@ -50,6 +50,7 @@ const cornerSize = 14;
 
 /** Text styles that several cards share. */
 export const cardText = StyleSheet.create({
+  eyebrow: { fontFamily: 'Inter-Medium', fontSize: 10, lineHeight: 14, letterSpacing: 1.8, textTransform: 'uppercase', color: theme.color.textTertiary },
   cardDescription: { fontFamily: 'Inter-Regular', fontSize: 12, lineHeight: 19, color: theme.color.textSecondary },
   emptyState: { fontFamily: 'Inter-Regular', fontSize: 12, lineHeight: 19, color: theme.color.textTertiary, paddingVertical: theme.space.inlineTight },
 });

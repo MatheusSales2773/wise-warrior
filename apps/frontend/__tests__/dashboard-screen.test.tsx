@@ -3,7 +3,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { AccessibilityInfo, Platform, StyleSheet } from 'react-native';
 import { DashboardScreen } from '@/features/dashboard/dashboard-screen';
 import { theme } from '@/design-system';
-import { getMyProfile, getRecentStudySessions, getSessionMetrics, type UserProfile, type RecentStudySession, type SessionMetrics } from '@/features/dashboard/api';
+import { getMyProfile, getRecentStudySessions, getSessionMetrics, getWeekSummary, type UserProfile, type RecentStudySession, type SessionMetrics, type WeekSummary } from '@/features/dashboard/api';
 import { getObjectives, type Objectives } from '@/features/chronicles/api';
 import { getCoinBalance } from '@/features/market/api';
 import { getActiveStudySession, getFocusCycle, type FocusCycle, type StudySessionSnapshot } from '@/features/study-session/api';
@@ -16,6 +16,7 @@ jest.mock('@/features/dashboard/api', () => ({
   getMyProfile: jest.fn(),
   getRecentStudySessions: jest.fn(),
   getSessionMetrics: jest.fn(),
+  getWeekSummary: jest.fn(),
 }));
 
 jest.mock('@/features/chronicles/api', () => ({ getObjectives: jest.fn() }));
@@ -52,6 +53,15 @@ const objectives = (target = 4, progress = 2): Objectives => ({
   },
   weekly: { weekStart: '2026-09-14', renewsAt: '2026-09-21T03:00:00.000Z', items: [] },
 });
+const weekSummary = (subjects: WeekSummary['subjects'] = []): WeekSummary => ({
+  weekStart: '2026-09-14', weekEnd: '2026-09-20', today: '2026-09-17', validSeconds: 13_200, sessionCount: 6, xp: 300,
+  days: [], subjects,
+});
+const withWeeklyMinutes = (progress: number, target: number): Objectives => {
+  const base = objectives();
+  return { ...base, weekly: { ...base.weekly, items: [{ id: 'weekly-focus', title: 'Foque na semana', progress, target, coins: 40, completed: progress >= target, unit: 'minutes' }] } };
+};
+const mockedWeek = getWeekSummary as jest.MockedFunction<typeof getWeekSummary>;
 const mockedObjectives = getObjectives as jest.MockedFunction<typeof getObjectives>;
 const mockedProfile = getMyProfile as jest.MockedFunction<typeof getMyProfile>;
 const mockedActivity = getRecentStudySessions as jest.MockedFunction<typeof getRecentStudySessions>;
@@ -80,6 +90,7 @@ async function renderDashboard() {
 beforeEach(() => {
   mockedMetrics.mockResolvedValue(metrics);
   mockedObjectives.mockResolvedValue(objectives());
+  mockedWeek.mockResolvedValue(weekSummary());
   mockedCoins.mockResolvedValue(1240);
   mockedCycle.mockResolvedValue(cycle());
   mockedActive.mockResolvedValue(null);
@@ -169,14 +180,15 @@ describe('DashboardScreen', () => {
     expect(screen.getByRole('link', { name: 'Entrar na Guilda' })).toBeTruthy();
   });
 
-  it('uses the prototype metric titles without repeating the streak label', async () => {
+  it('names the streak card Constância and shows the record', async () => {
     mockedProfile.mockResolvedValue(profile);
     mockedActivity.mockResolvedValue([]);
     await renderDashboard();
 
-    await screen.findByTestId('dashboard-streak');
-    expect(screen.getByRole('header', { name: 'Sequência atual' })).toBeTruthy();
-    expect(screen.queryByText('Streak')).toBeNull();
+    await screen.findByTestId('dashboard-constancy');
+    expect(screen.getByRole('header', { name: 'Constância' })).toBeTruthy();
+    expect(screen.queryByText('Sequência atual')).toBeNull();
+    expect(screen.getByText('Recorde: 9 dias')).toBeTruthy();
   });
 
   it('uses the AppShell safe-area contract and keeps the loading progressbar queryable', async () => {
@@ -436,7 +448,7 @@ describe('DashboardScreen', () => {
     mockedObjectives.mockRejectedValue(new Error('offline'));
     await renderDashboard();
 
-    await waitFor(() => expect(screen.getByLabelText(/Sessões hoje: 2;/)).toBeTruthy());
+    await waitFor(() => expect(screen.getByLabelText('Sessões hoje: 2')).toBeTruthy());
     expect(screen.queryByText('2 / 4')).toBeNull();
   });
 
@@ -448,7 +460,7 @@ describe('DashboardScreen', () => {
     await waitFor(() => expect(screen.getByTestId('dashboard-cadence')).toBeTruthy());
     expect(screen.getByText('4 dias')).toBeTruthy();
     expect(await screen.findByText('2 / 4')).toBeTruthy();
-    expect(screen.getByText(/60 min de foco válido/)).toBeTruthy();
+    expect(screen.getByText('60 min de foco válido')).toBeTruthy();
     expect(screen.getByText(/Período: 24\/07 a 17\/09/)).toBeTruthy();
     expect(screen.getAllByTestId(/^dashboard-cadence-cell-/)).toHaveLength(56);
     expect(screen.getByTestId('dashboard-cadence-cell-0').props).toEqual(expect.objectContaining({ accessible: true, accessibilityRole: 'image', role: 'img', 'aria-label': expect.stringContaining('24/07') }));
@@ -472,7 +484,7 @@ describe('DashboardScreen', () => {
     await renderDashboard();
     await screen.findByTestId('dashboard-sessions');
 
-    expect(screen.getByTestId('dashboard-metrics').children).toHaveLength(2);
+    expect(screen.getByTestId('dashboard-metrics').children).toHaveLength(3);
     expect(screen.queryByTestId('dashboard-metrics-status')).toBeNull();
   });
 
@@ -732,6 +744,112 @@ describe('DashboardScreen', () => {
 
     await waitFor(() => expect(screen.getByTestId('dashboard-partial-error')).toBeTruthy());
     expect(screen.getByText('Alguns dados não foram atualizados.')).toBeTruthy();
+  });
+
+  describe('Hoje e Progressão', () => {
+    it('shows four session markers, filled for the sessions done today', async () => {
+      mockedProfile.mockResolvedValue(profile);
+      mockedActivity.mockResolvedValue([]);
+      await renderDashboard();
+
+      await screen.findByText('2 / 4');
+      const markers = screen.getAllByTestId(/^dashboard-sessions-marker-/, { includeHiddenElements: true });
+      expect(markers).toHaveLength(4);
+      const filled = markers.map((marker) => StyleSheet.flatten(marker.props.style).backgroundColor === theme.color.accentPrimary);
+      expect(filled).toEqual([true, true, false, false]);
+    });
+
+    it('draws one marker per session of the Objetivo target, filled by its progress', async () => {
+      mockedProfile.mockResolvedValue(profile);
+      mockedActivity.mockResolvedValue([]);
+      mockedObjectives.mockResolvedValue(objectives(6, 3));
+      await renderDashboard();
+
+      await screen.findByText('3 / 6');
+      const markers = screen.getAllByTestId(/^dashboard-sessions-marker-/, { includeHiddenElements: true });
+      expect(markers.map((marker) => StyleSheet.flatten(marker.props.style).backgroundColor === theme.color.accentPrimary)).toEqual([true, true, true, false, false, false]);
+    });
+
+    it('shows the weekly minutes Objetivo under the valid focus of today', async () => {
+      mockedProfile.mockResolvedValue(profile);
+      mockedActivity.mockResolvedValue([]);
+      mockedObjectives.mockResolvedValue(withWeeklyMinutes(220, 300));
+      await renderDashboard();
+
+      expect(await screen.findByText('Semana: 3h 40min de 5h')).toBeTruthy();
+      expect(screen.getByText('1h')).toBeTruthy();
+    });
+
+    it('falls back to the old text without a weekly minutes Objetivo or when /objectives fails', async () => {
+      mockedProfile.mockResolvedValue(profile);
+      mockedActivity.mockResolvedValue([]);
+      const { unmount } = await renderDashboard();
+      expect(await screen.findByText('60 min de foco válido')).toBeTruthy();
+      expect(screen.queryByText(/^Semana:/)).toBeNull();
+      await unmount();
+
+      mockedObjectives.mockRejectedValue(new Error('offline'));
+      await renderDashboard();
+      expect(await screen.findByText('60 min de foco válido')).toBeTruthy();
+    });
+
+    it('lists up to three subjects of the week in the server order, as chips on desktop', async () => {
+      setMockWindowDimensions({ width: 1280, height: 800, fontScale: 1 });
+      mockedProfile.mockResolvedValue(profile);
+      mockedActivity.mockResolvedValue([]);
+      mockedWeek.mockResolvedValue(weekSummary([
+        { subject: 'Cálculo II', validSeconds: 6_000 }, { subject: 'Algoritmos e Grafos', validSeconds: 4_200 },
+        { subject: 'Redação Dissertativa', validSeconds: 3_000 }, { subject: 'Física', validSeconds: 600 },
+      ]));
+      await renderDashboard();
+
+      const row = await screen.findByTestId('dashboard-week-subjects');
+      expect(within(row).getAllByTestId('dashboard-week-subject').map((chip) => within(chip).getAllByText(/./).map((node) => node.props.children))).toEqual([
+        ['Cálculo II', '1h 40min'], ['Algoritmos e Grafos', '1h 10min'], ['Redação Dissertativa', '50min'],
+      ]);
+      expect(within(row).queryByText('Física')).toBeNull();
+      expect(screen.queryByTestId('dashboard-week-subjects-scroll')).toBeNull();
+    });
+
+    it('scrolls the subjects horizontally on mobile', async () => {
+      setMockWindowDimensions({ width: 375, height: 812, fontScale: 1 });
+      mockedProfile.mockResolvedValue(profile);
+      mockedActivity.mockResolvedValue([]);
+      mockedWeek.mockResolvedValue(weekSummary([{ subject: 'Cálculo II', validSeconds: 6_000 }]));
+      await renderDashboard();
+
+      const scroll = await screen.findByTestId('dashboard-week-subjects-scroll');
+      expect(scroll.props.horizontal).toBe(true);
+    });
+
+    it('hides the subjects row for an empty list and when the week summary fails, keeping the rest', async () => {
+      mockedProfile.mockResolvedValue(profile);
+      mockedActivity.mockResolvedValue([]);
+      const { unmount } = await renderDashboard();
+      await screen.findByTestId('dashboard-progression');
+      await waitFor(() => expect(mockedWeek).toHaveBeenCalled());
+      expect(screen.queryByTestId('dashboard-week-subjects')).toBeNull();
+      await unmount();
+
+      mockedWeek.mockRejectedValue(new Error('week offline'));
+      await renderDashboard();
+      expect(await screen.findByTestId('dashboard-partial-error')).toBeTruthy();
+      expect(screen.queryByTestId('dashboard-week-subjects')).toBeNull();
+      expect(screen.getByTestId('dashboard-progression')).toBeTruthy();
+      expect(screen.getByTestId('dashboard-metrics')).toBeTruthy();
+    });
+
+    it('refreshes the week summary with "Atualizar"', async () => {
+      mockedProfile.mockResolvedValue(profile);
+      mockedActivity.mockResolvedValue([]);
+      await renderDashboard();
+      await screen.findByTestId('dashboard-sessions');
+      await waitFor(() => expect(mockedWeek).toHaveBeenCalledTimes(1));
+
+      await act(async () => { fireEvent.press(screen.getByRole('button', { name: 'Atualizar dados' })); });
+
+      await waitFor(() => expect(mockedWeek).toHaveBeenCalledTimes(2));
+    });
   });
 });
 

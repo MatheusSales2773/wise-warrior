@@ -1,4 +1,5 @@
-import type { RecentStudySession, UserProfile } from './api';
+import type { SessionsObjective, WeeklyMinutesObjective } from '@/features/chronicles/queries';
+import type { RecentStudySession, UserProfile, WeekSummary } from './api';
 
 export function formatXp(value: number): string {
   return new Intl.NumberFormat('pt-BR').format(value);
@@ -35,8 +36,6 @@ export function levelProgressPercent(profile: Pick<UserProfile, 'xpTotal' | 'lev
   return Math.min(100, Math.round(((profile.xpTotal - profile.levelStartXp) / Math.max(1, profile.nextLevelXp - profile.levelStartXp)) * 100));
 }
 
-export type SessionsObjective = { progress: number; target: number };
-
 /** Progress and target come from the "Conclua 4 sessões hoje" Objetivo; without it only the session count is known. */
 export function formatSessionsToday(sessionsToday: number, objective: SessionsObjective | undefined): { value: string; spoken: string } {
   if (objective) {
@@ -59,4 +58,31 @@ export function formatSessionState(state: RecentStudySession['state']): string {
     case 'running': return 'Em andamento';
     default: return '';
   }
+}
+
+/** Minutes as "3h 40min", "5h" or "50min": the unit the Objetivo semanal and the week's subjects are shown in. */
+export function formatFocusMinutes(minutes: number): string {
+  const whole = Math.max(0, Math.floor(minutes));
+  const hours = Math.floor(whole / 60);
+  const rest = whole % 60;
+  if (hours === 0) return `${rest}min`;
+  return rest === 0 ? `${hours}h` : `${hours}h ${rest}min`;
+}
+
+/** The support line of "Foco válido hoje": the weekly minutes Objetivo when known, the old text otherwise. */
+export function formatWeeklyFocusLine(objective: WeeklyMinutesObjective | undefined, validSecondsToday: number): string {
+  if (!objective) return `${formatDuration(validSecondsToday)} de foco válido`;
+  return `Semana: ${formatFocusMinutes(objective.progress)} de ${formatFocusMinutes(objective.target)}`;
+}
+
+/** Seconds of valid focus as "1h 10min": the format of the Foco válido hoje card and of the week's subjects. */
+export function formatFocusSeconds(seconds: number): string {
+  return formatFocusMinutes(Math.floor(seconds / 60));
+}
+
+const MAX_WEEK_SUBJECTS = 3;
+
+/** The subjects of the week's summary the Progressão shows: the first three, in the server's order. */
+export function topWeekSubjects(subjects: WeekSummary['subjects'] | undefined): WeekSummary['subjects'] {
+  return (subjects ?? []).slice(0, MAX_WEEK_SUBJECTS);
 }
