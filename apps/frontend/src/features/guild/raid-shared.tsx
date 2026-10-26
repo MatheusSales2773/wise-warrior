@@ -7,7 +7,7 @@ import { itemSprites } from '@/features/character/sprites';
 import { CoinMark } from '@/features/market/coin';
 import type { ActiveRaid } from './api';
 import { formatRewardCoins, formatRewardName } from './messages';
-import { bossLifePercent, formatBattleTimeLeft, formatFocusHours, WEEK_DAY_STATE_LABEL, raidWeekGrid, type WeekDay } from './raid-battle';
+import { WEEK_DAY_STATE_LABEL, bossLifePercent, formatBattleTimeLeft, formatFocusHours, raidWeekGrid, type WeekDay } from './raid-battle';
 import { useRaidTimeLeft } from './use-raid-clock';
 
 /* Pieces shared by the Raid battle screen and the Raid card of the Guilda screen (Figma 06b and 06c). */

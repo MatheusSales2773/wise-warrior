@@ -20,10 +20,10 @@ function sceneScale(width: number, frameHeight: number): number {
  * ×1 (the whole party in a small frame, as the Raid block of the Acampamento on a phone); otherwise it covers the frame.
  * The scene is still pixel art: nothing in it moves, so it already respects reduced motion. `children` sit over it.
  */
-export function RaidSceneCrop({ children, height, raid, testID = 'guild-raid-image', thumbnail = false }: { children?: ReactNode; height: number; raid: ActiveRaid; testID?: string; thumbnail?: boolean }) {
+export function RaidSceneCrop({ children, height, raid, testID, thumbnail = false }: { children?: ReactNode; height: number; raid: ActiveRaid; testID: string; thumbnail?: boolean }) {
   const [width, setWidth] = useState(0);
   const scale = thumbnail ? 1 : sceneScale(width, height);
-  const cut = Math.max(0, RAID_SCENE_HEIGHT * scale - height);
+  const cut = RAID_SCENE_HEIGHT * scale - height;
   return (
     <View onLayout={(event) => setWidth(event.nativeEvent.layout.width)} style={[styles.frame, { height }]} testID={testID}>
       {width > 0

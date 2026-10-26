@@ -1,4 +1,5 @@
 import type { ActiveRaid, RaidHit } from '@/features/guild/api';
+import { focusHoursNumber } from '@/features/guild/focus-hours';
 import { formatPosition } from '@/features/guild/messages';
 import { formatBattleTimeLeft, formatFocusHours, raidWeekGrid, type WeekDay } from '@/features/guild/raid-battle';
 
@@ -20,8 +21,6 @@ export function studyDaysSummary(days: readonly Pick<WeekDay, 'state'>[]): strin
 
 export const furyRule = (furyPercent: number): string => `O chefe recupera ${furyPercent}% da vida a cada dia sem estudo na guilda.`;
 
-export const furyShortRule = (furyPercent: number): string => `Fúria: +${furyPercent}%/dia sem estudo`;
-
 /** What the Meta takes: the goal grows by the life the Fúria gave back, as on the Raid screen. */
 function neededXp(raid: Pick<ActiveRaid, 'goalXp' | 'regeneratedXp'>): number {
   return raid.goalXp + raid.regeneratedXp;
@@ -34,10 +33,13 @@ export function raidHours(raid: Pick<ActiveRaid, 'progressXp' | 'goalXp' | 'rege
 
 /** The phone block's "138/200h": the unit once, after the goal. */
 export function raidHoursCompact(raid: Pick<ActiveRaid, 'progressXp' | 'goalXp' | 'regeneratedXp'>): string {
-  return `${formatFocusHours(raid.progressXp).replace(/h$/, '')}/${formatFocusHours(neededXp(raid))}`;
+  return `${focusHoursNumber(raid.progressXp)}/${formatFocusHours(neededXp(raid))}`;
 }
 
 export const raidBarMaximum = (raid: Pick<ActiveRaid, 'goalXp' | 'regeneratedXp'>): number => Math.max(1, neededXp(raid));
+
+/** The bar never overflows: the Raid keeps taking Contributions after the Meta batida. */
+export const raidBarValue = (raid: Pick<ActiveRaid, 'progressXp' | 'goalXp' | 'regeneratedXp'>): number => Math.min(raid.progressXp, raidBarMaximum(raid));
 
 /** "Último golpe: Lia · +400 XP · 40 min"; the minutes are left out when the Study Session no longer exists. */
 export function lastHitText({ displayName, xp, focusMinutes }: Pick<RaidHit, 'displayName' | 'xp' | 'focusMinutes'>): string {

@@ -190,6 +190,11 @@ describe('DashboardScreen', () => {
   });
 
   describe('Raid card', () => {
+    beforeEach(() => {
+      mockedProfile.mockResolvedValue(profile);
+      mockedActivity.mockResolvedValue([]);
+    });
+
     const raidCard = () => screen.findByTestId('dashboard-raid');
 
     it('shows the Missão, the Guild, the hours, the Fúria, the last Golpe, the time left and the place on desktop', async () => {
@@ -268,12 +273,33 @@ describe('DashboardScreen', () => {
 
       const card = await raidCard();
       expect(within(card).getByText('138/200h')).toBeTruthy();
-      expect(within(card).getByText('Fúria: +5%/dia sem estudo')).toBeTruthy();
+      expect(within(card).getByText('O chefe recupera 5% da vida a cada dia sem estudo na guilda.')).toBeTruthy();
+      expect(within(card).getByText('Último golpe: Lia · +400 XP · 40 min')).toBeTruthy();
+      expect(within(card).getByLabelText('4 de 7 dias com estudo')).toBeTruthy();
       expect(within(card).getByText('3d 14h · você: 4º')).toBeTruthy();
       expect(within(card).getByRole('link', { name: 'Ver guilda' }).props.href).toBe('/guilda/raid');
       const grid = within(screen.getByTestId('dashboard-main-column')).getByTestId('dashboard-highlights');
       expect(grid.children.map((child) => (child as { props: { testID?: string } }).props.testID)).toEqual(['dashboard-raid', 'dashboard-milestone']);
       expect(StyleSheet.flatten(card.props.style).minHeight).toBe(StyleSheet.flatten(screen.getByTestId('dashboard-milestone').props.style).minHeight);
+    });
+
+    it('draws the Vulcão do Devorador for a Missão without its own art, and keeps the scene still under reduced motion', async () => {
+      const reduceMotion = AccessibilityInfo.isReduceMotionEnabled as jest.Mock;
+      reduceMotion.mockResolvedValue(true);
+      try {
+        mockedGuild.mockResolvedValue(myGuild);
+        mockedRaid.mockResolvedValue(activeRaid({ mission: { slug: 'missao-sem-arte', name: 'Missão nova', description: '', imageUrl: null } }));
+        await renderDashboard();
+
+        const frame = await screen.findByTestId('dashboard-raid-scene');
+        await act(async () => { fireEvent(frame, 'layout', { nativeEvent: { layout: { width: 300, height: 64 } } }); });
+        const scene = within(frame);
+        expect(scene.getByTestId('raid-scene-background', { includeHiddenElements: true })).toBeTruthy();
+        expect(scene.getByTestId('raid-scene-boss', { includeHiddenElements: true })).toBeTruthy();
+        expect(screen.getByText('Missão nova')).toBeTruthy();
+      } finally {
+        reduceMotion.mockResolvedValue(false);
+      }
     });
 
     it('says the Guild has no Raid this week, with a link to the Guilda', async () => {

@@ -1,4 +1,4 @@
-import { infiniteQueryOptions, keepPreviousData, queryOptions } from '@tanstack/react-query';
+import { infiniteQueryOptions, keepPreviousData, queryOptions, useQuery } from '@tanstack/react-query';
 import { getActiveRaid, getMyGuild, getNextMission, listAvailableMissions, getRaidRanking, listGuildMembers, listGuilds, listPastRaids } from './api';
 
 export const guildKeys = {
@@ -48,6 +48,11 @@ export const activeRaidQueryOptions = (guildId: string) => queryOptions({
   staleTime: 30_000,
   retry: false,
 });
+
+/** The active Raid of a Guild that may not be known yet: it stays idle (pending) until there is a `guildId`. */
+export function useActiveRaid(guildId: string | undefined) {
+  return useQuery({ ...activeRaidQueryOptions(guildId ?? ''), enabled: guildId !== undefined });
+}
 
 export const raidRankingQueryOptions = (guildId: string, raidId: string) => infiniteQueryOptions({
   queryKey: guildKeys.raidRanking(guildId, raidId),

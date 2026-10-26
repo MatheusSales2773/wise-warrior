@@ -30,7 +30,7 @@ function LastHitPanel({ raid }: { raid: ActiveRaid }) {
 
 function RaidCardScene({ desktop, raid }: { desktop: boolean; raid: ActiveRaid }) {
   return (
-    <RaidSceneCrop height={SCENE_FRAME_HEIGHT[desktop ? 'desktop' : 'mobile']} raid={raid}>
+    <RaidSceneCrop testID="guild-raid-image" height={SCENE_FRAME_HEIGHT[desktop ? 'desktop' : 'mobile']} raid={raid}>
       {desktop ? <>
         <View style={styles.sceneTopLeft}><TimePill compact={false} raid={raid} testID="guild-raid-time-left" /></View>
         <View style={styles.sceneTopRight}><LastHitPanel raid={raid} /></View>

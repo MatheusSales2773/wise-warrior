@@ -2,8 +2,8 @@ import { useQuery } from '@tanstack/react-query';
 import { Platform, StyleSheet, View, useWindowDimensions } from 'react-native';
 import { FeedbackMessage, ProgressBar, Screen, WiseButton, WiseText, isDesktopLayout, theme } from '@/design-system';
 import { equippedItems } from '@/features/character/catalog';
-import { activeRaidQueryOptions, myGuildQueryOptions } from '@/features/guild/queries';
 import { milestonesQueryOptions, objectivesQueryOptions, useSessionsObjective, useWeeklyMinutesObjective } from '@/features/chronicles/queries';
+import { myGuildQueryOptions, useActiveRaid } from '@/features/guild/queries';
 import { coinBalanceQueryOptions } from '@/features/market/queries';
 import { useActiveStudySession, useFocusCycle } from '@/features/study-session/queries';
 import { ActivityCard } from './activity-card';
@@ -35,7 +35,7 @@ export function DashboardScreen() {
   const guild = useQuery(myGuildQueryOptions());
   const guildId = guild.data?.guild.id;
   // Without a Guild there is no Raid to ask about, so this query only runs (and refreshes) once the Guild is known.
-  const raid = useQuery({ ...activeRaidQueryOptions(guildId ?? ''), enabled: guildId !== undefined });
+  const raid = useActiveRaid(guildId);
   const sessionsObjective = useSessionsObjective();
   const weeklyObjective = useWeeklyMinutesObjective();
   const { width } = useWindowDimensions();
@@ -83,6 +83,16 @@ export function DashboardScreen() {
   // Touch platforms refresh by pulling the screen down; the button is only for web, which has no such gesture.
   const canPullToRefresh = Platform.OS !== 'web';
   const refreshProps = canPullToRefresh ? { refreshing, onRefresh: () => { void refresh(); } } : {};
+  const highlights = <>
+    <RaidCard desktop={desktop} guild={guild} onRetryGuild={() => void retryGuild()} onRetryRaid={() => void retryRaid()} raid={raid} />
+    <NextMilestoneCard
+      desktop={desktop}
+      isPending={milestones.isPending}
+      isRefetching={milestones.isRefetching}
+      milestones={milestones.data}
+      onRetry={() => void retryMilestones()}
+    />
+  </>;
   const focusAction = <FocusAction cycle={cycle.data} focus={focus} />;
   return <Screen
     backgroundOverlay={<DashboardGlow />}
@@ -129,16 +139,7 @@ export function DashboardScreen() {
         objectives={objectives.data?.daily}
         onRetry={() => void retryObjectives()}
       />}
-      highlights={<View style={desktop ? styles.highlightsStack : styles.highlightsGrid} testID="dashboard-highlights">
-        <RaidCard desktop={desktop} guild={guild} onRetryGuild={() => void retryGuild()} onRetryRaid={() => void retryRaid()} raid={raid} />
-        <NextMilestoneCard
-          desktop={desktop}
-          isPending={milestones.isPending}
-          isRefetching={milestones.isRefetching}
-          milestones={milestones.data}
-          onRetry={() => void retryMilestones()}
-        />
-      </View>}
+      highlights={desktop ? highlights : <View style={styles.highlightsGrid} testID="dashboard-highlights">{highlights}</View>}
       cadence={metrics.data ? <CadenceCard cadence={metrics.data.cadence} /> : null}
       activity={<ActivityCard
         isError={activity.isError}
@@ -154,7 +155,6 @@ export function DashboardScreen() {
 const styles = StyleSheet.create({
   loading: { gap: theme.space.stackDefault, padding: theme.space.cardInset },
   errorContent: { gap: theme.space.stackDefault },
-  highlightsStack: { gap: 18 },
   // The Raid block on the left and the Próximo Marco on the right, side by side.
   highlightsGrid: { flexDirection: 'row', gap: milestoneGridGap },
   partialError: { marginBottom: theme.space.stackTight },

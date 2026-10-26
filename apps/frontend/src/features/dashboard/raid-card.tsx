@@ -1,19 +1,18 @@
 import { Link } from 'expo-router';
 import type { ReactNode } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
 import { FeedbackMessage, ProgressBar, WiseButton, WiseIcon, theme } from '@/design-system';
 import type { ActiveRaid, MyGuild } from '@/features/guild/api';
 import { WEEK_DAY_STATE_LABEL } from '@/features/guild/raid-battle';
 import { RaidSceneCrop } from '@/features/guild/raid-scene-crop';
 import { useRaidTimeLeft } from '@/features/guild/use-raid-clock';
-import { CardContent, FramedCard, SectionHeading, cardText, display, mono } from './card-chrome';
-import { BLOCK_MIN_HEIGHT } from './next-milestone-card';
+import { BLOCK_MIN_HEIGHT, CardContent, FramedCard, SectionHeading, cardText, display, mono } from './card-chrome';
 import {
   furyDays,
   furyRule,
-  furyShortRule,
   lastHitText,
   raidBarMaximum,
+  raidBarValue,
   raidHours,
   raidHoursCompact,
   studyDaysSummary,
@@ -38,12 +37,12 @@ export type RaidCardProps = {
 const STAGE_HEIGHT = 132;
 const THUMBNAIL_HEIGHT = 64;
 
-const region = { accessibilityLabel: 'Raid da guilda', role: 'region' } as const;
+const regionProps = { accessibilityLabel: 'Raid da guilda', role: 'region' } as const;
 
 /** Desktop: a framed card. Mobile: a block of the 2-column grid, as tall as the Próximo Marco beside it. */
 function Shell({ children, desktop, testID }: { children: ReactNode; desktop: boolean; testID: string }) {
-  if (desktop) return <FramedCard {...region} testID={testID}>{children}</FramedCard>;
-  return <View {...region} style={styles.mobileCard} testID={testID}>{children}</View>;
+  if (desktop) return <FramedCard {...regionProps} testID={testID}>{children}</FramedCard>;
+  return <View {...regionProps} style={styles.mobileCard} testID={testID}>{children}</View>;
 }
 
 /** The card without a Raid to show: a heading and a message (and a link), in the same shell as the Raid. */
@@ -67,8 +66,6 @@ function GuildLink({ href, label, small }: { href: '/guilda' | '/guilda/raid'; l
   </Link>;
 }
 
-const dayAccessibilityLabel = (day: FuryDay) => `${day.name}: ${WEEK_DAY_STATE_LABEL[day.state]}`;
-
 const dayBarStyle = (state: FuryDay['state']) => ({
   studied: styles.dayStudied,
   missed: styles.dayMissed,
@@ -76,10 +73,17 @@ const dayBarStyle = (state: FuryDay['state']) => ({
   upcoming: styles.dayUpcoming,
 })[state];
 
+/** What both renderings of a day share: it is one element for screen readers, spoken as "quarta: com estudo". */
+const dayProps = (day: FuryDay) => ({
+  accessible: true,
+  accessibilityLabel: `${day.name}: ${WEEK_DAY_STATE_LABEL[day.state]}`,
+  testID: `dashboard-raid-day-${day.state}`,
+});
+
 /** The seven days of the Fúria do dragão, each with its three-letter name (desktop). */
 function FuryDays({ days }: { days: FuryDay[] }) {
   return <View style={styles.days} testID="dashboard-raid-days">
-    {days.map((day) => <View accessible accessibilityLabel={dayAccessibilityLabel(day)} key={day.key} style={styles.day} testID={`dashboard-raid-day-${day.state}`}>
+    {days.map((day) => <View {...dayProps(day)} key={day.key} style={styles.day}>
       <View style={[styles.dayBar, dayBarStyle(day.state)]} />
       <Text style={[styles.dayName, day.state === 'today' && styles.dayNameToday]}>{day.abbreviation}</Text>
     </View>)}
@@ -88,8 +92,19 @@ function FuryDays({ days }: { days: FuryDay[] }) {
 
 /** The same seven days as thin segments, without names (phone). */
 function FurySegments({ days }: { days: FuryDay[] }) {
-  return <View style={styles.segments} testID="dashboard-raid-days">
-    {days.map((day) => <View accessible accessibilityLabel={dayAccessibilityLabel(day)} key={day.key} style={[styles.segment, dayBarStyle(day.state)]} testID={`dashboard-raid-day-${day.state}`} />)}
+  return <View accessibilityLabel={studyDaysSummary(days)} style={styles.segments} testID="dashboard-raid-days">
+    {days.map((day) => <View {...dayProps(day)} key={day.key} style={[styles.segment, dayBarStyle(day.state)]} />)}
+  </View>;
+}
+
+function RaidProgressBar({ raid, size }: { raid: ActiveRaid; size: 'tall' | 'slim' }) {
+  return <ProgressBar accessibilityLabel={`Progresso da Raid: ${raidHours(raid)}`} maximumValue={raidBarMaximum(raid)} size={size} testID="dashboard-raid-bar" tone="danger" value={raidBarValue(raid)} />;
+}
+
+function LastHit({ hit }: { hit: NonNullable<ActiveRaid['lastHit']> }) {
+  return <View style={styles.lastHit} testID="dashboard-raid-last-hit">
+    <Text aria-hidden style={styles.lastHitIcon}>⚔</Text>
+    <Text numberOfLines={1} style={styles.lastHitText}>{lastHitText(hit)}</Text>
   </View>;
 }
 
@@ -99,7 +114,7 @@ function TimeLeft({ desktop, raid }: { desktop: boolean; raid: ActiveRaid }) {
   return <Text style={desktop ? styles.footnote : styles.mobileFootnote} testID="dashboard-raid-time-left">{timeAndPosition(left, raid.me.position, { long: desktop })}</Text>;
 }
 
-function RaidSeal({ style }: { style?: object }) {
+function RaidSeal({ style }: { style?: StyleProp<ViewStyle> }) {
   return <View style={[styles.seal, style]}><Text style={styles.sealText}>RAID</Text></View>;
 }
 
@@ -117,7 +132,7 @@ function DesktopRaid({ guildName, raid }: { guildName: string; raid: ActiveRaid 
         <Text accessibilityRole="header" aria-level={2} numberOfLines={1} style={styles.title} testID="dashboard-raid-mission">{raid.mission.name}</Text>
         <Text style={styles.hours} testID="dashboard-raid-hours">{raidHours(raid)}</Text>
       </View>
-      <ProgressBar accessibilityLabel={`Progresso da Raid: ${raidHours(raid)}`} maximumValue={raidBarMaximum(raid)} size="tall" testID="dashboard-raid-bar" tone="danger" value={Math.min(raid.progressXp, raidBarMaximum(raid))} />
+      <RaidProgressBar raid={raid} size="tall" />
       <View style={styles.fury} testID="dashboard-raid-fury">
         <View style={styles.furyHeader}>
           <Text style={styles.furyTitle}>Fúria do dragão</Text>
@@ -125,12 +140,7 @@ function DesktopRaid({ guildName, raid }: { guildName: string; raid: ActiveRaid 
         </View>
         <FuryDays days={days} />
         <Text style={styles.rule}>{furyRule(raid.furyPercent)}</Text>
-        {raid.lastHit
-          ? <View style={styles.lastHit} testID="dashboard-raid-last-hit">
-            <Text aria-hidden style={styles.lastHitIcon}>⚔</Text>
-            <Text numberOfLines={1} style={styles.lastHitText}>{lastHitText(raid.lastHit)}</Text>
-          </View>
-          : null}
+        {raid.lastHit ? <LastHit hit={raid.lastHit} /> : null}
       </View>
       <View style={styles.footer}>
         <TimeLeft desktop raid={raid} />
@@ -152,9 +162,10 @@ function MobileRaid({ raid }: { raid: ActiveRaid }) {
       <Text style={styles.eyebrow}>Raid</Text>
       <Text style={styles.mobileHours} testID="dashboard-raid-hours">{raidHoursCompact(raid)}</Text>
     </View>
-    <ProgressBar accessibilityLabel={`Progresso da Raid: ${raidHours(raid)}`} maximumValue={raidBarMaximum(raid)} size="slim" testID="dashboard-raid-bar" tone="danger" value={Math.min(raid.progressXp, raidBarMaximum(raid))} />
+    <RaidProgressBar raid={raid} size="slim" />
     <FurySegments days={days} />
-    <Text style={styles.mobileFury} testID="dashboard-raid-fury">{furyShortRule(raid.furyPercent)}</Text>
+    <Text style={styles.mobileFury} testID="dashboard-raid-fury">{furyRule(raid.furyPercent)}</Text>
+    {raid.lastHit ? <LastHit hit={raid.lastHit} /> : null}
     <TimeLeft desktop={false} raid={raid} />
     <View style={styles.action}><GuildLink href="/guilda/raid" label="Ver guilda" small /></View>
   </>;
@@ -167,22 +178,14 @@ function MobileRaid({ raid }: { raid: ActiveRaid }) {
  */
 export function RaidCard({ desktop, guild, raid, onRetryGuild, onRetryRaid }: RaidCardProps) {
   const myGuild = guild.data;
-  if (myGuild === undefined) {
-    return guild.isPending
-      ? <LoadingCard desktop={desktop} />
-      : <ErrorCard desktop={desktop} loading={guild.isRefetching} onRetry={onRetryGuild} />;
-  }
+  if (myGuild === undefined) return <QueryGate desktop={desktop} onRetry={onRetryGuild} query={guild} />;
   if (myGuild === null) {
     return <StatusCard desktop={desktop} testID="dashboard-raid-no-guild">
       <Text style={cardText.cardDescription}>Entre numa Guild para enfrentar a Raid da semana junto com outros estudantes.</Text>
       <GuildLink href="/guilda" label="Procurar ou criar uma Guild" small={!desktop} />
     </StatusCard>;
   }
-  if (raid.data === undefined) {
-    return raid.isPending
-      ? <LoadingCard desktop={desktop} />
-      : <ErrorCard desktop={desktop} loading={raid.isRefetching} onRetry={onRetryRaid} />;
-  }
+  if (raid.data === undefined) return <QueryGate desktop={desktop} onRetry={onRetryRaid} query={raid} />;
   if (raid.data === null) {
     return <StatusCard desktop={desktop} testID="dashboard-raid-empty">
       <Text style={cardText.cardDescription}>{myGuild.guild.name} ainda não tem uma Raid nesta semana.</Text>
@@ -192,6 +195,11 @@ export function RaidCard({ desktop, guild, raid, onRetryGuild, onRetryRaid }: Ra
   return <Shell desktop={desktop} testID="dashboard-raid">
     {desktop ? <DesktopRaid guildName={myGuild.guild.name} raid={raid.data} /> : <MobileRaid raid={raid.data} />}
   </Shell>;
+}
+
+/** What the card shows while a query has no data: its loading state, or its error with a retry. */
+function QueryGate({ desktop, onRetry, query }: { desktop: boolean; onRetry: () => void; query: QueryState<unknown> }) {
+  return query.isPending ? <LoadingCard desktop={desktop} /> : <ErrorCard desktop={desktop} loading={query.isRefetching} onRetry={onRetry} />;
 }
 
 function LoadingCard({ desktop }: { desktop: boolean }) {
@@ -206,8 +214,6 @@ function ErrorCard({ desktop, loading, onRetry }: { desktop: boolean; loading: b
     <WiseButton label="Tentar novamente" loading={loading} onPress={onRetry} variant="secondary" />
   </StatusCard>;
 }
-
-const dayRadius = 2;
 
 const styles = StyleSheet.create({
   mobileCard: { flex: 1, minWidth: 0, minHeight: BLOCK_MIN_HEIGHT, gap: 8, padding: 12, borderRadius: theme.radius.control, borderWidth: theme.border.standard, borderColor: theme.color.borderSubtle, backgroundColor: theme.color.surfaceCard },
@@ -235,7 +241,7 @@ const styles = StyleSheet.create({
   furyCount: { ...mono, fontSize: 10, lineHeight: 13, color: theme.color.textTertiary },
   days: { flexDirection: 'row', gap: 6 },
   day: { flex: 1, maxWidth: 36, gap: 4, alignItems: 'center' },
-  dayBar: { alignSelf: 'stretch', height: 8, borderRadius: dayRadius, borderWidth: theme.border.standard, borderColor: theme.color.borderGhost },
+  dayBar: { alignSelf: 'stretch', height: 8, borderRadius: 2, borderWidth: theme.border.standard, borderColor: theme.color.borderGhost },
   dayStudied: { backgroundColor: theme.color.accentPrimary },
   dayMissed: { backgroundColor: theme.color.feedbackDanger },
   dayToday: { backgroundColor: theme.color.surfaceInset, borderColor: theme.color.accentHighlight },
@@ -255,7 +261,7 @@ const styles = StyleSheet.create({
   mobileTopLine: { flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', gap: 8 },
   mobileHours: { fontFamily: 'JetBrainsMono-Bold', fontSize: 11, lineHeight: 15, color: theme.color.feedbackDanger },
   segments: { flexDirection: 'row', gap: 3 },
-  segment: { flex: 1, height: 6, borderRadius: dayRadius, borderWidth: theme.border.standard, borderColor: theme.color.borderGhost },
+  segment: { flex: 1, height: 6, borderRadius: 2, borderWidth: theme.border.standard, borderColor: theme.color.borderGhost },
   mobileFury: { ...mono, fontSize: 9, lineHeight: 12, color: theme.color.feedbackDanger },
   mobileFootnote: { ...mono, fontSize: 9, lineHeight: 12, color: theme.color.textTertiary },
 });
