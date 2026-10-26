@@ -9,7 +9,7 @@ import { torreDosRatosBackground, torreDosRatosBoss } from './raid-scenes/torre-
 import { vigiliaDaAuroraBackground, vigiliaDaAuroraBoss } from './raid-scenes/vigilia-da-aurora';
 import { raidSceneBackground, raidSceneBoss } from './raid-scene-sprites';
 
-type ScenePoint = { x: number; y: number };
+export type RaidScenePoint = { x: number; y: number };
 
 /**
  * The illustration of a Missão: the backdrop, the boss (with its effects) and where each sits in the 180 × 80 scene.
@@ -18,8 +18,8 @@ type ScenePoint = { x: number; y: number };
 export type RaidSceneArt = {
   background: PixelSpriteData;
   boss: PixelSpriteData;
-  bossPosition: ScenePoint;
-  hitAnchor: ScenePoint;
+  bossPosition: RaidScenePoint;
+  hitAnchor: RaidScenePoint;
 };
 
 /**
@@ -33,21 +33,30 @@ export const defaultRaidSceneArt: RaidSceneArt = {
   hitAnchor: { x: 120, y: 32 },
 };
 
-/*
- * The other scenes come from the Figma components 'Cena/Raid — <Missão>'. Each boss sprite holds the 'Efeitos' and the
- * 'Chefe' of its scene, so `bossPosition` is the top-left of that union. The Figma has no Golpe marker, so each
- * `hitAnchor` is the horizontal center of the 'Chefe' component, 4 pixels above its top.
+/** Pixels between the top of the 'Chefe' and the Golpe above it (the Vulcão keeps its 4 too: dragon at y 36, Golpe at 32). */
+const HIT_ABOVE_CHEFE = 4;
+
+/** The 'Chefe' component of a scene: where it sits and how wide it is. The Figma gives no Golpe marker, so the Golpe is derived from it. */
+type Chefe = { x: number; y: number; width: number };
+
+/**
+ * A scene from the Figma components 'Cena/Raid — <Missão>'. The boss sprite holds the 'Efeitos' and the 'Chefe', so
+ * `bossPosition` is the top-left of that union, not of the 'Chefe'. The Golpe is centered on the 'Chefe', above its top.
  */
+function sceneArt(background: PixelSpriteData, boss: PixelSpriteData, bossPosition: RaidScenePoint, chefe: Chefe): RaidSceneArt {
+  return { background, boss, bossPosition, hitAnchor: { x: chefe.x + Math.floor(chefe.width / 2), y: chefe.y - HIT_ABOVE_CHEFE } };
+}
+
 /** The Missão `slug` is the art key (the API needs no new field). Register a Missão's own scene here. */
 const raidSceneArtBySlug: Readonly<Record<string, RaidSceneArt>> = {
-  'vigilia-da-aurora': { background: vigiliaDaAuroraBackground, boss: vigiliaDaAuroraBoss, bossPosition: { x: 100, y: 26 }, hitAnchor: { x: 148, y: 22 } },
-  'cerco-ao-grimorio': { background: cercoAoGrimorioBackground, boss: cercoAoGrimorioBoss, bossPosition: { x: 98, y: 18 }, hitAnchor: { x: 150, y: 14 } },
-  'marcha-do-silencio': { background: marchaDoSilencioBackground, boss: marchaDoSilencioBoss, bossPosition: { x: 100, y: 22 }, hitAnchor: { x: 150, y: 18 } },
-  'forja-dos-sabios': { background: forjaDosSabiosBackground, boss: forjaDosSabiosBoss, bossPosition: { x: 110, y: 20 }, hitAnchor: { x: 148, y: 24 } },
-  'contrato-do-grifo': { background: contratoDoGrifoBackground, boss: contratoDoGrifoBoss, bossPosition: { x: 96, y: 29 }, hitAnchor: { x: 149, y: 25 } },
-  'torre-dos-ratos': { background: torreDosRatosBackground, boss: torreDosRatosBoss, bossPosition: { x: 102, y: 33 }, hitAnchor: { x: 150, y: 29 } },
-  'ilha-das-brumas': { background: ilhaDasBrumasBackground, boss: ilhaDasBrumasBoss, bossPosition: { x: 98, y: 20 }, hitAnchor: { x: 148, y: 25 } },
-  'cacada-selvagem': { background: cacadaSelvagemBackground, boss: cacadaSelvagemBoss, bossPosition: { x: 96, y: 24 }, hitAnchor: { x: 149, y: 20 } },
+  'vigilia-da-aurora': sceneArt(vigiliaDaAuroraBackground, vigiliaDaAuroraBoss, { x: 100, y: 26 }, { x: 124, y: 26, width: 47 }),
+  'cerco-ao-grimorio': sceneArt(cercoAoGrimorioBackground, cercoAoGrimorioBoss, { x: 98, y: 18 }, { x: 125, y: 18, width: 50 }),
+  'marcha-do-silencio': sceneArt(marchaDoSilencioBackground, marchaDoSilencioBoss, { x: 100, y: 22 }, { x: 125, y: 22, width: 50 }),
+  'forja-dos-sabios': sceneArt(forjaDosSabiosBackground, forjaDosSabiosBoss, { x: 110, y: 20 }, { x: 122, y: 28, width: 53 }),
+  'contrato-do-grifo': sceneArt(contratoDoGrifoBackground, contratoDoGrifoBoss, { x: 96, y: 29 }, { x: 120, y: 29, width: 58 }),
+  'torre-dos-ratos': sceneArt(torreDosRatosBackground, torreDosRatosBoss, { x: 102, y: 33 }, { x: 122, y: 33, width: 56 }),
+  'ilha-das-brumas': sceneArt(ilhaDasBrumasBackground, ilhaDasBrumasBoss, { x: 98, y: 20 }, { x: 120, y: 29, width: 56 }),
+  'cacada-selvagem': sceneArt(cacadaSelvagemBackground, cacadaSelvagemBoss, { x: 96, y: 24 }, { x: 120, y: 24, width: 58 }),
 };
 
 export function raidSceneArt(slug: string): RaidSceneArt {

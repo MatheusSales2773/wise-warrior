@@ -86,6 +86,7 @@ export function RaidScene({ art = defaultRaidSceneArt, framed = true, hit, overl
     {framed ? <View pointerEvents="none" style={[StyleSheet.absoluteFill, styles.frameBorder]} /> : null}
     {hit ? <View
       pointerEvents="none"
+      testID="raid-scene-hit"
       style={[styles.hitSlot, { left: canvasLeft + art.hitAnchor.x * scale - HIT_SLOT_WIDTH / 2, top: art.hitAnchor.y * scale }]}
     >{hit}</View> : null}
     {overlay}

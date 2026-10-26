@@ -96,7 +96,7 @@ export const raidSceneBackground: PixelSpriteData = {
   ],
 };
 
-/** O dragão e o sopro de fogo, desenhados por cima dos membros. Fica em (103, 36) na cena (ver `defaultRaidSceneArt`). */
+/** O dragão e o sopro de fogo, desenhados por cima dos membros. A posição na cena fica em `defaultRaidSceneArt`. */
 export const raidSceneBoss: PixelSpriteData = {
   palette: ['#ffffff', '#c9cfdc', '#f0c97a', '#f08030', '#1a0a0e', '#f3ead4', '#7d2a2a', '#e06a5a', '#c44545', '#5a1a1e', '#3a0d12', '#d4a85a'],
   rows: [

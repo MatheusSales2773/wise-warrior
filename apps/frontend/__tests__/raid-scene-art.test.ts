@@ -1,23 +1,36 @@
-import { defaultRaidSceneArt, raidSceneArt, type RaidSceneArt } from '@/features/guild/raid-scene-art';
+import { paletteIndex } from '@/features/character/PixelSprite';
+import type { PixelSpriteData } from '@/features/character/sprites';
+import { defaultRaidSceneArt, raidSceneArt } from '@/features/guild/raid-scene-art';
 import { RAID_SCENE_HEIGHT, RAID_SCENE_WIDTH } from '@/features/guild/raid-scene-sprites';
 
-/** Figma "Sprites (pixel art)": the Chefe component's position and size in each `Cena/Raid — …`. */
+/**
+ * Read from the Figma 'Sprites (pixel art)' page, not from the code under test. `chefe` is the 'Chefe' component of the
+ * scene; `bossPosition` is the top-left of 'Efeitos' + 'Chefe' together; `background` and `boss` are fingerprints of
+ * the pixels the Figma holds (see `fingerprint`).
+ */
 const missions = [
-  { slug: 'vigilia-da-aurora', chefe: { x: 124, y: 26, width: 47, height: 47 } },
-  { slug: 'cerco-ao-grimorio', chefe: { x: 125, y: 18, width: 50, height: 46 } },
-  { slug: 'marcha-do-silencio', chefe: { x: 125, y: 22, width: 50, height: 50 } },
-  { slug: 'forja-dos-sabios', chefe: { x: 122, y: 28, width: 53, height: 50 } },
-  { slug: 'contrato-do-grifo', chefe: { x: 120, y: 29, width: 58, height: 47 } },
-  { slug: 'torre-dos-ratos', chefe: { x: 122, y: 33, width: 56, height: 44 } },
-  { slug: 'ilha-das-brumas', chefe: { x: 120, y: 29, width: 56, height: 49 } },
-  { slug: 'cacada-selvagem', chefe: { x: 120, y: 24, width: 58, height: 56 } },
+  { slug: 'vigilia-da-aurora', chefe: { x: 124, y: 26, width: 47 }, bossPosition: { x: 100, y: 26 }, background: 283812, boss: 582322 },
+  { slug: 'cerco-ao-grimorio', chefe: { x: 125, y: 18, width: 50 }, bossPosition: { x: 98, y: 18 }, background: 915623, boss: 45369 },
+  { slug: 'marcha-do-silencio', chefe: { x: 125, y: 22, width: 50 }, bossPosition: { x: 100, y: 22 }, background: 326732, boss: 503301 },
+  { slug: 'forja-dos-sabios', chefe: { x: 122, y: 28, width: 53 }, bossPosition: { x: 110, y: 20 }, background: 738043, boss: 217015 },
+  { slug: 'contrato-do-grifo', chefe: { x: 120, y: 29, width: 58 }, bossPosition: { x: 96, y: 29 }, background: 822426, boss: 715712 },
+  { slug: 'torre-dos-ratos', chefe: { x: 122, y: 33, width: 56 }, bossPosition: { x: 102, y: 33 }, background: 213980, boss: 967301 },
+  { slug: 'ilha-das-brumas', chefe: { x: 120, y: 29, width: 56 }, bossPosition: { x: 98, y: 20 }, background: 697912, boss: 394624 },
+  { slug: 'cacada-selvagem', chefe: { x: 120, y: 24, width: 58 }, bossPosition: { x: 96, y: 24 }, background: 504711, boss: 724076 },
 ] as const;
 
-function paletteIndex(key: string) {
-  return key >= 'a' ? key.charCodeAt(0) - 97 : key.charCodeAt(0) - 65 + 26;
+/** Folds every opaque pixel (its position and palette index) into one number, so any changed pixel changes it. */
+function fingerprint({ rows }: PixelSpriteData): number {
+  let hash = 0;
+  rows.forEach((row, y) => {
+    [...row].forEach((key, x) => {
+      if (key !== '.') hash = (hash * 31 + paletteIndex(key) + 1 + (y * 131 + x)) % 1_000_003;
+    });
+  });
+  return hash;
 }
 
-function expectRectangularInsidePalette(sprite: RaidSceneArt['background']) {
+function expectRectangularInsidePalette(sprite: PixelSpriteData) {
   const width = sprite.rows[0]!.length;
   for (const row of sprite.rows) {
     expect(row).toHaveLength(width);
@@ -36,46 +49,31 @@ describe('raidSceneArt', () => {
     expect(defaultRaidSceneArt.hitAnchor).toEqual({ x: 120, y: 32 });
   });
 
-  it.each(missions)('gives $slug a scene of its own, apart from the Vulcão do Devorador', ({ slug }) => {
+  it('gives each of the 8 Missões a scene of its own, apart from the Vulcão do Devorador', () => {
+    const arts = missions.map(({ slug }) => raidSceneArt(slug));
+    expect(arts).not.toContain(defaultRaidSceneArt);
+    expect(new Set(arts.map((art) => art.background)).size).toBe(8);
+    expect(new Set(arts.map((art) => art.boss)).size).toBe(8);
+  });
+
+  it.each(missions)('draws the $slug backdrop on the whole 180 × 80 scene, pixel for pixel as the Figma', ({ slug, background }) => {
+    const art = raidSceneArt(slug).background;
+    expect(art.rows).toHaveLength(RAID_SCENE_HEIGHT);
+    expect(art.rows[0]).toHaveLength(RAID_SCENE_WIDTH);
+    expectRectangularInsidePalette(art);
+    expect(fingerprint(art)).toBe(background);
+  });
+
+  it.each(missions)('draws the $slug boss with its effects pixel for pixel as the Figma, at the Figma position', ({ slug, boss, bossPosition }) => {
     const art = raidSceneArt(slug);
-    expect(art).not.toBe(defaultRaidSceneArt);
-    expect(art.background).not.toBe(defaultRaidSceneArt.background);
-    expect(art.boss).not.toBe(defaultRaidSceneArt.boss);
+    expectRectangularInsidePalette(art.boss);
+    expect(fingerprint(art.boss)).toBe(boss);
+    expect(art.bossPosition).toEqual(bossPosition);
+    expect(art.bossPosition.x + art.boss.rows[0]!.length).toBeLessThanOrEqual(RAID_SCENE_WIDTH);
+    expect(art.bossPosition.y + art.boss.rows.length).toBeLessThanOrEqual(RAID_SCENE_HEIGHT);
   });
 
-  it('gives each of the 8 Missões a different scene', () => {
-    const backgrounds = new Set(missions.map(({ slug }) => raidSceneArt(slug).background));
-    const bosses = new Set(missions.map(({ slug }) => raidSceneArt(slug).boss));
-    expect(backgrounds.size).toBe(8);
-    expect(bosses.size).toBe(8);
-  });
-
-  it.each(missions)('draws the $slug backdrop on the whole 180 × 80 scene, inside its palette', ({ slug }) => {
-    const { background } = raidSceneArt(slug);
-    expect(background.rows).toHaveLength(RAID_SCENE_HEIGHT);
-    expect(background.rows[0]).toHaveLength(RAID_SCENE_WIDTH);
-    expectRectangularInsidePalette(background);
-  });
-
-  it.each(missions)('places the $slug boss and its effects inside the scene, over the Chefe', ({ slug, chefe }) => {
-    const { boss, bossPosition } = raidSceneArt(slug);
-    expectRectangularInsidePalette(boss);
-    const width = boss.rows[0]!.length;
-    expect(bossPosition.x).toBeGreaterThanOrEqual(0);
-    expect(bossPosition.y).toBeGreaterThanOrEqual(0);
-    expect(bossPosition.x + width).toBeLessThanOrEqual(RAID_SCENE_WIDTH);
-    expect(bossPosition.y + boss.rows.length).toBeLessThanOrEqual(RAID_SCENE_HEIGHT);
-    // The sprite starts at or before the Chefe: it also holds the effects drawn around it.
-    expect(bossPosition.x).toBeLessThanOrEqual(chefe.x);
-    expect(bossPosition.y).toBeLessThanOrEqual(chefe.y);
-    expect(bossPosition.x + width).toBeGreaterThanOrEqual(chefe.x + chefe.width);
-  });
-
-  it.each(missions)('anchors the $slug Golpe over the boss', ({ slug, chefe }) => {
-    const { hitAnchor } = raidSceneArt(slug);
-    expect(hitAnchor.x).toBeGreaterThanOrEqual(chefe.x);
-    expect(hitAnchor.x).toBeLessThanOrEqual(chefe.x + chefe.width);
-    expect(hitAnchor.y).toBeGreaterThanOrEqual(0);
-    expect(hitAnchor.y).toBeLessThanOrEqual(chefe.y);
+  it.each(missions)('centers the $slug Golpe on the Chefe, 4 pixels above it', ({ slug, chefe }) => {
+    expect(raidSceneArt(slug).hitAnchor).toEqual({ x: chefe.x + Math.floor(chefe.width / 2), y: chefe.y - 4 });
   });
 });

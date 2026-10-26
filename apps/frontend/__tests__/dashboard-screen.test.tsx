@@ -283,6 +283,17 @@ describe('DashboardScreen', () => {
       expect(StyleSheet.flatten(card.props.style).minHeight).toBe(StyleSheet.flatten(screen.getByTestId('dashboard-milestone').props.style).minHeight);
     });
 
+    it('draws the scene of the Missão on the card, with its boss at the scene position', async () => {
+      mockedGuild.mockResolvedValue(myGuild);
+      mockedRaid.mockResolvedValue(activeRaid({ mission: { slug: 'forja-dos-sabios', name: 'Forja dos Sábios', description: '', imageUrl: null } }));
+      await renderDashboard();
+
+      const frame = await screen.findByTestId('dashboard-raid-scene');
+      await act(async () => { fireEvent(frame, 'layout', { nativeEvent: { layout: { width: 300, height: 64 } } }); });
+      // ×2 on the 300px card; the Vulcão would sit at 103 × 36.
+      expect(StyleSheet.flatten(within(frame).getByTestId('raid-scene-boss', { includeHiddenElements: true }).props.style)).toMatchObject({ left: 110 * 2, top: 20 * 2 });
+    });
+
     it('draws the Vulcão do Devorador for a Missão without its own art, and keeps the scene still under reduced motion', async () => {
       const reduceMotion = AccessibilityInfo.isReduceMotionEnabled as jest.Mock;
       reduceMotion.mockResolvedValue(true);

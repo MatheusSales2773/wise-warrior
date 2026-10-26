@@ -1,6 +1,6 @@
 import { configure, fireEvent, render, screen, within } from '@testing-library/react-native';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { Dimensions, Platform } from 'react-native';
+import { Dimensions, Platform, StyleSheet } from 'react-native';
 import { ApiError } from '@/core/api/api-error';
 import { getActiveRaid, getMyGuild, getRaidRanking, type ActiveRaid, type MyGuild, type RaidRankingEntry } from '@/features/guild/api';
 import { RaidBattleScreen } from '@/features/guild/raid-screen';
@@ -204,6 +204,21 @@ describe('RaidBattleScreen on desktop', () => {
     for (const layer of ['body', 'avatar', 'weapon', 'accessory']) expect(hero.getByTestId(`character-hero-layer-${layer}`, { includeHiddenElements: true })).toBeTruthy();
     expect(screen.queryByTestId('raid-scene-hero-u-Brisa', { includeHiddenElements: true })).toBeNull();
     expect(screen.getByTestId('raid-scene-background', { includeHiddenElements: true })).toBeTruthy();
+  });
+
+  it('draws the scene of the Missão, with the boss and the Golpe at its own scene position', async () => {
+    mockedRaid.mockResolvedValue(raid({
+      mission: { slug: 'forja-dos-sabios', name: 'Forja dos Sábios', description: 'x', imageUrl: null },
+      lastHit: { userId: 'u-Eldoria', displayName: 'Eldoria', xp: 75, focusMinutes: 25, at: new Date().toISOString() },
+    }));
+    await renderRaid();
+
+    const boss = StyleSheet.flatten((await screen.findByTestId('raid-scene-boss', { includeHiddenElements: true })).props.style);
+    const scale = boss.left / 110;
+    expect(Number.isInteger(scale) && scale >= 2).toBe(true);
+    expect(boss.top).toBe(20 * scale);
+    // The 220px Golpe slot is centered on the anchor at (148, 24).
+    expect(StyleSheet.flatten(screen.getByTestId('raid-scene-hit').props.style)).toMatchObject({ left: 148 * scale - 110, top: 24 * scale });
   });
 
   it('shows the boss defeated once the goal is reached', async () => {
