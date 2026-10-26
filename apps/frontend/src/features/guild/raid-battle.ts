@@ -92,6 +92,14 @@ const WEEKDAY_INITIALS = ['S', 'T', 'Q', 'Q', 'S', 'S', 'D'] as const;
 
 export type WeekDay = { key: string; initial: (typeof WEEKDAY_INITIALS)[number]; name: string; state: 'studied' | 'missed' | 'today' | 'upcoming' };
 
+/** How a day state is spoken to screen readers: "segunda: com estudo". */
+export const WEEK_DAY_STATE_LABEL: Record<WeekDay['state'], string> = {
+  studied: 'com estudo',
+  today: 'hoje, ainda sem estudo',
+  missed: 'sem estudo',
+  upcoming: 'ainda não chegou',
+};
+
 const WEEKDAY_NAMES = ['segunda', 'terça', 'quarta', 'quinta', 'sexta', 'sábado', 'domingo'] as const;
 
 /**

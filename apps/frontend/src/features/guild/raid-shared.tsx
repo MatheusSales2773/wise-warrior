@@ -7,7 +7,7 @@ import { itemSprites } from '@/features/character/sprites';
 import { CoinMark } from '@/features/market/coin';
 import type { ActiveRaid } from './api';
 import { formatRewardCoins, formatRewardName } from './messages';
-import { bossLifePercent, formatBattleTimeLeft, formatFocusHours, raidWeekGrid, type WeekDay } from './raid-battle';
+import { bossLifePercent, formatBattleTimeLeft, formatFocusHours, WEEK_DAY_STATE_LABEL, raidWeekGrid, type WeekDay } from './raid-battle';
 import { useRaidTimeLeft } from './use-raid-clock';
 
 /* Pieces shared by the Raid battle screen and the Raid card of the Guilda screen (Figma 06b and 06c). */
@@ -68,10 +68,10 @@ type DayLook = {
 
 /** One entry per day state: spoken label, glyph and the style keys that draw it (Figma 06b, card "Fúria do dragão"). */
 const DAY_LOOKS: Record<WeekDay['state'], DayLook> = {
-  studied: { label: 'com estudo', glyph: '✓', cell: 'weekDayStudied', glyphStyle: 'weekDayMarkStudied' },
-  today: { label: 'hoje, ainda sem estudo', glyph: '•', cell: 'weekDayToday', initial: 'weekDayInitialToday', glyphStyle: 'weekDayMarkToday' },
-  missed: { label: 'sem estudo', glyph: '·' },
-  upcoming: { label: 'ainda não chegou', glyph: '·' },
+  studied: { label: WEEK_DAY_STATE_LABEL.studied, glyph: '✓', cell: 'weekDayStudied', glyphStyle: 'weekDayMarkStudied' },
+  today: { label: WEEK_DAY_STATE_LABEL.today, glyph: '•', cell: 'weekDayToday', initial: 'weekDayInitialToday', glyphStyle: 'weekDayMarkToday' },
+  missed: { label: WEEK_DAY_STATE_LABEL.missed, glyph: '·' },
+  upcoming: { label: WEEK_DAY_STATE_LABEL.upcoming, glyph: '·' },
 };
 
 export function WeekGrid({ raid }: { raid: ActiveRaid }) {

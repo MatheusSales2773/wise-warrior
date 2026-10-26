@@ -16,13 +16,10 @@ export type NextMilestoneCardProps = {
 };
 
 /** The Figma's block of the mobile grid is 241 high; the Raid card beside it shares the height. */
-const BLOCK_MIN_HEIGHT = 241;
+export const BLOCK_MIN_HEIGHT = 241;
 const GRID_GAP = 10;
 
 const region = { accessibilityLabel: 'Próximo Marco', role: 'region' } as const;
-
-/** Whether the card shows a Marco block (the mobile grid keeps its left column for the Raid only then). */
-export const hasNextMilestone = (milestones: Milestones | undefined): boolean => !!milestones && nextMilestone(milestones.items) !== undefined;
 
 function SeeMilestones({ small }: { small?: boolean }) {
   return <Link asChild href="/cronicas">

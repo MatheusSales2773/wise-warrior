@@ -12,7 +12,7 @@ export type DashboardLayoutProps = {
   highlights?: ReactNode;
   cadence: ReactNode;
   activity: ReactNode;
-  actions: ReactNode;
+  actions?: ReactNode;
 };
 
 /**

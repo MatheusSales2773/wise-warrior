@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Platform, StyleSheet, View, useWindowDimensions } from 'react-native';
 import { FeedbackMessage, ProgressBar, Screen, WiseButton, WiseText, isDesktopLayout, theme } from '@/design-system';
 import { equippedItems } from '@/features/character/catalog';
+import { activeRaidQueryOptions, myGuildQueryOptions } from '@/features/guild/queries';
 import { milestonesQueryOptions, objectivesQueryOptions, useSessionsObjective, useWeeklyMinutesObjective } from '@/features/chronicles/queries';
 import { coinBalanceQueryOptions } from '@/features/market/queries';
 import { useActiveStudySession, useFocusCycle } from '@/features/study-session/queries';
@@ -9,12 +10,12 @@ import { ActivityCard } from './activity-card';
 import { CadenceCard } from './cadence-card';
 import { DashboardLayout } from './dashboard-layout';
 import { FocusAction, FocusFooter, useActiveFocus } from './focus-action';
-import { GuildCard } from './guild-card';
 import { MetricsCard } from './metrics-card';
-import { NextMilestoneCard, hasNextMilestone, milestoneGridGap } from './next-milestone-card';
+import { NextMilestoneCard, milestoneGridGap } from './next-milestone-card';
 import { ObjectivesCard } from './objectives-card';
 import { DashboardGlow, ProfileCard, ProfileRefreshError } from './profile-card';
 import { ProgressionCard } from './progression-card';
+import { RaidCard } from './raid-card';
 import { profileQueryOptions, recentActivityQueryOptions, sessionMetricsQueryOptions, weekSummaryQueryOptions } from './queries';
 import { useDashboardRefresh } from './use-dashboard-refresh';
 import { useSingleFlightRetry } from './use-single-flight-retry';
@@ -31,15 +32,21 @@ export function DashboardScreen() {
   const focus = useActiveFocus(activeSession.data);
   const objectives = useQuery(objectivesQueryOptions());
   const milestones = useQuery(milestonesQueryOptions());
+  const guild = useQuery(myGuildQueryOptions());
+  const guildId = guild.data?.guild.id;
+  // Without a Guild there is no Raid to ask about, so this query only runs (and refreshes) once the Guild is known.
+  const raid = useQuery({ ...activeRaidQueryOptions(guildId ?? ''), enabled: guildId !== undefined });
   const sessionsObjective = useSessionsObjective();
   const weeklyObjective = useWeeklyMinutesObjective();
   const { width } = useWindowDimensions();
   // Every query "Atualizar", pull-to-refresh and the partial-failure message cover. A new card's query joins here.
-  const { partialErrorMessage, refresh, refreshing, statusMessage } = useDashboardRefresh([profile, activity, metrics, weekSummary, coins, cycle, activeSession, objectives, milestones]);
+  const { partialErrorMessage, refresh, refreshing, statusMessage } = useDashboardRefresh([profile, activity, metrics, weekSummary, coins, cycle, activeSession, objectives, milestones, guild, ...(guildId === undefined ? [] : [raid])]);
   const retryActivity = useSingleFlightRetry(activity);
   const retryMetrics = useSingleFlightRetry(metrics);
   const retryObjectives = useSingleFlightRetry(objectives);
   const retryMilestones = useSingleFlightRetry(milestones);
+  const retryGuild = useSingleFlightRetry(guild);
+  const retryRaid = useSingleFlightRetry(raid);
 
   if (profile.isPending && !profile.data) {
     return (
@@ -122,8 +129,8 @@ export function DashboardScreen() {
         objectives={objectives.data?.daily}
         onRetry={() => void retryObjectives()}
       />}
-      highlights={<View style={desktop ? undefined : styles.highlightsGrid} testID="dashboard-highlights">
-        {desktop || !hasNextMilestone(milestones.data) ? null : <View style={styles.highlightsSpacer} />}
+      highlights={<View style={desktop ? styles.highlightsStack : styles.highlightsGrid} testID="dashboard-highlights">
+        <RaidCard desktop={desktop} guild={guild} onRetryGuild={() => void retryGuild()} onRetryRaid={() => void retryRaid()} raid={raid} />
         <NextMilestoneCard
           desktop={desktop}
           isPending={milestones.isPending}
@@ -140,7 +147,6 @@ export function DashboardScreen() {
         onRetry={() => void retryActivity()}
         sessions={activity.data}
       />}
-      actions={<GuildCard />}
     />
   </Screen>;
 }
@@ -148,8 +154,8 @@ export function DashboardScreen() {
 const styles = StyleSheet.create({
   loading: { gap: theme.space.stackDefault, padding: theme.space.cardInset },
   errorContent: { gap: theme.space.stackDefault },
-  // The left column is the Raid card's; until it lands the Próximo Marco keeps the right one.
+  highlightsStack: { gap: 18 },
+  // The Raid block on the left and the Próximo Marco on the right, side by side.
   highlightsGrid: { flexDirection: 'row', gap: milestoneGridGap },
-  highlightsSpacer: { flex: 1, minWidth: 0 },
   partialError: { marginBottom: theme.space.stackTight },
 });
