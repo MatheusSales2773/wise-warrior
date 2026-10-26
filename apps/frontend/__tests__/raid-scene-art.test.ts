@@ -74,6 +74,12 @@ describe('raidSceneArt', () => {
   });
 
   it.each(missions)('centers the $slug Golpe on the Chefe, 4 pixels above it', ({ slug, chefe }) => {
-    expect(raidSceneArt(slug).hitAnchor).toEqual({ x: chefe.x + Math.floor(chefe.width / 2), y: chefe.y - 4 });
+    const { hitAnchor } = raidSceneArt(slug);
+    expect(hitAnchor.x).toBe(chefe.x + Math.floor(chefe.width / 2));
+    expect(hitAnchor.y).toBe(Math.max(chefe.y - 4, 18));
+  });
+
+  it('keeps the Golpe of the Cerco ao Grimório (Chefe at y 18) out from under the "Vida do dragão" panel', () => {
+    expect(raidSceneArt('cerco-ao-grimorio').hitAnchor.y).toBe(18);
   });
 });

@@ -36,6 +36,9 @@ export const defaultRaidSceneArt: RaidSceneArt = {
 /** Pixels between the top of the 'Chefe' and the Golpe above it (the Vulcão keeps its 4 too: dragon at y 36, Golpe at 32). */
 const HIT_ABOVE_CHEFE = 4;
 
+/** The Golpe never sits higher than this: above it, the 'Vida do dragão' panel of the Raid screen (down to y ≈ 17 in the ×6 scene) covers it. */
+const HIT_MIN_Y = 18;
+
 /** The 'Chefe' component of a scene: where it sits and how wide it is. The Figma gives no Golpe marker, so the Golpe is derived from it. */
 type Chefe = { x: number; y: number; width: number };
 
@@ -44,7 +47,7 @@ type Chefe = { x: number; y: number; width: number };
  * `bossPosition` is the top-left of that union, not of the 'Chefe'. The Golpe is centered on the 'Chefe', above its top.
  */
 function sceneArt(background: PixelSpriteData, boss: PixelSpriteData, bossPosition: RaidScenePoint, chefe: Chefe): RaidSceneArt {
-  return { background, boss, bossPosition, hitAnchor: { x: chefe.x + Math.floor(chefe.width / 2), y: chefe.y - HIT_ABOVE_CHEFE } };
+  return { background, boss, bossPosition, hitAnchor: { x: chefe.x + Math.floor(chefe.width / 2), y: Math.max(chefe.y - HIT_ABOVE_CHEFE, HIT_MIN_Y) } };
 }
 
 /** The Missão `slug` is the art key (the API needs no new field). Register a Missão's own scene here. */
