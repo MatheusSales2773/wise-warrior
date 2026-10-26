@@ -93,7 +93,7 @@ describe('RaidBattleScreen on desktop', () => {
     expect(screen.getByTestId('raid-layout-desktop')).toBeTruthy();
     expect(screen.getByTestId('raid-time-left').props.children).toBe('3d 14h restantes');
     expect(screen.getByTestId('raid-boss-life-percent').props.children).toEqual([31, '%']);
-    expect(screen.getByTestId('raid-boss-life').props.accessibilityLabel).toBe('Vida do dragão: 31%. 138h de 200h de foco coletivo.');
+    expect(screen.getByTestId('raid-boss-life').props.accessibilityLabel).toBe('Vida do Boss: 31%. 138h de 200h de foco coletivo.');
     expect(screen.getByTestId('raid-focus-hours').props.children).toEqual(['138h', ' de ', '200h', ' de foco coletivo']);
   });
 
@@ -102,7 +102,7 @@ describe('RaidBattleScreen on desktop', () => {
     await renderRaid();
 
     expect((await screen.findByTestId('raid-boss-life-percent')).props.children).toEqual([36, '%']);
-    expect(screen.getByTestId('raid-boss-life').props.accessibilityLabel).toBe('Vida do dragão: 36%. 138h de 210h de foco coletivo.');
+    expect(screen.getByTestId('raid-boss-life').props.accessibilityLabel).toBe('Vida do Boss: 36%. 138h de 210h de foco coletivo.');
     expect(screen.getByTestId('raid-focus-hours').props.children).toEqual(['138h', ' de ', '210h', ' de foco coletivo']);
   });
 

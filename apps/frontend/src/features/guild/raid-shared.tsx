@@ -26,7 +26,7 @@ export function TimePill({ compact, raid, testID = 'raid-time-left' }: { compact
 export function bossLifeView(raid: ActiveRaid): { percent: number; label: string; needed: string } {
   const percent = bossLifePercent(raid.healthXp, raid.goalXp, raid.goalReachedAt !== null);
   const needed = formatFocusHours(raid.goalXp + raid.regeneratedXp);
-  return { percent, label: `Vida do dragão: ${percent}%. ${formatFocusHours(raid.progressXp)} de ${needed} de foco coletivo.`, needed };
+  return { percent, label: `Vida do Boss: ${percent}%. ${formatFocusHours(raid.progressXp)} de ${needed} de foco coletivo.`, needed };
 }
 
 function LifeBar({ percent, label }: { percent: number; label: string }) {
@@ -38,7 +38,7 @@ export function BossLifePanel({ raid }: { raid: ActiveRaid }) {
   const { percent, label, needed } = bossLifeView(raid);
   return <View style={[styles.glass, styles.lifePanel]}>
     <View style={styles.spread}>
-      <Text style={styles.lifeTitle}>Vida do dragão</Text>
+      <Text style={styles.lifeTitle}>Vida do Boss</Text>
       <Text style={styles.lifePercent} testID="raid-boss-life-percent">{percent}%</Text>
     </View>
     <LifeBar label={label} percent={percent} />
@@ -51,7 +51,7 @@ export function BossLifeRow({ raid }: { raid: ActiveRaid }) {
   const { percent, label, needed } = bossLifeView(raid);
   return <View style={styles.lifeRow}>
     <View style={styles.spread}>
-      <Text style={styles.lifeTitle}>Vida do dragão</Text>
+      <Text style={styles.lifeTitle}>Vida do Boss</Text>
       <Text style={styles.lifeMeta} testID="raid-boss-life-percent">{percent}% · {formatFocusHours(raid.progressXp)}/{needed}</Text>
     </View>
     <LifeBar label={label} percent={percent} />

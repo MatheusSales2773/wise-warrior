@@ -4,6 +4,7 @@ import { Pressable, StyleSheet, Text, View, type StyleProp, type ViewStyle } fro
 import { FeedbackMessage, ProgressBar, WiseButton, WiseIcon, theme } from '@/design-system';
 import type { ActiveRaid, MyGuild } from '@/features/guild/api';
 import { WEEK_DAY_STATE_LABEL } from '@/features/guild/raid-battle';
+import { bossLifeView } from '@/features/guild/raid-shared';
 import { RaidSceneCrop } from '@/features/guild/raid-scene-crop';
 import { useRaidTimeLeft } from '@/features/guild/use-raid-clock';
 import { BLOCK_MIN_HEIGHT, CardContent, FramedCard, SectionHeading, cardText, display, mono } from './card-chrome';
@@ -11,10 +12,6 @@ import {
   furyDays,
   furyRule,
   lastHitText,
-  raidBarMaximum,
-  raidBarValue,
-  raidHours,
-  raidHoursCompact,
   studyDaysSummary,
   timeAndPosition,
   type FuryDay,
@@ -98,7 +95,8 @@ function FurySegments({ days }: { days: FuryDay[] }) {
 }
 
 function RaidProgressBar({ raid, size }: { raid: ActiveRaid; size: 'tall' | 'slim' }) {
-  return <ProgressBar accessibilityLabel={`Progresso da Raid: ${raidHours(raid)}`} maximumValue={raidBarMaximum(raid)} size={size} testID="dashboard-raid-bar" tone="danger" value={raidBarValue(raid)} />;
+  const { label, percent } = bossLifeView(raid);
+  return <ProgressBar accessibilityLabel={label} maximumValue={100} size={size} testID="dashboard-raid-bar" tone="danger" value={percent} />;
 }
 
 function LastHit({ hit }: { hit: NonNullable<ActiveRaid['lastHit']> }) {
@@ -130,7 +128,10 @@ function DesktopRaid({ guildName, raid }: { guildName: string; raid: ActiveRaid 
     <View style={styles.body}>
       <View style={styles.titleLine}>
         <Text accessibilityRole="header" aria-level={2} numberOfLines={1} style={styles.title} testID="dashboard-raid-mission">{raid.mission.name}</Text>
-        <Text style={styles.hours} testID="dashboard-raid-hours">{raidHours(raid)}</Text>
+      </View>
+      <View style={styles.lifeLine}>
+        <Text style={styles.lifeTitle}>Vida do Boss</Text>
+        <Text style={styles.hours} testID="dashboard-raid-life-percent">{bossLifeView(raid).percent}%</Text>
       </View>
       <RaidProgressBar raid={raid} size="tall" />
       <View style={styles.fury} testID="dashboard-raid-fury">
@@ -159,8 +160,8 @@ function MobileRaid({ raid }: { raid: ActiveRaid }) {
     </View>
     <Text accessibilityRole="header" aria-level={2} style={styles.mobileName} testID="dashboard-raid-mission">{raid.mission.name}</Text>
     <View style={styles.mobileTopLine}>
-      <Text style={styles.eyebrow}>Raid</Text>
-      <Text style={styles.mobileHours} testID="dashboard-raid-hours">{raidHoursCompact(raid)}</Text>
+      <Text style={styles.eyebrow}>Vida do Boss</Text>
+      <Text style={styles.mobileHours} testID="dashboard-raid-life-percent">{bossLifeView(raid).percent}%</Text>
     </View>
     <RaidProgressBar raid={raid} size="slim" />
     <FurySegments days={days} />
@@ -172,7 +173,7 @@ function MobileRaid({ raid }: { raid: ActiveRaid }) {
 }
 
 /**
- * The Raid of the user's Guild on the Acampamento: the Missão's scene, the progress in focus hours, the Fúria do dragão,
+ * The Raid of the user's Guild on the Acampamento: the Missão's scene, the Boss's life, the Fúria do dragão,
  * the last Golpe, the time left and the user's place. Without a Raid, or without a Guild, an honest card that leads to the Guilda.
  * The card fills the top of the side column on desktop and the left block of the 2-column grid on the phone.
  */
@@ -233,6 +234,8 @@ const styles = StyleSheet.create({
   sealOverStage: { position: 'absolute', top: 14, right: 14 },
   body: { gap: 8, paddingHorizontal: 20, paddingTop: 16, paddingBottom: 14 },
   titleLine: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', gap: 8 },
+  lifeLine: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', gap: 8 },
+  lifeTitle: { fontFamily: 'Inter-SemiBold', fontSize: 9, lineHeight: 12, letterSpacing: 1.6, textTransform: 'uppercase', color: theme.color.textTertiary },
   title: { flexShrink: 1, fontFamily: 'Cinzel-Bold', fontSize: 15, lineHeight: 20, color: theme.color.textPrimary },
   hours: { ...mono, fontSize: 13, lineHeight: 17, color: theme.color.feedbackDanger },
   fury: { gap: 8, paddingTop: 12, paddingBottom: 4, borderTopWidth: theme.border.standard, borderTopColor: theme.color.borderGhost },
