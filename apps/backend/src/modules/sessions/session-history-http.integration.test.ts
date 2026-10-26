@@ -153,19 +153,30 @@ describe('Diário (GET /sessions/history) against MySQL', () => {
     expect(new Date(result.items[0]!.endedAt).toISOString()).toBe('2026-09-01T12:00:00.000Z');
   });
 
-  it('numbers each focus completed in full in the Pomodoro cycle, counting across days', async () => {
-    await record(ana, '2026-08-31T20:00:00.000Z', 'completed'); // 1st focus, the day before
-    await record(ana, '2026-08-31T21:00:00.000Z', 'completed'); // 2nd
+  it('numbers each focus completed in full in the Pomodoro cycle, restarting every São Paulo day', async () => {
+    await record(ana, '2026-08-31T20:00:00.000Z', 'completed'); // the day before
+    await record(ana, '2026-08-31T21:00:00.000Z', 'completed');
     await record(ana, '2026-09-01T09:00:00.000Z', 'stopped_early'); // never counts
-    const third = await record(ana, '2026-09-01T10:00:00.000Z', 'completed');
-    const fourth = await record(ana, '2026-09-01T11:00:00.000Z', 'completed');
-    const fifth = await record(ana, '2026-09-01T12:00:00.000Z', 'completed');
+    const first = await record(ana, '2026-09-01T10:00:00.000Z', 'completed');
+    const second = await record(ana, '2026-09-01T11:00:00.000Z', 'completed');
+    const third = await record(ana, '2026-09-01T12:00:00.000Z', 'completed');
 
     const byId = Object.fromEntries((await page()).items.map((item) => [item.id, item.cyclePosition]));
 
+    expect(byId[first]).toBe(1);
+    expect(byId[second]).toBe(2);
     expect(byId[third]).toBe(3);
-    expect(byId[fourth]).toBe(4);
-    expect(byId[fifth]).toBe(1);
+  });
+
+  it('restarts the numbering at São Paulo midnight', async () => {
+    const lastOfDay = await record(ana, '2026-09-01T02:59:59.000Z', 'completed'); // 23:59:59 of Aug 31 in São Paulo
+    const firstOfDay = await record(ana, '2026-09-01T03:00:00.000Z', 'completed'); // 00:00:00 of Sep 1
+
+    const byId = Object.fromEntries((await page('?date=2026-09-01')).items.map((item) => [item.id, item.cyclePosition]));
+    const previousDay = Object.fromEntries((await page('?date=2026-08-31')).items.map((item) => [item.id, item.cyclePosition]));
+
+    expect(byId[firstOfDay]).toBe(1);
+    expect(previousDay[lastOfDay]).toBe(1);
   });
 
   it('pages without repeating or skipping rows, even when two sessions end in the same millisecond', async () => {

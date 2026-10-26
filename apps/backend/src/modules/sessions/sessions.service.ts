@@ -5,7 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { type EntityManager, IsNull, Not, Repository } from 'typeorm';
+import { And, type EntityManager, IsNull, LessThan, MoreThanOrEqual, Not, Repository } from 'typeorm';
 import { StudySession } from './entities/study-session.entity';
 import { validateSessionDuration } from './domain/session-validator';
 import { xpForDuration } from './domain/xp-rate';
@@ -73,8 +73,17 @@ export class SessionsService {
   }
 
   /** Where the user stands in the Pomodoro cadence: only Ciclos completed in full advance it; Foco livre never does. */
-  async focusCycle(userId: string): Promise<FocusCycle> {
-    const completedFocuses = await this.studySessions.count({ where: { userId, state: 'completed', kind: 'cycle' } });
+  /** The Pomodoro cadence restarts every São Paulo day: only the Ciclos completed in full on `now`'s day count. */
+  async focusCycle(userId: string, now: Date = new Date()): Promise<FocusCycle> {
+    const today = saoPauloDayKey(now);
+    const completedFocuses = await this.studySessions.count({
+      where: {
+        userId,
+        state: 'completed',
+        kind: 'cycle',
+        endedAt: And(MoreThanOrEqual(saoPauloDayStart(today)), LessThan(saoPauloDayStart(saoPauloNextDayKey(today)))),
+      },
+    });
     return focusCycle(completedFocuses);
   }
 
@@ -112,7 +121,7 @@ export class SessionsService {
               completed.cycle_number
        FROM study_sessions session
        LEFT JOIN (
-         SELECT id, ROW_NUMBER() OVER (ORDER BY ended_at, id) AS cycle_number
+         SELECT id, ROW_NUMBER() OVER (PARTITION BY DATE(CONVERT_TZ(ended_at, '+00:00', '-03:00')) ORDER BY ended_at, id) AS cycle_number
          FROM study_sessions WHERE user_id = ? AND state = 'completed' AND kind = 'cycle'
        ) completed ON completed.id = session.id
        WHERE session.user_id = ?
