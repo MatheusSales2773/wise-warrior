@@ -1,11 +1,14 @@
 import { useQuery } from '@tanstack/react-query';
 import { Platform, StyleSheet, View, useWindowDimensions } from 'react-native';
 import { FeedbackMessage, ProgressBar, Screen, WiseButton, WiseText, isDesktopLayout, theme } from '@/design-system';
+import { equippedItems } from '@/features/character/catalog';
 import { useSessionsObjective, useWeeklyMinutesObjective } from '@/features/chronicles/queries';
+import { coinBalanceQueryOptions } from '@/features/market/queries';
+import { useActiveStudySession, useFocusCycle } from '@/features/study-session/queries';
 import { ActivityCard } from './activity-card';
 import { CadenceCard } from './cadence-card';
 import { DashboardLayout } from './dashboard-layout';
-import { FocusAction } from './focus-action';
+import { FocusAction, FocusFooter, useActiveFocus } from './focus-action';
 import { GuildCard } from './guild-card';
 import { MetricsCard } from './metrics-card';
 import { DashboardGlow, ProfileCard, ProfileRefreshError } from './profile-card';
@@ -19,11 +22,16 @@ export function DashboardScreen() {
   const activity = useQuery(recentActivityQueryOptions());
   const metrics = useQuery(sessionMetricsQueryOptions());
   const weekSummary = useQuery(weekSummaryQueryOptions());
+  // A failed query hides only its own part: no balance, no "N/4", or "Iniciar foco" when the active session cannot load.
+  const coins = useQuery(coinBalanceQueryOptions());
+  const cycle = useFocusCycle();
+  const activeSession = useActiveStudySession();
+  const focus = useActiveFocus(activeSession.data);
   const sessionsObjective = useSessionsObjective();
   const weeklyObjective = useWeeklyMinutesObjective();
   const { width } = useWindowDimensions();
   // Every query "Atualizar", pull-to-refresh and the partial-failure message cover. A new card's query joins here.
-  const { partialErrorMessage, refresh, refreshing, statusMessage } = useDashboardRefresh([profile, activity, metrics, weekSummary]);
+  const { partialErrorMessage, refresh, refreshing, statusMessage } = useDashboardRefresh([profile, activity, metrics, weekSummary, coins, cycle, activeSession]);
   const retryActivity = useSingleFlightRetry(activity);
   const retryMetrics = useSingleFlightRetry(metrics);
 
@@ -62,14 +70,25 @@ export function DashboardScreen() {
   // Touch platforms refresh by pulling the screen down; the button is only for web, which has no such gesture.
   const canPullToRefresh = Platform.OS !== 'web';
   const refreshProps = canPullToRefresh ? { refreshing, onRefresh: () => { void refresh(); } } : {};
-  return <Screen backgroundOverlay={<DashboardGlow />} safeAreaEdges={[]} title="Acampamento" testID="dashboard" {...refreshProps}>
+  const focusAction = <FocusAction cycle={cycle.data} focus={focus} />;
+  return <Screen
+    backgroundOverlay={<DashboardGlow />}
+    footer={desktop ? undefined : <FocusFooter cycle={cycle.data} focus={focus} />}
+    safeAreaEdges={[]}
+    title="Acampamento"
+    testID="dashboard"
+    {...refreshProps}
+  >
     {partialErrorMessage ? <View accessibilityLiveRegion="none" aria-live="off" style={styles.partialError} testID="dashboard-partial-error"><WiseText color="feedbackDanger" variant="caption">{partialErrorMessage}</WiseText></View> : null}
     <DashboardLayout
       desktop={desktop}
       header={<>
         <ProfileCard
+          action={desktop ? focusAction : undefined}
+          coins={coins.data}
           compact={width < 640}
           displayName={user.displayName}
+          equipped={equippedItems(user)}
           onRefresh={() => void refresh()}
           refreshing={refreshing}
           showRefreshButton={!canPullToRefresh}
@@ -98,10 +117,7 @@ export function DashboardScreen() {
         onRetry={() => void retryActivity()}
         sessions={activity.data}
       />}
-      actions={<>
-        <GuildCard />
-        <FocusAction />
-      </>}
+      actions={<GuildCard />}
     />
   </Screen>;
 }
