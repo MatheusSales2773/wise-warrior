@@ -8,9 +8,7 @@ import {
   RAID_HERO_SIZE,
   RAID_PARTY_ORIGIN,
   RAID_PARTY_SPACING,
-  RAID_SCENE_BOSS_POSITION,
   RAID_SCENE_HEIGHT,
-  RAID_SCENE_HIT_ANCHOR,
   RAID_SCENE_WIDTH,
   RAID_SHADOW,
 } from './raid-scene-sprites';
@@ -81,14 +79,14 @@ export function RaidScene({ art = defaultRaidSceneArt, framed = true, hit, overl
     <View accessibilityElementsHidden aria-hidden importantForAccessibility="no-hide-descendants" style={[styles.canvas, { width, height, left: canvasLeft }]}>
       <PixelSprite scale={scale} sprite={art.background} style={styles.layerOrigin} testID="raid-scene-background" />
       {party.map((member, index) => <PartyHeroFigure index={index} key={member.userId} member={member} scale={scale} />)}
-      <PixelSprite scale={scale} sprite={art.boss} style={[styles.layer, { left: RAID_SCENE_BOSS_POSITION.x * scale, top: RAID_SCENE_BOSS_POSITION.y * scale }]} testID="raid-scene-boss" />
+      <PixelSprite scale={scale} sprite={art.boss} style={[styles.layer, { left: art.bossPosition.x * scale, top: art.bossPosition.y * scale }]} testID="raid-scene-boss" />
       {showTags ? party.map((member, index) => <PartyTag index={index} key={member.userId} member={member} scale={scale} />) : null}
     </View>
     {/* Drawn over the pixels so the border does not crop the scene. */}
     {framed ? <View pointerEvents="none" style={[StyleSheet.absoluteFill, styles.frameBorder]} /> : null}
     {hit ? <View
       pointerEvents="none"
-      style={[styles.hitSlot, { left: canvasLeft + RAID_SCENE_HIT_ANCHOR.x * scale - HIT_SLOT_WIDTH / 2, top: RAID_SCENE_HIT_ANCHOR.y * scale }]}
+      style={[styles.hitSlot, { left: canvasLeft + art.hitAnchor.x * scale - HIT_SLOT_WIDTH / 2, top: art.hitAnchor.y * scale }]}
     >{hit}</View> : null}
     {overlay}
   </View>;
