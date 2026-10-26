@@ -32,3 +32,12 @@ export function useSessionsObjective(): SessionsObjective | undefined {
   const objective = data?.daily.items.find(({ id }) => id === SESSIONS_OBJECTIVE_ID);
   return objective && { progress: objective.progress, target: objective.target };
 }
+
+export type WeeklyMinutesObjective = { progress: number; target: number };
+
+/** The weekly Objetivo that counts valid focus minutes, when the server lists one. */
+export function useWeeklyMinutesObjective(): WeeklyMinutesObjective | undefined {
+  const { data } = useQuery(objectivesQueryOptions());
+  const objective = data?.weekly.items.find(({ unit }) => unit === 'minutes');
+  return objective && { progress: objective.progress, target: objective.target };
+}

@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { Platform, StyleSheet, View, useWindowDimensions } from 'react-native';
 import { FeedbackMessage, ProgressBar, Screen, WiseButton, WiseText, isDesktopLayout, theme } from '@/design-system';
-import { useSessionsObjective } from '@/features/chronicles/queries';
+import { useSessionsObjective, useWeeklyMinutesObjective } from '@/features/chronicles/queries';
 import { ActivityCard } from './activity-card';
 import { CadenceCard } from './cadence-card';
 import { DashboardLayout } from './dashboard-layout';
@@ -10,7 +10,7 @@ import { GuildCard } from './guild-card';
 import { MetricsCard } from './metrics-card';
 import { DashboardGlow, ProfileCard, ProfileRefreshError } from './profile-card';
 import { ProgressionCard } from './progression-card';
-import { profileQueryOptions, recentActivityQueryOptions, sessionMetricsQueryOptions } from './queries';
+import { profileQueryOptions, recentActivityQueryOptions, sessionMetricsQueryOptions, weekSummaryQueryOptions } from './queries';
 import { useDashboardRefresh } from './use-dashboard-refresh';
 import { useSingleFlightRetry } from './use-single-flight-retry';
 
@@ -18,10 +18,12 @@ export function DashboardScreen() {
   const profile = useQuery(profileQueryOptions());
   const activity = useQuery(recentActivityQueryOptions());
   const metrics = useQuery(sessionMetricsQueryOptions());
+  const week = useQuery(weekSummaryQueryOptions());
   const sessionsObjective = useSessionsObjective();
+  const weeklyObjective = useWeeklyMinutesObjective();
   const { width } = useWindowDimensions();
   // Every query "Atualizar", pull-to-refresh and the partial-failure message cover. A new card's query joins here.
-  const { partialErrorMessage, refresh, refreshing, statusMessage } = useDashboardRefresh([profile, activity, metrics]);
+  const { partialErrorMessage, refresh, refreshing, statusMessage } = useDashboardRefresh([profile, activity, metrics, week]);
   const retryActivity = useSingleFlightRetry(activity);
   const retryMetrics = useSingleFlightRetry(metrics);
 
@@ -77,7 +79,7 @@ export function DashboardScreen() {
         {profile.isError ? <ProfileRefreshError onRetry={() => void profile.refetch()} retrying={profile.isRefetching} /> : null}
       </>}
       summary={<>
-        <ProgressionCard level={user.level} levelStartXp={user.levelStartXp} nextLevelXp={user.nextLevelXp} xpTotal={user.xpTotal} />
+        <ProgressionCard desktop={desktop} level={user.level} levelStartXp={user.levelStartXp} nextLevelXp={user.nextLevelXp} weekSubjects={week.data?.subjects} xpTotal={user.xpTotal} />
         <MetricsCard
           isError={metrics.isError}
           isPending={metrics.isPending}
@@ -85,6 +87,7 @@ export function DashboardScreen() {
           metrics={metrics.data}
           onRetry={() => void retryMetrics()}
           sessionsObjective={sessionsObjective}
+          weeklyObjective={weeklyObjective}
         />
       </>}
       cadence={metrics.data ? <CadenceCard cadence={metrics.data.cadence} /> : null}

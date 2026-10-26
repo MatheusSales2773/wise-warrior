@@ -1,4 +1,4 @@
-import { formatCadenceDate, formatDayCount, formatDiscardReason, formatDuration, formatSessionDate, formatSessionsToday, formatXp, levelProgressPercent } from '@/features/dashboard/formatters';
+import { formatCadenceDate, formatDayCount, formatDiscardReason, formatDuration, formatFocusMinutes, formatWeeklyFocusLine, topWeekSubjects, formatSessionDate, formatSessionsToday, formatXp, levelProgressPercent } from '@/features/dashboard/formatters';
 
 describe('dashboard formatters', () => {
   it('formats values for pt-BR without inventing units', () => {
@@ -39,5 +39,24 @@ describe('dashboard formatters', () => {
 
   it('shows only the session count while the Objetivo is unknown', () => {
     expect(formatSessionsToday(3, undefined)).toEqual({ value: '3', spoken: '3' });
+  });
+
+  it('formats focus minutes with hours only when there are any', () => {
+    expect(formatFocusMinutes(0)).toBe('0min');
+    expect(formatFocusMinutes(50)).toBe('50min');
+    expect(formatFocusMinutes(60)).toBe('1h');
+    expect(formatFocusMinutes(220)).toBe('3h 40min');
+    expect(formatFocusMinutes(300)).toBe('5h');
+  });
+
+  it('describes the weekly minutes Objetivo, or falls back to the valid focus of today', () => {
+    expect(formatWeeklyFocusLine({ progress: 220, target: 300 }, 4_200)).toBe('Semana: 3h 40min de 5h');
+    expect(formatWeeklyFocusLine(undefined, 4_200)).toBe('70 min de foco válido');
+  });
+
+  it('keeps the first three subjects of the week in the given order', () => {
+    const subjects = ['a', 'b', 'c', 'd'].map((subject, index) => ({ subject, validSeconds: 100 - index }));
+    expect(topWeekSubjects(subjects).map(({ subject }) => subject)).toEqual(['a', 'b', 'c']);
+    expect(topWeekSubjects(undefined)).toEqual([]);
   });
 });

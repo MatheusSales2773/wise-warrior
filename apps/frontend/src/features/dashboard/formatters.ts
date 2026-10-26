@@ -1,4 +1,4 @@
-import type { RecentStudySession, UserProfile } from './api';
+import type { RecentStudySession, UserProfile, WeekSummary } from './api';
 
 export function formatXp(value: number): string {
   return new Intl.NumberFormat('pt-BR').format(value);
@@ -59,4 +59,28 @@ export function formatSessionState(state: RecentStudySession['state']): string {
     case 'running': return 'Em andamento';
     default: return '';
   }
+}
+
+/** Minutes as "3h 40min", "5h" or "50min": the unit the Objetivo semanal and the week's subjects are shown in. */
+export function formatFocusMinutes(minutes: number): string {
+  const whole = Math.max(0, Math.floor(minutes));
+  const hours = Math.floor(whole / 60);
+  const rest = whole % 60;
+  if (hours === 0) return `${rest}min`;
+  return rest === 0 ? `${hours}h` : `${hours}h ${rest}min`;
+}
+
+export type WeeklyMinutesObjective = { progress: number; target: number };
+
+/** The support line of "Foco válido hoje": the weekly minutes Objetivo when known, the old text otherwise. */
+export function formatWeeklyFocusLine(objective: WeeklyMinutesObjective | undefined, validSecondsToday: number): string {
+  if (!objective) return `${formatDuration(validSecondsToday)} de foco válido`;
+  return `Semana: ${formatFocusMinutes(objective.progress)} de ${formatFocusMinutes(objective.target)}`;
+}
+
+const MAX_WEEK_SUBJECTS = 3;
+
+/** The subjects of the week's summary the Progressão shows: the first three, in the server's order. */
+export function topWeekSubjects(subjects: WeekSummary['subjects'] | undefined): WeekSummary['subjects'] {
+  return (subjects ?? []).slice(0, MAX_WEEK_SUBJECTS);
 }
