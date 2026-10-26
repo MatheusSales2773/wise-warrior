@@ -18,12 +18,12 @@ export function DashboardScreen() {
   const profile = useQuery(profileQueryOptions());
   const activity = useQuery(recentActivityQueryOptions());
   const metrics = useQuery(sessionMetricsQueryOptions());
-  const week = useQuery(weekSummaryQueryOptions());
+  const weekSummary = useQuery(weekSummaryQueryOptions());
   const sessionsObjective = useSessionsObjective();
   const weeklyObjective = useWeeklyMinutesObjective();
   const { width } = useWindowDimensions();
   // Every query "Atualizar", pull-to-refresh and the partial-failure message cover. A new card's query joins here.
-  const { partialErrorMessage, refresh, refreshing, statusMessage } = useDashboardRefresh([profile, activity, metrics, week]);
+  const { partialErrorMessage, refresh, refreshing, statusMessage } = useDashboardRefresh([profile, activity, metrics, weekSummary]);
   const retryActivity = useSingleFlightRetry(activity);
   const retryMetrics = useSingleFlightRetry(metrics);
 
@@ -79,7 +79,7 @@ export function DashboardScreen() {
         {profile.isError ? <ProfileRefreshError onRetry={() => void profile.refetch()} retrying={profile.isRefetching} /> : null}
       </>}
       summary={<>
-        <ProgressionCard desktop={desktop} level={user.level} levelStartXp={user.levelStartXp} nextLevelXp={user.nextLevelXp} weekSubjects={week.data?.subjects} xpTotal={user.xpTotal} />
+        <ProgressionCard desktop={desktop} level={user.level} levelStartXp={user.levelStartXp} nextLevelXp={user.nextLevelXp} weekSubjects={weekSummary.data?.subjects} xpTotal={user.xpTotal} />
         <MetricsCard
           isError={metrics.isError}
           isPending={metrics.isPending}

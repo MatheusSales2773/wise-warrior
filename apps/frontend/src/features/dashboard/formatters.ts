@@ -1,3 +1,4 @@
+import type { SessionsObjective, WeeklyMinutesObjective } from '@/features/chronicles/queries';
 import type { RecentStudySession, UserProfile, WeekSummary } from './api';
 
 export function formatXp(value: number): string {
@@ -35,8 +36,6 @@ export function levelProgressPercent(profile: Pick<UserProfile, 'xpTotal' | 'lev
   return Math.min(100, Math.round(((profile.xpTotal - profile.levelStartXp) / Math.max(1, profile.nextLevelXp - profile.levelStartXp)) * 100));
 }
 
-export type SessionsObjective = { progress: number; target: number };
-
 /** Progress and target come from the "Conclua 4 sessões hoje" Objetivo; without it only the session count is known. */
 export function formatSessionsToday(sessionsToday: number, objective: SessionsObjective | undefined): { value: string; spoken: string } {
   if (objective) {
@@ -70,12 +69,15 @@ export function formatFocusMinutes(minutes: number): string {
   return rest === 0 ? `${hours}h` : `${hours}h ${rest}min`;
 }
 
-export type WeeklyMinutesObjective = { progress: number; target: number };
-
 /** The support line of "Foco válido hoje": the weekly minutes Objetivo when known, the old text otherwise. */
 export function formatWeeklyFocusLine(objective: WeeklyMinutesObjective | undefined, validSecondsToday: number): string {
   if (!objective) return `${formatDuration(validSecondsToday)} de foco válido`;
   return `Semana: ${formatFocusMinutes(objective.progress)} de ${formatFocusMinutes(objective.target)}`;
+}
+
+/** Seconds of valid focus as "1h 10min": the format of the Foco válido hoje card and of the week's subjects. */
+export function formatFocusSeconds(seconds: number): string {
+  return formatFocusMinutes(Math.floor(seconds / 60));
 }
 
 const MAX_WEEK_SUBJECTS = 3;

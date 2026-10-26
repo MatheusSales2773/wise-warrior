@@ -1,4 +1,4 @@
-import { formatCadenceDate, formatDayCount, formatDiscardReason, formatDuration, formatFocusMinutes, formatWeeklyFocusLine, topWeekSubjects, formatSessionDate, formatSessionsToday, formatXp, levelProgressPercent } from '@/features/dashboard/formatters';
+import { formatCadenceDate, formatDayCount, formatDiscardReason, formatDuration, formatFocusMinutes, formatFocusSeconds, formatWeeklyFocusLine, topWeekSubjects, formatSessionDate, formatSessionsToday, formatXp, levelProgressPercent } from '@/features/dashboard/formatters';
 
 describe('dashboard formatters', () => {
   it('formats values for pt-BR without inventing units', () => {
@@ -47,6 +47,11 @@ describe('dashboard formatters', () => {
     expect(formatFocusMinutes(60)).toBe('1h');
     expect(formatFocusMinutes(220)).toBe('3h 40min');
     expect(formatFocusMinutes(300)).toBe('5h');
+  });
+
+  it('floors seconds of focus to whole minutes', () => {
+    expect(formatFocusSeconds(4_259)).toBe('1h 10min');
+    expect(formatFocusSeconds(59)).toBe('0min');
   });
 
   it('describes the weekly minutes Objetivo, or falls back to the valid focus of today', () => {

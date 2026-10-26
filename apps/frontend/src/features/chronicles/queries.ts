@@ -24,20 +24,23 @@ export const milestonesQueryOptions = () => queryOptions({
 /** The daily Objetivo that counts finished sessions; the Dashboard shows its progress and target. Its id is part of the contract (`docs/api/openapi.yaml`, pinned by `daily-objectives.spec.ts`). */
 export const SESSIONS_OBJECTIVE_ID = 'four-sessions';
 
-export type SessionsObjective = { progress: number; target: number };
+/** Progress and target of one Objetivo, as the Dashboard and the Forja show them. */
+export type ObjectiveProgress = { progress: number; target: number };
+export type SessionsObjective = ObjectiveProgress;
+export type WeeklyMinutesObjective = ObjectiveProgress;
+
+function progressOf(objective: ObjectiveProgress | undefined): ObjectiveProgress | undefined {
+  return objective && { progress: objective.progress, target: objective.target };
+}
 
 /** Shares the Crônicas query, so a change on the server reaches the Dashboard and Crônicas together. */
 export function useSessionsObjective(): SessionsObjective | undefined {
   const { data } = useQuery(objectivesQueryOptions());
-  const objective = data?.daily.items.find(({ id }) => id === SESSIONS_OBJECTIVE_ID);
-  return objective && { progress: objective.progress, target: objective.target };
+  return progressOf(data?.daily.items.find(({ id }) => id === SESSIONS_OBJECTIVE_ID));
 }
 
-export type WeeklyMinutesObjective = { progress: number; target: number };
-
-/** The weekly Objetivo that counts valid focus minutes, when the server lists one. */
+/** The weekly Objetivo counted in valid focus minutes. The server configures the weekly ids, so the unit is the contract; with several, the first in the server's order wins. */
 export function useWeeklyMinutesObjective(): WeeklyMinutesObjective | undefined {
   const { data } = useQuery(objectivesQueryOptions());
-  const objective = data?.weekly.items.find(({ unit }) => unit === 'minutes');
-  return objective && { progress: objective.progress, target: objective.target };
+  return progressOf(data?.weekly.items.find(({ unit }) => unit === 'minutes'));
 }

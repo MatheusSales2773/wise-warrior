@@ -164,7 +164,7 @@ describe('DashboardScreen', () => {
     mockedActivity.mockResolvedValue([]);
     await renderDashboard();
 
-    await screen.findByTestId('dashboard-streak');
+    await screen.findByTestId('dashboard-constancy');
     expect(screen.getByRole('header', { name: 'Constância' })).toBeTruthy();
     expect(screen.queryByText('Sequência atual')).toBeNull();
     expect(screen.getByText('Recorde: 9 dias')).toBeTruthy();
@@ -736,6 +736,17 @@ describe('DashboardScreen', () => {
       expect(markers).toHaveLength(4);
       const filled = markers.map((marker) => StyleSheet.flatten(marker.props.style).backgroundColor === theme.color.accentPrimary);
       expect(filled).toEqual([true, true, false, false]);
+    });
+
+    it('draws one marker per session of the Objetivo target, filled by its progress', async () => {
+      mockedProfile.mockResolvedValue(profile);
+      mockedActivity.mockResolvedValue([]);
+      mockedObjectives.mockResolvedValue(objectives(6, 3));
+      await renderDashboard();
+
+      await screen.findByText('3 / 6');
+      const markers = screen.getAllByTestId(/^dashboard-sessions-marker-/, { includeHiddenElements: true });
+      expect(markers.map((marker) => StyleSheet.flatten(marker.props.style).backgroundColor === theme.color.accentPrimary)).toEqual([true, true, true, false, false, false]);
     });
 
     it('shows the weekly minutes Objetivo under the valid focus of today', async () => {
