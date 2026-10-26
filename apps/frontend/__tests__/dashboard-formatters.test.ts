@@ -1,4 +1,4 @@
-import { formatCadenceDate, formatDayCount, formatDiscardReason, formatDuration, formatFocusMinutes, formatFocusSeconds, formatWeeklyFocusLine, topWeekSubjects, formatSessionDate, formatSessionsToday, formatXp, levelProgressPercent } from '@/features/dashboard/formatters';
+import { formatCadenceDate, formatDayCount, formatDiscardReason, formatDuration, formatFocusMinutes, formatFocusSeconds, formatWeeklyFocusLine, topWeekSubjects, formatSessionDate, formatSessionsToday, formatXp, levelProgressPercent, formatObjectivesHeader, formatTimeLeft } from '@/features/dashboard/formatters';
 
 describe('dashboard formatters', () => {
   it('formats values for pt-BR without inventing units', () => {
@@ -63,5 +63,19 @@ describe('dashboard formatters', () => {
     const subjects = ['a', 'b', 'c', 'd'].map((subject, index) => ({ subject, validSeconds: 100 - index }));
     expect(topWeekSubjects(subjects).map(({ subject }) => subject)).toEqual(['a', 'b', 'c']);
     expect(topWeekSubjects(undefined)).toEqual([]);
+  });
+});
+
+describe('Objetivos de hoje header', () => {
+  const at = Date.parse('2026-09-17T19:48:00.000Z');
+  it('reads the time left to the renewal as hours and minutes', () => {
+    expect(formatTimeLeft('2026-09-18T03:00:00.000Z', at)).toBe('7h 12min');
+    expect(formatTimeLeft('2026-09-17T19:59:30.000Z', at)).toBe('0h 11min');
+  });
+  it('never goes below zero after the renewal', () => {
+    expect(formatTimeLeft('2026-09-17T19:00:00.000Z', at)).toBe('0h 0min');
+  });
+  it('joins the count of met Objetivos and the renewal', () => {
+    expect(formatObjectivesHeader(1, 3, '2026-09-18T03:00:00.000Z', at)).toBe('1 de 3 · renova em 7h 12min');
   });
 });

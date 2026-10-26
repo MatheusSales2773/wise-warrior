@@ -86,3 +86,14 @@ const MAX_WEEK_SUBJECTS = 3;
 export function topWeekSubjects(subjects: WeekSummary['subjects'] | undefined): WeekSummary['subjects'] {
   return (subjects ?? []).slice(0, MAX_WEEK_SUBJECTS);
 }
+
+/** "7h 12min": the time left until the Objetivos renew, never below zero. */
+export function formatTimeLeft(renewsAt: string, at: number = Date.now()): string {
+  const minutes = Math.max(0, Math.floor((Date.parse(renewsAt) - at) / 60_000));
+  return `${Math.floor(minutes / 60)}h ${minutes % 60}min`;
+}
+
+/** The header of Objetivos de hoje: "1 de 3 · renova em 7h 12min". */
+export function formatObjectivesHeader(completed: number, total: number, renewsAt: string, at: number = Date.now()): string {
+  return `${completed} de ${total} · renova em ${formatTimeLeft(renewsAt, at)}`;
+}

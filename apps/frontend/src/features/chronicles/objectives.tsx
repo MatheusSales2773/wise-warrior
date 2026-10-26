@@ -1,11 +1,10 @@
 import { useQuery } from '@tanstack/react-query';
-import { useEffect, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { FeedbackMessage, ProgressBar, WiseButton, WiseIcon, WiseText, theme } from '@/design-system';
 import type { DailyObjective, WeeklyObjective } from './api';
 import { objectivesQueryOptions } from './queries';
+import { MINUTE_MS, useNow } from './use-now';
 
-const MINUTE_MS = 60_000;
 const mono = 'JetBrainsMono-Medium';
 
 /** "Renova em 08h 12min": the time left until the São Paulo midnight at which the Objetivos renew. */
@@ -29,16 +28,6 @@ export function countLabel(progress: number, target: number, unit?: WeeklyObject
 }
 
 const coinsLabel = (coins: number) => `+${coins} ${coins === 1 ? 'Moeda' : 'Moedas'}`;
-
-/** Re-reads the clock each minute so the countdown keeps moving while the tab stays open. */
-function useNow(): number {
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    const timer = setInterval(() => setNow(Date.now()), MINUTE_MS);
-    return () => clearInterval(timer);
-  }, []);
-  return now;
-}
 
 /** Objetivos de hoje e da semana (ADR-014): pagos em Moedas no instante em que são cumpridos, sem nada a resgatar. */
 export function Objectives({ desktop = true }: { desktop?: boolean }) {

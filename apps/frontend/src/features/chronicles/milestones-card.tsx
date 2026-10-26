@@ -1,18 +1,15 @@
 import { useQuery } from '@tanstack/react-query';
 import { StyleSheet, Text, View } from 'react-native';
 import { FeedbackMessage, ProgressBar, WiseButton, WiseText, theme } from '@/design-system';
-import { cosmeticSprite } from '@/features/character/catalog';
 import { PixelSprite } from '@/features/character/PixelSprite';
-import { itemSprites } from '@/features/character/sprites';
 import type { Milestone } from './api';
 import { milestoneDescription, milestoneFooter, milestoneLabel, milestoneShortName } from './milestones';
+import { spriteOf } from './milestone-sprite';
 import { milestonesQueryOptions } from './queries';
 
 const mono = 'JetBrainsMono-Medium';
 const PIXEL = 4;
 const MOBILE_PIXEL = 5;
-
-const spriteOf = (milestone: Milestone) => itemSprites[cosmeticSprite({ category: 'badge', name: milestone.name })];
 
 /** Marcos (ADR-014): the Badges of the Catálogo with their progress. A column of rows on desktop, four blocks on mobile. */
 export function Milestones({ desktop }: { desktop: boolean }) {

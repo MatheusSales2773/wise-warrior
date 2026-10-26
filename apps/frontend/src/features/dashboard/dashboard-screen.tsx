@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Platform, StyleSheet, View, useWindowDimensions } from 'react-native';
 import { FeedbackMessage, ProgressBar, Screen, WiseButton, WiseText, isDesktopLayout, theme } from '@/design-system';
 import { equippedItems } from '@/features/character/catalog';
-import { useSessionsObjective, useWeeklyMinutesObjective } from '@/features/chronicles/queries';
+import { milestonesQueryOptions, objectivesQueryOptions, useSessionsObjective, useWeeklyMinutesObjective } from '@/features/chronicles/queries';
 import { coinBalanceQueryOptions } from '@/features/market/queries';
 import { useActiveStudySession, useFocusCycle } from '@/features/study-session/queries';
 import { ActivityCard } from './activity-card';
@@ -11,6 +11,8 @@ import { DashboardLayout } from './dashboard-layout';
 import { FocusAction, FocusFooter, useActiveFocus } from './focus-action';
 import { GuildCard } from './guild-card';
 import { MetricsCard } from './metrics-card';
+import { NextMilestoneCard, hasNextMilestone, milestoneGridGap } from './next-milestone-card';
+import { ObjectivesCard } from './objectives-card';
 import { DashboardGlow, ProfileCard, ProfileRefreshError } from './profile-card';
 import { ProgressionCard } from './progression-card';
 import { profileQueryOptions, recentActivityQueryOptions, sessionMetricsQueryOptions, weekSummaryQueryOptions } from './queries';
@@ -27,13 +29,17 @@ export function DashboardScreen() {
   const cycle = useFocusCycle();
   const activeSession = useActiveStudySession();
   const focus = useActiveFocus(activeSession.data);
+  const objectives = useQuery(objectivesQueryOptions());
+  const milestones = useQuery(milestonesQueryOptions());
   const sessionsObjective = useSessionsObjective();
   const weeklyObjective = useWeeklyMinutesObjective();
   const { width } = useWindowDimensions();
   // Every query "Atualizar", pull-to-refresh and the partial-failure message cover. A new card's query joins here.
-  const { partialErrorMessage, refresh, refreshing, statusMessage } = useDashboardRefresh([profile, activity, metrics, weekSummary, coins, cycle, activeSession]);
+  const { partialErrorMessage, refresh, refreshing, statusMessage } = useDashboardRefresh([profile, activity, metrics, weekSummary, coins, cycle, activeSession, objectives, milestones]);
   const retryActivity = useSingleFlightRetry(activity);
   const retryMetrics = useSingleFlightRetry(metrics);
+  const retryObjectives = useSingleFlightRetry(objectives);
+  const retryMilestones = useSingleFlightRetry(milestones);
 
   if (profile.isPending && !profile.data) {
     return (
@@ -109,6 +115,23 @@ export function DashboardScreen() {
           weeklyObjective={weeklyObjective}
         />
       </>}
+      objectives={<ObjectivesCard
+        desktop={desktop}
+        isPending={objectives.isPending}
+        isRefetching={objectives.isRefetching}
+        objectives={objectives.data?.daily}
+        onRetry={() => void retryObjectives()}
+      />}
+      highlights={<View style={desktop ? undefined : styles.highlightsGrid} testID="dashboard-highlights">
+        {desktop || !hasNextMilestone(milestones.data) ? null : <View style={styles.highlightsSpacer} />}
+        <NextMilestoneCard
+          desktop={desktop}
+          isPending={milestones.isPending}
+          isRefetching={milestones.isRefetching}
+          milestones={milestones.data}
+          onRetry={() => void retryMilestones()}
+        />
+      </View>}
       cadence={metrics.data ? <CadenceCard cadence={metrics.data.cadence} /> : null}
       activity={<ActivityCard
         isError={activity.isError}
@@ -125,5 +148,8 @@ export function DashboardScreen() {
 const styles = StyleSheet.create({
   loading: { gap: theme.space.stackDefault, padding: theme.space.cardInset },
   errorContent: { gap: theme.space.stackDefault },
+  // The left column is the Raid card's; until it lands the Próximo Marco keeps the right one.
+  highlightsGrid: { flexDirection: 'row', gap: milestoneGridGap },
+  highlightsSpacer: { flex: 1, minWidth: 0 },
   partialError: { marginBottom: theme.space.stackTight },
 });

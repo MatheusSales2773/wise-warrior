@@ -2,7 +2,7 @@ import type { PropsWithChildren } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { WiseCard, theme, type WiseCardProps } from '@/design-system';
 
-function SectionHeading({ children }: PropsWithChildren) {
+export function SectionHeading({ children }: PropsWithChildren) {
   return <View style={styles.cardTitleLabel}>
     <Text aria-hidden accessibilityElementsHidden importantForAccessibility="no" style={styles.cardTitleText}>◈</Text>
     <Text accessibilityRole="header" aria-level={2} style={styles.cardTitleText}>{children}</Text>
