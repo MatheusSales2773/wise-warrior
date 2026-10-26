@@ -82,6 +82,10 @@ _Avoid_: sessão, sessão ativa, sessão de login (para não confundir com Study
 O intervalo de foco registrado no servidor, com modo (solo ou guilda) e timestamps canônicos gerados pelo servidor. É um Ciclo ou um Foco livre. Um usuário tem no máximo uma Study Session ativa por vez.
 _Avoid_: sessão Pomodoro (quando se refere à entidade de dados), timer
 
+**Cadência Pomodoro**:
+A posição do próximo Ciclo entre os 4 de uma volta ("foco 2 de 4"), contada só sobre os Ciclos concluídos por inteiro no dia de São Paulo corrente. Zera todo dia: sem Ciclo concluído hoje, o próximo é o 1 de 4. Encerramento antecipado, Cancelamento, descarte e Foco livre não contam. O quarto Ciclo do dia oferece a pausa longa. Não é a meta de Sessões do dia.
+_Avoid_: ciclo (para a posição na volta)
+
 **Ciclo**:
 Uma Study Session de duração planejada — tipicamente 15, 25 ou 50 minutos — que conclui sozinha ao fim dela e avança a cadência Pomodoro. Pausas entre ciclos são locais ao cliente e não geram Study Sessions.
 _Avoid_: pomodoro (como substantivo para o ciclo inteiro), rodada
