@@ -31,7 +31,7 @@ export function countLabel(progress: number, target: number, unit?: WeeklyObject
 const coinsLabel = (coins: number) => `+${coins} ${coins === 1 ? 'Moeda' : 'Moedas'}`;
 
 /** Re-reads the clock each minute so the countdown keeps moving while the tab stays open. */
-function useNow(): number {
+export function useNow(): number {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     const timer = setInterval(() => setNow(Date.now()), MINUTE_MS);

@@ -4,7 +4,7 @@ import { AccessibilityInfo, Platform, StyleSheet } from 'react-native';
 import { DashboardScreen } from '@/features/dashboard/dashboard-screen';
 import { theme } from '@/design-system';
 import { getMyProfile, getRecentStudySessions, getSessionMetrics, getWeekSummary, type UserProfile, type RecentStudySession, type SessionMetrics, type WeekSummary } from '@/features/dashboard/api';
-import { getObjectives, type Objectives } from '@/features/chronicles/api';
+import { getMilestones, getObjectives, type Milestone, type Milestones, type Objectives } from '@/features/chronicles/api';
 import { getCoinBalance } from '@/features/market/api';
 import { getActiveStudySession, getFocusCycle, type FocusCycle, type StudySessionSnapshot } from '@/features/study-session/api';
 import { dashboardKeys } from '@/features/dashboard/queries';
@@ -19,7 +19,7 @@ jest.mock('@/features/dashboard/api', () => ({
   getWeekSummary: jest.fn(),
 }));
 
-jest.mock('@/features/chronicles/api', () => ({ getObjectives: jest.fn() }));
+jest.mock('@/features/chronicles/api', () => ({ getObjectives: jest.fn(), getMilestones: jest.fn() }));
 jest.mock('@/features/market/api', () => ({ getCoinBalance: jest.fn() }));
 jest.mock('@/features/study-session/api', () => ({
   ...jest.requireActual('@/features/study-session/api'),
@@ -62,6 +62,7 @@ const withWeeklyMinutes = (progress: number, target: number): Objectives => {
   return { ...base, weekly: { ...base.weekly, items: [{ id: 'weekly-focus', title: 'Foque na semana', progress, target, coins: 40, completed: progress >= target, unit: 'minutes' }] } };
 };
 const mockedWeek = getWeekSummary as jest.MockedFunction<typeof getWeekSummary>;
+const mockedMilestones = getMilestones as jest.MockedFunction<typeof getMilestones>;
 const mockedObjectives = getObjectives as jest.MockedFunction<typeof getObjectives>;
 const mockedProfile = getMyProfile as jest.MockedFunction<typeof getMyProfile>;
 const mockedActivity = getRecentStudySessions as jest.MockedFunction<typeof getRecentStudySessions>;
@@ -90,6 +91,7 @@ async function renderDashboard() {
 beforeEach(() => {
   mockedMetrics.mockResolvedValue(metrics);
   mockedObjectives.mockResolvedValue(objectives());
+  mockedMilestones.mockResolvedValue({ earned: 0, total: 0, items: [] });
   mockedWeek.mockResolvedValue(weekSummary());
   mockedCoins.mockResolvedValue(1240);
   mockedCycle.mockResolvedValue(cycle());
@@ -286,6 +288,7 @@ describe('DashboardScreen', () => {
     await renderDashboard();
 
     await waitFor(() => expect(screen.getByLabelText('Resumo de perfil')).toBeTruthy());
+    await screen.findByTestId('dashboard-objectives');
     expect(screen.getByLabelText('Progressão')).toBeTruthy();
     expect(screen.getByLabelText('Atividade recente')).toBeTruthy();
     expect(screen.getByTestId('dashboard-grid').props.style).toEqual(expect.arrayContaining([expect.objectContaining({ flexDirection: 'column' })]));
@@ -293,6 +296,8 @@ describe('DashboardScreen', () => {
       'dashboard-profile',
       'dashboard-progression',
       'dashboard-metrics',
+      'dashboard-objectives',
+      'dashboard-highlights',
       'dashboard-cadence',
     ]);
   });
@@ -998,5 +1003,163 @@ describe('DashboardScreen header', () => {
     const title = await screen.findByText('Guardião das bibliotecas e do raciocínio paciente');
     expect(title.props.numberOfLines).toBeUndefined();
     expect(StyleSheet.flatten(screen.getByTestId('dashboard-coins').props.style).flexShrink).toBe(0);
+  });
+});
+
+describe('DashboardScreen Objetivos de hoje and Próximo Marco', () => {
+  const dailyObjectives = (): Objectives => ({
+    daily: {
+      date: '2026-09-17', renewsAt: new Date(Date.now() + (7 * 60 + 12) * 60_000 + 30_000).toISOString(),
+      items: [
+        { id: 'one-session', title: 'Conclua 1 sessão de foco', progress: 1, target: 1, coins: 5, completed: true },
+        { id: 'four-sessions', title: 'Conclua 4 sessões hoje', progress: 2, target: 4, coins: 15, completed: false },
+        { id: 'fifty-minutes', title: 'Faça uma sessão de 50 minutos', progress: 0, target: 1, coins: 10, completed: false },
+      ],
+    },
+    weekly: { weekStart: '2026-09-14', renewsAt: '2026-09-21T03:00:00.000Z', items: [] },
+  });
+  const milestone = (id: string, name: string, progress: number, target: number, earned = false): Milestone => ({ id, name, progress, target, earned });
+  const milestones = (items: Milestone[]): Milestones => ({ earned: items.filter(({ earned }) => earned).length, total: items.length, items });
+  const MADRUGADOR = 'c05e71c0-0000-4000-8000-000000000003';
+  const CEM_SESSOES = 'c05e71c0-0000-4000-8000-000000000006';
+
+  beforeEach(() => {
+    // The desktop layout and the "Atualizar" button are web only.
+    Object.defineProperty(Platform, 'OS', { configurable: true, writable: true, value: 'web' });
+    mockedProfile.mockResolvedValue(profile);
+    mockedActivity.mockResolvedValue([]);
+    mockedObjectives.mockResolvedValue(dailyObjectives());
+  });
+
+  it('lists the daily Objetivos in the server order with count, bar and Moedas, the met one set apart', async () => {
+    setMockWindowDimensions({ width: 1200, height: 800, fontScale: 1 });
+    await renderDashboard();
+
+    const region = await screen.findByLabelText('Objetivos de hoje');
+    const rows = within(region).getAllByTestId(/^dashboard-objective-(?!.*-bar)[a-z-]+$/);
+    expect(rows.map((row) => row.props.accessibilityLabel)).toEqual([
+      'Conclua 1 sessão de foco. Cumprido. 5 Moedas.',
+      'Conclua 4 sessões hoje. 2 de 4. 15 Moedas.',
+      'Faça uma sessão de 50 minutos. 0 de 1. 10 Moedas.',
+    ]);
+    expect(within(region).getByText('2/4')).toBeTruthy();
+    expect(StyleSheet.flatten(within(region).getByText('Conclua 1 sessão de foco').props.style).textDecorationLine).toBe('line-through');
+    expect(StyleSheet.flatten(within(region).getByText('Conclua 4 sessões hoje').props.style).textDecorationLine).toBeUndefined();
+    expect(screen.getByTestId('dashboard-objective-one-session-bar').props['aria-valuenow']).toBe(1);
+  });
+
+  it('counts the met Objetivos and the time left to the renewal', async () => {
+    await renderDashboard();
+
+    expect((await screen.findByTestId('dashboard-objectives-renewal')).props.children).toBe('1 de 3 · renova em 7h 12min');
+  });
+
+  it('places Objetivos de hoje in the main column on desktop, one row per Objetivo', async () => {
+    setMockWindowDimensions({ width: 1200, height: 800, fontScale: 1 });
+    await renderDashboard();
+
+    expect(within(await screen.findByTestId('dashboard-main-column')).getByLabelText('Objetivos de hoje')).toBeTruthy();
+    expect(screen.queryByTestId('dashboard-objectives-carousel')).toBeNull();
+  });
+
+  it('shows the Objetivos as a horizontal carousel of blocks on mobile', async () => {
+    setMockWindowDimensions({ width: 390, height: 800, fontScale: 1 });
+    await renderDashboard();
+
+    const carousel = await screen.findByTestId('dashboard-objectives-carousel');
+    expect(carousel.props.horizontal).toBe(true);
+    expect(within(carousel).getAllByTestId(/^dashboard-objective-(?!.*-bar)[a-z-]+$/)).toHaveLength(3);
+  });
+
+  it('shows an empty Objetivos card when the server sends none', async () => {
+    mockedObjectives.mockResolvedValue({ ...dailyObjectives(), daily: { ...dailyObjectives().daily, items: [] } });
+    await renderDashboard();
+
+    expect(await screen.findByTestId('dashboard-objectives-empty')).toBeTruthy();
+    expect(screen.getByText('Nenhum Objetivo para hoje.')).toBeTruthy();
+  });
+
+  it('isolates an Objetivos failure and retries only its own query', async () => {
+    mockedObjectives.mockRejectedValueOnce(new Error('boom'));
+    mockedMilestones.mockResolvedValue(milestones([milestone(MADRUGADOR, 'Madrugador', 4, 5)]));
+    await renderDashboard();
+
+    const error = await screen.findByTestId('dashboard-objectives-error');
+    expect(screen.getByTestId('dashboard-milestone')).toBeTruthy();
+    expect(screen.getByRole('header', { name: 'Progressão' })).toBeTruthy();
+    const milestoneCalls = mockedMilestones.mock.calls.length;
+    const objectivesCalls = mockedObjectives.mock.calls.length;
+
+    await act(async () => { fireEvent.press(within(error).getByRole('button', { name: 'Tentar novamente' })); });
+
+    expect(await screen.findByTestId('dashboard-objectives')).toBeTruthy();
+    expect(mockedObjectives).toHaveBeenCalledTimes(objectivesCalls + 1);
+    expect(mockedMilestones).toHaveBeenCalledTimes(milestoneCalls);
+  });
+
+  it('shows the Marco closest to done with its bar, Crônicas copy and a link to Crônicas', async () => {
+    setMockWindowDimensions({ width: 1200, height: 800, fontScale: 1 });
+    mockedMilestones.mockResolvedValue(milestones([milestone(CEM_SESSOES, 'Cem Sessões', 40, 100), milestone(MADRUGADOR, 'Madrugador', 4, 5)]));
+    await renderDashboard();
+
+    const card = await screen.findByTestId('dashboard-milestone');
+    expect(within(card).getByText('Madrugador')).toBeTruthy();
+    expect(within(card).getByText('4 de 5 sessões antes das 7h')).toBeTruthy();
+    expect(within(card).getByText('80%')).toBeTruthy();
+    expect(within(card).queryByText('Cem Sessões')).toBeNull();
+    expect(within(screen.getByTestId('dashboard-side-column')).getByLabelText('Próximo Marco')).toBeTruthy();
+    expect(within(card).getByRole('link', { name: 'Ver marcos' }).props.href).toBe('/cronicas');
+  });
+
+  it('shows the Próximo Marco in the right column of the mobile grid', async () => {
+    setMockWindowDimensions({ width: 390, height: 800, fontScale: 1 });
+    mockedMilestones.mockResolvedValue(milestones([milestone(MADRUGADOR, 'Madrugador', 4, 5)]));
+    await renderDashboard();
+
+    const card = await screen.findByTestId('dashboard-milestone');
+    expect(within(card).getByText('4/5')).toBeTruthy();
+    expect(within(screen.getByTestId('dashboard-main-column')).getByLabelText('Próximo Marco')).toBeTruthy();
+    expect(within(card).getByRole('link', { name: 'Ver marcos' }).props.href).toBe('/cronicas');
+  });
+
+  it('says how many Marcos are earned when all of them are', async () => {
+    mockedMilestones.mockResolvedValue(milestones([milestone(MADRUGADOR, 'Madrugador', 5, 5, true), milestone(CEM_SESSOES, 'Cem Sessões', 100, 100, true)]));
+    await renderDashboard();
+
+    expect(await screen.findByText('2 de 2 conquistados')).toBeTruthy();
+    expect(screen.queryByRole('link', { name: 'Ver marcos' })).toBeNull();
+  });
+
+  it('isolates a Marcos failure and retries only its own query', async () => {
+    mockedMilestones.mockRejectedValueOnce(new Error('boom'));
+    await renderDashboard();
+
+    const error = await screen.findByTestId('dashboard-milestone-error');
+    expect(screen.getByTestId('dashboard-objectives')).toBeTruthy();
+    const objectivesCalls = mockedObjectives.mock.calls.length;
+    const milestoneCalls = mockedMilestones.mock.calls.length;
+    mockedMilestones.mockResolvedValue(milestones([milestone(MADRUGADOR, 'Madrugador', 4, 5)]));
+
+    await act(async () => { fireEvent.press(within(error).getByRole('button', { name: 'Tentar novamente' })); });
+
+    expect(await screen.findByTestId('dashboard-milestone')).toBeTruthy();
+    expect(mockedMilestones).toHaveBeenCalledTimes(milestoneCalls + 1);
+    expect(mockedObjectives).toHaveBeenCalledTimes(objectivesCalls);
+  });
+
+  it('refreshes the Objetivos and the Marcos with "Atualizar" and reports a partial failure', async () => {
+    await renderDashboard();
+    await screen.findByRole('button', { name: 'Atualizar dados' });
+    await waitFor(() => expect(mockedMilestones).toHaveBeenCalledTimes(1));
+    const objectivesCalls = mockedObjectives.mock.calls.length;
+    mockedMilestones.mockRejectedValue(new Error('boom'));
+
+    await act(async () => { fireEvent.press(screen.getByRole('button', { name: 'Atualizar dados' })); });
+
+    await waitFor(() => {
+      expect(mockedMilestones).toHaveBeenCalledTimes(2);
+      expect(mockedObjectives).toHaveBeenCalledTimes(objectivesCalls + 1);
+    });
+    expect(await screen.findByText('Alguns dados não foram atualizados.')).toBeTruthy();
   });
 });

@@ -34,3 +34,13 @@ export function milestoneFooter(milestone: Milestone): string {
 
 /** O rótulo acessível de um Marco: "Madrugador. Conquistado." ou o progresso. */
 export const milestoneLabel = (milestone: Milestone): string => `${milestone.name}. ${milestone.earned ? 'Conquistado' : milestoneDescription(milestone)}.`;
+
+/** The Marco the Acampamento highlights: the unearned one with the highest progress / target. A tie goes to the server's order. Undefined when every Marco is earned (or there are none). */
+export function nextMilestone(milestones: readonly Milestone[]): Milestone | undefined {
+  let next: Milestone | undefined;
+  for (const milestone of milestones) {
+    if (milestone.earned) continue;
+    if (!next || milestone.progress / milestone.target > next.progress / next.target) next = milestone;
+  }
+  return next;
+}

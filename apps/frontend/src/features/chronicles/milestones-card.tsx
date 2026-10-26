@@ -12,7 +12,7 @@ const mono = 'JetBrainsMono-Medium';
 const PIXEL = 4;
 const MOBILE_PIXEL = 5;
 
-const spriteOf = (milestone: Milestone) => itemSprites[cosmeticSprite({ category: 'badge', name: milestone.name })];
+export const spriteOf = (milestone: Milestone) => itemSprites[cosmeticSprite({ category: 'badge', name: milestone.name })];
 
 /** Marcos (ADR-014): the Badges of the Catálogo with their progress. A column of rows on desktop, four blocks on mobile. */
 export function Milestones({ desktop }: { desktop: boolean }) {
