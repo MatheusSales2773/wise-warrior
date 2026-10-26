@@ -1,5 +1,10 @@
 import type { StudySessionSnapshot } from './api';
 
+/** How far the server clock is ahead of this device's, as of the moment the snapshot arrived. */
+export function studyClockOffset(snapshot: StudySessionSnapshot): number {
+  return new Date(snapshot.serverNow).getTime() - snapshot.receivedAtMs;
+}
+
 export function remainingStudySeconds(snapshot: StudySessionSnapshot, localNow: number, serverOffsetMs: number): number {
   if (snapshot.state !== 'running' || !snapshot.runDeadlineAt) return snapshot.remainingSeconds;
   return Math.max(0, Math.ceil((new Date(snapshot.runDeadlineAt).getTime() - localNow - serverOffsetMs) / 1000));
