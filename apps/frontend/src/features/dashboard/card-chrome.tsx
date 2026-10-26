@@ -44,6 +44,8 @@ export function CardContent({ children, testID }: PropsWithChildren<{ testID?: s
   return <View style={styles.cardContent} testID={testID}>{children}</View>;
 }
 
+/** The Figma's block of the mobile grid (Raid and Próximo Marco side by side) is 241 high. */
+export const BLOCK_MIN_HEIGHT = 241;
 export const display = { fontFamily: 'Cinzel-SemiBold' } as const;
 export const mono = { fontFamily: 'JetBrainsMono-Medium' } as const;
 const cornerSize = 14;

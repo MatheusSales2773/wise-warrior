@@ -1,6 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'expo-router';
-import { useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { FeedbackMessage, ProgressBar, WiseButton, WiseIcon, WiseText, theme } from '@/design-system';
 import { isApiError } from '@/core/api/api-error';
@@ -8,25 +7,16 @@ import { SectionHeader } from '@/features/character/character-parts';
 import { joinRaid, type ActiveRaid } from './api';
 import { RAID_GOAL_REACHED, formatPosition, formatRaidEnds, formatRewardSummary, joinRaidErrorMessage } from './messages';
 import { activeRaidQueryOptions, guildKeys } from './queries';
-import { formatBattleTimeLeft, formatFocusHours, formatRaidHit, formatStreakDays, raidParty } from './raid-battle';
+import { formatBattleTimeLeft, formatFocusHours, formatRaidHit, formatStreakDays } from './raid-battle';
 import { MissionOwnerSeal } from './mission-choice';
-import { RaidScene } from './raid-scene';
-import { raidSceneArt } from './raid-scene-art';
-import { RAID_SCENE_HEIGHT, RAID_SCENE_WIDTH } from './raid-scene-sprites';
+import { RaidSceneCrop } from './raid-scene-crop';
 import { AttackButton, JoinRaidButton, TimePill, WeekGrid, bossLifeView } from './raid-shared';
 import { useRaidTimeLeft } from './use-raid-clock';
 
 /* Card da Raid da semana da Guilda, Figma "06c · Guilda — Início" (desktop e aba Raid do celular). */
 
 const SCENE_FRAME_HEIGHT = { desktop: 220, mobile: 170 } as const;
-/** Where the Figma crops the scene: 42% of the cut-off height goes above the frame, the rest below. */
-const SCENE_CROP_TOP = 0.42;
 const CONTRIBUTION_WIDTH = 260;
-
-/** The smallest whole scale that covers the frame in both directions; the scene is centered and cropped, never letterboxed. */
-function sceneScale(width: number, frameHeight: number): number {
-  return Math.min(6, Math.max(2, Math.ceil(width / RAID_SCENE_WIDTH), Math.ceil(frameHeight / RAID_SCENE_HEIGHT)));
-}
 
 /** Golpe mais recente, in a panel over the top-right corner of the scene (desktop only, as in the Figma). */
 function LastHitPanel({ raid }: { raid: ActiveRaid }) {
@@ -39,22 +29,13 @@ function LastHitPanel({ raid }: { raid: ActiveRaid }) {
 }
 
 function RaidCardScene({ desktop, raid }: { desktop: boolean; raid: ActiveRaid }) {
-  const [width, setWidth] = useState(0);
-  const frame = desktop ? SCENE_FRAME_HEIGHT.desktop : SCENE_FRAME_HEIGHT.mobile;
-  const scale = sceneScale(width, frame);
-  const cut = RAID_SCENE_HEIGHT * scale - frame;
   return (
-    <View onLayout={(event) => setWidth(event.nativeEvent.layout.width)} style={[styles.scene, { height: frame }]} testID="guild-raid-image">
-      {width > 0
-        ? <View style={{ marginTop: -cut * SCENE_CROP_TOP }}>
-          <RaidScene art={raidSceneArt(raid.mission.slug)} framed={false} party={raidParty(raid.party)} scale={scale} showTags={false} viewportWidth={width} />
-        </View>
-        : null}
+    <RaidSceneCrop testID="guild-raid-image" height={SCENE_FRAME_HEIGHT[desktop ? 'desktop' : 'mobile']} raid={raid}>
       {desktop ? <>
         <View style={styles.sceneTopLeft}><TimePill compact={false} raid={raid} testID="guild-raid-time-left" /></View>
         <View style={styles.sceneTopRight}><LastHitPanel raid={raid} /></View>
       </> : null}
-    </View>
+    </RaidSceneCrop>
   );
 }
 
@@ -204,7 +185,6 @@ const styles = StyleSheet.create({
   stale: { padding: theme.space.stackTight },
   aside: { fontFamily: mono, fontSize: 10, lineHeight: 13, letterSpacing: 0.8, color: theme.color.textTertiary },
 
-  scene: { overflow: 'hidden', backgroundColor: theme.color.surfaceInset },
   sceneTopLeft: { position: 'absolute', top: 16, left: 16 },
   sceneTopRight: { position: 'absolute', top: 16, right: 16, maxWidth: '45%' },
   hit: { gap: 2, paddingHorizontal: 13, paddingVertical: 9, borderRadius: theme.radius.card, borderWidth: theme.border.standard, borderColor: theme.color.borderEmphasis, backgroundColor: glassBackground },

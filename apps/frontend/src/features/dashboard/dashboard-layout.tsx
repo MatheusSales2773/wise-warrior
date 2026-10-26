@@ -12,14 +12,13 @@ export type DashboardLayoutProps = {
   highlights?: ReactNode;
   cadence: ReactNode;
   activity: ReactNode;
-  actions: ReactNode;
 };
 
 /**
  * The two columns of the Acampamento v2 on desktop and its single-column order on mobile (header, summary, Objetivos,
- * Raid and Próximo Marco, Cadência, Atividade recente, actions). On desktop the header spans both columns. A slot left undefined renders nothing, not even a gap.
+ * Raid and Próximo Marco, Cadência, Atividade recente). On desktop the header spans both columns. A slot left undefined renders nothing, not even a gap.
  */
-export function DashboardLayout({ desktop, header, summary, objectives, highlights, cadence, activity, actions }: DashboardLayoutProps) {
+export function DashboardLayout({ desktop, header, summary, objectives, highlights, cadence, activity }: DashboardLayoutProps) {
   return <View style={styles.page}>
     {desktop ? header : null}
     <View testID="dashboard-grid" style={[styles.grid, desktop && styles.desktopGrid]}>
@@ -33,7 +32,6 @@ export function DashboardLayout({ desktop, header, summary, objectives, highligh
       <View style={[styles.sideColumn, desktop && styles.desktopSideColumn]} testID="dashboard-side-column">
         {desktop ? highlights : null}
         {activity}
-        {actions}
       </View>
     </View>
   </View>;

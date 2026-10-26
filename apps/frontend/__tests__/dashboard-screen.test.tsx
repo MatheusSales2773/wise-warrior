@@ -5,6 +5,7 @@ import { DashboardScreen } from '@/features/dashboard/dashboard-screen';
 import { theme } from '@/design-system';
 import { getMyProfile, getRecentStudySessions, getSessionMetrics, getWeekSummary, type UserProfile, type RecentStudySession, type SessionMetrics, type WeekSummary } from '@/features/dashboard/api';
 import { getMilestones, getObjectives, type Milestone, type Milestones, type Objectives } from '@/features/chronicles/api';
+import { getActiveRaid, getMyGuild, type ActiveRaid, type MyGuild } from '@/features/guild/api';
 import { getCoinBalance } from '@/features/market/api';
 import { getActiveStudySession, getFocusCycle, type FocusCycle, type StudySessionSnapshot } from '@/features/study-session/api';
 import { dashboardKeys } from '@/features/dashboard/queries';
@@ -20,6 +21,7 @@ jest.mock('@/features/dashboard/api', () => ({
 }));
 
 jest.mock('@/features/chronicles/api', () => ({ getObjectives: jest.fn(), getMilestones: jest.fn() }));
+jest.mock('@/features/guild/api', () => ({ getMyGuild: jest.fn(), getActiveRaid: jest.fn() }));
 jest.mock('@/features/market/api', () => ({ getCoinBalance: jest.fn() }));
 jest.mock('@/features/study-session/api', () => ({
   ...jest.requireActual('@/features/study-session/api'),
@@ -80,6 +82,19 @@ const activeSession = (overrides: Partial<StudySessionSnapshot> = {}): StudySess
   durationValidSeconds: 378, remainingSeconds: 1122, serverNow: '2026-09-17T12:07:00.000Z', version: 2, endedAt: null, xpAwarded: 0,
   terminalReason: null, discardedReason: null, canControl: true, receivedAtMs: Date.now(), ...overrides,
 });
+const mockedGuild = getMyGuild as jest.MockedFunction<typeof getMyGuild>;
+const mockedRaid = getActiveRaid as jest.MockedFunction<typeof getActiveRaid>;
+const myGuild: MyGuild = { guild: { id: 'guild-1', name: 'Ordem dos Madrugadores', level: 3, memberCount: 5, leader: null }, role: 'member' };
+const weekDays = ['2026-10-05', '2026-10-06', '2026-10-07', '2026-10-08', '2026-10-09', '2026-10-10', '2026-10-11'];
+const activeRaid = (overrides: Partial<ActiveRaid> = {}): ActiveRaid => ({
+  id: 'raid-1', mission: { slug: 'devorador', name: 'O Devorador de Horas', description: 'Um dragão', imageUrl: null }, missionOwner: null,
+  rewards: [], coins: 0, party: [], goalXp: 120_000, progressXp: 82_800, regeneratedXp: 0, healthXp: 37_200, furyPercent: 5, goalReachedAt: null,
+  startsAt: '2026-10-05T03:00:00.000Z', endsAt: new Date(Date.now() + (3 * 24 + 14) * 3_600_000 + 60_000).toISOString(), status: 'active',
+  weekDays, today: '2026-10-10', studyDays: ['2026-10-05', '2026-10-06', '2026-10-07', '2026-10-09'], streak: 1,
+  me: { participating: true, contributionXp: 600, position: 4 },
+  lastHit: { userId: 'user-2', displayName: 'Lia', xp: 400, focusMinutes: 40, at: '2026-10-10T12:00:00.000Z' },
+  ...overrides,
+});
 const mockedMetrics = getSessionMetrics as jest.MockedFunction<typeof getSessionMetrics>;
 
 async function renderDashboard() {
@@ -96,6 +111,8 @@ beforeEach(() => {
   mockedCoins.mockResolvedValue(1240);
   mockedCycle.mockResolvedValue(cycle());
   mockedActive.mockResolvedValue(null);
+  mockedGuild.mockResolvedValue(null);
+  mockedRaid.mockResolvedValue(null);
 });
 
 afterEach(() => {
@@ -172,14 +189,185 @@ describe('DashboardScreen', () => {
     expect(await screen.findByRole('link', { name: 'Iniciar foco, 3 de 4' })).toBeTruthy();
   });
 
-  it('shows the guild preview and its navigation beside recent activity', async () => {
-    mockedProfile.mockResolvedValue(profile);
-    mockedActivity.mockResolvedValue([]);
-    await renderDashboard();
+  describe('Raid card', () => {
+    beforeEach(() => {
+      mockedProfile.mockResolvedValue(profile);
+      mockedActivity.mockResolvedValue([]);
+    });
 
-    await screen.findByTestId('dashboard-activity-empty');
-    expect(screen.getByTestId('dashboard-guild-preview')).toBeTruthy();
-    expect(screen.getByRole('link', { name: 'Entrar na Guilda' })).toBeTruthy();
+    const raidCard = () => screen.findByTestId('dashboard-raid');
+
+    it('shows the Missão, the Guild, the hours, the Fúria, the last Golpe, the time left and the place on desktop', async () => {
+      setMockWindowDimensions({ width: 1200, height: 800, fontScale: 1 });
+      mockedGuild.mockResolvedValue(myGuild);
+      mockedRaid.mockResolvedValue(activeRaid());
+      await renderDashboard();
+
+      const card = await raidCard();
+      expect(within(card).getByText('O Devorador de Horas')).toBeTruthy();
+      expect(within(card).getByText('Ordem dos Madrugadores')).toBeTruthy();
+      expect(within(card).getByText('RAID')).toBeTruthy();
+      expect(within(card).getByText('138h / 200h')).toBeTruthy();
+      expect(within(card).getByTestId('dashboard-raid-bar')).toBeTruthy();
+      expect(within(card).getByText('4 de 7 dias com estudo')).toBeTruthy();
+      expect(within(card).getByText('O chefe recupera 5% da vida a cada dia sem estudo na guilda.')).toBeTruthy();
+      expect(within(card).getByText('Último golpe: Lia · +400 XP · 40 min')).toBeTruthy();
+      expect(within(card).getByText('3d 14h restantes · você: 4º')).toBeTruthy();
+      expect(within(card).getByTestId('dashboard-raid-scene')).toBeTruthy();
+      expect(within(card).getByRole('link', { name: 'Ver guilda' }).props.href).toBe('/guilda/raid');
+      expect(within(screen.getByTestId('dashboard-side-column')).getByLabelText('Raid da guilda')).toBeTruthy();
+      expect(screen.queryByText(/em preparação/)).toBeNull();
+      expect(mockedRaid).toHaveBeenCalledWith('guild-1', expect.anything());
+    });
+
+    it('marks each day of the Fúria as Dia de estudo, missed, today or upcoming', async () => {
+      mockedGuild.mockResolvedValue(myGuild);
+      mockedRaid.mockResolvedValue(activeRaid());
+      await renderDashboard();
+
+      const days = within(await screen.findByTestId('dashboard-raid-days'));
+      expect(days.getAllByLabelText(/com estudo$/)).toHaveLength(4);
+      expect(days.getByLabelText('quarta: com estudo')).toBeTruthy();
+      expect(days.getByLabelText('quinta: sem estudo')).toBeTruthy();
+      expect(days.getByLabelText('sábado: hoje, ainda sem estudo')).toBeTruthy();
+      expect(days.getByLabelText('domingo: ainda não chegou')).toBeTruthy();
+    });
+
+    it('shows no position for who is not a Participant', async () => {
+      setMockWindowDimensions({ width: 1200, height: 800, fontScale: 1 });
+      mockedGuild.mockResolvedValue(myGuild);
+      mockedRaid.mockResolvedValue(activeRaid({ me: { participating: false, contributionXp: 0, position: null } }));
+      await renderDashboard();
+
+      const card = await raidCard();
+      expect(within(card).getByText('3d 14h restantes')).toBeTruthy();
+      expect(within(card).queryByText(/você:/)).toBeNull();
+    });
+
+    it('drops the last Golpe line when there is none', async () => {
+      setMockWindowDimensions({ width: 1200, height: 800, fontScale: 1 });
+      mockedGuild.mockResolvedValue(myGuild);
+      mockedRaid.mockResolvedValue(activeRaid({ lastHit: null }));
+      await renderDashboard();
+
+      const card = await raidCard();
+      expect(within(card).queryByText(/Último golpe/)).toBeNull();
+      expect(within(card).getByText('138h / 200h')).toBeTruthy();
+    });
+
+    it('leaves the minutes out of the last Golpe when the Study Session is gone', async () => {
+      setMockWindowDimensions({ width: 1200, height: 800, fontScale: 1 });
+      mockedGuild.mockResolvedValue(myGuild);
+      mockedRaid.mockResolvedValue(activeRaid({ lastHit: { userId: 'user-2', displayName: 'Lia', xp: 400, focusMinutes: null, at: '2026-10-10T12:00:00.000Z' } }));
+      await renderDashboard();
+
+      expect(await screen.findByText('Último golpe: Lia · +400 XP')).toBeTruthy();
+    });
+
+    it('is the left block of the mobile grid, with the compact hours, the short Fúria rule and the same structure as the Marco', async () => {
+      setMockWindowDimensions({ width: 390, height: 800, fontScale: 1 });
+      mockedGuild.mockResolvedValue(myGuild);
+      mockedRaid.mockResolvedValue(activeRaid());
+      mockedMilestones.mockResolvedValue({ earned: 0, total: 1, items: [{ id: 'c05e71c0-0000-4000-8000-000000000003', name: 'Madrugador', progress: 4, target: 5, earned: false }] });
+      await renderDashboard();
+
+      const card = await raidCard();
+      expect(within(card).getByText('138/200h')).toBeTruthy();
+      expect(within(card).getByText('O chefe recupera 5% da vida a cada dia sem estudo na guilda.')).toBeTruthy();
+      expect(within(card).getByText('Último golpe: Lia · +400 XP · 40 min')).toBeTruthy();
+      expect(within(card).getByLabelText('4 de 7 dias com estudo')).toBeTruthy();
+      expect(within(card).getByText('3d 14h · você: 4º')).toBeTruthy();
+      expect(within(card).getByRole('link', { name: 'Ver guilda' }).props.href).toBe('/guilda/raid');
+      const grid = within(screen.getByTestId('dashboard-main-column')).getByTestId('dashboard-highlights');
+      expect(grid.children.map((child) => (child as { props: { testID?: string } }).props.testID)).toEqual(['dashboard-raid', 'dashboard-milestone']);
+      expect(StyleSheet.flatten(card.props.style).minHeight).toBe(StyleSheet.flatten(screen.getByTestId('dashboard-milestone').props.style).minHeight);
+    });
+
+    it('draws the Vulcão do Devorador for a Missão without its own art, and keeps the scene still under reduced motion', async () => {
+      const reduceMotion = AccessibilityInfo.isReduceMotionEnabled as jest.Mock;
+      reduceMotion.mockResolvedValue(true);
+      try {
+        mockedGuild.mockResolvedValue(myGuild);
+        mockedRaid.mockResolvedValue(activeRaid({ mission: { slug: 'missao-sem-arte', name: 'Missão nova', description: '', imageUrl: null } }));
+        await renderDashboard();
+
+        const frame = await screen.findByTestId('dashboard-raid-scene');
+        await act(async () => { fireEvent(frame, 'layout', { nativeEvent: { layout: { width: 300, height: 64 } } }); });
+        const scene = within(frame);
+        expect(scene.getByTestId('raid-scene-background', { includeHiddenElements: true })).toBeTruthy();
+        expect(scene.getByTestId('raid-scene-boss', { includeHiddenElements: true })).toBeTruthy();
+        expect(screen.getByText('Missão nova')).toBeTruthy();
+      } finally {
+        reduceMotion.mockResolvedValue(false);
+      }
+    });
+
+    it('says the Guild has no Raid this week, with a link to the Guilda', async () => {
+      mockedGuild.mockResolvedValue(myGuild);
+      await renderDashboard();
+
+      const card = await screen.findByTestId('dashboard-raid-empty');
+      expect(within(card).getByText('Ordem dos Madrugadores ainda não tem uma Raid nesta semana.')).toBeTruthy();
+      expect(within(card).getByRole('link', { name: 'Ver guilda' }).props.href).toBe('/guilda');
+    });
+
+    it('invites a student without a Guild to look for or create one', async () => {
+      await renderDashboard();
+
+      const card = await screen.findByTestId('dashboard-raid-no-guild');
+      expect(within(card).getByRole('link', { name: 'Procurar ou criar uma Guild' }).props.href).toBe('/guilda');
+      expect(mockedRaid).not.toHaveBeenCalled();
+    });
+
+    it('shows its loading state while the Guild and the Raid load', async () => {
+      mockedGuild.mockReturnValue(new Promise(() => {}));
+      await renderDashboard();
+
+      expect(await screen.findByText('Carregando a Raid…')).toBeTruthy();
+      expect(screen.getByTestId('dashboard-progression')).toBeTruthy();
+    });
+
+    it('retries only the Guild query when it fails', async () => {
+      mockedGuild.mockRejectedValueOnce(new Error('boom')).mockResolvedValue(myGuild);
+      mockedRaid.mockResolvedValue(activeRaid());
+      await renderDashboard();
+
+      const error = await screen.findByTestId('dashboard-raid-error');
+      const milestoneCalls = mockedMilestones.mock.calls.length;
+      await act(async () => { fireEvent.press(within(error).getByRole('button', { name: 'Tentar novamente' })); });
+
+      expect(await raidCard()).toBeTruthy();
+      expect(mockedGuild).toHaveBeenCalledTimes(2);
+      expect(mockedMilestones).toHaveBeenCalledTimes(milestoneCalls);
+    });
+
+    it('retries only the Raid query when it fails', async () => {
+      mockedGuild.mockResolvedValue(myGuild);
+      mockedRaid.mockRejectedValueOnce(new Error('boom')).mockResolvedValue(activeRaid());
+      await renderDashboard();
+
+      const error = await screen.findByTestId('dashboard-raid-error');
+      await act(async () => { fireEvent.press(within(error).getByRole('button', { name: 'Tentar novamente' })); });
+
+      expect(await raidCard()).toBeTruthy();
+      expect(mockedRaid).toHaveBeenCalledTimes(2);
+      expect(mockedGuild).toHaveBeenCalledTimes(1);
+    });
+
+    it('refreshes the Guild and the Raid with "Atualizar" and reports a partial failure', async () => {
+      mockedGuild.mockResolvedValue(myGuild);
+      mockedRaid.mockResolvedValue(activeRaid());
+      await renderDashboard();
+      await raidCard();
+      await screen.findByRole('button', { name: 'Atualizar dados' });
+      mockedRaid.mockRejectedValue(new Error('boom'));
+
+      await act(async () => { fireEvent.press(screen.getByRole('button', { name: 'Atualizar dados' })); });
+
+      await waitFor(() => expect(mockedRaid).toHaveBeenCalledTimes(2));
+      expect(mockedGuild).toHaveBeenCalledTimes(2);
+      expect(await screen.findByText('Alguns dados não foram atualizados.')).toBeTruthy();
+    });
   });
 
   it('names the streak card Constância and shows the record', async () => {
@@ -1138,7 +1326,7 @@ describe('DashboardScreen Objetivos de hoje and Próximo Marco', () => {
     const card = await screen.findByTestId('dashboard-milestone-done');
     expect(within(card).getByText('1 de 1 conquistados')).toBeTruthy();
     expect(within(card).getByRole('link', { name: 'Ver marcos' }).props.href).toBe('/cronicas');
-    expect(screen.getByTestId('dashboard-highlights').children).toHaveLength(1);
+    expect(screen.getByTestId('dashboard-highlights').children).toHaveLength(2);
   });
 
   it('shows the loading state of each card while its query is pending', async () => {

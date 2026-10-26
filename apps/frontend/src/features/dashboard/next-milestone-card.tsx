@@ -5,7 +5,7 @@ import { PixelSprite } from '@/features/character/PixelSprite';
 import type { Milestone, Milestones } from '@/features/chronicles/api';
 import { spriteOf } from '@/features/chronicles/milestone-sprite';
 import { milestoneDescription, nextMilestone } from '@/features/chronicles/milestones';
-import { CardContent, FramedCard, SectionHeading, cardText, display, mono } from './card-chrome';
+import { BLOCK_MIN_HEIGHT, CardContent, FramedCard, SectionHeading, cardText, display, mono } from './card-chrome';
 
 export type NextMilestoneCardProps = {
   desktop: boolean;
@@ -15,14 +15,9 @@ export type NextMilestoneCardProps = {
   onRetry: () => void;
 };
 
-/** The Figma's block of the mobile grid is 241 high; the Raid card beside it shares the height. */
-const BLOCK_MIN_HEIGHT = 241;
 const GRID_GAP = 10;
 
 const region = { accessibilityLabel: 'Próximo Marco', role: 'region' } as const;
-
-/** Whether the card shows a Marco block (the mobile grid keeps its left column for the Raid only then). */
-export const hasNextMilestone = (milestones: Milestones | undefined): boolean => !!milestones && nextMilestone(milestones.items) !== undefined;
 
 function SeeMilestones({ small }: { small?: boolean }) {
   return <Link asChild href="/cronicas">
