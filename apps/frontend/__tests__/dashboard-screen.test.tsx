@@ -116,6 +116,8 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  // `clearAllMocks` keeps the queue of `mock*Once` values, so one a test left unused would be consumed by the next test.
+  [mockedProfile, mockedActivity, mockedMetrics, mockedObjectives, mockedMilestones, mockedWeek, mockedCoins, mockedCycle, mockedActive, mockedGuild, mockedRaid].forEach((mock) => mock.mockReset());
   jest.clearAllMocks();
   resetMockWindowDimensions();
   Object.defineProperty(Platform, 'OS', { configurable: true, writable: true, value: 'web' });
