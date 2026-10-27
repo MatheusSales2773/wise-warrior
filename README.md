@@ -33,13 +33,14 @@ para derrotar o dragão da Raid semanal.
 
 | Funcionalidade | Descrição | Prioridade |
 |---|---|---|
-| ⏱ Sessão de foco | Ciclos de 15/25/50 min com timer no servidor, controlável de qualquer dispositivo | Crítico |
+| ⏱ Sessão de foco | Ciclos de 15/25/50 min ou Foco livre, com timer no servidor, controlável de qualquer dispositivo | Crítico |
 | 🎮 Progressão RPG | XP, níveis e itens cosméticos desbloqueáveis | Crítico |
 | 🛡 Guildas e Raids | Missões cooperativas semanais em que o foco de cada membro causa dano ao dragão | Crítico |
 | 🪙 Moedas e Mercado | Moedas ganhas com foco e Raids, gastas em missões e itens da Loja | Importante |
 | 🏆 Ranking de contribuição | Classificação dos membros dentro da guilda | Importante |
 | 💬 Chat da guilda | Mensagens e presença em tempo real via Socket.IO | Importante |
-| 👤 Personagem | Avatar, título, badges e acessórios equipáveis | Importante |
+| 👤 Personagem | Herói em camadas com Avatar, Arma, Acessório, Título e Badges equipáveis | Importante |
+| 📜 Crônicas | Objetivos diários e semanais pagos em Moedas, Marcos e Diário de estudo | Importante |
 
 As regras de cada funcionalidade estão nos ADRs de [`docs/PRD.md`](docs/PRD.md)
 e os termos do domínio em [`CONTEXT.md`](CONTEXT.md).
@@ -102,6 +103,7 @@ flowchart TD
     sessions["sessions<br/>sessões de foco"]
     economy["economy<br/>Moedas e extrato"]
     shop["shop<br/>Loja"]
+    objectives["objectives<br/>Crônicas: Objetivos e Marcos"]
     guilds["guilds<br/>guildas e membros"]
     raids["raids<br/>missões, dragão, ranking"]
     chat["chat<br/>mensagens e presença"]
@@ -113,6 +115,8 @@ flowchart TD
     sessions --> economy
     sessions --> raids
     sessions --> users
+    sessions --> objectives
+    objectives --> economy
     progression --> users
     shop --> economy
     shop --> raids
@@ -126,7 +130,8 @@ flowchart TD
     realtime --> guilds
 ```
 
-`auth`, `users` e `realtime` formam um ciclo resolvido com `forwardRef`. Código
+`auth`, `users` e `realtime` formam um ciclo resolvido com `forwardRef`, assim
+como `sessions` e `objectives`. Código
 compartilhado (filtros de erro RFC 7807, paginação por cursor, rate limit) fica
 em `apps/backend/src/shared/`. As regras puras de cada módulo, como cálculo de
 XP, antifraude e fúria do dragão, ficam em `domain/` e são testadas sem banco.
@@ -213,7 +218,8 @@ Koa.js e AWS, citados nos documentos acadêmicos originais, saíram do escopo
 ├── docs/
 │   ├── PRD.md            # requisitos e ADRs
 │   ├── api/              # OpenAPI e AsyncAPI
-│   └── plans/            # planos de implementação
+│   ├── plans/            # planos de implementação
+│   └── validation/       # registros de validação por marco
 ├── scripts/              # script do gate E2E
 ├── docker-compose.yml    # stack completa
 ├── docker-compose.e2e.yml
@@ -443,7 +449,16 @@ Esse teste não faz parte de `npm test`; a CI o executa num job com MySQL 8.
 | [`docs/api/asyncapi.yaml`](docs/api/asyncapi.yaml) | eventos Socket.IO |
 | [`apps/frontend/README.md`](apps/frontend/README.md) | design system, rotas e layout adaptativo |
 | [`docs/plans/`](docs/plans/) | planos de implementação por marco |
+| [`docs/validation/`](docs/validation/) | registros de validação dos marcos M1, M2, M4 e M5 e do build Android local |
+| [`docs/cronograma.md`](docs/cronograma.md) | cronograma por semana |
+| `docs/*.pdf`, `docs/*.docx` | documentos acadêmicos: Visão, Arquitetura e Interface (versão 2.0, de 27/10/2026), Pitch e Casos de Uso UC01 a UC04 |
 | [`AGENTS.md`](AGENTS.md) | regras para contribuições e agentes |
+
+Quando duas fontes discordam, vale o código da branch `develop`, depois os ADRs
+do PRD (o mais recente primeiro), depois os contratos e o glossário. Os
+documentos acadêmicos vêm por último: onde divergem do PRD, vale o PRD. A ordem
+completa está em
+[`docs/PRD.md`](docs/PRD.md#qual-fonte-prevalece).
 
 ---
 
