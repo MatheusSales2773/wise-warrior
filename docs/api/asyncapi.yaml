@@ -7,7 +7,7 @@ info:
     com o access token em `auth.token` do handshake. Ao conectar, o servidor coloca o socket na room
     `user:{userId}` e, se o usuário tem Guild, na room `guild:{guildId}`. Criar, entrar ou sair de uma
     Guild atualiza as rooms de todos os sockets do usuário sem reconectar, então ninguém recebe eventos
-    de uma Guild que não é sua. Revogar uma Sessão (logout, revogação de dispositivo, reuso de refresh token ou limite de dispositivos) encerra o socket daquele dispositivo; os demais seguem conectados. Os eventos abaixo só descem; o app não emite eventos.
+    de uma Guild que não é sua. Revogar uma Sessão (logout, revogação de dispositivo, reuso de refresh token ou limite de dispositivos) encerra o socket daquele dispositivo; os demais seguem conectados. Quase todos os eventos só descem do servidor. A exceção são os quatro comandos do Mural (`chat:join`, `chat:send`, `chat:history` e `chat:sync`), que o app envia e o servidor responde por ack.
 servers:
   development:
     host: localhost:3000
@@ -29,6 +29,29 @@ channels:
         $ref: "#/components/messages/raidHit"
       chatMessage:
         $ref: "#/components/messages/chatMessage"
+      memberOnline:
+        $ref: "#/components/messages/memberOnline"
+  chatCommands:
+    description: >
+      Comandos do Mural enviados pelo socket já autenticado. Não usam room: o servidor confere no banco se o
+      usuário é membro da Guild antes de responder, e nenhum comando aceita uma room arbitrária.
+    messages:
+      chatJoin:
+        $ref: "#/components/messages/chatJoin"
+      chatJoinAck:
+        $ref: "#/components/messages/chatJoinAck"
+      chatSend:
+        $ref: "#/components/messages/chatSend"
+      chatSendAck:
+        $ref: "#/components/messages/chatSendAck"
+      chatHistory:
+        $ref: "#/components/messages/chatHistory"
+      chatHistoryAck:
+        $ref: "#/components/messages/chatHistoryAck"
+      chatSync:
+        $ref: "#/components/messages/chatSync"
+      chatSyncAck:
+        $ref: "#/components/messages/chatSyncAck"
   userRoom:
     address: "user:{userId}"
     description: Room Socket.IO de um usuário. Todos os sockets dele, em qualquer dispositivo, entram nela.
@@ -89,6 +112,76 @@ operations:
       O `seq` de um Aviso é sempre menor que o de qualquer mensagem de membro gravada depois do seu commit.
     messages:
       - $ref: "#/channels/guildRoom/messages/chatMessage"
+  receiveMemberOnline:
+    action: receive
+    channel:
+      $ref: "#/channels/guildRoom"
+    summary: A Presença de um membro mudou
+    description: >
+      Emitido para a room da Guild quando o primeiro socket de um membro entra nela (`online = true`) e quando
+      o último sai (`online = false`). Abrir um segundo dispositivo não emite de novo. A lista completa de quem
+      está online vem nas respostas de `chat:join` e `chat:sync`.
+    messages:
+      - $ref: "#/channels/guildRoom/messages/memberOnline"
+  sendChatJoin:
+    action: send
+    channel:
+      $ref: "#/channels/chatCommands"
+    summary: Entrar de novo na room da Guild
+    description: >
+      Coloca o socket na room `guild:{guildId}` e devolve quem está online. O servidor já faz isso ao conectar;
+      o app usa o comando depois de criar ou entrar numa Guild.
+    messages:
+      - $ref: "#/channels/chatCommands/messages/chatJoin"
+    reply:
+      channel:
+        $ref: "#/channels/chatCommands"
+      messages:
+        - $ref: "#/channels/chatCommands/messages/chatJoinAck"
+  sendChatSend:
+    action: send
+    channel:
+      $ref: "#/channels/chatCommands"
+    summary: Enviar uma mensagem ao Mural
+    description: >
+      Valida, grava e distribui a mensagem como `chat:message`. As mensagens de uma Guild são gravadas e
+      emitidas em fila, então a ordem de entrega acompanha o `seq`. Mensagem vazia, acima de 500 caracteres,
+      com termo bloqueado ou acima do limite de envio volta com `ok = false`.
+    messages:
+      - $ref: "#/channels/chatCommands/messages/chatSend"
+    reply:
+      channel:
+        $ref: "#/channels/chatCommands"
+      messages:
+        - $ref: "#/channels/chatCommands/messages/chatSendAck"
+  sendChatHistory:
+    action: send
+    channel:
+      $ref: "#/channels/chatCommands"
+    summary: Buscar a página anterior do Mural
+    description: Pagina por `seq`, da mais recente para trás. Padrão de 50 mensagens por página, no máximo 100.
+    messages:
+      - $ref: "#/channels/chatCommands/messages/chatHistory"
+    reply:
+      channel:
+        $ref: "#/channels/chatCommands"
+      messages:
+        - $ref: "#/channels/chatCommands/messages/chatHistoryAck"
+  sendChatSync:
+    action: send
+    channel:
+      $ref: "#/channels/chatCommands"
+    summary: Recuperar o que se perdeu na reconexão
+    description: >
+      Devolve as mensagens com `seq` maior que `afterSeq`, recoloca o socket na room e devolve quem está online.
+      `truncated = true` indica que havia mais mensagens do que a resposta traz; o app recarrega o histórico.
+    messages:
+      - $ref: "#/channels/chatCommands/messages/chatSync"
+    reply:
+      channel:
+        $ref: "#/channels/chatCommands"
+      messages:
+        - $ref: "#/channels/chatCommands/messages/chatSyncAck"
   receiveRaidComplete:
     action: receive
     channel:
@@ -183,6 +276,68 @@ components:
       contentType: application/json
       payload:
         $ref: "#/components/schemas/ChatMessage"
+    memberOnline:
+      name: member:online
+      title: Presença alterada
+      contentType: application/json
+      payload:
+        $ref: "#/components/schemas/MemberOnline"
+    chatJoin:
+      name: chat:join
+      title: Entrar na room da Guild
+      contentType: application/json
+      payload:
+        $ref: "#/components/schemas/GuildCommand"
+    chatJoinAck:
+      name: chat:join ack
+      title: Resposta de chat:join
+      contentType: application/json
+      payload:
+        oneOf:
+          - $ref: "#/components/schemas/ChatJoinOk"
+          - $ref: "#/components/schemas/ChatAckError"
+    chatSend:
+      name: chat:send
+      title: Enviar mensagem
+      contentType: application/json
+      payload:
+        $ref: "#/components/schemas/ChatSendCommand"
+    chatSendAck:
+      name: chat:send ack
+      title: Resposta de chat:send
+      contentType: application/json
+      payload:
+        oneOf:
+          - $ref: "#/components/schemas/ChatSendOk"
+          - $ref: "#/components/schemas/ChatAckError"
+    chatHistory:
+      name: chat:history
+      title: Página anterior do Mural
+      contentType: application/json
+      payload:
+        $ref: "#/components/schemas/ChatHistoryCommand"
+    chatHistoryAck:
+      name: chat:history ack
+      title: Resposta de chat:history
+      contentType: application/json
+      payload:
+        oneOf:
+          - $ref: "#/components/schemas/ChatHistoryOk"
+          - $ref: "#/components/schemas/ChatAckError"
+    chatSync:
+      name: chat:sync
+      title: Recuperar mensagens perdidas
+      contentType: application/json
+      payload:
+        $ref: "#/components/schemas/ChatSyncCommand"
+    chatSyncAck:
+      name: chat:sync ack
+      title: Resposta de chat:sync
+      contentType: application/json
+      payload:
+        oneOf:
+          - $ref: "#/components/schemas/ChatSyncOk"
+          - $ref: "#/components/schemas/ChatAckError"
     raidComplete:
       name: notification:raidComplete
       title: Raid encerrada
@@ -247,6 +402,104 @@ components:
           type: string
           description: Texto do membro; vazio em Avisos
         sentAt: { type: string, format: date-time }
+    MemberOnline:
+      type: object
+      required: [guildId, userId, online]
+      properties:
+        guildId: { type: string, format: uuid }
+        userId: { type: string, format: uuid }
+        online:
+          type: boolean
+          description: true quando o primeiro socket do membro entrou, false quando o último saiu
+    GuildCommand:
+      type: object
+      required: [guildId]
+      properties:
+        guildId: { type: string, maxLength: 36 }
+    ChatSendCommand:
+      type: object
+      required: [guildId, body]
+      properties:
+        guildId: { type: string, maxLength: 36 }
+        body: { type: string, maxLength: 500 }
+    ChatHistoryCommand:
+      type: object
+      required: [guildId]
+      properties:
+        guildId: { type: string, maxLength: 36 }
+        before:
+          type: integer
+          minimum: 0
+          description: Traz mensagens com `seq` menor que este; sem ele, a página mais recente
+        limit: { type: integer, minimum: 1, maximum: 100, default: 50 }
+    ChatSyncCommand:
+      type: object
+      required: [guildId, afterSeq]
+      properties:
+        guildId: { type: string, maxLength: 36 }
+        afterSeq:
+          type: integer
+          minimum: 0
+          description: Maior `seq` que o app já tem; 0 traz desde o início
+    ChatJoinOk:
+      type: object
+      required: [ok, guildId, onlineUserIds]
+      properties:
+        ok: { const: true }
+        guildId: { type: string, format: uuid }
+        onlineUserIds:
+          type: array
+          items: { type: string, format: uuid }
+    ChatSendOk:
+      type: object
+      required: [ok, message]
+      properties:
+        ok: { const: true }
+        message:
+          $ref: "#/components/schemas/ChatMessage"
+    ChatHistoryOk:
+      type: object
+      required: [ok, messages, nextBefore]
+      properties:
+        ok: { const: true }
+        messages:
+          type: array
+          description: Em ordem cronológica, a mais antiga primeiro
+          items:
+            $ref: "#/components/schemas/ChatMessage"
+        nextBefore:
+          type: [integer, "null"]
+          description: Valor de `before` para a página anterior; null quando não há mais
+    ChatSyncOk:
+      type: object
+      required: [ok, messages, truncated, onlineUserIds]
+      properties:
+        ok: { const: true }
+        messages:
+          type: array
+          items:
+            $ref: "#/components/schemas/ChatMessage"
+        truncated: { type: boolean }
+        onlineUserIds:
+          type: array
+          items: { type: string, format: uuid }
+    ChatAckError:
+      type: object
+      required: [ok, error]
+      properties:
+        ok: { const: false }
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code:
+              type: string
+              enum: [EMPTY, TOO_LONG, ABUSIVE, RATE_LIMITED, BAD_REQUEST, FORBIDDEN, NOT_FOUND, ERROR, INTERNAL]
+            message: { type: string }
+            retryAfterMs:
+              type: integer
+              minimum: 0
+              description: Só em `RATE_LIMITED`; quanto esperar antes de enviar de novo
     CoinsChanged:
       type: object
       required: [balance, delta, origin]
@@ -289,7 +542,7 @@ components:
       properties:
         category:
           type: string
-          enum: [avatar, badge, title, accessory]
+          enum: [avatar, badge, title, accessory, weapon]
           description: Categoria cuja equipagem mudou
         cosmeticItemId:
           type: [string, "null"]
