@@ -4,8 +4,7 @@ import { useRuntimeMotionDuration } from '../components/motion-runtime';
 import { WiseText } from '../components/WiseText';
 import { controlStyles } from '../components/control-styles';
 import { theme } from '../tokens/theme';
-import { futureDestinations, isDestinationActive, moreMenuDestinations } from './destinations';
-import { FutureDestinationRow } from './FutureDestinationRow';
+import { isDestinationActive, moreMenuDestinations } from './destinations';
 import { LogoutAction } from './LogoutAction';
 import { NavigationLink } from './NavigationLink';
 
@@ -84,9 +83,6 @@ export function MoreMenu({ bottomInset, onClose, onLogout, pathname = '', visibl
               <NavigationLink active={isDestinationActive(destination, pathname)} destination={destination} key={destination.href} />
             ))}
           </View>
-          {futureDestinations.map((destination) => (
-            <FutureDestinationRow destination={destination} key={destination.label} />
-          ))}
           <LogoutAction onLogout={onLogout} />
         </View>
       </View>

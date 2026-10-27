@@ -12,6 +12,8 @@ import type { CappedReason } from '../domain/session-validator';
 import { Raid } from '../../raids/entities/raid.entity';
 
 export type StudySessionMode = 'solo' | 'guild';
+/** Ciclo tem duração planejada; Foco livre conta para cima até o usuário parar ou o teto do antifraude. */
+export type StudySessionKind = 'cycle' | 'free';
 export type StudySessionState = 'running' | 'paused' | 'completed' | 'stopped_early' | 'cancelled' | 'discarded';
 export type StudySessionTerminalReason = 'manual-stop' | 'auto-complete' | 'legacy-session-without-owner';
 
@@ -53,6 +55,9 @@ export class StudySession {
   @Column({ name: 'planned_duration_seconds', type: 'int', nullable: true })
   plannedDurationSeconds?: number | null;
 
+  @Column({ type: 'varchar', length: 8, default: 'cycle' })
+  kind: StudySessionKind;
+
   @Column({ type: 'varchar', length: 24, nullable: true })
   state?: StudySessionState | null;
 
@@ -70,6 +75,10 @@ export class StudySession {
 
   @Column({ type: 'int', default: 1 })
   version: number;
+
+  /** Pausas aplicadas; retomar, encerrar e concluir não alteram. */
+  @Column({ name: 'pause_count', type: 'int', default: 0 })
+  pauseCount: number;
 
   @Column({ name: 'terminal_reason', type: 'varchar', length: 120, nullable: true })
   terminalReason?: StudySessionTerminalReason | null;

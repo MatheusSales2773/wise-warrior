@@ -1,0 +1,29 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: Certificado ACM do ambiente, validado por DNS no Cloudflare
+
+Parameters:
+  FrontendDomain:
+    Type: String
+    Default: wise.guilhermeluan.dev
+  ApiDomain:
+    Type: String
+    Default: wise-api.guilhermeluan.dev
+
+Resources:
+  Certificate:
+    Type: AWS::CertificateManager::Certificate
+    Properties:
+      DomainName: !Ref FrontendDomain
+      SubjectAlternativeNames:
+        - !Ref ApiDomain
+      ValidationMethod: DNS
+      Tags:
+        - Key: Name
+          Value: wise-warrior-hmg
+
+Outputs:
+  CertificateArn:
+    Description: Valor do parametro CertificateArn do compute
+    Value: !Ref Certificate
+    Export:
+      Name: !Sub "${AWS::StackName}-CertificateArn"

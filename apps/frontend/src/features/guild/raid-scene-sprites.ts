@@ -96,12 +96,7 @@ export const raidSceneBackground: PixelSpriteData = {
   ],
 };
 
-/** O dragão e o sopro de fogo, desenhados por cima dos membros. Fica em (103, 36) na cena. */
-export const RAID_SCENE_BOSS_POSITION = { x: 103, y: 36 } as const;
-/** Centro do topo do Golpe mais recente, diante da cabeça do dragão (Figma 06b: "−75" em 690,192 na cena ×6). */
-export const RAID_SCENE_HIT_ANCHOR = { x: 120, y: 32 } as const;
-
-/** Chefe e efeitos da cena. */
+/** O dragão e o sopro de fogo, desenhados por cima dos membros. A posição na cena fica em `defaultRaidSceneArt`. */
 export const raidSceneBoss: PixelSpriteData = {
   palette: ['#ffffff', '#c9cfdc', '#f0c97a', '#f08030', '#1a0a0e', '#f3ead4', '#7d2a2a', '#e06a5a', '#c44545', '#5a1a1e', '#3a0d12', '#d4a85a'],
   rows: [
@@ -148,46 +143,6 @@ export const raidSceneBoss: PixelSpriteData = {
     '..................................e.e.e...e.e.e..e.e.e...................',
   ],
 };
-
-/** Herói Sentinela (16 × 24), variação de paleta da Guerreira que só aparece na cena por enquanto. */
-export const sentinelaSprite: PixelSpriteData = {
-  palette: ['#0a0a12', '#7a7f92', '#4a4d5c', '#d4a85a', '#2c2e38', '#e8b48a', '#07070c', '#b97d5b', '#4e3275', '#8a5bc4'],
-  rows: [
-    '......aaaa......',
-    '....abbccca.....',
-    '...abcccccca....',
-    '...accdddcca....',
-    '...aeaaaaaea....',
-    '...aefgfgfea....',
-    '...aeffffhea....',
-    '....aehhhea.....',
-    '..aiacccccaia...',
-    '.aijabccccajia..',
-    '.aijcbcddcccjia.',
-    '.aijcccddcccjia.',
-    '.aijeccccccejia.',
-    '.aifaeeddeeafia.',
-    '.aijaccccccajia.',
-    '.aijacceeccajia.',
-    'aiijaecaaceajiia',
-    'aiijaccaaccajiia',
-    'aiiiacca.accaiia',
-    '.aiiaeea.aeeaia.',
-    '..aaacca.accaaa.',
-    '....aeea.aeea...',
-    '...aeeea.aeeea..',
-    '...aaaaa.aaaaa..',
-  ],
-};
-
-export type RaidWeapon = { sprite: PixelSpriteData; offset: { x: number; y: number } };
-
-/** Armas da cena, com a posição relativa ao canto da vaga do herói. */
-export const raidWeapons = {
-  sword: { offset: { x: 14, y: 7 }, sprite: { palette: ['#d4a85a', '#c9cfdc', '#ffffff', '#7a4a2a'], rows: ['.......c', '......b.', '.....b..', '....b...', '...b....', '..b.....', '.b......', '.d......', 'ad......'] } },
-  crossbow: { offset: { x: 12, y: 12 }, sprite: { palette: ['#7a4a2a', '#c9cfdc', '#f3ead4'], rows: ['.......b..', '.......b..', 'aaaaaaabcc', '.......b..', '.......b..'] } },
-  staff: { offset: { x: 15, y: 1 }, sprite: { palette: ['#7a4a2a', '#e8702a', '#f0c97a'], rows: ['bbb', 'bcb', 'bbb', '.a.', '.a.', '.a.', '.a.', '.a.', '.a.', '.a.', '.a.', '.a.', '.a.', '.a.', '.a.', '.a.', '.a.', '.a.', '.a.', '.a.', '.a.', '.a.', '.a.'] } },
-} as const satisfies Record<string, RaidWeapon>;
 
 /** Vagas dos membros: 16 × 24 a cada 19 pixels a partir de x = 10, com o pé em y = 76. */
 export const RAID_PARTY_ORIGIN = { x: 10, y: 52 } as const;

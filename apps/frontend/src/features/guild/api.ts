@@ -19,7 +19,7 @@ export type MyGuild = {
   role: GuildRole;
 };
 
-export type GuildMember = {
+export type GuildMember = EquippedAppearance & {
   userId: string;
   displayName: string;
   level: number;
@@ -40,9 +40,28 @@ export type GuildPage = {
 
 export type RaidRewardCategory = 'avatar' | 'badge' | 'title' | 'accessory';
 
+export type MissionOwner = { userId: string; displayName: string };
+
+/** Missão do rodízio: grátis e de todos os membros, então sem dono declarado. */
+export type MissionSummary = {
+  id: string;
+  slug: string;
+  name: string;
+  description: string;
+  imageUrl: string | null;
+  rotation: boolean;
+};
+
+export type AvailableMission = MissionSummary & { owners: MissionOwner[] };
+
+/** A escolha do Líder para a próxima Raid; `owner` é `null` na Missão do rodízio. */
+export type NextMissionChoice = { mission: MissionSummary; owner: MissionOwner | null; chosenAt: string };
+
 export type ActiveRaid = {
   id: string;
   mission: { slug: string; name: string; description: string; imageUrl: string | null };
+  /** De quem é a Missão escolhida pelo Líder; `null` na Missão do rodízio. */
+  missionOwner: MissionOwner | null;
   /** Every Cosmetic Item the Missão gives, plus `coins` Moedas, to whoever contributes to a won Raid. */
   rewards: { itemId: string; name: string; category: RaidRewardCategory }[];
   coins: number;
@@ -88,15 +107,16 @@ export type RaidHit = {
 /** An equipped Cosmetic Item as shown on someone else's screen; `null` when the slot is empty. */
 export type EquippedLook = { itemId: string; name: string } | null;
 
-export type RaidRankingEntry = {
+/** What a member wears on someone else's screen: the Avatar, the Arma and the Acessório. */
+export type EquippedAppearance = { avatar: EquippedLook; weapon: EquippedLook; accessory: EquippedLook };
+
+export type RaidRankingEntry = EquippedAppearance & {
   position: number;
   userId: string;
   displayName: string;
   level: number;
   /** The equipped Título (ADR-010); `null` when the slot is empty. */
   title: string | null;
-  avatar: EquippedLook;
-  accessory: EquippedLook;
   contributionXp: number;
   isMe: boolean;
 };
@@ -198,4 +218,21 @@ export async function listPastRaids(
   const query = cursor ? `?cursor=${encodeURIComponent(cursor)}` : '';
   const response = await getAuthenticatedHttpClient().get<PastRaidPage>(`/guilds/${encodeURIComponent(guildId)}/raids${query}`, { signal });
   return response.data;
+}
+
+export async function listAvailableMissions(guildId: string, { signal }: { signal?: AbortSignal } = {}): Promise<AvailableMission[]> {
+  const response = await getAuthenticatedHttpClient().get<AvailableMission[]>(`/guilds/${encodeURIComponent(guildId)}/raids/next-mission/available`, { signal });
+  return response.data;
+}
+
+/** `null` means nobody chose: the rotation applies. */
+export async function getNextMission(guildId: string, { signal }: { signal?: AbortSignal } = {}): Promise<NextMissionChoice | null> {
+  const response = await getAuthenticatedHttpClient().get<{ choice: NextMissionChoice | null }>(`/guilds/${encodeURIComponent(guildId)}/raids/next-mission`, { signal });
+  return response.data.choice;
+}
+
+/** Only the Leader; replaces the previous choice until the next Raid starts. `ownerId` is required for a priced Missão. */
+export async function chooseNextMission(guildId: string, body: { missionId: string; ownerId?: string }): Promise<NextMissionChoice> {
+  const response = await getAuthenticatedHttpClient().put<{ choice: NextMissionChoice }>(`/guilds/${encodeURIComponent(guildId)}/raids/next-mission`, body);
+  return response.data.choice;
 }

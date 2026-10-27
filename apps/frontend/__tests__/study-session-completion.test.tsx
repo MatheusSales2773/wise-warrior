@@ -66,9 +66,9 @@ function completed(base: StudySessionTransitionResult): StudySessionTransitionRe
     ...base,
     state: 'completed',
     endedAt: base.runDeadlineAt,
-    durationValidSeconds: base.plannedDurationSeconds,
+    durationValidSeconds: base.plannedDurationSeconds as number,
     remainingSeconds: 0,
-    xpAwarded: base.plannedDurationSeconds / 60 * 10,
+    xpAwarded: (base.plannedDurationSeconds as number) / 60 * 10,
     terminalReason: 'auto-complete',
   };
 }
@@ -141,8 +141,8 @@ it('sends one completion at zero, blocks controls, and displays only the confirm
 
   await act(async () => resolveCompletion(completed(zeroSnapshot)));
   await view.findByText('Sessão concluída');
-  expect(view.getByText('Foco válido: 25:00')).toBeTruthy();
-  expect(view.getByText('XP confirmado: 250')).toBeTruthy();
+  expect(view.getByTestId('study-session-result-timer').props.children).toBe('25:00');
+  expect(view.getByTestId('study-session-strip-xp')).toHaveTextContent(/^\+250 XP/);
   expect(client.getQueryData(['study-session', 'active'])).toBeNull();
   view.unmount();
   client.clear();
@@ -260,7 +260,7 @@ it('shows the result the server completed on read when the device returns after 
   await act(async () => setShowScreen(true));
 
   await view.findByText('Sessão concluída');
-  expect(view.getByText('XP confirmado: 250')).toBeTruthy();
+  expect(view.getByTestId('study-session-strip-xp')).toHaveTextContent(/^\+250 XP/);
   expect(complete).not.toHaveBeenCalled();
   // The read completed the focus here: the result takes the place of the remote-end warning.
   expect(view.queryByTestId('study-session-remote-end')).toBeNull();
@@ -284,7 +284,7 @@ it('keeps the server result read by the app-wide runtime until the screen shows 
   await act(async () => view.rerender(tree(true)));
 
   await view.findByText('Sessão concluída');
-  expect(view.getByText('XP confirmado: 250')).toBeTruthy();
+  expect(view.getByTestId('study-session-strip-xp')).toHaveTextContent(/^\+250 XP/);
   expect(complete).not.toHaveBeenCalled();
   view.unmount();
 });
@@ -326,14 +326,14 @@ it('shows a safe reason and zero XP when the server confirms a discarded session
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false, gcTime: 30_000 }, mutations: { retry: false, gcTime: 0 } },
   });
-  client.setQueryData(dashboardKeys.profile(), { xpTotal: 0 });
+  client.setQueryData(dashboardKeys.profile(), { id: 'u-1', email: 'a@b.c', displayName: 'Knightshade', planTier: 'free', level: 14, levelStartXp: 0, nextLevelXp: 1000, xpTotal: 0, title: null, equipped: [] });
   client.setQueryData(dashboardKeys.recentActivity(), []);
-  client.setQueryData(dashboardKeys.metrics(), { sessionsToday: 0 });
+  client.setQueryData(dashboardKeys.metrics(), { currentStreakDays: 0, longestStreakDays: 0, sessionsToday: 0, validSecondsToday: 0, cadence: { windowStart: '2026-09-16', windowEnd: '2026-09-22', days: [] } });
   const { view } = await renderStudySession(client);
 
   await view.findByText('Sessão não contabilizada');
   expect(view.getByText('O limite diário de foco foi atingido.')).toBeTruthy();
-  expect(view.getByText('XP confirmado: 0')).toBeTruthy();
+  expect(view.getByTestId('study-session-strip-xp')).toHaveTextContent(/^\+0 XP/);
   await waitFor(() => {
     expect(client.getQueryState(dashboardKeys.profile())?.isInvalidated).toBe(true);
     expect(client.getQueryState(dashboardKeys.recentActivity())?.isInvalidated).toBe(true);
@@ -364,7 +364,7 @@ it('explains that the XP of a completed session was capped by the daily limit', 
 
   await view.findByText('Sessão concluída');
   expect(view.getByText('XP limitado pelo teto diário.')).toBeTruthy();
-  expect(view.getByText('XP confirmado: 100')).toBeTruthy();
+  expect(view.getByTestId('study-session-strip-xp')).toHaveTextContent(/^\+100 XP/);
   view.unmount();
   client.clear();
 });

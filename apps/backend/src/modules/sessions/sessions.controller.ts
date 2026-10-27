@@ -27,6 +27,7 @@ import type { RecentSubjectsResponseDto } from './dto/recent-subjects-response.d
 import type { FocusCycle } from './domain/focus-cycle';
 import type { SessionMetricsResponseDto } from './dto/session-metrics-response.dto';
 import type { SessionHistoryPageDto } from './dto/session-history-response.dto';
+import type { WeekSummaryResponseDto } from './dto/week-summary-response.dto';
 import { SessionHistoryQueryDto } from './dto/session-history-query.dto';
 
 @Controller('sessions')
@@ -78,6 +79,13 @@ export class SessionsController {
   @HttpCode(HttpStatus.OK)
   metrics(@CurrentUser() user: JwtPayload): Promise<SessionMetricsResponseDto> {
     return this.sessions.metrics(user.sub);
+  }
+
+  /** Cards da semana de São Paulo do Diário (#300): totais, gráfico por dia e as matérias com mais foco. */
+  @Get('week')
+  @HttpCode(HttpStatus.OK)
+  week(@CurrentUser() user: JwtPayload): Promise<WeekSummaryResponseDto> {
+    return this.sessions.weekSummary(user.sub);
   }
 
   @Post()

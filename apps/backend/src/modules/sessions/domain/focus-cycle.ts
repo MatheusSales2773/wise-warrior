@@ -11,7 +11,7 @@ export type FocusCycle = {
 
 /**
  * Pomodoro cadence (D-027): the cycle position derives from how many focuses the user completed in
- * full. Early stops, cancellations and discards never count, so they neither advance nor reset it.
+ * full on the current São Paulo day, so it restarts at 1 every morning. Early stops, cancellations and discards never count, so they neither advance nor reset it.
  * A fifth completed focus starts a fresh cycle, which is the same as finishing the long break.
  */
 export function focusCycle(completedFocuses: number): FocusCycle {

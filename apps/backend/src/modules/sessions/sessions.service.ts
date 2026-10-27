@@ -5,7 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { IsNull, Not, Repository } from 'typeorm';
+import { And, type EntityManager, IsNull, LessThan, MoreThanOrEqual, Not, Repository } from 'typeorm';
 import { StudySession } from './entities/study-session.entity';
 import { validateSessionDuration } from './domain/session-validator';
 import { xpForDuration } from './domain/xp-rate';
@@ -13,14 +13,38 @@ import { ProgressionService } from '../progression/progression.service';
 import { RaidsService } from '../raids/raids.service';
 import { RecentSessionResponseDto } from './dto/recent-session-response.dto';
 import type { SessionHistoryItemDto, SessionHistoryPageDto } from './dto/session-history-response.dto';
-import { SESSION_HISTORY_PAGE_SIZE_DEFAULT, type SessionHistoryQueryDto } from './dto/session-history-query.dto';
+import { SESSION_HISTORY_PAGE_SIZE_DEFAULT, type SessionHistoryQueryDto, type SessionHistoryState } from './dto/session-history-query.dto';
 import { RecentSubjectsResponseDto } from './dto/recent-subjects-response.dto';
 import { SessionMetricsResponseDto } from './dto/session-metrics-response.dto';
-import { buildCadence, calculateStreaks, type SessionActivityDay } from './domain/session-metrics';
+import {
+  saoPauloDayKey,
+  isSaoPauloDayKey,
+  saoPauloDayStart,
+  saoPauloNextDayKey,
+  saoPauloPreviousDayKey,
+  saoPauloWeekAt,
+} from '../../shared/time/sao-paulo-calendar';
+import { buildCadence, calculateStreaks, groupActivityByDay } from './domain/session-metrics';
+import { COUNTED_SESSION_SQL, type FinishedSessionOfDay, type FinishedSessionOfWeek } from './domain/counted-session';
+import { countFinishedSessions } from './finished-session-counts';
+import type { SessionCounts } from '../users/domain/unlock-condition';
+import { buildWeekSummary } from './domain/week-summary';
+import type { WeekSummaryResponseDto } from './dto/week-summary-response.dto';
 import { FOCUS_CYCLE_LENGTH, focusCycle, type FocusCycle } from './domain/focus-cycle';
 import { decodeDatetimeCursor, encodeDatetimeCursor } from '../../shared/pagination/datetime-cursor';
 
 const RECENT_SUBJECTS_LIMIT = 6;
+
+/**
+ * What each Diário filter keeps, on top of dropping cancellations. A truncated session is capped, so it never counts as plain completed.
+ * These fragments are interpolated into the SQL: the keys are safe only because `SessionHistoryQueryDto` validates `state` with `@IsIn`.
+ */
+const HISTORY_STATE_FILTER: Record<SessionHistoryState | 'all', string> = {
+  all: '',
+  completed: `AND session.capped_reason IS NULL AND (session.state IS NULL OR session.state IN ('completed', 'stopped_early'))`,
+  truncated: `AND session.capped_reason IS NOT NULL AND (session.state IS NULL OR session.state <> 'discarded')`,
+  discarded: `AND session.state = 'discarded'`,
+};
 
 @Injectable()
 export class SessionsService {
@@ -48,19 +72,29 @@ export class SessionsService {
     );
   }
 
-  /** Where the user stands in the Pomodoro cadence: only focuses completed in full advance it. */
-  async focusCycle(userId: string): Promise<FocusCycle> {
-    const completedFocuses = await this.studySessions.count({ where: { userId, state: 'completed' } });
+  /** Where the user stands in the Pomodoro cadence: only Ciclos completed in full advance it; Foco livre never does. */
+  /** The Pomodoro cadence restarts every São Paulo day: only the Ciclos completed in full on `now`'s day count. */
+  async focusCycle(userId: string, now: Date = new Date()): Promise<FocusCycle> {
+    const today = saoPauloDayKey(now);
+    const completedFocuses = await this.studySessions.count({
+      where: {
+        userId,
+        state: 'completed',
+        kind: 'cycle',
+        endedAt: And(MoreThanOrEqual(saoPauloDayStart(today)), LessThan(saoPauloDayStart(saoPauloNextDayKey(today)))),
+      },
+    });
     return focusCycle(completedFocuses);
   }
 
   /**
-   * Histórico do dia (#17): every Study Session that ended on a UTC day, newest first, with the place of each
-   * focus completed in full in the Pomodoro cycle. The cycle counts the same focuses as `focusCycle`.
+   * Diário (#299): every Study Session that counted, newest first, through as many São Paulo days as the cursor walks,
+   * or one day when `date` is given. Cancellations never appear. Each Ciclo completed in full carries its place in the
+   * Pomodoro cycle, counted over the same Ciclos as `focusCycle`.
    */
-  async history(userId: string, query: SessionHistoryQueryDto, now: Date = new Date()): Promise<SessionHistoryPageDto> {
-    const date = query.date ?? utcDateKey(now);
-    if (Number.isNaN(utcDayStart(date).getTime()) || utcDateKey(utcDayStart(date)) !== date) {
+  async history(userId: string, query: SessionHistoryQueryDto): Promise<SessionHistoryPageDto> {
+    const date = query.date ?? null;
+    if (date !== null && !isSaoPauloDayKey(date)) {
       throw new BadRequestException('Data inválida');
     }
     const limit = query.limit ?? SESSION_HISTORY_PAGE_SIZE_DEFAULT;
@@ -69,6 +103,7 @@ export class SessionsService {
     const rows = await this.studySessions.manager.query<Array<{
       id: string;
       subject: string | null;
+      kind: StudySession['kind'];
       mode: StudySession['mode'];
       state: StudySession['state'] | null;
       started_at: Date;
@@ -80,22 +115,26 @@ export class SessionsService {
       capped_reason: RecentSessionResponseDto['cappedReason'];
       cycle_number: number | string | null;
     }>>(
-      `SELECT session.id, session.subject, session.mode, session.state, session.started_at, session.ended_at,
+      `SELECT session.id, session.subject, session.kind, session.mode, session.state, session.started_at, session.ended_at,
               DATE_FORMAT(session.ended_at, '%Y-%m-%d %H:%i:%s.%f') AS ended_at_text,
               session.duration_valid_seconds, session.xp_awarded, session.discarded_reason, session.capped_reason,
               completed.cycle_number
        FROM study_sessions session
        LEFT JOIN (
-         SELECT id, ROW_NUMBER() OVER (ORDER BY ended_at, id) AS cycle_number
-         FROM study_sessions WHERE user_id = ? AND state = 'completed'
+         SELECT id, ROW_NUMBER() OVER (PARTITION BY DATE(CONVERT_TZ(ended_at, '+00:00', '-03:00')) ORDER BY ended_at, id) AS cycle_number
+         FROM study_sessions WHERE user_id = ? AND state = 'completed' AND kind = 'cycle'
        ) completed ON completed.id = session.id
        WHERE session.user_id = ?
-         AND session.ended_at >= ? AND session.ended_at < ?
+         AND session.ended_at IS NOT NULL
+         AND (session.state IS NULL OR session.state <> 'cancelled')
+         ${HISTORY_STATE_FILTER[query.state ?? 'all']}
+         ${date ? 'AND session.ended_at >= ? AND session.ended_at < ?' : ''}
          ${after ? 'AND (session.ended_at < ? OR (session.ended_at = ? AND session.id < ?))' : ''}
        ORDER BY session.ended_at DESC, session.id DESC
        LIMIT ?`,
       [
-        userId, userId, utcDayStart(date), utcDayStart(nextDay(date)),
+        userId, userId,
+        ...(date ? [saoPauloDayStart(date), saoPauloDayStart(saoPauloNextDayKey(date))] : []),
         ...(after ? [after.datetime, after.datetime, after.id] : []),
         limit + 1,
       ],
@@ -103,10 +142,10 @@ export class SessionsService {
     const page = rows.slice(0, limit);
     const last = page[page.length - 1];
     return {
-      date,
       items: page.map((row): SessionHistoryItemDto => ({
         id: row.id,
         subject: row.subject,
+        kind: row.kind,
         mode: row.mode,
         state: row.state ?? null,
         startedAt: row.started_at,
@@ -131,6 +170,7 @@ export class SessionsService {
     return sessions.map((session) => ({
       id: session.id,
       subject: session.subject,
+      kind: session.kind,
       mode: session.mode,
       state: session.state ?? null,
       startedAt: session.startedAt,
@@ -140,6 +180,52 @@ export class SessionsService {
       discardedReason: session.discardedReason ?? null,
       cappedReason: session.cappedReason ?? null,
     }));
+  }
+
+  /**
+   * Study Sessions that ended on a São Paulo day and counted: not cancelled, not discarded. Crônicas' Objetivos
+   * read the day from here (ADR-014). `manager` joins the caller's transaction, which sees the session it just saved.
+   */
+  async finishedSessionsOfDay(userId: string, dayKey: string, manager?: EntityManager): Promise<FinishedSessionOfDay[]> {
+    const rows = await (manager ?? this.studySessions.manager)
+      .getRepository(StudySession)
+      .createQueryBuilder('session')
+      .select('session.durationValidSeconds', 'validSeconds')
+      .where('session.userId = :userId', { userId })
+      .andWhere('session.endedAt >= :dayStart AND session.endedAt < :nextDayStart', {
+        dayStart: saoPauloDayStart(dayKey),
+        nextDayStart: saoPauloDayStart(saoPauloNextDayKey(dayKey)),
+      })
+      .andWhere(COUNTED_SESSION_SQL)
+      .getRawMany<{ validSeconds: number | string }>();
+    return rows.map((row) => ({ validSeconds: Number(row.validSeconds) }));
+  }
+
+  /** Study Sessions não descartadas que terminaram, e as terminadas antes das 7h de São Paulo: o que os Marcos de Badge medem (ADR-014). */
+  countFinishedSessions(userId: string): Promise<SessionCounts> {
+    return countFinishedSessions(this.studySessions.manager, userId);
+  }
+
+  /**
+   * Study Sessions that ended in the São Paulo week (Monday to Sunday) of `instant` and counted. The weekly Objetivos
+   * of Crônicas read the week from here (ADR-014). `manager` joins the caller's transaction like `finishedSessionsOfDay`.
+   */
+  async finishedSessionsOfWeek(userId: string, instant: Date, manager?: EntityManager): Promise<FinishedSessionOfWeek[]> {
+    const week = saoPauloWeekAt(instant);
+    const rows = await (manager ?? this.studySessions.manager)
+      .getRepository(StudySession)
+      .createQueryBuilder('session')
+      .select('session.endedAt', 'endedAt')
+      .addSelect('session.subject', 'subject')
+      .addSelect('session.durationValidSeconds', 'validSeconds')
+      .where('session.userId = :userId', { userId })
+      .andWhere('session.endedAt >= :start AND session.endedAt < :nextStart', {
+        start: week.startsAt,
+        nextStart: new Date(week.endsAt.getTime() + 1000),
+      })
+      .andWhere(COUNTED_SESSION_SQL)
+      .getRawMany<{ endedAt: Date; subject: string | null; validSeconds: number | string }>();
+    return rows.map((row) => ({ endedAt: new Date(row.endedAt), subject: row.subject, validSeconds: Number(row.validSeconds) }));
   }
 
   /**
@@ -169,58 +255,86 @@ export class SessionsService {
   }
 
   /**
-   * Returns dashboard metrics using one UTC anchor for all calendar
-   * boundaries. This keeps a request deterministic even when it crosses
-   * midnight and avoids depending on the MySQL session timezone.
+   * Returns dashboard metrics on the São Paulo calendar, anchored on one instant so a request that
+   * crosses midnight stays deterministic. Days are bucketed here, not in SQL, because the MySQL
+   * session runs in UTC (`timezone: 'Z'`) and `DATE_FORMAT` would group by the UTC day.
    */
   async metrics(userId: string, now: Date = new Date()): Promise<SessionMetricsResponseDto> {
-    const today = utcDateKey(now);
-    const windowStart = previousDay(today, 55);
-    const windowEndExclusive = nextDay(today);
+    const today = saoPauloDayKey(now);
+    const windowStart = saoPauloPreviousDayKey(today, 55);
 
-    const cadenceRows = await this.studySessions
+    const rows = await this.studySessions
       .createQueryBuilder('session')
-      .select("DATE_FORMAT(session.endedAt, '%Y-%m-%d')", 'date')
+      .select("DATE_FORMAT(session.endedAt, '%Y-%m-%d %H')", 'hour')
+      .addSelect('session.kind', 'kind')
       .addSelect('COUNT(session.id)', 'sessionCount')
       .addSelect('COALESCE(SUM(session.durationValidSeconds), 0)', 'validSeconds')
       .where('session.userId = :userId', { userId })
-      .andWhere('session.endedAt >= :windowStart', { windowStart: utcDayStart(windowStart) })
-      .andWhere('session.endedAt < :windowEndExclusive', { windowEndExclusive: utcDayStart(windowEndExclusive) })
-      .andWhere('session.discardedReason IS NULL')
-      .andWhere("(session.state IS NULL OR session.state IN ('completed', 'stopped_early'))")
-      .groupBy("DATE_FORMAT(session.endedAt, '%Y-%m-%d')")
-      .getRawMany<{ date: string; sessionCount: string; validSeconds: string }>();
-
-    const historicalRows = await this.studySessions
-      .createQueryBuilder('session')
-      .select("DATE_FORMAT(session.endedAt, '%Y-%m-%d')", 'date')
-      .where('session.userId = :userId', { userId })
       .andWhere('session.endedAt IS NOT NULL')
-      .andWhere('session.discardedReason IS NULL')
-      .andWhere("(session.state IS NULL OR session.state IN ('completed', 'stopped_early'))")
-      .groupBy("DATE_FORMAT(session.endedAt, '%Y-%m-%d')")
-      .orderBy('date', 'ASC')
-      .getRawMany<{ date: string }>();
+      .andWhere(COUNTED_SESSION_SQL)
+      .groupBy("DATE_FORMAT(session.endedAt, '%Y-%m-%d %H')")
+      .addGroupBy('session.kind')
+      .getRawMany<{ hour: string; kind: StudySession['kind']; sessionCount: string; validSeconds: string }>();
 
-    const activity: SessionActivityDay[] = cadenceRows.map((row) => ({
-      date: row.date,
-      sessionCount: Number(row.sessionCount),
-      validSeconds: Number(row.validSeconds),
-    }));
-    const streaks = calculateStreaks(historicalRows.map((row) => row.date), today);
-    const cadence = buildCadence(activity, previousDay(today, 55), today).map((day) => ({
+    // The calendar counts every eligible Study Session of a day, whatever its kind.
+    const activityByDay = (kind?: StudySession['kind']) => groupActivityByDay(
+      rows
+        .filter((row) => kind === undefined || row.kind === kind)
+        .map((row) => ({ hour: row.hour, sessionCount: Number(row.sessionCount), validSeconds: Number(row.validSeconds) })),
+      saoPauloDayKey,
+    );
+    const days = activityByDay();
+    const activity = days.filter((day) => day.date >= windowStart && day.date <= today);
+    const streaks = calculateStreaks(days.map((day) => day.date), today);
+    const cadence = buildCadence(activity, windowStart, today).map((day) => ({
       ...day,
       intensity: Math.min(day.sessionCount, 4) as 0 | 1 | 2 | 3 | 4,
     }));
-    const todayActivity = activity.find((day) => day.date === today);
+    const todayActivity = days.find((day) => day.date === today);
+    const todayOfKind = (kind: StudySession['kind']) => {
+      const day = activityByDay(kind).find((candidate) => candidate.date === today);
+      return { sessionCount: day?.sessionCount ?? 0, validSeconds: day?.validSeconds ?? 0 };
+    };
 
     return {
       ...streaks,
       sessionsToday: todayActivity?.sessionCount ?? 0,
-      dailyGoal: 4,
       validSecondsToday: todayActivity?.validSeconds ?? 0,
+      todayByKind: { cycle: todayOfKind('cycle'), free: todayOfKind('free') },
       cadence: { windowStart, windowEnd: today, days: cadence },
     };
+  }
+
+  /**
+   * Cards "Esta semana" and "Matérias da semana" (#300): the current São Paulo week, Monday to Sunday, over the Study
+   * Sessions that counted. Discards and cancellations are left out; the arithmetic lives in `buildWeekSummary`.
+   */
+  async weekSummary(userId: string, now: Date = new Date()): Promise<WeekSummaryResponseDto> {
+    const week = saoPauloWeekAt(now);
+    const rows = await this.studySessions
+      .createQueryBuilder('session')
+      .select('session.endedAt', 'endedAt')
+      .addSelect('session.subject', 'subject')
+      .addSelect('session.durationValidSeconds', 'validSeconds')
+      .addSelect('session.xpAwarded', 'xpAwarded')
+      .where('session.userId = :userId', { userId })
+      .andWhere('session.endedAt IS NOT NULL')
+      .andWhere('session.endedAt >= :start AND session.endedAt < :nextStart', {
+        start: week.startsAt,
+        nextStart: new Date(week.endsAt.getTime() + 1000),
+      })
+      .andWhere(COUNTED_SESSION_SQL)
+      .getRawMany<{ endedAt: Date; subject: string | null; validSeconds: string; xpAwarded: string }>();
+
+    return buildWeekSummary(
+      rows.map((row) => ({
+        endedAt: new Date(row.endedAt),
+        subject: row.subject,
+        validSeconds: Number(row.validSeconds),
+        xpAwarded: Number(row.xpAwarded),
+      })),
+      now,
+    );
   }
 
   /**
@@ -303,30 +417,9 @@ export class SessionsService {
       .where('session.userId = :userId', { userId })
       .andWhere('session.id != :excludeSessionId', { excludeSessionId })
       .andWhere('session.startedAt >= :startOfDay', { startOfDay })
-      .andWhere('session.discardedReason IS NULL')
-      .andWhere("(session.state IS NULL OR session.state IN ('completed', 'stopped_early'))")
+      .andWhere(COUNTED_SESSION_SQL)
       .getRawOne<{ total: string }>();
 
     return Number(row?.total ?? 0);
   }
-}
-
-function previousDay(date: string, days: number): string {
-  const value = utcDayStart(date);
-  value.setUTCDate(value.getUTCDate() - days);
-  return value.toISOString().slice(0, 10);
-}
-
-function nextDay(date: string): string {
-  const value = utcDayStart(date);
-  value.setUTCDate(value.getUTCDate() + 1);
-  return value.toISOString().slice(0, 10);
-}
-
-function utcDateKey(value: Date): string {
-  return value.toISOString().slice(0, 10);
-}
-
-function utcDayStart(date: string): Date {
-  return new Date(`${date}T00:00:00.000Z`);
 }

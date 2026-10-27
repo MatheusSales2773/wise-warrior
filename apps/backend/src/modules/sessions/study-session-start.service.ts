@@ -7,6 +7,7 @@ import type { ExpiredCompletion, StudySessionTransitionResult } from './study-se
 import { StudySessionEventsService } from './study-session-events.service';
 import { StudySession } from './entities/study-session.entity';
 import type { StartSessionDto } from './dto/start-session.dto';
+import { freeFocusCeilingSeconds } from './domain/study-session-time';
 import { isStudySessionPreset } from './domain/study-session-presets';
 import { isValidIdempotencyKey } from './domain/idempotency-key';
 import { InvalidStudySessionSubjectError, normalizeStudySessionSubject } from './domain/study-session-subject';
@@ -15,7 +16,7 @@ import { deserializeStudySessionSnapshot, studySessionSnapshot } from './study-s
 import type { StudySessionSnapshot } from './study-session-snapshot';
 
 type ReceiptRow = {
-  planned_duration_seconds: number;
+  planned_duration_seconds: number | null;
   subject: string | null;
   response_json: StudySessionSnapshot | string;
 };
@@ -47,9 +48,18 @@ export class StudySessionStartService {
     if (dto === null || typeof dto !== 'object' || Array.isArray(dto)) {
       throw new BadRequestException('O corpo da solicitação deve ser um objeto');
     }
-    const plannedDurationSeconds = dto.plannedDurationSeconds === undefined ? 1500 : dto.plannedDurationSeconds;
-    if (!isStudySessionPreset(plannedDurationSeconds)) {
-      throw new BadRequestException('Duração de foco inválida');
+    const kind = dto.kind ?? 'cycle';
+    if (kind !== 'cycle' && kind !== 'free') throw new BadRequestException('Tipo de Study Session inválido');
+    let plannedDurationSeconds: number | null = null;
+    if (kind === 'free') {
+      if (dto.plannedDurationSeconds !== undefined) {
+        throw new BadRequestException('plannedDurationSeconds não é aceito no Foco livre');
+      }
+    } else {
+      plannedDurationSeconds = dto.plannedDurationSeconds === undefined ? 1500 : dto.plannedDurationSeconds;
+      if (!isStudySessionPreset(plannedDurationSeconds)) {
+        throw new BadRequestException('Duração de foco inválida');
+      }
     }
     const subject = this.normalizeSubject(dto.subject);
     const mode = dto.mode ?? 'solo';
@@ -74,14 +84,15 @@ export class StudySessionStartService {
       if (receipt) {
         const replayed = deserializeStudySessionSnapshot(receipt.response_json);
         if (
-          Number(receipt.planned_duration_seconds) !== plannedDurationSeconds
+          (receipt.planned_duration_seconds === null ? null : Number(receipt.planned_duration_seconds)) !== plannedDurationSeconds
+          || replayed.kind !== kind
           || receipt.subject !== subject
           || replayed.mode !== mode
           || replayed.raidId !== raidId
         ) {
           throw new ConflictException({
             type: 'https://wise.app/errors/idempotency-key-reused',
-            message: 'Idempotency-Key já foi usada com outra duração, Matéria ou modo',
+            message: 'Idempotency-Key já foi usada com outra duração, Matéria, modo ou tipo',
           });
         }
         return { snapshot: replayed, applied: false };
@@ -100,19 +111,34 @@ export class StudySessionStartService {
 
       const now = new Date();
       if (raidId !== null) await this.raids.assertCanStartGuildSession(manager, userId, raidId, now);
+      // O teto do Foco livre é o que sobra do limite contínuo e do saldo diário; sem saldo a sessão não começa.
+      let runDeadlineAt: Date;
+      if (kind === 'free') {
+        const priorDailySeconds = await this.transitions.sumEligibleFocusSecondsToday(manager, userId, null, now);
+        const ceilingSeconds = freeFocusCeilingSeconds(priorDailySeconds);
+        if (ceilingSeconds <= 0) throw new ConflictException({
+          type: 'https://wise.app/errors/daily-limit-reached',
+          message: 'O limite diário de foco já foi atingido',
+        });
+        runDeadlineAt = new Date(now.getTime() + ceilingSeconds * 1000);
+      } else {
+        runDeadlineAt = new Date(now.getTime() + plannedDurationSeconds! * 1000);
+      }
       const studySession = manager.getRepository(StudySession).create({
         userId,
         subject,
+        kind,
         mode,
         raidId,
         startedAt: now,
         lastHeartbeatAt: now,
         plannedDurationSeconds,
         state: 'running',
-        runDeadlineAt: new Date(now.getTime() + plannedDurationSeconds * 1000),
+        runDeadlineAt,
         pausedAt: null,
         pausedTotalSeconds: 0,
         version: 1,
+        pauseCount: 0,
         terminalReason: null,
         initiatingSessionId: authSessionId,
         durationValidSeconds: 0,

@@ -1,3 +1,4 @@
+import { COUNTED_SESSION_SQL } from './domain/counted-session';
 import { Test, TestingModule } from '@nestjs/testing';
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { getRepositoryToken } from '@nestjs/typeorm';
@@ -151,7 +152,7 @@ describe('SessionsService', () => {
 
       await service.complete('user-1', 'legacy-session');
 
-      expect(dailyTotalQuery.andWhere).toHaveBeenCalledWith("(session.state IS NULL OR session.state IN ('completed', 'stopped_early'))");
+      expect(dailyTotalQuery.andWhere).toHaveBeenCalledWith(COUNTED_SESSION_SQL);
     });
   });
 
@@ -159,7 +160,7 @@ describe('SessionsService', () => {
     it('returns only the public fields of up to five ended sessions', async () => {
       mockRepo.find.mockResolvedValue([
         {
-          id: 'session-1', userId: 'user-1', subject: 'Cálculo', mode: 'solo',
+          id: 'session-1', userId: 'user-1', subject: 'Cálculo', kind: 'cycle', mode: 'solo',
           startedAt: new Date('2026-01-01T10:00:00Z'), endedAt: new Date('2026-01-01T10:25:00Z'),
           durationValidSeconds: 1500, xpAwarded: 25, discardedReason: null,
           lastHeartbeatAt: new Date(), raidId: 'internal-raid',
@@ -176,7 +177,7 @@ describe('SessionsService', () => {
         }),
       ]);
       expect(Object.keys(result[0]!)).toEqual([
-        'id', 'subject', 'mode', 'state', 'startedAt', 'endedAt', 'durationValidSeconds', 'xpAwarded', 'discardedReason', 'cappedReason',
+        'id', 'subject', 'kind', 'mode', 'state', 'startedAt', 'endedAt', 'durationValidSeconds', 'xpAwarded', 'discardedReason', 'cappedReason',
       ]);
       expect(mockRepo.find).toHaveBeenCalledWith({
         where: { userId: 'user-1', endedAt: expect.anything() },
@@ -192,48 +193,59 @@ describe('SessionsService', () => {
   });
 
   describe('metrics', () => {
-    it('returns UTC-calendar cadence and streak metrics from valid sessions only', async () => {
-      const cadenceBuilder = queryBuilderReturning(0) as ReturnType<typeof queryBuilderReturning> & Record<string, jest.Mock>;
-      cadenceBuilder.addSelect = jest.fn().mockReturnThis();
-      cadenceBuilder.groupBy = jest.fn().mockReturnThis();
-      cadenceBuilder.getRawMany = jest.fn().mockResolvedValue([
-        { date: '2026-09-16', sessionCount: '2', validSeconds: '1800' },
-        { date: '2026-09-17', sessionCount: '4', validSeconds: '3600' },
+    const hour = (utcHour: string, sessionCount: number, validSeconds: number, kind = 'cycle') => ({
+      hour: utcHour, kind, sessionCount: String(sessionCount), validSeconds: String(validSeconds),
+    });
+    const builderReturning = (rows: unknown[]) => {
+      const builder = queryBuilderReturning(0) as ReturnType<typeof queryBuilderReturning> & Record<string, jest.Mock>;
+      builder.select = jest.fn().mockReturnThis();
+      builder.addSelect = jest.fn().mockReturnThis();
+      builder.groupBy = jest.fn().mockReturnThis();
+      builder.addGroupBy = jest.fn().mockReturnThis();
+      builder.getRawMany = jest.fn().mockResolvedValue(rows);
+      mockRepo.createQueryBuilder.mockReturnValueOnce(builder);
+      return builder;
+    };
+
+    it('returns São Paulo-calendar cadence and streak metrics from valid sessions only', async () => {
+      const builder = builderReturning([
+        hour('2026-09-15 15', 1, 600),
+        hour('2026-09-16 15', 2, 1800),
+        hour('2026-09-17 12', 2, 1800),
+        hour('2026-09-17 14', 1, 1200),
+        hour('2026-09-17 14', 1, 600, 'free'),
       ]);
-      const historicalBuilder = queryBuilderReturning(0) as ReturnType<typeof queryBuilderReturning> & Record<string, jest.Mock>;
-      historicalBuilder.groupBy = jest.fn().mockReturnThis();
-      historicalBuilder.orderBy = jest.fn().mockReturnThis();
-      historicalBuilder.getRawMany = jest.fn().mockResolvedValue([
-        { date: '2026-09-15' }, { date: '2026-09-16' }, { date: '2026-09-17' },
-      ]);
-      mockRepo.createQueryBuilder
-        .mockReturnValueOnce(cadenceBuilder)
-        .mockReturnValueOnce(historicalBuilder);
 
       const result = await service.metrics('user-1', new Date('2026-09-17T23:59:59.999Z'));
 
       expect(result.currentStreakDays).toBe(3);
       expect(result.longestStreakDays).toBe(3);
       expect(result.sessionsToday).toBe(4);
-      expect(result.dailyGoal).toBe(4);
+      expect(result).not.toHaveProperty('dailyGoal');
       expect(result.validSecondsToday).toBe(3600);
+      expect(result.todayByKind).toEqual({
+        cycle: { sessionCount: 3, validSeconds: 3000 },
+        free: { sessionCount: 1, validSeconds: 600 },
+      });
       expect(result.cadence.windowStart).toBe('2026-07-24');
       expect(result.cadence.days).toHaveLength(56);
       expect(result.cadence.days.at(-1)).toEqual({
         date: '2026-09-17', sessionCount: 4, validSeconds: 3600, intensity: 4,
       });
-      expect(cadenceBuilder.andWhere).toHaveBeenCalledWith(
-        'session.endedAt >= :windowStart',
-        { windowStart: new Date('2026-07-24T00:00:00.000Z') },
-      );
-      expect(cadenceBuilder.andWhere).toHaveBeenCalledWith(
-        'session.endedAt < :windowEndExclusive',
-        { windowEndExclusive: new Date('2026-09-18T00:00:00.000Z') },
-      );
-      expect(cadenceBuilder.andWhere).toHaveBeenCalledWith('session.discardedReason IS NULL');
-      expect(historicalBuilder.andWhere).toHaveBeenCalledWith('session.discardedReason IS NULL');
-      expect(cadenceBuilder.andWhere).toHaveBeenCalledWith("(session.state IS NULL OR session.state IN ('completed', 'stopped_early'))");
-      expect(historicalBuilder.andWhere).toHaveBeenCalledWith("(session.state IS NULL OR session.state IN ('completed', 'stopped_early'))");
+      expect(builder.andWhere).toHaveBeenCalledWith(COUNTED_SESSION_SQL);
+    });
+
+    it('counts a session ended at 23:00 in São Paulo (02:00 UTC the next day) on its own São Paulo day', async () => {
+      builderReturning([hour('2026-09-18 02', 1, 1500)]);
+
+      const evening = await service.metrics('user-1', new Date('2026-09-18T02:30:00Z'));
+      expect(evening.sessionsToday).toBe(1);
+      expect(evening.cadence.windowEnd).toBe('2026-09-17');
+
+      builderReturning([hour('2026-09-18 02', 1, 1500)]);
+      const afterMidnight = await service.metrics('user-1', new Date('2026-09-18T03:00:00Z'));
+      expect(afterMidnight.sessionsToday).toBe(0);
+      expect(afterMidnight.currentStreakDays).toBe(1);
     });
   });
 });

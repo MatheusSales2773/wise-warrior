@@ -809,16 +809,43 @@ describe('Universal authentication security contract', () => {
       }),
     ).resolves.toHaveProperty('status', 200);
 
-    const revokeAll = await remove('/users/me/sessions', {
+    const otherLogin = await post(
+      '/auth/login',
+      { email: userA.email, password: userA.password },
+      { origin },
+    );
+    expect(otherLogin.status).toBe(200);
+    const otherBody = (await otherLogin.json()) as { accessToken: string };
+    const otherRefreshToken = refreshTokenFromCookie(otherLogin);
+    const currentRefreshToken = refreshTokenFromCookie(registration);
+
+    const revokeOthers = await remove('/users/me/sessions', {
       authorization: `Bearer ${registrationBody.accessToken}`,
       origin,
     });
-    expect(revokeAll.status).toBe(204);
-    const revokedAllResponse = await get('/users/me', {
+    expect(revokeOthers.status).toBe(204);
+    const currentStillActive = await get('/users/me', {
       authorization: `Bearer ${registrationBody.accessToken}`,
       origin,
     });
-    expect(revokedAllResponse.status).toBe(401);
+    expect(currentStillActive.status).toBe(200);
+    const currentRefresh = await post(
+      '/auth/refresh',
+      {},
+      { origin, cookie: `ww_refresh=${currentRefreshToken}` },
+    );
+    expect(currentRefresh.status).toBe(200);
+    const revokedOtherAccess = await get('/users/me', {
+      authorization: `Bearer ${otherBody.accessToken}`,
+      origin,
+    });
+    expect(revokedOtherAccess.status).toBe(401);
+    const revokedOtherRefresh = await post(
+      '/auth/refresh',
+      {},
+      { origin, cookie: `ww_refresh=${otherRefreshToken}` },
+    );
+    expect(revokedOtherRefresh.status).toBe(401);
     const userBStillActive = await get('/users/me', {
       authorization: `Bearer ${registrationBBody.accessToken}`,
       origin,

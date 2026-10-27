@@ -37,6 +37,7 @@ import { SessionsController } from './sessions.controller';
 import { SessionsService } from './sessions.service';
 import { StudySessionStartService } from './study-session-start.service';
 import { StudySessionEventsService } from './study-session-events.service';
+import { ObjectivesService } from '../objectives/objectives.service';
 import { STUDY_SESSION_CLOCK, StudySessionTransitionService } from './study-session-transition.service';
 
 type Snapshot = { id: string; mode: string; raidId: string | null; startedAt: string; state: string; xpAwarded: number };
@@ -119,6 +120,7 @@ describe('Study Session de modo Guilda against MySQL', () => {
         ProgressionService,
         StudySessionStartService,
         StudySessionTransitionService,
+        { provide: ObjectivesService, useValue: { settleInTransaction: async () => [] } },
         StudySessionEventsService,
         repo(Guild), repo(GuildMembership), repo(Raid), repo(RaidContribution), repo(RaidParticipation), repo(Mission), repo(MissionRewardItem),
         repo(User), repo(CosmeticItem), repo(UserCosmeticItem), repo(Character),
@@ -588,6 +590,14 @@ describe('Study Session de modo Guilda against MySQL', () => {
       expect(response.status).toBe(200);
       const result = await response.json() as Snapshot & { raidContribution: unknown };
       expect(result.raidContribution).toBeNull();
+    });
+
+    it('counts the pauses of a guild-mode session', async () => {
+      const session = await joinAndStart(bruno, 'count-pause');
+
+      const paused = await call('POST', `/sessions/${session.id}/pause`, bruno, { expectedVersion: 1 }, 'count-pause-action');
+
+      expect(await paused.json()).toMatchObject({ mode: 'guild', pauseCount: 1 });
     });
 
     it('includes null raidContribution for resume transitions', async () => {

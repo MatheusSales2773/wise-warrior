@@ -13,11 +13,17 @@ export class SessionMetricsCadenceDto {
   days: SessionMetricsCadenceDayDto[];
 }
 
+export class SessionMetricsKindTotalsDto {
+  sessionCount: number;
+  validSeconds: number;
+}
+
 export class SessionMetricsResponseDto {
   currentStreakDays: number;
   longestStreakDays: number;
   sessionsToday: number;
-  dailyGoal: 4;
   validSecondsToday: number;
+  /** Hoje, por tipo: `cycle` (Ciclo) e `free` (Foco livre). */
+  todayByKind: { cycle: SessionMetricsKindTotalsDto; free: SessionMetricsKindTotalsDto };
   cadence: SessionMetricsCadenceDto;
 }

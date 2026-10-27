@@ -1,4 +1,5 @@
 import { getAuthenticatedHttpClient } from '@/core/api/api-client';
+import type { StudySessionKind } from '@/features/study-session/focus-choice';
 
 export type UserProfile = {
   id: string;
@@ -15,7 +16,7 @@ export type UserProfile = {
 };
 
 export type EquippedCosmeticItem = {
-  category: 'avatar' | 'badge' | 'title' | 'accessory';
+  category: 'avatar' | 'badge' | 'title' | 'accessory' | 'weapon';
   itemId: string;
   name: string;
 };
@@ -23,6 +24,8 @@ export type EquippedCosmeticItem = {
 export type RecentStudySession = {
   id: string;
   subject: string | null;
+  /** Absent on responses from older servers, which only know the Ciclo. */
+  kind?: StudySessionKind;
   mode: string;
   state: 'running' | 'paused' | 'completed' | 'stopped_early' | 'cancelled' | 'discarded' | null;
   startedAt: string;
@@ -33,15 +36,16 @@ export type RecentStudySession = {
   cappedReason?: 'continuous-limit' | 'daily-limit' | null;
 };
 
-/** One Study Session of the Histórico do dia (`GET /sessions/history`). */
+/** One Study Session of the Diário (`GET /sessions/history`). */
 export type SessionHistoryItem = RecentStudySession & {
   /** Place of a focus completed in full in the Pomodoro cycle (1 to 4); `null` for any other outcome. */
   cyclePosition: number | null;
 };
 
+/** The Diário filters the server applies: concluded without truncation, limited by the antifraude, not counted. */
+export type SessionHistoryState = 'completed' | 'truncated' | 'discarded';
+
 export type SessionHistoryPage = {
-  /** The UTC day listed, the same calendar day the metrics use. */
-  date: string;
   items: SessionHistoryItem[];
   nextCursor: string | null;
 };
@@ -57,13 +61,25 @@ export type SessionMetrics = {
   currentStreakDays: number;
   longestStreakDays: number;
   sessionsToday: number;
-  dailyGoal: number;
   validSecondsToday: number;
   cadence: {
     windowStart: string;
     windowEnd: string;
     days: CadenceDay[];
   };
+};
+
+export type WeekSummary = {
+  weekStart: string;
+  weekEnd: string;
+  today: string;
+  validSeconds: number;
+  sessionCount: number;
+  xp: number;
+  /** Monday to Sunday, one entry per day. */
+  days: { date: string; sessionCount: number; validSeconds: number }[];
+  /** The subjects with the most valid focus, most first. */
+  subjects: { subject: string; validSeconds: number }[];
 };
 
 export async function getMyProfile({ signal }: { signal?: AbortSignal } = {}): Promise<UserProfile> {
@@ -82,11 +98,17 @@ export async function getSessionMetrics({ signal }: { signal?: AbortSignal } = {
 }
 
 export async function getSessionHistory(
-  date: string,
-  { cursor, signal }: { cursor?: string | null; signal?: AbortSignal } = {},
+  { date, state, cursor, signal }: { date?: string; state?: SessionHistoryState; cursor?: string | null; signal?: AbortSignal } = {},
 ): Promise<SessionHistoryPage> {
-  const params = new URLSearchParams({ date });
+  const params = new URLSearchParams();
+  if (date) params.set('date', date);
+  if (state) params.set('state', state);
   if (cursor) params.set('cursor', cursor);
   const response = await getAuthenticatedHttpClient().get<SessionHistoryPage>(`/sessions/history?${params.toString()}`, { signal });
+  return response.data;
+}
+
+export async function getWeekSummary({ signal }: { signal?: AbortSignal } = {}): Promise<WeekSummary> {
+  const response = await getAuthenticatedHttpClient().get<WeekSummary>('/sessions/week', { signal });
   return response.data;
 }

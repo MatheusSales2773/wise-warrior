@@ -9,6 +9,7 @@
       "supportsTablet": false
     },
     "orientation": "default",
+    "icon": "./assets/images/icon.png",
     "plugins": [
       "expo-router",
       "expo-status-bar",
@@ -46,10 +47,15 @@
     },
     "web": {
       "bundler": "metro",
-      "output": "single"
+      "output": "single",
+      "favicon": "./assets/images/favicon.png"
     },
     "android": {
-      "package": "dev.guilhermeluan.wisewarrior"
+      "package": "dev.guilhermeluan.wisewarrior",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/images/adaptive-icon.png",
+        "backgroundColor": "#07070c"
+      }
     }
   }
 }

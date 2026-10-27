@@ -122,6 +122,7 @@ describe('Cosmetic Item unlock on level-up through the Study Session API', () =>
       new EconomyService(dataSource.getRepository(CoinBalance), dataSource.getRepository(CoinLedgerEntry), realtime),
       users,
       events,
+      { settleInTransaction: async () => [] } as never,
     );
     const moduleRef = await Test.createTestingModule({
       controllers: [SessionsController, UsersController],
@@ -167,23 +168,20 @@ describe('Cosmetic Item unlock on level-up through the Study Session API', () =>
     await database?.close();
   });
 
-  it('unlocks Madrugador when completing a Study Session takes the Character to level 3', async () => {
+  it('no longer unlocks Madrugador when completing a Study Session takes the Character to level 3', async () => {
     await seedCharacterAt(2_500, 2);
-    expect(await unlockedNames()).toEqual(['Aprendiz', 'Capuz do Erudito']);
+    expect(await unlockedNames()).toEqual(['Aprendiz', 'Capuz do Erudito', 'Espada']);
 
     const completed = await (await startSession(900, 'level-3')).complete();
 
     expect(completed.status).toBe(200);
-    expect(await unlockedNames()).toEqual(['Aprendiz', 'Capuz do Erudito', 'Madrugador']);
+    const character = await dataSource!.getRepository(Character).findOneByOrFail({ userId });
+    expect(character.level).toBe(3);
+    expect(await unlockedNames()).toEqual(['Aprendiz', 'Capuz do Erudito', 'Espada']);
   });
 
-  it('unlocks the items of every level reached by a gain that skips levels, without equipping them', async () => {
-    // Presets cap a session at 500 XP, so the Inventory is made to lag behind the level: the rule must grant every level reached.
+  it('unlocks the level items reached by a gain, without equipping them', async () => {
     await seedCharacterAt(5_500, 4);
-    await dataSource!.getRepository(UserCosmeticItem).delete({
-      userId,
-      cosmeticItemId: 'c05e71c0-0000-4000-8000-000000000003',
-    });
 
     const completed = await (await startSession(3_000, 'level-skip')).complete();
 
@@ -192,9 +190,9 @@ describe('Cosmetic Item unlock on level-up through the Study Session API', () =>
     expect(character.level).toBe(5);
     const catalog = await (await send('GET', '/users/me/cosmetics')).json() as CatalogCosmeticItem[];
     expect(catalog.filter((item) => item.unlocked).map((item) => item.name).sort())
-      .toEqual(['Aprendiz', 'Capuz do Erudito', 'Estudante Crepuscular', 'Madrugador']);
+      .toEqual(['Aprendiz', 'Capuz do Erudito', 'Espada', 'Estudante Crepuscular']);
     expect(catalog.filter((item) => item.equipped).map((item) => item.name).sort())
-      .toEqual(['Aprendiz', 'Capuz do Erudito']);
+      .toEqual(['Aprendiz', 'Capuz do Erudito', 'Espada']);
   });
 
   it('does not duplicate Inventory rows when the completion is replayed or the rule runs again', async () => {
@@ -216,7 +214,7 @@ describe('Cosmetic Item unlock on level-up through the Study Session API', () =>
     const completed = await (await startSession(900, 'rollback')).complete();
 
     expect(completed.status).toBe(500);
-    expect(await unlockedNames()).toEqual(['Aprendiz', 'Capuz do Erudito']);
+    expect(await unlockedNames()).toEqual(['Aprendiz', 'Capuz do Erudito', 'Espada']);
     const character = await dataSource!.getRepository(Character).findOneByOrFail({ userId });
     expect({ level: character.level, xpTotal: character.xpTotal }).toEqual({ level: 2, xpTotal: 2_500 });
   });

@@ -5,17 +5,14 @@ import { ApiError } from '@/core/api/api-error';
 import { theme } from '@/design-system';
 import { CharacterScreen } from '@/features/character/character-screen';
 import { getMyProfile, getSessionMetrics, type SessionMetrics, type UserProfile } from '@/features/dashboard/api';
+import { getObjectives, type Objectives } from '@/features/chronicles/api';
 import {
   equipCosmeticItem,
   listCosmeticsCatalog,
-  listMyDeviceSessions,
-  revokeAllMyDeviceSessions,
-  revokeMyDeviceSession,
   unequipCosmeticItem,
   type CatalogCosmeticItem,
-  type DeviceSession,
 } from '@/features/profile/api';
-import { mockAuthState, updateMockAuthState } from '../test-utils/auth-context';
+import { updateMockAuthState } from '../test-utils/auth-context';
 import { resetMockWindowDimensions, setMockWindowDimensions } from '../test-utils/window-dimensions';
 
 jest.mock('@/core/auth/auth-context', () => require('../test-utils/auth-context').createAuthContextMock());
@@ -25,13 +22,11 @@ jest.mock('@/features/dashboard/api', () => ({
   getRecentStudySessions: jest.fn(),
   getSessionMetrics: jest.fn(),
 }));
+jest.mock('@/features/chronicles/api', () => ({ getObjectives: jest.fn() }));
 jest.mock('@/features/profile/api', () => ({
   equipCosmeticItem: jest.fn(),
   unequipCosmeticItem: jest.fn(),
   listCosmeticsCatalog: jest.fn(),
-  listMyDeviceSessions: jest.fn(),
-  revokeMyDeviceSession: jest.fn(),
-  revokeAllMyDeviceSessions: jest.fn(),
 }));
 
 function cosmetic(
@@ -70,23 +65,22 @@ const profile: UserProfile = {
   ],
 };
 const metrics: SessionMetrics = {
-  currentStreakDays: 27, longestStreakDays: 30, sessionsToday: 2, dailyGoal: 4, validSecondsToday: 3_000,
+  currentStreakDays: 27, longestStreakDays: 30, sessionsToday: 2, validSecondsToday: 3_000,
   cadence: { windowStart: '2026-08-01', windowEnd: '2026-09-25', days: [] },
 };
-const devices: DeviceSession[] = [
-  { id: 'dev-1', deviceLabel: 'iPhone de Ana', userAgent: null, createdAt: '2026-09-01T10:00:00Z', lastUsedAt: '2026-09-20T10:00:00Z' },
-  { id: 'dev-2', deviceLabel: null, userAgent: 'Mozilla/5.0 (Windows NT 10.0)', createdAt: '2026-09-02T10:00:00Z', lastUsedAt: '2026-09-18T10:00:00Z' },
-  { id: 'dev-3', deviceLabel: 'Notebook', userAgent: null, createdAt: '2026-09-03T10:00:00Z', lastUsedAt: '2026-09-19T10:00:00Z' },
-];
-
+const objectives = (target = 4, progress = 2): Objectives => ({
+  daily: {
+    date: '2026-09-17', renewsAt: '2026-09-18T03:00:00.000Z',
+    items: [{ id: 'four-sessions', title: 'Conclua 4 sessões hoje', progress, target, coins: 15, completed: progress >= target }],
+  },
+  weekly: { weekStart: '2026-09-14', renewsAt: '2026-09-21T03:00:00.000Z', items: [] },
+});
+const mockedObjectives = getObjectives as jest.MockedFunction<typeof getObjectives>;
 const mockedProfile = getMyProfile as jest.MockedFunction<typeof getMyProfile>;
 const mockedMetrics = getSessionMetrics as jest.MockedFunction<typeof getSessionMetrics>;
 const mockedCatalog = listCosmeticsCatalog as jest.MockedFunction<typeof listCosmeticsCatalog>;
-const mockedDevices = listMyDeviceSessions as jest.MockedFunction<typeof listMyDeviceSessions>;
 const mockedEquip = equipCosmeticItem as jest.MockedFunction<typeof equipCosmeticItem>;
 const mockedUnequip = unequipCosmeticItem as jest.MockedFunction<typeof unequipCosmeticItem>;
-const mockedRevoke = revokeMyDeviceSession as jest.MockedFunction<typeof revokeMyDeviceSession>;
-const mockedRevokeAll = revokeAllMyDeviceSessions as jest.MockedFunction<typeof revokeAllMyDeviceSessions>;
 
 // A mutation keeps a 5-minute GC timer by default, which would hold the Jest process open after the run.
 let queryClient: QueryClient | undefined;
@@ -120,12 +114,10 @@ beforeEach(() => {
   resetMockWindowDimensions();
   useWidth(1440);
   mockedMetrics.mockResolvedValue(metrics);
+  mockedObjectives.mockResolvedValue(objectives());
   mockedCatalog.mockResolvedValue(catalog);
-  mockedDevices.mockResolvedValue(devices);
   mockedEquip.mockResolvedValue(undefined);
   mockedUnequip.mockResolvedValue(undefined);
-  mockedRevoke.mockResolvedValue(undefined);
-  mockedRevokeAll.mockResolvedValue(undefined);
 });
 
 afterEach(async () => {
@@ -173,7 +165,7 @@ describe('CharacterScreen', () => {
       await renderCharacter();
 
       expect(screen.getByRole('header', { name: 'Personagem' })).toBeTruthy();
-      expect(identity().getByText('✦ Nível 14 · Erudito')).toBeTruthy();
+      expect(identity().getByText('✦ Nível 14 · Capuz do Erudito')).toBeTruthy();
       expect(identity().getByText('Estudante Crepuscular')).toBeTruthy();
       expect(identity().getByText('Membro da Ordem dos Madrugadores')).toBeTruthy();
       expect(identity().getByText('1.950 / 3.000 XP')).toBeTruthy();
@@ -181,7 +173,7 @@ describe('CharacterScreen', () => {
       expect(screen.getByRole('progressbar', { name: 'Progresso para o nível 15' }).props.accessibilityValue).toEqual({ min: 0, max: 3_000, now: 1_950 });
 
       await waitFor(() => expect(screen.getByLabelText('27 dias seguidos')).toBeTruthy());
-      expect(screen.getByLabelText('2/4 sessões hoje')).toBeTruthy();
+      await waitFor(() => expect(screen.getByLabelText('2 / 4 sessões hoje')).toBeTruthy());
       expect(screen.getByLabelText('128,4k XP total')).toBeTruthy();
     });
 
@@ -205,38 +197,38 @@ describe('CharacterScreen', () => {
       expect(color(screen.getByText('Equipar acessório'))).toBe(theme.color.accentPrimary);
     });
 
-    it('derives the hero roster from level and plan', async () => {
+    it('draws the Herói as the base body, the Avatar layer and no Acessório layer when none is equipped', async () => {
       await renderCharacter();
 
-      expect(screen.getByText('2 de 4 desbloqueados')).toBeTruthy();
-      expect(within(screen.getByTestId('character-hero-erudito')).getByText('EQUIPADO')).toBeTruthy();
-      expect(screen.getByRole('button', { name: 'Equipar Guerreira' })).toBeTruthy();
-      expect(within(screen.getByTestId('character-hero-arcanista')).getByText('Libera no nível 20')).toBeTruthy();
-      expect(within(screen.getByTestId('character-hero-arcanista')).getByText('NÍVEL 20')).toBeTruthy();
-      expect(color(within(screen.getByTestId('character-hero-arcanista')).getByText('Arcanista'))).toBe(theme.color.textTertiary);
-      expect(within(screen.getByTestId('character-hero-paladino')).getByText('✦ PREMIUM')).toBeTruthy();
+      const hero = within(screen.getByTestId('character-hero-sprite', { includeHiddenElements: true }));
+      expect(hero.getByTestId('character-hero-layer-body', { includeHiddenElements: true })).toBeTruthy();
+      expect(hero.getByTestId('character-hero-layer-avatar', { includeHiddenElements: true })).toBeTruthy();
+      expect(hero.queryByTestId('character-hero-layer-accessory', { includeHiddenElements: true })).toBeNull();
     });
 
-    it('keeps level-gated heroes locked below their level and opens premium heroes for premium plans', async () => {
-      await renderCharacter({ level: 9, planTier: 'premium' });
+    it('adds the Acessório layer when an Acessório with art is equipped', async () => {
+      await renderCharacter({ equipped: [...profile.equipped, { category: 'accessory', itemId: 'item-Selo dos Madrugadores', name: 'Selo dos Madrugadores' }] });
 
-      expect(screen.getByText('2 de 4 desbloqueados')).toBeTruthy();
-      expect(within(screen.getByTestId('character-hero-guerreira')).getByText('NÍVEL 10')).toBeTruthy();
-      expect(screen.getByRole('button', { name: 'Equipar Paladino' })).toBeTruthy();
+      expect(screen.getByTestId('character-hero-layer-accessory', { includeHiddenElements: true })).toBeTruthy();
+      expect(identity().getByText('✦ Nível 14 · Capuz do Erudito · Selo dos Madrugadores')).toBeTruthy();
     });
 
-    it('explains that hero swapping is not available yet instead of pretending to switch', async () => {
+    it('has no class selection, hero swap panel or unlocks', async () => {
       await renderCharacter();
 
-      await fireEvent.press(screen.getByRole('button', { name: 'Trocar herói' }));
-      expect(within(screen.getByTestId('character-notice')).getByText(/A troca de herói chega em breve/)).toBeTruthy();
+      expect(screen.queryByRole('button', { name: 'Trocar herói' })).toBeNull();
+      expect(screen.queryByTestId('character-heroes')).toBeNull();
+      expect(screen.queryByText(/desbloqueados/)).toBeNull();
+      expect(screen.queryByRole('button', { name: /^Equipar (Guerreira|Paladino)/ })).toBeNull();
     });
 
-    it('summarizes the connected devices', async () => {
+    it('leaves the devices out of Mais, which only keeps the Companheiro', async () => {
       await renderCharacter();
 
-      await waitFor(() => expect(screen.getByText('Este navegador e mais 2 sessões')).toBeTruthy());
       expect(screen.getByText('Coruja de estudo · chega na Fase 2')).toBeTruthy();
+      expect(screen.queryByTestId('character-devices')).toBeNull();
+      expect(screen.queryByText(/Dispositivos conectados/)).toBeNull();
+      expect(screen.queryByText(/Sair de todos/)).toBeNull();
     });
 
     it('opens the equipment drawer on the tapped category with the real Catalog', async () => {
@@ -311,6 +303,107 @@ describe('CharacterScreen', () => {
       expect(identity().getByText('Aprendiz')).toBeTruthy();
       expect(screen.getByTestId('character-preview')).toBeTruthy();
       expect(screen.getByRole('button', { name: 'Título: Aprendiz' })).toBeTruthy();
+      expect(mockedEquip).not.toHaveBeenCalled();
+    });
+
+    it('previews an Acessório as a layer on the Herói without saving anything', async () => {
+      mockedCatalog.mockResolvedValue([...catalog, cosmetic('Pena do Escriba', 'accessory', { type: 'purchase' }, { unlocked: true })]);
+      await renderCharacter();
+      expect(screen.queryByTestId('character-hero-layer-accessory', { includeHiddenElements: true })).toBeNull();
+
+      await fireEvent.press(screen.getByTestId('character-slot-accessory'));
+      await fireEvent.press(await screen.findByRole('radio', { name: /^Pena do Escriba,/ }));
+
+      expect(screen.getByTestId('character-hero-layer-accessory', { includeHiddenElements: true })).toBeTruthy();
+      expect(screen.getByTestId('character-preview')).toBeTruthy();
+      expect(mockedEquip).not.toHaveBeenCalled();
+    });
+
+    describe('Arma', () => {
+      const sword = cosmetic('Espada', 'weapon', { type: 'level', level: 1 }, { equipped: true });
+      const staff = cosmetic('Cajado', 'weapon', { type: 'purchase' }, { unlocked: true });
+      const swordEquipped = { category: 'weapon' as const, itemId: 'item-Espada', name: 'Espada' };
+
+      it('lists the Armas of the Catálogo in the drawer with state and the usual actions', async () => {
+        mockedCatalog.mockResolvedValue([...catalog, sword, staff, cosmetic('Besta', 'weapon', { type: 'purchase' })]);
+        await renderCharacter({ equipped: [...profile.equipped, swordEquipped] });
+
+        await fireEvent.press(screen.getByTestId('character-slot-weapon'));
+
+        expect(await screen.findByRole('radio', { name: 'Espada, Equipado agora' })).toBeTruthy();
+        expect(screen.getByRole('radio', { name: /^Cajado,/ })).toBeTruthy();
+        expect(screen.getByRole('radio', { name: /^Besta,.*bloqueado/ })).toBeTruthy();
+        expect(screen.getByRole('button', { name: 'Desequipar Espada' })).toBeTruthy();
+        expect(screen.getByRole('button', { name: 'Equipar arma' })).toBeTruthy();
+      });
+
+      it('leaves the Herói unarmed when no Arma is equipped', async () => {
+        await renderCharacter();
+
+        expect(screen.getByTestId('character-hero-layer-body', { includeHiddenElements: true })).toBeTruthy();
+        expect(screen.queryByTestId('character-hero-layer-weapon', { includeHiddenElements: true })).toBeNull();
+      });
+
+      it('draws the Arma layer when an Arma with art is equipped', async () => {
+        mockedCatalog.mockResolvedValue([...catalog, sword]);
+        await renderCharacter({ equipped: [...profile.equipped, swordEquipped] });
+
+        expect(screen.getByTestId('character-hero-layer-weapon', { includeHiddenElements: true })).toBeTruthy();
+        expect(identity().getByText('✦ Nível 14 · Capuz do Erudito · Espada')).toBeTruthy();
+      });
+
+      it('previews an Arma on the Herói without saving anything', async () => {
+        mockedCatalog.mockResolvedValue([...catalog, sword, staff]);
+        await renderCharacter({ equipped: [...profile.equipped, swordEquipped] });
+
+        await fireEvent.press(screen.getByTestId('character-slot-weapon'));
+        await fireEvent.press(await screen.findByRole('radio', { name: /^Cajado,/ }));
+
+        expect(screen.getByTestId('character-hero-layer-weapon', { includeHiddenElements: true })).toBeTruthy();
+        expect(identity().getByText('✦ Nível 14 · Capuz do Erudito · Cajado')).toBeTruthy();
+        expect(screen.getByTestId('character-preview')).toBeTruthy();
+        expect(mockedEquip).not.toHaveBeenCalled();
+      });
+
+      it('previews an Arma together with the equipped Avatar and Acessório', async () => {
+        mockedCatalog.mockResolvedValue([...catalog, sword, staff]);
+        await renderCharacter({ equipped: [...profile.equipped, swordEquipped, { category: 'accessory', itemId: 'item-Selo dos Madrugadores', name: 'Selo dos Madrugadores' }] });
+
+        await fireEvent.press(screen.getByTestId('character-slot-weapon'));
+        await fireEvent.press(await screen.findByRole('radio', { name: /^Cajado,/ }));
+
+        for (const layer of ['body', 'avatar', 'weapon', 'accessory']) {
+          expect(screen.getByTestId(`character-hero-layer-${layer}`, { includeHiddenElements: true })).toBeTruthy();
+        }
+        expect(mockedEquip).not.toHaveBeenCalled();
+      });
+
+      it('removes the Arma layer when the Arma is unequipped', async () => {
+        mockedUnequip.mockImplementation(async () => {
+          mockedProfile.mockResolvedValue(profile);
+          mockedCatalog.mockResolvedValue([...catalog, { ...sword, equipped: false }]);
+        });
+        mockedCatalog.mockResolvedValue([...catalog, sword]);
+        await renderCharacter({ equipped: [...profile.equipped, swordEquipped] });
+
+        await fireEvent.press(screen.getByTestId('character-slot-weapon'));
+        await fireEvent.press(await screen.findByRole('button', { name: 'Desequipar Espada' }));
+
+        await waitFor(() => expect(mockedUnequip).toHaveBeenCalledWith('item-Espada'));
+        expect(screen.queryByTestId('character-hero-layer-weapon', { includeHiddenElements: true })).toBeNull();
+      });
+    });
+
+    it('previews an Avatar on the Herói and names it in the text without saving anything', async () => {
+      mockedCatalog.mockResolvedValue([...catalog, cosmetic('Manto Estelar', 'avatar', { type: 'level', level: 10 }, { unlocked: true })]);
+      await renderCharacter();
+
+      await fireEvent.press(screen.getByTestId('character-slot-avatar'));
+      await fireEvent.press(await screen.findByRole('radio', { name: /^Manto Estelar,/ }));
+
+      expect(screen.getByTestId('character-hero-layer-avatar', { includeHiddenElements: true })).toBeTruthy();
+      expect(identity().getByText('✦ Nível 14 · Manto Estelar')).toBeTruthy();
+      expect(screen.getByTestId('character-preview')).toBeTruthy();
       expect(mockedEquip).not.toHaveBeenCalled();
     });
 
@@ -435,13 +528,13 @@ describe('CharacterScreen', () => {
       expect(screen.getByTestId('character-scroll')).toBeTruthy();
       expect(screen.queryByTestId('character-desktop')).toBeNull();
       expect(StyleSheet.flatten(screen.getByTestId('character-hero-panel').props.style)).toMatchObject({ height: 352 });
-      expect(screen.getByTestId('character-hero-sprite', { includeHiddenElements: true }).props).toMatchObject({ width: 144, height: 216 });
+      expect(StyleSheet.flatten(screen.getByTestId('character-hero-sprite', { includeHiddenElements: true }).props.style)).toMatchObject({ width: 144, height: 216 });
     });
 
     it('shows level and title with progress, without the desktop name subtitle', async () => {
       await renderCharacter();
 
-      expect(identity().getByText('✦ Nível 14 · Erudito')).toBeTruthy();
+      expect(identity().getByText('✦ Nível 14 · Capuz do Erudito')).toBeTruthy();
       expect(identity().getByText('Estudante Crepuscular')).toBeTruthy();
       expect(identity().getByText('1.950 / 3.000 XP')).toBeTruthy();
       expect(screen.queryByText('Membro da Ordem dos Madrugadores')).toBeNull();
@@ -457,22 +550,27 @@ describe('CharacterScreen', () => {
       expect(screen.getByText('Gerenciar')).toBeTruthy();
     });
 
-    it('scrolls the hero cards horizontally and counts what is unlocked', async () => {
-      await renderCharacter();
+    it('draws the body, Avatar and Acessório layers on the phone too', async () => {
+      await renderCharacter({ equipped: [...profile.equipped, { category: 'accessory', itemId: 'item-Selo dos Madrugadores', name: 'Selo dos Madrugadores' }] });
 
-      expect(screen.getByTestId('character-hero-carousel').props.horizontal).toBe(true);
-      expect(screen.getByLabelText('2 de 4 heróis desbloqueados')).toBeTruthy();
-      expect(screen.getByRole('group', { name: 'Arcanista, Libera no nível 20' })).toBeTruthy();
-      await fireEvent.press(screen.getByRole('button', { name: 'Equipar Guerreira' }));
-      expect(within(screen.getByTestId('character-notice')).getByText(/A troca de herói chega em breve/)).toBeTruthy();
+      for (const layer of ['body', 'avatar', 'accessory']) {
+        expect(screen.getByTestId(`character-hero-layer-${layer}`, { includeHiddenElements: true })).toBeTruthy();
+      }
+      expect(identity().getByText('✦ Nível 14 · Capuz do Erudito · Selo dos Madrugadores')).toBeTruthy();
     });
 
-    it('words the device row for mobile and counts the sessions', async () => {
+    it('has no hero carousel or swap button', async () => {
+      await renderCharacter();
+
+      expect(screen.queryByTestId('character-hero-carousel')).toBeNull();
+      expect(screen.queryByRole('button', { name: 'Trocar herói' })).toBeNull();
+    });
+
+    it('words the Companheiro row for mobile without any device row', async () => {
       await renderCharacter();
 
       expect(screen.getByText('Coruja de estudo · em breve')).toBeTruthy();
-      await waitFor(() => expect(screen.getByText('Este navegador e mais 2')).toBeTruthy());
-      expect(within(screen.getByTestId('character-devices')).getByText('3')).toBeTruthy();
+      expect(screen.queryByTestId('character-devices')).toBeNull();
     });
 
     it('opens a bottom sheet that keeps or equips the Título', async () => {
@@ -510,9 +608,7 @@ describe('CharacterScreen', () => {
 
       expect(mockedProfile).toHaveBeenCalledTimes(2);
       expect(mockedCatalog).toHaveBeenCalledTimes(2);
-      expect(mockedDevices).toHaveBeenCalledTimes(2);
       expect(mockedMetrics).toHaveBeenCalledTimes(2);
-      expect(screen.getByText('Este dispositivo e mais 2')).toBeTruthy();
     });
 
     it('keeps the character with a stale-data notice when a refresh fails', async () => {
@@ -526,114 +622,6 @@ describe('CharacterScreen', () => {
 
       expect(await screen.findByTestId('character-status-profile')).toBeTruthy();
       expect(identity().getByText('Estudante Crepuscular')).toBeTruthy();
-    });
-  });
-
-  describe('ending devices', () => {
-    const otherDevice = 'Navegador no computador';
-
-    async function openDevices() {
-      await renderCharacter();
-      await fireEvent.press(await screen.findByRole('button', { name: /^Dispositivos conectados\./ }));
-      await screen.findByTestId('profile-device-dev-2');
-    }
-
-    it('opens from the Dispositivos conectados row and closes again', async () => {
-      await openDevices();
-
-      expect(screen.getByTestId('devices-panel')).toBeTruthy();
-      expect(screen.getByTestId('profile-device-current-dev-1')).toBeTruthy();
-      await fireEvent.press(screen.getByRole('button', { name: 'Fechar' }));
-      expect(screen.queryByTestId('devices-panel')).toBeNull();
-    });
-
-    it('offers an Encerrar button on every device except the current one', async () => {
-      await openDevices();
-
-      expect(screen.getByRole('button', { name: `Encerrar ${otherDevice}` })).toBeTruthy();
-      expect(screen.queryByRole('button', { name: 'Encerrar iPhone de Ana' })).toBeNull();
-    });
-
-    it('asks for confirmation and keeps the device when the student declines', async () => {
-      await openDevices();
-
-      await fireEvent.press(screen.getByRole('button', { name: `Encerrar ${otherDevice}` }));
-      expect(screen.getByText(`Encerrar o acesso de ${otherDevice}?`)).toBeTruthy();
-      await fireEvent.press(screen.getByRole('button', { name: `Manter ${otherDevice} conectado` }));
-
-      expect(screen.queryByText(`Encerrar o acesso de ${otherDevice}?`)).toBeNull();
-      expect(mockedRevoke).not.toHaveBeenCalled();
-    });
-
-    it('ends another device after confirmation and reloads the list without disconnecting', async () => {
-      await openDevices();
-      expect(mockedDevices).toHaveBeenCalledTimes(1);
-
-      await fireEvent.press(screen.getByRole('button', { name: `Encerrar ${otherDevice}` }));
-      await fireEvent.press(screen.getByRole('button', { name: `Confirmar: encerrar ${otherDevice}` }));
-
-      await waitFor(() => expect(mockedRevoke).toHaveBeenCalledWith('dev-2'));
-      await waitFor(() => expect(mockedDevices).toHaveBeenCalledTimes(2));
-      expect(mockAuthState.logout).not.toHaveBeenCalled();
-    });
-
-    it('explains a device that was already ended, reloads the list and keeps the student connected', async () => {
-      mockedRevoke.mockRejectedValue(new ApiError('unexpected', { status: 404 }));
-      await openDevices();
-
-      await fireEvent.press(screen.getByRole('button', { name: `Encerrar ${otherDevice}` }));
-      await fireEvent.press(screen.getByRole('button', { name: `Confirmar: encerrar ${otherDevice}` }));
-
-      const notice = await screen.findByTestId('profile-devices-notice');
-      expect(within(notice).getByText(`${otherDevice} já tinha sido desconectado em outro lugar. A lista foi atualizada.`)).toBeTruthy();
-      await waitFor(() => expect(mockedDevices).toHaveBeenCalledTimes(2));
-      expect(mockAuthState.logout).not.toHaveBeenCalled();
-    });
-
-    it('keeps the device and explains a failure that is not a missing device', async () => {
-      mockedRevoke.mockRejectedValue(new ApiError('network'));
-      await openDevices();
-
-      await fireEvent.press(screen.getByRole('button', { name: `Encerrar ${otherDevice}` }));
-      await fireEvent.press(screen.getByRole('button', { name: `Confirmar: encerrar ${otherDevice}` }));
-
-      const notice = await screen.findByTestId('profile-devices-notice');
-      expect(within(notice).getByText('Não foi possível encerrar o dispositivo. Verifique sua conexão e tente novamente.')).toBeTruthy();
-      expect(mockAuthState.logout).not.toHaveBeenCalled();
-    });
-
-    it('signs out of every device after confirmation and disconnects the student', async () => {
-      await openDevices();
-
-      await fireEvent.press(screen.getByRole('button', { name: 'Sair de todos os dispositivos' }));
-      expect(mockedRevokeAll).not.toHaveBeenCalled();
-      expect(screen.getByText(/inclusive este/)).toBeTruthy();
-      await fireEvent.press(screen.getByRole('button', { name: 'Confirmar: sair de todos os dispositivos' }));
-
-      await waitFor(() => expect(mockedRevokeAll).toHaveBeenCalledTimes(1));
-      await waitFor(() => expect(mockAuthState.logout).toHaveBeenCalledTimes(1));
-    });
-
-    it('explains and reloads when leaving this device fails after every session was ended', async () => {
-      mockAuthState.logout.mockRejectedValueOnce(new ApiError('network'));
-      await openDevices();
-
-      await fireEvent.press(screen.getByRole('button', { name: 'Sair de todos os dispositivos' }));
-      await fireEvent.press(screen.getByRole('button', { name: 'Confirmar: sair de todos os dispositivos' }));
-
-      const notice = await screen.findByTestId('profile-devices-notice');
-      expect(within(notice).getByText('Todos os dispositivos foram desconectados, mas este ainda não concluiu a saída. Verifique sua conexão e tente de novo.')).toBeTruthy();
-      await waitFor(() => expect(mockedDevices).toHaveBeenCalledTimes(2));
-    });
-
-    it('cancels signing out of every device', async () => {
-      await openDevices();
-
-      await fireEvent.press(screen.getByRole('button', { name: 'Sair de todos os dispositivos' }));
-      await fireEvent.press(screen.getByRole('button', { name: 'Cancelar saída de todos os dispositivos' }));
-
-      expect(screen.queryByText(/inclusive este/)).toBeNull();
-      expect(mockedRevokeAll).not.toHaveBeenCalled();
     });
   });
 });

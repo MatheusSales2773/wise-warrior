@@ -21,7 +21,7 @@ test.describe('Guilda web', () => {
 
     // 2. Ver a Raid: sem Participantes, o ranking convida a participar.
     await expect(page.getByTestId('guild-raid')).toBeVisible();
-    await expect(page.getByTestId('guild-raid-boss-life')).toHaveAttribute('aria-label', /^Vida do dragão: 100%\./);
+    await expect(page.getByTestId('guild-raid-boss-life')).toHaveAttribute('aria-label', /^Vida do Boss: 100%\./);
     await expect(page.getByTestId('guild-raid-join')).toBeVisible();
     await expect(page.getByTestId('guild-ranking-empty')).toBeVisible();
 
@@ -39,6 +39,7 @@ test.describe('Guilda web', () => {
     await page.reload();
     const stopResponse = page.waitForResponse(isApi('/stop', 'POST'));
     await page.getByRole('button', { name: 'Encerrar antecipadamente' }).click();
+    await page.getByTestId('study-session-stop-confirm').click();
     const stopped = await (await stopResponse).json() as { xpAwarded: number };
     expect(stopped.xpAwarded).toBeGreaterThan(0);
 
@@ -46,7 +47,7 @@ test.describe('Guilda web', () => {
     await sidebar.getByRole('link', { name: 'Guilda' }).click();
     await expect(page.getByTestId('guild-raid-attack')).toBeVisible();
     await expect(page.getByTestId('guild-raid-my-contribution')).toHaveText(/^\d+,\dh · 1º lugar$/);
-    await expect(page.getByTestId('guild-raid-boss-life')).toHaveAttribute('aria-label', /^Vida do dragão: \d+%\./);
+    await expect(page.getByTestId('guild-raid-boss-life')).toHaveAttribute('aria-label', /^Vida do Boss: \d+%\./);
 
     const rows = page.locator('[data-testid^="guild-ranking-item-"]');
     await expect(rows).toHaveCount(1);
@@ -60,7 +61,7 @@ test.describe('Guilda web', () => {
     await expect(page).toHaveURL(/\/guilda\/raid$/);
     await expect(page.getByTestId('raid-strikes').locator('[data-testid^="raid-strike-"]').first())
       .toHaveAttribute('aria-label', /^1º: você, \d+,\dh de foco$/);
-    await expect(page.getByTestId('raid-boss-life')).toHaveAttribute('aria-label', /^Vida do dragão: \d+%\./);
+    await expect(page.getByTestId('raid-boss-life')).toHaveAttribute('aria-label', /^Vida do Boss: \d+%\./);
     await page.getByRole('button', { name: /Atacar com foco/ }).click();
     await expect(page).toHaveURL(/\/sessao\?modo=guilda$/);
     await expect(page.getByTestId('study-session-mode-guild')).toHaveAttribute('aria-checked', 'true');

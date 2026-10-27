@@ -16,8 +16,9 @@ import { MissionRewardItem } from './entities/mission-reward-item.entity';
 import { Raid } from './entities/raid.entity';
 import { RAID_CLOCK, type RaidClock } from './raid-clock';
 import { bossHealthXp, furyDaysDue, furyRegenXp, getRaidFuryRegenPercent } from './domain/dragon-fury';
-import { missionIndexForWeek, proportionalGoalXp, raidWeekAt, raidWeekDayKeys, studyDaysOf, studyStreak, zonedDayKey } from './domain/raid-week';
-import { UsersService, type EquippedAppearance } from '../users/users.service';
+import { missionIndexForWeek, proportionalGoalXp, raidWeekDayKeys, studyDaysOf, studyStreak } from './domain/raid-week';
+import { saoPauloDayKey, saoPauloWeekAt } from '../../shared/time/sao-paulo-calendar';
+import { EMPTY_APPEARANCE, UsersService, type EquippedAppearance } from '../users/users.service';
 import { EconomyService } from '../economy/economy.service';
 import { getRaidWinCoins } from '../economy/domain/coin-config';
 import type { CoinMovementResult } from '../economy/domain/coin-origin';
@@ -45,6 +46,8 @@ export interface ActiveRaid {
   mission: { slug: string; name: string; description: string; imageUrl: string | null };
   /** Every Cosmetic Item the Missão gives, in a stable order. */
   rewards: Array<{ itemId: string; name: string; category: string }>;
+  /** De quem é a Missão que o Líder escolheu; `null` na Missão do rodízio. Segue nomeado mesmo se o dono sair da Guild. */
+  missionOwner: { userId: string; displayName: string } | null;
   /** The Moedas each rewarded Participant also gets (`RAID_WIN_COINS`). */
   coins: number;
   /** The first five of the Ranking interno, with their equipped look, for the Raid scene. */
@@ -304,11 +307,11 @@ export class RaidsService {
    * weekly rotation and the goal is frozen from the member count at this moment.
    */
   async createForGuild(manager: EntityManager, guildId: string, memberCount: number, now: Date = this.clock()): Promise<Raid> {
-    const week = raidWeekAt(now);
+    const week = saoPauloWeekAt(now);
     // A escolha do Líder vale uma vez; sem ela, ou com o dono fora da Guild, vale o rodízio.
     const chosen = (await this.missionChoice?.consume(manager, guildId)) ?? null;
     const catalog = chosen ? [] : await manager.find(Mission, { where: { price: IsNull() }, order: { rotationOrder: 'ASC' } });
-    const mission = chosen ?? catalog[missionIndexForWeek(week.number, catalog.length)];
+    const mission = chosen?.mission ?? catalog[missionIndexForWeek(week.number, catalog.length)];
     if (!mission) {
       throw new Error('Catálogo de Missões vazio');
     }
@@ -316,6 +319,7 @@ export class RaidsService {
       manager.create(Raid, {
         guildId,
         missionId: mission.id,
+        missionOwnerUserId: chosen?.ownerUserId ?? null,
         goalXp: proportionalGoalXp(memberCount, week, now),
         progressXp: 0,
         openedAt: now,
@@ -352,8 +356,9 @@ export class RaidsService {
     if (rewardItemIds.length === 0 || rewards.length !== rewardItemIds.length) {
       throw new Error(`Recompensa da Missão ${raid.mission.slug} não encontrada`);
     }
+    const [owner] = raid.missionOwnerUserId ? await this.users.findDisplayNames([raid.missionOwnerUserId]) : [];
     const studyDays = await this.studyDaysOfRaid(raid.id);
-    const week = raidWeekAt(raid.startsAt);
+    const week = saoPauloWeekAt(raid.startsAt);
     const { items: party } = await this.rankingPage(raid.id, requesterId, RAID_PARTY_SIZE, 0);
     return {
       id: raid.id,
@@ -364,6 +369,7 @@ export class RaidsService {
         imageUrl: raid.mission.imageUrl,
       },
       rewards: rewards.map((item) => ({ itemId: item.id, name: item.name, category: item.category })),
+      missionOwner: owner ? { userId: owner.id, displayName: owner.displayName } : null,
       coins: getRaidWinCoins(),
       party,
       goalXp: raid.goalXp,
@@ -376,7 +382,7 @@ export class RaidsService {
       endsAt: raid.endsAt,
       status: raid.status,
       weekDays: raidWeekDayKeys(week),
-      today: zonedDayKey(now),
+      today: saoPauloDayKey(now),
       studyDays,
       streak: studyStreak(studyDays, week, now),
       me: await this.myStanding(raid.id, requesterId),
@@ -585,7 +591,7 @@ export class RaidsService {
       this.notifyRaidComplete(closing);
     }
 
-    const week = raidWeekAt(now);
+    const week = saoPauloWeekAt(now);
     const withoutRaid = await this.raids.manager
       .createQueryBuilder(Guild, 'guild')
       .select('guild.id', 'id')
@@ -632,11 +638,11 @@ export class RaidsService {
       .getOne();
     if (!raid || raid.status !== 'active' || raid.goalReachedAt !== null) return null;
 
-    const weekDays = raidWeekDayKeys(raidWeekAt(raid.startsAt));
+    const weekDays = raidWeekDayKeys(saoPauloWeekAt(raid.startsAt));
     const rows = await manager.find(RaidContribution, { select: { createdAt: true }, where: { raidId } });
     const due = furyDaysDue({ weekDays, openedAt: raid.openedAt ?? raid.startsAt, studyDays: studyDaysOf(rows.map((row) => row.createdAt)), now })
       .filter((day) => raid.furyThrough === null || day > raid.furyThrough);
-    const today = zonedDayKey(now);
+    const today = saoPauloDayKey(now);
     const closedDay = weekDays.slice(0, -1).filter((day) => day < today).pop() ?? null;
     if (closedDay === null || (raid.furyThrough !== null && raid.furyThrough >= closedDay)) return null;
 
@@ -742,7 +748,7 @@ export class RaidsService {
       .where('guild.id = :guildId', { guildId })
       .getOne();
     if (!guild) return null;
-    const week = raidWeekAt(now);
+    const week = saoPauloWeekAt(now);
     if (await manager.exists(Raid, { where: { guildId, startsAt: week.startsAt } })) return null;
     const memberCount = await manager.count(GuildMembership, { where: { guildId } });
     if (memberCount === 0) return null;
@@ -819,8 +825,7 @@ export class RaidsService {
         title: row.title ?? null,
         contributionXp: Number(row.contribution_xp),
         isMe: row.user_id === userId,
-        avatar: appearance.get(row.user_id)?.avatar ?? null,
-        accessory: appearance.get(row.user_id)?.accessory ?? null,
+        ...(appearance.get(row.user_id) ?? EMPTY_APPEARANCE),
       })),
       nextCursor: rows.length > limit && last ? encodeRankingCursor(Number(last.rank_position)) : null,
     };

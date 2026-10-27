@@ -62,6 +62,7 @@ describe('Ouro/Indigo public design system', () => {
       '#07070c',
       '#0c0c14',
       '#12121c',
+      'rgba(4, 4, 8, 0.74)',
       '#181826',
       '#1f1f2e',
       '#1f1f2e',

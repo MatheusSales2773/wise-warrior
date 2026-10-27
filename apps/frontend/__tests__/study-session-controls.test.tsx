@@ -10,17 +10,31 @@ import {
   stopStudySession,
   type StudySessionTransitionResult,
 } from '@/features/study-session/api';
+import { stopSessionSounds } from '@/features/study-session/sounds';
 import { dashboardKeys } from '@/features/dashboard/queries';
+import { devicePreferences } from '@/core/preferences/device-preferences';
 
 // Without a Guild the Forja offers only solo sessions.
 // The day history and the week chart have their own tests (forge-history.test.tsx).
 jest.mock('@/features/study-session/forge-history', () => ({ ForgeHistory: () => null }));
+jest.mock('@/features/dashboard/api', () => ({
+  getMyProfile: jest.fn(async () => { throw new Error('offline'); }),
+  getSessionMetrics: jest.fn(async () => { throw new Error('offline'); }),
+  getSessionHistory: jest.fn(async () => ({ items: [], nextCursor: null })),
+  getRecentStudySessions: jest.fn(async () => []),
+}));
 jest.mock('@/features/guild/api', () => ({
   getMyGuild: jest.fn(async () => null),
   getActiveRaid: jest.fn(async () => null),
   joinRaid: jest.fn(),
 }));
 
+jest.mock('@/core/preferences/preferences-storage', () => ({
+  preferencesStorage: { read: jest.fn(async () => null), write: jest.fn(async () => undefined) },
+}));
+jest.mock('@/features/study-session/sounds', () => ({
+  playSessionSound: jest.fn(), releaseSessionSounds: jest.fn(), stopSessionSounds: jest.fn(), unlockSessionSounds: jest.fn(),
+}));
 jest.mock('@/features/study-session/api', () => ({
   STUDY_SESSION_PRESETS: [900, 1500, 3000],
   getActiveStudySession: jest.fn(),
@@ -53,8 +67,10 @@ async function renderStudySession(client = new QueryClient({ defaultOptions: { q
   return { view, client };
 }
 
-beforeEach(() => {
+beforeEach(async () => {
   jest.clearAllMocks();
+  // The confirmation is covered below; the other cases press the stop control and expect the command at once.
+  await devicePreferences.set('confirmBeforeStopping', false);
 });
 
 afterEach(() => {
@@ -111,9 +127,9 @@ it('stops with the projected label, shows the confirmed result, then offers a ne
   getActive.mockResolvedValue(snapshot);
   stop.mockResolvedValue(cancelled);
   const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 30_000 }, mutations: { retry: false, gcTime: 0 } } });
-  client.setQueryData(dashboardKeys.profile(), { xpTotal: 0 });
+  client.setQueryData(dashboardKeys.profile(), { id: 'u-1', email: 'a@b.c', displayName: 'Knightshade', planTier: 'free', level: 14, levelStartXp: 0, nextLevelXp: 1000, xpTotal: 0, title: null, equipped: [] });
   client.setQueryData(dashboardKeys.recentActivity(), []);
-  client.setQueryData(dashboardKeys.metrics(), { sessionsToday: 0 });
+  client.setQueryData(dashboardKeys.metrics(), { currentStreakDays: 0, longestStreakDays: 0, sessionsToday: 0, validSecondsToday: 0, cadence: { windowStart: '2026-09-16', windowEnd: '2026-09-22', days: [] } });
   const { view } = await renderStudySession(client);
 
   await view.findByRole('button', { name: 'Cancelar sessão' });
@@ -122,15 +138,17 @@ it('stops with the projected label, shows the confirmed result, then offers a ne
   await view.findByTestId('study-session-result');
 
   expect(view.getByText('Sessão cancelada')).toBeTruthy();
-  expect(view.getByText('Foco válido: 04:59')).toBeTruthy();
-  expect(view.getByText('XP confirmado: 0')).toBeTruthy();
+  expect(view.getByTestId('study-session-result-timer').props.children).toBe('04:59');
+  expect(view.getByTestId('study-session-strip-xp')).toHaveTextContent(/^\+0 XP/);
   expect(view.queryByTestId('study-session-setup')).toBeNull();
   expect(client.getQueryData(['study-session', 'active'])).toBeNull();
   expect(client.getQueryState(dashboardKeys.profile())?.isInvalidated).toBe(true);
   expect(client.getQueryState(dashboardKeys.recentActivity())?.isInvalidated).toBe(true);
   expect(client.getQueryState(dashboardKeys.metrics())?.isInvalidated).toBe(true);
+  expect(stopSessionSounds).toHaveBeenCalledTimes(1);
   await fireEvent.press(view.getByRole('button', { name: 'Nova sessão' }));
   await view.findByTestId('study-session-setup');
+  expect(stopSessionSounds).toHaveBeenCalledTimes(2);
   view.unmount();
   client.clear();
 });
@@ -153,8 +171,8 @@ it('shows the confirmed duration and proportional XP for an early stop', async (
   await fireEvent.press(await view.findByRole('button', { name: 'Encerrar antecipadamente' }));
   await view.findByTestId('study-session-result');
   expect(view.getByText('Sessão encerrada antecipadamente')).toBeTruthy();
-  expect(view.getByText('Foco válido: 05:00')).toBeTruthy();
-  expect(view.getByText('XP confirmado: 50')).toBeTruthy();
+  expect(view.getByTestId('study-session-result-timer').props.children).toBe('05:00');
+  expect(view.getByTestId('study-session-strip-xp')).toHaveTextContent(/^\+50 XP/);
   view.unmount();
 });
 
@@ -278,7 +296,7 @@ it('refreshes after a stale-version conflict and discards the obsolete retry', a
   await fireEvent.press(view.getByRole('button', { name: 'Pausar sessão' }));
   await view.findByTestId('study-session-transition-error');
   await waitFor(() => expect(getActive).toHaveBeenCalledTimes(2));
-  expect(view.getByText('Sessão em andamento', { exact: true })).toBeTruthy();
+  expect(view.getByText('Em andamento')).toBeTruthy();
   expect(view.getByTestId('study-session-timer').props.accessibilityLabel).toContain('25 minutos e 0 segundos');
   expect(view.getByRole('button', { name: 'Atualizando estado…' })).toBeDisabled();
   expect(view.queryByRole('button', { name: 'Tentar pausar novamente' })).toBeNull();
@@ -317,7 +335,6 @@ it('shows a visible keyboard focus ring on duration presets', async () => {
     getActive.mockResolvedValue(null);
     const { view } = await renderStudySession();
     await view.findByTestId('study-session-setup');
-    await fireEvent.press(view.getByRole('button', { name: 'Configurar duração' }));
     const preset = view.getByRole('radio', { name: '15 minutos' });
     await fireEvent(preset, 'focus');
     expect(StyleSheet.flatten(preset.props.style)).toMatchObject({
@@ -403,6 +420,105 @@ it.each([
 
   await fireEvent.press(await view.findByRole('button', { name: 'Cancelar sessão' }));
   await view.findByTestId('study-session-result');
-  expect(view.getByTestId('study-session-result-subject')).toHaveTextContent(shown);
+  expect(view.getByTestId('study-session-result-subject')).toHaveTextContent(new RegExp(`^${shown}`));
+  view.unmount();
+});
+
+describe('confirming before stopping', () => {
+  const stopped: StudySessionTransitionResult = {
+    ...snapshot, state: 'stopped_early', endedAt: '2026-09-22T12:05:00.000Z',
+    durationValidSeconds: 300, remainingSeconds: 0, terminalReason: 'manual-stop', version: 2,
+    serverNow: '2026-09-22T12:05:00.000Z', receivedAtMs: new Date('2026-09-22T12:05:00.000Z').getTime(),
+  };
+  const command = { id: 'study-1', expectedVersion: 1, idempotencyKey: expect.any(String) };
+  // 'Cancelar sessão' below five valid minutes, 'Encerrar antecipadamente' from five on.
+  const cases = [
+    { action: 'Encerrar antecipadamente', durationValidSeconds: 600 },
+    { action: 'Cancelar sessão', durationValidSeconds: 120 },
+  ] as const;
+
+  beforeEach(async () => {
+    await devicePreferences.set('confirmBeforeStopping', true);
+  });
+  afterAll(() => devicePreferences.set('confirmBeforeStopping', true));
+
+  it.each(cases)('asks before "$action" and sends nothing until the dialog is confirmed', async ({ action, durationValidSeconds }) => {
+    getActive.mockResolvedValue({ ...snapshot, durationValidSeconds });
+    stop.mockResolvedValue(stopped);
+    const { view } = await renderStudySession();
+
+    await fireEvent.press(await view.findByRole('button', { name: action }));
+
+    const dialog = await view.findByTestId('study-session-stop-dialog');
+    expect(dialog.props.accessibilityLabel).toBe(`Confirmar: ${action}`);
+    expect(stop).not.toHaveBeenCalled();
+
+    await fireEvent.press(view.getByTestId('study-session-stop-confirm'));
+    await waitFor(() => expect(stop).toHaveBeenCalledTimes(1));
+    expect(stop).toHaveBeenCalledWith(command);
+    expect(view.queryByTestId('study-session-stop-dialog')).toBeNull();
+  });
+
+  it.each(cases)('keeps the session running when "$action" is declined', async ({ action, durationValidSeconds }) => {
+    getActive.mockResolvedValue({ ...snapshot, durationValidSeconds });
+    const { view } = await renderStudySession();
+
+    await fireEvent.press(await view.findByRole('button', { name: action }));
+    await fireEvent.press(await view.findByTestId('study-session-stop-decline'));
+
+    expect(view.queryByTestId('study-session-stop-dialog')).toBeNull();
+    expect(stop).not.toHaveBeenCalled();
+    expect(view.getByTestId('study-session-active')).toBeTruthy();
+    expect(view.getByRole('button', { name: action })).toBeTruthy();
+  });
+
+  it.each(cases)('runs "$action" at once when the confirmation is off', async ({ action, durationValidSeconds }) => {
+    await devicePreferences.set('confirmBeforeStopping', false);
+    getActive.mockResolvedValue({ ...snapshot, durationValidSeconds });
+    stop.mockResolvedValue(stopped);
+    const { view } = await renderStudySession();
+
+    await fireEvent.press(await view.findByRole('button', { name: action }));
+
+    await waitFor(() => expect(stop).toHaveBeenCalledWith(command));
+    expect(view.queryByTestId('study-session-stop-dialog')).toBeNull();
+  });
+});
+
+const freeFocus: StudySessionTransitionResult = { ...snapshot, kind: 'free', plannedDurationSeconds: null, remainingSeconds: 0, runDeadlineAt: '2026-09-22T14:00:00.000Z' };
+const freeAt = (validSeconds: number) => {
+  const serverNow = new Date(new Date('2026-09-22T12:00:00.000Z').getTime() + validSeconds * 1000).toISOString();
+  return { ...freeFocus, durationValidSeconds: validSeconds, serverNow, receivedAtMs: new Date(serverNow).getTime() };
+};
+
+it('cancels a Foco livre stopped under five minutes', async () => {
+  getActive.mockResolvedValue(freeAt(299));
+  const { view } = await renderStudySession();
+
+  expect(await view.findByRole('button', { name: 'Cancelar sessão' })).toBeTruthy();
+  view.unmount();
+});
+
+it('concludes a Foco livre stopped from five minutes, with the confirmed XP', async () => {
+  getActive.mockResolvedValue(freeAt(300));
+  stop.mockResolvedValue({ ...freeAt(300), state: 'completed', xpAwarded: 50, version: 2, endedAt: '2026-09-22T12:05:00.000Z', terminalReason: 'manual-stop' });
+  const { view } = await renderStudySession();
+
+  await fireEvent.press(await view.findByRole('button', { name: 'Parar e concluir' }));
+  await view.findByTestId('study-session-result');
+  expect(view.getByText('Sessão concluída')).toBeTruthy();
+  expect(view.getByTestId('study-session-strip-xp')).toHaveTextContent(/^\+50 XP/);
+  view.unmount();
+});
+
+it('confirms stopping a Foco livre with its own copy', async () => {
+  await devicePreferences.set('confirmBeforeStopping', true);
+  getActive.mockResolvedValue(freeAt(600));
+  const { view } = await renderStudySession();
+
+  await fireEvent.press(await view.findByRole('button', { name: 'Parar e concluir' }));
+  expect(await view.findByText('Parar e concluir?')).toBeTruthy();
+  expect(view.getByTestId('study-session-stop-confirm')).toBeTruthy();
+  expect(stop).not.toHaveBeenCalled();
   view.unmount();
 });

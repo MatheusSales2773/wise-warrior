@@ -19,9 +19,12 @@ import { UserCosmeticItem } from './entities/user-cosmetic-item.entity';
 import {
   isStarterItem,
   isUnlockedAtLevel,
+  isUnlockedBySessionCounts,
   parseUnlockCondition,
+  SessionCounts,
   UnlockCondition,
 } from './domain/unlock-condition';
+import { MILESTONE_BADGE_IDS, milestoneProgress } from './domain/milestone';
 
 export interface UserProfile {
   id: string;
@@ -43,13 +46,19 @@ export interface EquippedCosmeticItem {
   name: string;
 }
 
-/** The Avatar and Acessório a user has equipped, as shown on other people's screens (e.g. the Raid scene). */
-const APPEARANCE_CATEGORIES = ['avatar', 'accessory'] as const;
+/** The Avatar, Arma and Acessório a user has equipped, as shown on other people's screens (e.g. the Raid scene). */
+const APPEARANCE_CATEGORIES = ['avatar', 'weapon', 'accessory'] as const;
+
+export type EquippedAppearanceItem = { itemId: string; name: string } | null;
 
 export interface EquippedAppearance {
-  avatar: { itemId: string; name: string } | null;
-  accessory: { itemId: string; name: string } | null;
+  avatar: EquippedAppearanceItem;
+  weapon: EquippedAppearanceItem;
+  accessory: EquippedAppearanceItem;
 }
+
+/** Aparência sem nada equipado: o valor de quem não aparece no resultado de `findEquippedAppearance`. */
+export const EMPTY_APPEARANCE: Readonly<EquippedAppearance> = { avatar: null, weapon: null, accessory: null };
 
 export interface ShopCosmeticItem {
   id: string;
@@ -69,6 +78,16 @@ export interface CatalogCosmeticItem {
   /** Item de Compra à venda; false para os demais e para os Fora de venda. */
   forSale: boolean;
   unlockCondition: UnlockCondition;
+}
+
+/** Um Marco (ADR-014): um Badge do Catálogo com o progresso até a sua Condição de desbloqueio. */
+export interface Milestone {
+  id: string;
+  name: string;
+  progress: number;
+  target: number;
+  /** O Badge está no Inventário. */
+  earned: boolean;
 }
 
 @Injectable()
@@ -107,6 +126,18 @@ export class UsersService {
   async unlockCosmeticItems(manager: EntityManager, userId: string, level: number): Promise<void> {
     const unlocked = (await this.readCatalog(manager.getRepository(CosmeticItem)))
       .filter(({ condition }) => isUnlockedAtLevel(condition, level));
+    if (unlocked.length === 0) return;
+    await this.grantToInventory(manager, unlocked.map(({ item }) => ({ userId, cosmeticItemId: item.id })));
+  }
+
+  /**
+   * Desbloqueio por hábito de estudo: concede todo Cosmetic Item cujas condições de contagem de Study Sessions
+   * `counts` já cumpra e que ainda não esteja no Inventário. Roda na transação do término da sessão e é
+   * idempotente pelo índice único (usuário + item).
+   */
+  async unlockSessionBadges(manager: EntityManager, userId: string, counts: SessionCounts): Promise<void> {
+    const unlocked = (await this.readCatalog(manager.getRepository(CosmeticItem)))
+      .filter(({ condition }) => isUnlockedBySessionCounts(condition, counts));
     if (unlocked.length === 0) return;
     await this.grantToInventory(manager, unlocked.map(({ item }) => ({ userId, cosmeticItemId: item.id })));
   }
@@ -158,7 +189,7 @@ export class UsersService {
   }
 
   /**
-   * O Desbloqueio idempotente, comum a nível, Raid e Compra: insere no Inventário na transação de quem chama e, pelo
+   * O Desbloqueio idempotente, comum a nível, Raid, Compra e hábito de estudo: insere no Inventário na transação de quem chama e, pelo
    * índice único (usuário + item), repetir um par não duplica nem reequipa nada.
    */
   private async grantToInventory(
@@ -200,9 +231,9 @@ export class UsersService {
     return items.map(({ id, name, category }) => ({ id, name, category }));
   }
 
-  /** Avatar e Acessório equipados de cada usuário, para quem desenha os outros membros. Todos os ids voltam, vazios ou não. */
+  /** Avatar, Arma e Acessório equipados de cada usuário, para quem desenha os outros membros. Todos os ids voltam, vazios ou não. */
   async findEquippedAppearance(ids: string[]): Promise<Map<string, EquippedAppearance>> {
-    const appearance = new Map<string, EquippedAppearance>(ids.map((id) => [id, { avatar: null, accessory: null }]));
+    const appearance = new Map<string, EquippedAppearance>(ids.map((id) => [id, { ...EMPTY_APPEARANCE }]));
     if (ids.length === 0) return appearance;
     const rows = await this.userCosmetics.find({
       where: { userId: In(ids), equipped: true, cosmeticItem: { category: In<CosmeticCategory>([...APPEARANCE_CATEGORIES]) } },
@@ -215,6 +246,18 @@ export class UsersService {
       slot[category] = { itemId: cosmeticItem.id, name: cosmeticItem.name };
     }
     return appearance;
+  }
+
+  /** Nome do Título equipado de cada usuário (ADR-010), para quem lista os outros membros. Só voltam os ids com Título equipado. */
+  async findEquippedTitles(ids: string[]): Promise<Map<string, string>> {
+    const titles = new Map<string, string>();
+    if (ids.length === 0) return titles;
+    const rows = await this.userCosmetics.find({
+      where: { userId: In(ids), equipped: true, cosmeticItem: { category: 'title' } },
+      relations: ['cosmeticItem'],
+    });
+    for (const { userId, cosmeticItem } of rows) titles.set(userId, cosmeticItem.name);
+    return titles;
   }
 
   /** Nomes de exibição, para quem precisa mostrar o dono de algo (ex.: a Missão escolhida pelo Líder). */
@@ -241,6 +284,23 @@ export class UsersService {
       forSale: item.forSale,
       unlockCondition: condition,
     }));
+  }
+
+  /**
+   * Os Marcos do usuário (`MILESTONE_BADGE_IDS`, na ordem de Crônicas) com o progresso até a Condição de
+   * desbloqueio, segundo as `counts` de Study Sessions.
+   */
+  async listMilestones(userId: string, counts: SessionCounts): Promise<Milestone[]> {
+    const [catalog, inventory] = await Promise.all([
+      this.readCatalog(this.cosmeticItems),
+      this.userCosmetics.find({ where: { userId } }),
+    ]);
+    const owned = new Set(inventory.map((row) => row.cosmeticItemId));
+    return MILESTONE_BADGE_IDS.flatMap((id) => {
+      const entry = catalog.find(({ item }) => item.id === id);
+      const progress = entry && milestoneProgress(entry.condition, counts, owned.has(id));
+      return entry && progress ? [{ id, name: entry.item.name, ...progress, earned: owned.has(id) }] : [];
+    });
   }
 
   /** Itens com Condição de desbloqueio fora do formato ficam fora do Catálogo, sem derrubar o resto. */
@@ -286,6 +346,15 @@ export class UsersService {
       title: equipped.find((item) => item.category === 'title')?.name ?? null,
       equipped,
     };
+  }
+
+  /** Só este Service grava o nome (ADR-001); o Mural e os demais leem por join, então o nome novo aparece em tudo. */
+  async updateDisplayName(userId: string, displayName: string): Promise<UserProfile> {
+    const { affected } = await this.users.update({ id: userId }, { displayName });
+    if (!affected) {
+      throw new NotFoundException('Usuário não encontrado');
+    }
+    return this.getProfile(userId);
   }
 
   /**

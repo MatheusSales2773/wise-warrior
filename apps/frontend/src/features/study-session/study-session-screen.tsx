@@ -1,35 +1,39 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import Ionicons from '@expo/vector-icons/Ionicons';
-import { LinearGradient } from 'expo-linear-gradient';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { AccessibilityInfo, Platform, Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
-import Svg, { Circle, Defs, LinearGradient as SvgGradient, RadialGradient, Rect, Stop } from 'react-native-svg';
-import { Screen, WiseButton, WiseCard, WiseField, WiseText, theme } from '@/design-system';
-import { controlStyles } from '@/design-system/components/control-styles';
+import { AccessibilityInfo, Platform, View, useWindowDimensions } from 'react-native';
+import { Screen, WiseButton, WiseCard, WiseText } from '@/design-system';
 import {
   pauseStudySession,
   resumeStudySession,
   startStudySession,
   stopStudySession,
-  STUDY_SESSION_PRESETS,
-  type PlannedDurationSeconds,
   type StudySessionSnapshot,
   type StudySessionTransitionResult,
   type StudySessionTransitionAction,
   type StudySessionTransitionRequest,
 } from './api';
-import { activeStudySessionQueryKey, invalidateStudySessionResult, recentStudySessionSubjectsQueryKey, useActiveStudySession, useFocusCycle, useRecentStudySessionSubjects } from './queries';
-import { BREAK_SECONDS, breakRemainingSeconds, clearBreak, currentBreak, startBreak, type BreakKind, type BreakRun } from './pomodoro-break';
-import { useSessionEndSounds } from './use-session-end-sounds';
-import { formatRemainingTime, remainingStudySeconds } from './timer';
-import { MAX_SUBJECT_LENGTH, validateSubject, type SubjectValidation } from './subject';
-import { FeedbackMessage } from '@/design-system/components/FeedbackMessage';
-import { sessionMetricsQueryOptions } from '@/features/dashboard/queries';
+import { FREE_FOCUS, plannedSeconds, type FocusChoice } from './focus-choice';
+import { activeStudySessionQueryKey, invalidateStudySessionResult, recentStudySessionSubjectsQueryKey, useActiveStudySession, useFocusCycle } from './queries';
+import { breakPrevious, breakRemainingSeconds, clearBreak, currentBreak, startBreak, type BreakKind, type BreakRun } from './pomodoro-break';
+import { stopSessionSounds, unlockSessionSounds } from './sounds';
+import { elapsedStudySeconds, formatElapsedTime, isFreeFocus, remainingStudySeconds, studyClockOffset } from './timer';
+import { MAX_SUBJECT_LENGTH, NO_SUBJECT_LABEL, validateSubject, type SubjectValidation } from './subject';
+import { useDevicePreference, useDevicePreferencesLoaded } from '@/core/preferences/device-preferences';
 import { useIsOnline } from '@/core/query/online-manager';
 import { ForgeHistory } from './forge-history';
+import { ForgeAnvil, ForgeColumns } from './forge-anvil';
+import { ForgeBreak, ForgeBreakActions } from './forge-break';
+import { ForgeResult, ForgeResultActions, type ResultOffer } from './forge-result';
+import { ForgePrepCard, ForgeStartButton, type ForgeRaid, type SessionMode } from './forge-prep-card';
+import { ForgePageGradient, ForgeHeader, TodayPill } from './forge-primitives';
+import { ForgeHero, ForgeSessionStrip, ForgeSummary } from './forge-hero';
+import { ForgeReadyHero, ForgeReadySummary, ForgeRulesCard, ForgeTodayCard } from './forge-ready';
+import { ForgeMeanwhileCard, ForgeSessionActions, ForgeSessionCard, ForgeSessionFeedback, ForgeStopNotice, type ForgeSessionControl } from './forge-session-card';
+import { styles } from './forge-styles';
+import { STOP_COPY, stopKindFor, type StopKind } from './stop-confirmation';
 import { ForgeSyncIndicator } from './sync-indicator';
+import { xpForFocus } from './xp';
 import { forgeSyncStatus } from './sync-status';
-import { formatSessionsToday } from '@/features/dashboard/formatters';
 import { isApiError } from '@/core/api/api-error';
 import { joinRaid, type ActiveRaid } from '@/features/guild/api';
 import { activeRaidQueryOptions, guildKeys, myGuildQueryOptions } from '@/features/guild/queries';
@@ -66,206 +70,15 @@ const TRANSITION_COPY: Record<TransitionAction, { status: string; action: string
 
 const STUDY_SESSION_VERSION_CONFLICT = 'https://wise.app/errors/study-session-version-conflict';
 const RAID_ENDED = 'https://wise.app/errors/raid-ended';
+const DAILY_LIMIT_REACHED = 'https://wise.app/errors/daily-limit-reached';
 
-function ForgePageGradient() {
-  return (
-    <Svg aria-hidden pointerEvents="none" style={StyleSheet.absoluteFill} testID="study-session-page-gradient" width="100%" height="100%">
-      <Defs>
-        <RadialGradient id="forgePageGlow" cx="50%" cy="0%" r="90%">
-          <Stop offset="0" stopColor={theme.color.backgroundOverlay} />
-          <Stop offset="0.5" stopColor={theme.color.backgroundRaised} />
-          <Stop offset="1" stopColor={theme.color.backgroundCanvas} />
-        </RadialGradient>
-      </Defs>
-      <Rect width="100%" height="100%" fill="url(#forgePageGlow)" />
-    </Svg>
-  );
-}
-
-function ForgeStageGradient() {
-  return (
-    <Svg aria-hidden pointerEvents="none" style={StyleSheet.absoluteFill} testID="study-session-stage-gradient" width="100%" height="100%">
-      <Defs>
-        <RadialGradient id="forgeStageGlow" cx="50%" cy="45%" r="65%">
-          <Stop offset="0" stopColor={theme.color.accentPrimary} stopOpacity="0.26" />
-          <Stop offset="0.55" stopColor={theme.color.accentPrimary} stopOpacity="0.07" />
-          <Stop offset="1" stopColor={theme.color.accentPrimary} stopOpacity="0" />
-        </RadialGradient>
-      </Defs>
-      <Rect width="100%" height="100%" fill="url(#forgeStageGlow)" />
-    </Svg>
-  );
-}
-
-/** Small gold "◈ TÍTULO" heading used by the prototype's side cards. */
-function ForgeCardTitle({ children }: { children: string }) {
-  return (
-    <View style={styles.cardTitle}>
-      <Text aria-hidden accessibilityElementsHidden importantForAccessibility="no" style={styles.cardTitleText}>◈</Text>
-      <Text accessibilityRole="header" allowFontScaling style={styles.cardTitleText}>{children}</Text>
-    </View>
-  );
-}
-
-function ForgeAction({ label, icon, onPress, primary = false, disabled = false, loading = false, testID, iconOnly = false, expanded }: {
-  label: string;
-  icon: 'stop' | 'pause' | 'play' | 'settings-outline';
-  onPress: () => void;
-  primary?: boolean;
-  disabled?: boolean;
-  loading?: boolean;
-  testID?: string;
-  iconOnly?: boolean;
-  expanded?: boolean;
-}) {
-  const { width } = useWindowDimensions();
-  const [focused, setFocused] = useState(false);
-  const blocked = disabled || loading;
-  const content = <>
-    <Ionicons accessibilityElementsHidden importantForAccessibility="no" name={icon} size={16} color={primary ? theme.color.backgroundCanvas : theme.color.textPrimary} />
-    {!iconOnly ? <Text style={[styles.actionLabel, primary && styles.actionLabelPrimary]}>{label}</Text> : null}
-  </>;
-
-  return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={label}
-      accessibilityState={{ disabled: blocked, busy: loading, expanded }}
-      disabled={blocked}
-      onPress={onPress}
-      onFocus={() => setFocused(true)}
-      onBlur={() => setFocused(false)}
-      style={[styles.actionButton, primary ? styles.actionButtonPrimary : styles.actionButtonIcon, primary && width < 450 && styles.actionButtonPrimaryCompact, iconOnly && styles.actionButtonIcon, blocked && styles.actionButtonDisabled, focused && Platform.OS === 'web' && controlStyles.webFocus]}
-      testID={testID}
-    >
-      {primary ? <LinearGradient colors={[theme.color.accentPrimary, theme.color.accentMuted]} start={{ x: 0, y: 0 }} end={{ x: 0, y: 1 }} style={styles.actionGradient} testID="study-session-primary-gradient">{content}</LinearGradient> : content}
-    </Pressable>
-  );
-}
-
-function ForgeTimer({ remaining, duration, phase, size, testID, accessibilityLabel }: {
-  remaining: number;
-  duration: number;
-  phase: string;
-  size: number;
-  testID?: string;
-  accessibilityLabel?: string;
-}) {
-  const radius = 154;
-  const circumference = 2 * Math.PI * radius;
-  const progress = Math.max(0, Math.min(1, (duration - remaining) / duration));
-
-  return (
-    <View style={[styles.timerRingWrap, { width: size, height: size }]}>
-      <Svg aria-hidden width={size} height={size} viewBox="0 0 340 340" style={styles.timerRing}>
-        <Defs>
-          <SvgGradient id="forgeRingGradient" x1="0" y1="0" x2="1" y2="1">
-            <Stop offset="0" stopColor={theme.color.accentHighlight} />
-            <Stop offset="1" stopColor={theme.color.accentPrimary} />
-          </SvgGradient>
-        </Defs>
-        <Circle cx="170" cy="170" r={radius} fill="none" stroke={theme.color.borderSoft} strokeWidth="2" />
-        <Circle cx="170" cy="170" r={radius} fill="none" stroke="url(#forgeRingGradient)" strokeWidth="6" strokeLinecap="round" strokeDasharray={circumference} strokeDashoffset={circumference * (1 - progress)} />
-      </Svg>
-      <View style={styles.timerCenter}>
-        <Text allowFontScaling style={styles.timerPhase}>◈ {phase} ◈</Text>
-        <Text accessibilityLiveRegion="none" aria-live="off" accessibilityLabel={accessibilityLabel} style={[styles.timerDigits, { fontSize: size < 290 ? 56 : 80, lineHeight: size < 290 ? 64 : 88 }]} testID={testID}>{formatRemainingTime(remaining)}</Text>
-        <Text allowFontScaling style={styles.timerTarget}>/ {formatRemainingTime(duration)}</Text>
-      </View>
-    </View>
-  );
-}
-
-function DurationSettings({ selected, focusedDuration, startPending, onSelect, onFocus, onClose, inline = false }: {
-  selected: PlannedDurationSeconds;
-  focusedDuration: PlannedDurationSeconds | null;
-  startPending: boolean;
-  onSelect: (duration: PlannedDurationSeconds) => void;
-  onFocus: (duration: PlannedDurationSeconds | null) => void;
-  onClose: () => void;
-  inline?: boolean;
-}) {
-  return <WiseCard style={inline ? styles.inlineSettingsCard : styles.sideCard}>
-    <ForgeCardTitle>Quanto tempo você vai focar?</ForgeCardTitle>
-    <View style={styles.presets} accessibilityRole="radiogroup">
-      {STUDY_SESSION_PRESETS.map((duration) => (
-        <Pressable
-          accessibilityLabel={`${duration / 60} minutos`}
-          accessibilityRole="radio"
-          accessibilityState={{ checked: selected === duration, disabled: startPending }}
-          aria-checked={selected === duration}
-          aria-disabled={startPending}
-          disabled={startPending}
-          key={duration}
-          onPress={() => onSelect(duration)}
-          onFocus={() => onFocus(duration)}
-          onBlur={() => onFocus(focusedDuration === duration ? null : focusedDuration)}
-          style={[
-            styles.preset,
-            selected === duration && styles.selected,
-            focusedDuration === duration && Platform.OS === 'web' && controlStyles.webFocus,
-          ]}
-          testID={`study-duration-${duration / 60}`}
-        >
-          <WiseText variant="label">{duration / 60} min</WiseText>
-        </Pressable>
-      ))}
-    </View>
-    {inline ? null : <Text allowFontScaling style={[styles.cardCopy, { color: theme.color.textSecondary }]}>Escolha uma duração e inicie sua sessão.</Text>}
-    <WiseButton label="Fechar configurações" onPress={onClose} variant="secondary" />
-  </WiseCard>;
-}
-
-const NO_SUBJECT_LABEL = 'Sem matéria';
+export type { SessionMode } from './forge-prep-card';
 
 function subjectError(validation: SubjectValidation): string | undefined {
   if (validation.status === 'too-long') return `A Matéria tem ${validation.length} caracteres; o máximo é ${MAX_SUBJECT_LENGTH}.`;
   if (validation.status === 'invalid-characters') return 'A Matéria não pode conter quebras de linha nem caracteres de controle.';
   return undefined;
 }
-
-/** Loading, failure and an empty history render nothing: suggestions must never get in the way of starting. */
-function RecentSubjectSuggestions({ selectedSubject, disabled, onSelect }: {
-  selectedSubject: string | null;
-  disabled: boolean;
-  onSelect: (subject: string) => void;
-}) {
-  const { data: subjects } = useRecentStudySessionSubjects();
-  const [focusedSubject, setFocusedSubject] = useState<string | null>(null);
-  if (!subjects?.length) return null;
-
-  return (
-    <View accessibilityLabel="Matérias recentes" role="group" style={styles.suggestions} testID="study-session-subject-suggestions">
-      {subjects.map((subject) => {
-        const selected = subject === selectedSubject;
-        return (
-          <Pressable
-            accessibilityRole="button"
-            accessibilityState={{ selected, disabled }}
-            aria-selected={selected}
-            disabled={disabled}
-            hitSlop={{ top: 4, bottom: 4 }}
-            key={subject}
-            onBlur={() => setFocusedSubject((current) => (current === subject ? null : current))}
-            onFocus={() => setFocusedSubject(subject)}
-            onPress={() => onSelect(subject)}
-            style={[
-              styles.suggestion,
-              selected && styles.selected,
-              disabled && styles.actionButtonDisabled,
-              focusedSubject === subject && Platform.OS === 'web' && controlStyles.webFocus,
-            ]}
-          >
-            <Text allowFontScaling numberOfLines={1} style={[styles.suggestionText, selected && styles.suggestionTextSelected]}>{subject}</Text>
-          </Pressable>
-        );
-      })}
-    </View>
-  );
-}
-
-export type SessionMode = 'solo' | 'guild';
-type ForgeRaid = { guildId: string; raid: ActiveRaid };
 
 /**
  * The Raid a guild-mode session would contribute to: the active Raid of the user's Guild. Without a
@@ -280,129 +93,6 @@ function useForgeRaid(): ForgeRaid | null {
   return { guildId, raid: raid.data };
 }
 
-function SessionModeOptions({ mode, disabled, onSelect }: {
-  mode: SessionMode;
-  disabled: boolean;
-  onSelect: (mode: SessionMode) => void;
-}) {
-  const [focusedMode, setFocusedMode] = useState<SessionMode | null>(null);
-  const options: { value: SessionMode; label: string }[] = [
-    { value: 'solo', label: 'Sessão solo' },
-    { value: 'guild', label: 'Sessão de guilda' },
-  ];
-  return (
-    <View accessibilityLabel="Tipo de sessão" accessibilityRole="radiogroup" style={styles.presets} testID="study-session-mode">
-      {options.map((option) => (
-        <Pressable
-          accessibilityLabel={option.label}
-          accessibilityRole="radio"
-          accessibilityState={{ checked: mode === option.value, disabled }}
-          aria-checked={mode === option.value}
-          aria-disabled={disabled}
-          disabled={disabled}
-          key={option.value}
-          onBlur={() => setFocusedMode((current) => (current === option.value ? null : current))}
-          onFocus={() => setFocusedMode(option.value)}
-          onPress={() => onSelect(option.value)}
-          style={[styles.preset, mode === option.value && styles.selected, focusedMode === option.value && Platform.OS === 'web' && controlStyles.webFocus]}
-          testID={`study-session-mode-${option.value}`}
-        >
-          <WiseText variant="label">{option.label}</WiseText>
-        </Pressable>
-      ))}
-    </View>
-  );
-}
-
-/** "Hoje" pill of the Forja header: sessions concluded today against the daily goal. Hidden until known. */
-function TodayPill() {
-  const { data: metrics } = useQuery(sessionMetricsQueryOptions());
-  if (!metrics) return null;
-  const goal = Math.min(8, Math.max(0, Math.trunc(metrics.dailyGoal)));
-  const { value, spoken } = formatSessionsToday(metrics);
-  return (
-    <View accessibilityLabel={`Hoje: ${spoken} sessões`} accessible style={styles.todayPill} testID="study-session-today">
-      <Text allowFontScaling style={styles.todayLabel}>Hoje</Text>
-      <View style={styles.todayBars}>
-        {Array.from({ length: goal }, (_, index) => (
-          <View key={index} style={[styles.todayBar, index < metrics.sessionsToday && styles.todayBarDone]} />
-        ))}
-      </View>
-      <Text allowFontScaling style={styles.todayValue}>{value}</Text>
-    </View>
-  );
-}
-
-const BREAK_COPY: Record<BreakKind, { title: string; phase: string; action: string; offer: (minutes: number) => string }> = {
-  short: {
-    title: 'Pausa curta',
-    phase: 'PAUSA CURTA',
-    action: 'Iniciar pausa curta',
-    offer: (minutes) => `Pausa curta de ${minutes} minutos. Não concede XP.`,
-  },
-  long: {
-    title: 'Pausa longa',
-    phase: 'PAUSA LONGA',
-    action: 'Iniciar pausa longa',
-    offer: (minutes) => `Quatro focos concluídos. Pausa longa de ${minutes} minutos, sem XP.`,
-  },
-};
-
-/** After a completed focus: the next break and where the user stands in the cycle of four. */
-function BreakOffer({ kind, completedInCycle, onStart }: {
-  kind: BreakKind;
-  completedInCycle: number | null;
-  onStart: (kind: BreakKind) => void;
-}) {
-  const copy = BREAK_COPY[kind];
-  return (
-    <View style={styles.breakOffer} testID="study-session-break-offer">
-      <ForgeCardTitle>Hora de descansar</ForgeCardTitle>
-      {completedInCycle !== null ? <WiseText color="accentHighlight" variant="mono">Forja {completedInCycle} de 4</WiseText> : null}
-      <WiseText color="textSecondary" variant="body">{copy.offer(BREAK_SECONDS[kind] / 60)}</WiseText>
-      <WiseButton label={copy.action} onPress={() => onStart(kind)} testID="study-session-break-start" />
-    </View>
-  );
-}
-
-function BreakStage({ run, remaining, ringSize, onSkip, onFinish }: {
-  run: BreakRun;
-  remaining: number;
-  ringSize: number;
-  onSkip: () => void;
-  onFinish: () => void;
-}) {
-  const copy = BREAK_COPY[run.kind];
-  const finished = remaining === 0;
-  return (
-    <WiseCard style={styles.stage} testID="study-session-break">
-      <ForgeStageGradient />
-      <View style={styles.stageHeader}>
-        <Text accessibilityRole="header" allowFontScaling style={styles.stageTitle}>{copy.title}</Text>
-        <Text allowFontScaling style={styles.stageMeta}>{run.durationSeconds / 60} min · sem XP</Text>
-      </View>
-      <View style={styles.stageBody}>
-        <ForgeTimer
-          remaining={remaining}
-          duration={run.durationSeconds}
-          phase={copy.phase}
-          size={ringSize}
-          testID="study-session-break-timer"
-          accessibilityLabel={`Tempo restante da pausa: ${Math.floor(remaining / 60)} minutos e ${remaining % 60} segundos.`}
-        />
-      </View>
-      <View style={styles.stageActions}>
-        <WiseText accessibilityLiveRegion="polite" aria-live="polite" color="textSecondary" variant="body">
-          {finished ? 'Pausa concluída. Pronto para outra forja?' : 'Descanse. O contador segue mesmo se você sair desta tela.'}
-        </WiseText>
-        {finished
-          ? <WiseButton label="Nova sessão" onPress={onFinish} size="large" testID="study-session-break-new" />
-          : <WiseButton label="Pular pausa" onPress={onSkip} variant="secondary" testID="study-session-break-skip" />}
-      </View>
-    </WiseCard>
-  );
-}
-
 function isVersionConflict(error: unknown): boolean {
   if (typeof error !== 'object' || error === null) return false;
   const responseData = (error as { response?: { data?: unknown } }).response?.data;
@@ -415,15 +105,27 @@ function isVersionConflict(error: unknown): boolean {
 export function StudySessionScreen({ initialMode = 'solo' }: { initialMode?: SessionMode } = {}) {
   const { width } = useWindowDimensions();
   const wideLayout = width >= 1140;
+  // Below a tablet the Forja takes the mobile arrangement: the actions pinned above the tab bar.
+  const compactLayout = width < 768;
+  // The Pronta only takes the phone arrangement (preparation without a card) below 600; a tablet keeps the card.
+  const phoneSetup = width < 600;
   const ringSize = wideLayout ? 340 : Platform.OS === 'web' ? Math.min(310, width * 0.78) : Math.min(264, width * 0.68);
   const queryClient = useQueryClient();
-  const [selected, setSelected] = useState<PlannedDurationSeconds>(1500);
+  const [defaultDuration] = useDevicePreference('defaultFocusDuration');
+  const [confirmBeforeStopping] = useDevicePreference('confirmBeforeStopping');
+  // The open stop dialog, pinned to the session and the kind it was opened with: the valid focus keeps growing, and
+  // the dialog must not turn a Cancelamento into an Encerramento antecipado while it is up.
+  const [stopDialog, setStopDialog] = useState<{ sessionId: string; kind: StopKind } | null>(null);
+  // The Forja opens on the device's default; a pick made here holds until the screen closes.
+  const [picked, setSelected] = useState<FocusChoice | null>(null);
+  const selected: FocusChoice = picked ?? defaultDuration;
+  // Until the stored default is read, Iniciar would send the 25 min placeholder instead of the saved duration.
+  const preferencesLoaded = useDevicePreferencesLoaded();
+  const waitingForDefault = picked === null && !preferencesLoaded;
   const [subjectInput, setSubjectInput] = useState('');
   const [sessionMode, setSessionMode] = useState<SessionMode>(initialMode);
   const [raidEndedNotice, setRaidEndedNotice] = useState(false);
   const forgeRaid = useForgeRaid();
-  const [settingsOpen, setSettingsOpen] = useState(false);
-  const [focusedDuration, setFocusedDuration] = useState<PlannedDurationSeconds | null>(null);
   const [now, setNow] = useState(0);
   const [breakRun, setBreakRun] = useState<BreakRun | null>(() => currentBreak(queryClient));
   const [sawActiveSession, setSawActiveSession] = useState(false);
@@ -566,7 +268,7 @@ export function StudySessionScreen({ initialMode = 'solo' }: { initialMode?: Ses
   }, [observeCompletion]);
 
   const start = useMutation({
-    mutationFn: async ({ duration, key, subject, guild }: { duration: PlannedDurationSeconds; key: string; subject: string | null; guild: ForgeRaid | null }) => {
+    mutationFn: async ({ duration, key, subject, guild }: { duration: FocusChoice; key: string; subject: string | null; guild: ForgeRaid | null }) => {
       if (!guild) return startStudySession(duration, key, subject);
       // "Participar e iniciar": confirm the participation first; joining again is harmless on the server.
       if (!guild.raid.me.participating) {
@@ -580,8 +282,8 @@ export function StudySessionScreen({ initialMode = 'solo' }: { initialMode?: Ses
     },
     onSuccess(snapshot) {
       pendingKey.current = null;
+      stopSessionSounds();
       setSubjectInput('');
-      setSettingsOpen(false);
       setTerminalResult(null);
       clearBreak(queryClient);
       setBreakRun(null);
@@ -602,11 +304,13 @@ export function StudySessionScreen({ initialMode = 'solo' }: { initialMode?: Ses
       void refreshActive();
     },
   });
+  const dailyLimitReached = start.isError && isApiError(start.error) && start.error.problemType === DAILY_LIMIT_REACHED;
   const transition = useMutation({
     mutationFn: ({ action, ...request }: TransitionCommand) => TRANSITION_HANDLERS[action](request),
     async onSuccess(nextSnapshot, command) {
       setRetryTransition(null);
       if (command.action === 'stop') {
+        stopSessionSounds();
         clearCompletionIntent();
         setCompletionIntentState(null);
         await settleTerminalResult(nextSnapshot);
@@ -633,7 +337,7 @@ export function StudySessionScreen({ initialMode = 'solo' }: { initialMode?: Ses
   const completionWaiting = completionIntent?.status === 'waiting';
   const snapshotId = snapshot?.id;
   const snapshotState = snapshot?.state;
-  const clockOffset = snapshot ? new Date(snapshot.serverNow).getTime() - snapshot.receivedAtMs : 0;
+  const clockOffset = snapshot ? studyClockOffset(snapshot) : 0;
   useEffect(() => {
     if (activeSnapshot) syncCompletionIntentWithSnapshot(activeSnapshot);
   }, [activeSnapshot]);
@@ -683,23 +387,27 @@ export function StudySessionScreen({ initialMode = 'solo' }: { initialMode?: Ses
     return () => clearInterval(interval);
   }, [breakRun, applicationActive]);
 
-  useSessionEndSounds({
-    breakRemaining: breakRun ? breakRemainingSeconds(breakRun, breakNow) : null,
-    completedSessionId: displayedTerminalResult?.state === 'completed' ? displayedTerminalResult.id : null,
-  });
-
+  const freeSnapshot = snapshot !== null && isFreeFocus(snapshot);
+  // A Foco livre reports no remaining time; what is left is the time to the antifraude ceiling, which is when it concludes.
+  const effectiveNow = snapshot && now === 0 ? snapshot.receivedAtMs : now;
   const projectedRemaining = snapshot
-    ? now === 0 ? snapshot.remainingSeconds : remainingStudySeconds(snapshot, now, clockOffset)
-    : selected;
+    ? now === 0 && !freeSnapshot ? snapshot.remainingSeconds : remainingStudySeconds(snapshot, effectiveNow, clockOffset)
+    : plannedSeconds(selected);
+  const elapsed = snapshot ? elapsedStudySeconds(snapshot, effectiveNow, clockOffset) : 0;
   const remaining = completionPending || completionRetryAvailable || (completionWaiting && !activeSnapshot)
     ? 0
     : projectedRemaining;
-  const plannedDuration = snapshot?.plannedDurationSeconds ?? selected;
-  const phase = snapshot?.state === 'paused'
-    ? 'PAUSADA'
-    : snapshot
-      ? remaining > plannedDuration * 0.5 ? 'AQUECIMENTO' : remaining > plannedDuration * 0.15 ? 'FOCO PROFUNDO' : 'FORJA FINAL'
-      : 'PRONTA PARA COMEÇAR';
+  const plannedDuration = snapshot ? snapshot.plannedDurationSeconds ?? 0 : plannedSeconds(selected);
+  const plannedLabel = freeSnapshot ? 'Livre' : `${plannedDuration / 60} min`;
+  // The running ring names the state; the setup's keeps its own words. The compact layout drops the ornament and the long forms.
+  const pausedSnapshot = snapshot?.state === 'paused';
+  const phase = !snapshot
+    ? 'PRONTA PARA COMEÇAR'
+    : pausedSnapshot
+      ? compactLayout ? 'Pausada' : freeSnapshot ? 'Foco livre pausado' : 'Sessão pausada'
+      : freeSnapshot
+        ? compactLayout ? 'Foco livre' : 'Foco livre em andamento'
+        : compactLayout ? 'Em andamento' : 'Sessão em andamento';
 
   useEffect(() => {
     if (
@@ -731,10 +439,21 @@ export function StudySessionScreen({ initialMode = 'solo' }: { initialMode?: Ses
   ]);
 
   const pendingAction = transition.variables?.action;
-  const validFocusSeconds = snapshot?.state === 'running'
-    ? Math.max(snapshot.durationValidSeconds, snapshot.plannedDurationSeconds - remaining)
-    : snapshot?.durationValidSeconds ?? 0;
-  const stopLabel = validFocusSeconds < 300 ? 'Cancelar sessão' : 'Encerrar antecipadamente';
+  const validFocusSeconds = freeSnapshot
+    ? elapsed
+    : snapshot?.state === 'running'
+      ? Math.max(snapshot.durationValidSeconds, plannedDuration - remaining)
+      : snapshot?.durationValidSeconds ?? 0;
+  const timerCaption = compactLayout
+    ? `foco válido ${formatElapsedTime(validFocusSeconds)}`
+    : `${pausedSnapshot ? 'pausada' : freeSnapshot ? 'decorridos' : 'restantes'} · foco válido ${formatElapsedTime(validFocusSeconds)}`;
+  const sessionXp = xpForFocus(freeSnapshot ? validFocusSeconds : plannedDuration);
+  const subjectLabel = snapshot?.subject ?? NO_SUBJECT_LABEL;
+  const raidName = snapshot?.mode === 'guild' && forgeRaid && (!snapshot.raidId || forgeRaid.raid.id === snapshot.raidId)
+    ? forgeRaid.raid.mission.name
+    : null;
+  const stopKind = stopKindFor(validFocusSeconds, snapshot?.kind);
+  const stopLabel = STOP_COPY[stopKind].label;
   const pendingNonStopAction = pendingAction && pendingAction !== 'stop' ? pendingAction : null;
   const retryAvailable = Boolean(retryTransition && transition.isError && !transition.isPending);
   const versionConflict = isVersionConflict(transition.error);
@@ -763,8 +482,10 @@ export function StudySessionScreen({ initialMode = 'solo' }: { initialMode?: Ses
       : needsCanonicalRefresh
         ? 'A sessão mudou. Atualize o estado antes de continuar.'
         : snapshot?.state === 'paused'
-      ? 'Sessão pausada. O contador está congelado.'
-      : 'Sessão em andamento. O contador está ativo.';
+      ? freeSnapshot ? 'Foco livre pausado. O cronômetro está parado.' : 'Sessão pausada. O contador está congelado.'
+      : freeSnapshot
+        ? 'Foco livre em andamento. O cronômetro está contando.'
+        : 'Sessão em andamento. O contador está ativo.';
   useEffect(() => {
     if (!snapshot || announcedStatus.current === sessionStatus) return;
     announcedStatus.current = sessionStatus;
@@ -798,6 +519,7 @@ export function StudySessionScreen({ initialMode = 'solo' }: { initialMode?: Ses
     const key = pendingKey.current ?? newIdempotencyKey();
     pendingKey.current = key;
     setRaidEndedNotice(false);
+    unlockSessionSounds();
     start.mutate({ duration: selected, key, subject: subjectValidation.subject, guild: guildSession });
   };
 
@@ -810,11 +532,22 @@ export function StudySessionScreen({ initialMode = 'solo' }: { initialMode?: Ses
     transition.mutate(command);
   };
 
+  const requestStop = () => {
+    if (!confirmBeforeStopping || !snapshot) return changeSessionState('stop');
+    setStopDialog({ sessionId: snapshot.id, kind: stopKind });
+  };
+
+  const confirmStop = () => {
+    setStopDialog(null);
+    changeSessionState('stop');
+  };
+
   const retryLastTransition = () => {
     if (retryTransition) transition.mutate(retryTransition);
   };
 
   const startNewSession = () => {
+    stopSessionSounds();
     pendingKey.current = null;
     clearBreak(queryClient);
     setBreakRun(null);
@@ -824,12 +557,13 @@ export function StudySessionScreen({ initialMode = 'solo' }: { initialMode?: Ses
   };
 
   const beginBreak = (kind: BreakKind) => {
+    stopSessionSounds();
     const at = Date.now();
     setBreakNow(at);
-    setBreakRun(startBreak(queryClient, kind, at));
+    const previous = displayedTerminalResult && breakPrevious(displayedTerminalResult, focusCycle.data?.completedInCycle ?? null);
+    setBreakRun(startBreak(queryClient, kind, at, previous ?? undefined));
   };
 
-  // A break is offered only after a focus completed in full; early stops and discards skip it.
   const nextBreak: BreakKind = focusCycle.data?.nextBreak ?? 'short';
 
   // #17: where the session stands against the server. Offline, TanStack Query pauses the requests and resumes
@@ -838,13 +572,115 @@ export function StudySessionScreen({ initialMode = 'solo' }: { initialMode?: Ses
     online,
     syncing: foregroundSyncPending || (active.isFetching && !active.isPending) || transition.isPending || start.isPending || completionPending,
     failed: (active.isError && snapshot !== null) || (transition.isError && !transition.isPending) || completionRetryAvailable,
+
   });
   const showSync = activeSnapshot != null || completionPending || completionRetryAvailable;
 
+  const sessionControl: ForgeSessionControl = completionRetryAvailable && completionIntent
+    ? { kind: 'retry-completion', onRetry: () => executeCompletion(completionIntent) }
+    : completionWaiting && (!activeSnapshot || active.isError) && !active.isFetching
+      ? { kind: 'refresh-waiting', onRefresh: () => void refreshActive() }
+      : completionStateConflict
+        ? { kind: 'refresh-conflict', fetching: active.isFetching, onRefresh: () => void refreshActive() }
+        : retryAvailable && retryTransition
+          ? { kind: 'retry-transition', label: `Tentar ${TRANSITION_COPY[retryTransition.action].action} novamente`, onRetry: retryLastTransition }
+          : !completionOwnsControls && snapshot
+            ? {
+              kind: 'controls',
+              stop: {
+                label: transition.isPending && pendingAction === 'stop' ? TRANSITION_COPY.stop.button : stopLabel,
+                loading: transition.isPending && pendingAction === 'stop',
+                disabled: transition.isPending || refreshingCanonicalSnapshot || completionPending,
+                onPress: requestStop,
+              },
+              main: {
+                icon: snapshot.state === 'paused' ? 'play' : 'pause',
+                label: transition.isPending && pendingNonStopAction
+                  ? TRANSITION_COPY[pendingNonStopAction].button
+                  : needsCanonicalRefresh
+                    ? refreshingCanonicalSnapshot ? 'Atualizando estado…' : 'Atualizar estado'
+                    : snapshot.state === 'paused' ? 'Retomar sessão' : 'Pausar sessão',
+                loading: (transition.isPending && pendingAction !== 'stop') || refreshingCanonicalSnapshot,
+                disabled: transition.isPending || refreshingCanonicalSnapshot || completionPending,
+                onPress: () => needsCanonicalRefresh
+                  ? void refreshActive()
+                  : changeSessionState(snapshot.state === 'paused' ? 'resume' : 'pause'),
+                testID: snapshot.state === 'paused' ? 'study-session-resume' : 'study-session-pause',
+              },
+            }
+            : { kind: 'none' };
+
+  const selectDuration = (duration: FocusChoice) => {
+    pendingKey.current = null;
+    setSelected(duration);
+  };
+
+  const showSetup = !displayedTerminalResult && !breakRun && !active.isPending && !active.isError && !snapshot;
+  const startDisabled = subjectValidation.status !== 'valid' || waitingForDefault;
+  const prepCard = (
+    <ForgePrepCard
+      compact={phoneSetup}
+      selected={selected}
+      startPending={start.isPending}
+      startLabel={startLabel}
+      startDisabled={startDisabled}
+      subjectInput={subjectInput}
+      subjectMessage={subjectMessage}
+      selectedSubject={subjectValidation.status === 'valid' ? subjectValidation.subject : null}
+      forgeRaid={forgeRaid}
+      sessionMode={sessionMode}
+      raidEndedNotice={raidEndedNotice}
+      dailyLimitReached={dailyLimitReached}
+      startFailed={start.isError}
+      onChangeSubject={changeSubject}
+      onChangeMode={changeSessionMode}
+      onSelectDuration={selectDuration}
+      onStart={begin}
+    />
+  );
+  const startFooter = showSetup && phoneSetup
+    ? <View style={styles.footerBar}><ForgeStartButton disabled={startDisabled} label={startLabel} loading={start.isPending} onPress={begin} /></View>
+    : undefined;
+
+  const showActiveForge = snapshot !== null && !displayedTerminalResult;
+  // The Resultado lists the day's sessions in its own Hoje card on a wide screen.
+  const showResult = displayedTerminalResult !== null && !breakRun;
+  const stopConfirmation = snapshot && stopDialog?.sessionId === snapshot.id
+    ? { kind: stopDialog.kind, onConfirm: confirmStop, onDecline: () => setStopDialog(null) }
+    : null;
+  const transitionFailure = transition.isError ? { versionConflict, needsCanonicalRefresh, refreshFailed: active.isError && !active.isFetching } : null;
+  const feedback = <ForgeSessionFeedback
+    transitionError={transitionFailure}
+    completionError={completionRetryAvailable}
+    completionConflict={completionStateConflict ? { fetching: active.isFetching } : null}
+    sessionStatus={sessionStatus}
+  />;
+  const actions = <ForgeSessionActions control={sessionControl} stopConfirmation={stopConfirmation} compact={compactLayout} />;
+
+  // A break is offered only after a focus completed in full; early stops and discards skip it.
+  const resultOffer: ResultOffer | null = displayedTerminalResult?.state === 'completed' && !isFreeFocus(displayedTerminalResult) && cycleFresh && !focusCycle.isFetching
+    ? { kind: nextBreak, completedInCycle: focusCycle.data?.completedInCycle ?? null, onStart: beginBreak }
+    : null;
+  const resultFooter = displayedTerminalResult && !breakRun && compactLayout
+    ? <View style={styles.footerActions} testID="study-session-footer"><ForgeResultActions compact offer={resultOffer} onNew={startNewSession} /></View>
+    : undefined;
+  const breakFooter = breakRun && !activeSnapshot && compactLayout
+    ? (
+      <View style={styles.footerActions} testID="study-session-footer">
+        <ForgeBreakActions finished={breakRemainingSeconds(breakRun, breakNow) === 0} onLeave={startNewSession} />
+      </View>
+    )
+    : undefined;
+  const footer = showSetup && phoneSetup
+    ? startFooter
+    : showActiveForge && compactLayout ? <View style={styles.footerActions} testID="study-session-footer">{actions}</View> : breakFooter ?? resultFooter;
+
   return (
-    <Screen avoidKeyboard backgroundOverlay={<ForgePageGradient />} hasBottomNavigation safeAreaEdges={['right', 'left']} testID="study-session" title="Forja" contentContainerStyle={styles.screenContent}>
+    <Screen
+      footer={footer}
+      avoidKeyboard backgroundOverlay={<ForgePageGradient />} hasBottomNavigation safeAreaEdges={['right', 'left']} testID="study-session" title="Forja" titleHidden={showSetup} contentContainerStyle={styles.screenContent}>
       <View style={styles.layout}>
-        <TodayPill />
+        {showSetup ? <ForgeHeader compact={phoneSetup} /> : <TodayPill />}
         {showSync ? <ForgeSyncIndicator onRetry={() => void refreshActive()} status={syncStatus} /> : null}
         {remoteEndNotice ? (
           <WiseText accessibilityLiveRegion="polite" aria-live="polite" color="textSecondary" testID="study-session-remote-end" variant="body">
@@ -859,358 +695,95 @@ export function StudySessionScreen({ initialMode = 'solo' }: { initialMode?: Ses
           </WiseCard>
         ) : null}
         {breakRun && !activeSnapshot ? (
-          <BreakStage
-            onFinish={startNewSession}
-            onSkip={startNewSession}
+          <ForgeBreak
+            compact={compactLayout}
+            onLeave={startNewSession}
             remaining={breakRemainingSeconds(breakRun, breakNow)}
             ringSize={ringSize}
             run={breakRun}
+            wide={wideLayout}
           />
         ) : null}
         {displayedTerminalResult && !breakRun ? (
-          <WiseCard style={styles.messageCard} testID="study-session-result">
-            <WiseText accessibilityLiveRegion="polite" aria-live="polite" variant="subtitle">
-              {displayedTerminalResult.state === 'discarded'
-                ? 'Sessão não contabilizada'
-                : displayedTerminalResult.state === 'completed'
-                  ? 'Sessão concluída'
-                  : displayedTerminalResult.state === 'cancelled'
-                    ? 'Sessão cancelada'
-                    : displayedTerminalResult.state === 'stopped_early'
-                      ? 'Sessão encerrada antecipadamente'
-                      : 'Sessão encerrada'}
-            </WiseText>
-            <WiseText
-              color={displayedTerminalResult.subject ? 'textPrimary' : 'textTertiary'}
-              numberOfLines={3}
-              testID="study-session-result-subject"
-              variant="body"
-            >
-              {displayedTerminalResult.subject ?? NO_SUBJECT_LABEL}
-            </WiseText>
-            <WiseText variant="body">Foco válido: {formatRemainingTime(displayedTerminalResult.durationValidSeconds)}</WiseText>
-            <WiseText variant="body">XP confirmado: {displayedTerminalResult.xpAwarded}</WiseText>
-            {displayedTerminalResult.raidContribution ? (
-              <WiseText accessibilityLiveRegion="polite" aria-live="polite" color={displayedTerminalResult.raidContribution.status === 'counted' ? 'textPrimary' : 'textSecondary'} variant="body" testID="study-session-result-raid-contribution">
-                {displayedTerminalResult.raidContribution.status === 'counted'
-                  ? `+${displayedTerminalResult.raidContribution.xpContributed} XP para a Raid da Guilda.`
-                  : displayedTerminalResult.raidContribution.status === 'outside-raid-window'
-                    ? 'Esta sessão não contou para a Raid: terminou fora da janela da Raid.'
-                    : 'Esta sessão não contou para a Raid: não houve XP validado.'}
-              </WiseText>
-            ) : null}
-            {displayedTerminalResult.state === 'discarded' ? (
-              <WiseText color="textSecondary" variant="body">
-                {displayedTerminalResult.discardedReason === 'continuous-session-exceeds-limit'
-                  ? 'A duração ultrapassou o limite de foco permitido.'
-                  : 'O limite diário de foco foi atingido.'}
-              </WiseText>
-            ) : null}
-            {displayedTerminalResult.state === 'completed' && cycleFresh && !focusCycle.isFetching ? (
-              <BreakOffer kind={nextBreak} completedInCycle={focusCycle.data?.completedInCycle ?? null} onStart={beginBreak} />
-            ) : null}
-            {displayedTerminalResult.cappedReason ? (
-              <WiseText color="textSecondary" testID="study-session-result-capped" variant="body">
-                {displayedTerminalResult.cappedReason === 'daily-limit'
-                  ? 'XP limitado pelo teto diário.'
-                  : 'XP limitado ao máximo de sessão contínua.'}
-              </WiseText>
-            ) : null}
-            <WiseButton
-              label="Nova sessão"
-              onPress={startNewSession}
-              size="large"
-              testID="study-session-new"
-              variant={displayedTerminalResult.state === 'completed' ? 'secondary' : 'primary'}
-            />
-          </WiseCard>
+          <ForgeResult
+            compact={compactLayout}
+            offer={resultOffer}
+            onNew={startNewSession}
+            result={displayedTerminalResult}
+            ringSize={ringSize}
+            wide={wideLayout}
+          />
         ) : null}
-        {snapshot && !displayedTerminalResult ? (
-          <View style={[styles.forgeColumns, wideLayout && styles.forgeColumnsWide]} testID="study-session-active">
-          <WiseCard style={[styles.stage, wideLayout && styles.stageWide]} testID="study-session-stage">
-            <ForgeStageGradient />
-            <View style={styles.stageHeader}>
-              <Text
-                accessibilityRole="header"
-                allowFontScaling
-                numberOfLines={2}
-                style={snapshot.subject ? styles.subjectTitle : styles.subjectTitleEmpty}
-                testID="study-session-subject"
-              >
-                {snapshot.subject ?? NO_SUBJECT_LABEL}
-              </Text>
-              <Text accessibilityRole="header" allowFontScaling style={styles.stageTitle}>{snapshot.state === 'paused' ? 'Sessão pausada' : 'Sessão em andamento'}</Text>
-              <Text allowFontScaling style={styles.stageMeta}>
-                {snapshot.plannedDurationSeconds / 60} min de foco{snapshot.mode === 'guild' ? ' · Sessão de guilda' : ''}
-              </Text>
-            </View>
-            <View style={styles.stageBody}>
-              <ForgeTimer
-                remaining={remaining}
-                duration={snapshot.plannedDurationSeconds}
+        {snapshot && showActiveForge ? (
+          <ForgeColumns
+            wide={wideLayout}
+            testID="study-session-active"
+            anvil={
+              <ForgeAnvil
+                wide={wideLayout}
+                reading={freeSnapshot ? { elapsed } : { remaining, duration: plannedDuration }}
                 phase={phase}
-                size={ringSize}
-                testID="study-session-timer"
-                accessibilityLabel={`Tempo restante: ${Math.floor(remaining / 60)} minutos e ${remaining % 60} segundos. Sessão ${snapshot.state === 'paused' ? 'pausada' : 'em andamento'}.`}
-              />
-            </View>
-            <View style={[styles.stageActions, width < 450 && styles.stageActionsCompact]}>
-            {settingsOpen && !wideLayout ? <WiseCard style={styles.inlineSettingsCard}>
-              <ForgeCardTitle>Configurações da sessão</ForgeCardTitle>
-              <View style={styles.statRow}><Text allowFontScaling style={[styles.cardCopy, { color: theme.color.textSecondary }]}>Tempo de foco</Text><WiseText color="accentHighlight" variant="mono">{snapshot.plannedDurationSeconds / 60} min</WiseText></View>
-              <Text allowFontScaling style={[styles.cardCopy, { color: theme.color.textSecondary }]}>A duração não pode ser alterada durante a sessão.</Text>
-              <WiseButton label="Fechar configurações" onPress={() => setSettingsOpen(false)} variant="secondary" />
-            </WiseCard> : null}
-            <View style={[styles.actionRow, width < 450 && styles.actionRowCompact]}>
-            {completionRetryAvailable && completionIntent ? (
-              <WiseButton
-                label="Tentar confirmar novamente"
-                onPress={() => executeCompletion(completionIntent)}
-                variant="secondary"
-                testID="study-session-completion-retry"
-              />
-            ) : completionWaiting && (!activeSnapshot || active.isError) && !active.isFetching ? (
-              <WiseButton
-                label="Atualizar estado"
-                onPress={() => void refreshActive()}
-                variant="secondary"
-                testID="study-session-completion-refresh"
-              />
-            ) : completionStateConflict ? (
-              <WiseButton
-                label={active.isFetching ? 'Atualizando estado…' : 'Atualizar estado'}
-                loading={active.isFetching}
-                disabled={active.isFetching}
-                onPress={() => void refreshActive()}
-                variant="secondary"
-                testID="study-session-completion-refresh"
-              />
-            ) : retryAvailable && retryTransition ? (
-              <WiseButton
-                label={`Tentar ${TRANSITION_COPY[retryTransition.action].action} novamente`}
-                onPress={retryLastTransition}
-                variant="secondary"
-                testID="study-session-transition-retry"
-              />
-            ) : !completionOwnsControls ? (
-              <View style={styles.controls}>
-                <ForgeAction
-                  icon="stop"
-                  iconOnly
-                  label={transition.isPending && pendingAction === 'stop' ? TRANSITION_COPY.stop.button : stopLabel}
-                  loading={transition.isPending && pendingAction === 'stop'}
-                  disabled={transition.isPending || refreshingCanonicalSnapshot || completionPending}
-                  onPress={() => changeSessionState('stop')}
-                  testID="study-session-stop"
-                />
-                <ForgeAction
-                  icon={snapshot.state === 'paused' ? 'play' : 'pause'}
-                  primary
-                  label={transition.isPending && pendingNonStopAction
-                    ? TRANSITION_COPY[pendingNonStopAction].button
-                      : needsCanonicalRefresh
-                        ? refreshingCanonicalSnapshot ? 'Atualizando estado…' : 'Atualizar estado'
-                        : snapshot.state === 'paused' ? 'Retomar sessão' : 'Pausar sessão'}
-                  loading={(transition.isPending && pendingAction !== 'stop') || refreshingCanonicalSnapshot}
-                  disabled={transition.isPending || refreshingCanonicalSnapshot || completionPending}
-                  onPress={() => needsCanonicalRefresh
-                    ? void refreshActive()
-                    : changeSessionState(snapshot.state === 'paused' ? 'resume' : 'pause')}
-                  testID={snapshot.state === 'paused' ? 'study-session-resume' : 'study-session-pause'}
-                />
-              </View>
-            ) : null}
-            <ForgeAction icon="settings-outline" iconOnly label="Configurações da sessão" expanded={settingsOpen} onPress={() => setSettingsOpen((open) => !open)} />
-            </View>
-            {transition.isError ? (
-              <FeedbackMessage
-                variant="error"
-                title={versionConflict ? 'A sessão mudou desde a última confirmação.' : 'Não foi possível confirmar a ação'}
-                message={versionConflict
-                  ? needsCanonicalRefresh
-                    ? active.isError && !active.isFetching
-                      ? 'Não foi possível atualizar o estado. O último snapshot confirmado continua visível; atualize antes de enviar outra ação.'
-                      : 'Atualizando o snapshot confirmado para liberar um novo comando seguro.'
-                    : 'O estado atual foi carregado. Confira a sessão e envie uma nova ação.'
-                  : 'A sessão continua no último estado confirmado. Tente novamente para repetir o mesmo comando com segurança.'}
-                testID="study-session-transition-error"
-              />
-            ) : null}
-            {completionRetryAvailable ? (
-              <FeedbackMessage
-                variant="error"
-                title="Não foi possível confirmar a conclusão."
-                message="O último snapshot continua visível. Tente novamente para recuperar o resultado usando a mesma confirmação."
-                testID="study-session-completion-error"
-              />
-            ) : null}
-            {completionStateConflict ? (
-              <FeedbackMessage
-                variant="error"
-                title="A sessão mudou antes da conclusão."
-                message={active.isFetching
-                  ? 'Atualizando o snapshot canônico da sessão.'
-                  : 'Atualize o estado para continuar com a versão confirmada pelo servidor.'}
-                testID="study-session-completion-conflict"
-              />
-            ) : null}
-            </View>
-            <View style={styles.stageFeedback}>
-              <WiseText accessibilityLiveRegion="polite" aria-live="polite" testID="study-session-state" variant="body">{sessionStatus}</WiseText>
-            </View>
-          </WiseCard>
-          <View style={[styles.sideColumn, wideLayout && styles.sideColumnWide]}>
-            {settingsOpen && wideLayout ? <WiseCard style={styles.sideCard}>
-              <ForgeCardTitle>Configurações da sessão</ForgeCardTitle>
-              <View style={styles.statRow}><Text allowFontScaling style={[styles.cardCopy, { color: theme.color.textSecondary }]}>Tempo de foco</Text><WiseText color="accentHighlight" variant="mono">{snapshot.plannedDurationSeconds / 60} min</WiseText></View>
-              <Text allowFontScaling style={[styles.cardCopy, { color: theme.color.textSecondary }]}>A duração não pode ser alterada durante a sessão.</Text>
-              <WiseButton label="Fechar configurações" onPress={() => setSettingsOpen(false)} variant="secondary" />
-            </WiseCard> : <>
-            <WiseCard style={styles.sideCard}>
-              <ForgeCardTitle>Sua sessão</ForgeCardTitle>
-              <View style={styles.statRow}><Text allowFontScaling style={[styles.cardCopy, { color: theme.color.textSecondary }]}>Duração planejada</Text><WiseText color="accentHighlight" variant="mono">{snapshot.plannedDurationSeconds / 60} min</WiseText></View>
-              <View style={styles.statRow}><Text allowFontScaling style={[styles.cardCopy, { color: theme.color.textSecondary }]}>Foco válido</Text><WiseText color="accentHighlight" variant="mono">{formatRemainingTime(validFocusSeconds)}</WiseText></View>
-              <Text allowFontScaling style={[styles.cardCopy, { color: theme.color.textTertiary }]}>O tempo e a conclusão são confirmados pelo servidor.</Text>
-            </WiseCard>
-            <WiseCard style={styles.sideCard}>
-              <ForgeCardTitle>Como funciona</ForgeCardTitle>
-              <Text allowFontScaling style={[styles.cardCopy, { color: theme.color.textSecondary }]}>Pause quando precisar. Ao retomar, o contador continua de onde parou.</Text>
-              <Text allowFontScaling style={[styles.cardCopy, { color: theme.color.textSecondary }]}>Sessões encerradas antes de 5 minutos não concedem XP.</Text>
-            </WiseCard>
+                ringSize={ringSize}
+                ornate={!compactLayout}
+                dimmed={pausedSnapshot}
+                timerCaption={timerCaption}
+                timerTestID="study-session-timer"
+                timerAccessibilityLabel={freeSnapshot
+                  ? `Tempo de foco: ${Math.floor(elapsed / 3600)} horas, ${Math.floor((elapsed % 3600) / 60)} minutos e ${elapsed % 60} segundos. Foco livre ${snapshot.state === 'paused' ? 'pausado' : 'em andamento'}.`
+                  : `Tempo restante: ${Math.floor(remaining / 60)} minutos e ${remaining % 60} segundos. Sessão ${snapshot.state === 'paused' ? 'pausada' : 'em andamento'}.`}
+              >
+                <ForgeHero compact={compactLayout} guild={snapshot.mode === 'guild'} paused={pausedSnapshot} subject={snapshot.subject} />
+                {compactLayout ? <>
+                  <ForgeSessionStrip subject={subjectLabel} planned={plannedLabel} free={freeSnapshot} xp={sessionXp} />
+                  <View style={styles.stageNotice}><ForgeStopNotice free={freeSnapshot} /></View>
+                  <View style={styles.stageStatus}>{feedback}</View>
+                </> : <ForgeSummary xp={sessionXp} free={freeSnapshot} />}
+              </ForgeAnvil>
+            }
+            support={<>
+              <ForgeSessionCard
+                guild={snapshot.mode === 'guild'}
+                subject={subjectLabel}
+                free={freeSnapshot}
+                plannedLabel={plannedLabel}
+                validFocusSeconds={validFocusSeconds}
+                pauseCount={snapshot.pauseCount}
+              >
+                {compactLayout ? null : <>
+                  {actions}
+                  <ForgeStopNotice free={freeSnapshot} />
+                  {feedback}
+                </>}
+              </ForgeSessionCard>
+              <ForgeMeanwhileCard raidName={raidName} />
             </>}
-          </View>
-          </View>
+          />
         ) : null}
-        {!displayedTerminalResult && !breakRun && !active.isPending && !active.isError && !snapshot ? (
-          <View style={[styles.forgeColumns, wideLayout && styles.forgeColumnsWide]} testID="study-session-setup">
-          <WiseCard style={[styles.stage, wideLayout && styles.stageWide]} testID="study-session-stage">
-            <ForgeStageGradient />
-            <View style={styles.stageHeader}>
-              <Text accessibilityRole="header" allowFontScaling style={styles.stageTitle}>PREPARE SUA FORJA</Text>
-              <Text allowFontScaling style={styles.stageMeta}>{selected / 60} min selecionados</Text>
-            </View>
-            <View style={styles.stageBody}>
-              <ForgeTimer remaining={selected} duration={selected} phase={phase} size={ringSize} />
-            </View>
-            <View style={styles.subjectSection}>
-              <WiseField
-                autoCapitalize="sentences"
-                editable={!start.isPending}
-                error={subjectMessage}
-                label="Matéria (opcional)"
-                onChangeText={changeSubject}
-                placeholder="Ex.: Cálculo II"
-                returnKeyType="done"
-                testID="study-session-subject-input"
-                value={subjectInput}
-              />
-              <RecentSubjectSuggestions
-                disabled={start.isPending}
-                onSelect={changeSubject}
-                selectedSubject={subjectValidation.status === 'valid' ? subjectValidation.subject : null}
-              />
-            </View>
-            {forgeRaid ? (
-              <View style={styles.subjectSection}>
-                <SessionModeOptions disabled={start.isPending} mode={sessionMode} onSelect={changeSessionMode} />
-                {sessionMode === 'guild' ? (
-                  <Text allowFontScaling style={[styles.cardCopy, { color: theme.color.textSecondary }]} testID="study-session-guild-raid">
-                    {forgeRaid.raid.me.participating
-                      ? `O XP desta sessão conta para a Raid ${forgeRaid.raid.mission.name}.`
-                      : `Você vai confirmar sua participação na Raid ${forgeRaid.raid.mission.name} e começar a sessão.`}
-                  </Text>
-                ) : null}
-              </View>
-            ) : null}
-            <View style={[styles.stageActions, width < 450 && styles.stageActionsCompact]}>
-              {settingsOpen && !wideLayout ? <DurationSettings selected={selected} focusedDuration={focusedDuration} startPending={start.isPending} onSelect={(duration) => { pendingKey.current = null; setSelected(duration); }} onFocus={setFocusedDuration} onClose={() => setSettingsOpen(false)} inline /> : null}
-              <View style={[styles.actionRow, width < 450 && styles.actionRowCompact]}>
-                <View style={styles.actionButtonPlaceholder} />
-                <ForgeAction icon="play" primary label={startLabel} loading={start.isPending} disabled={subjectValidation.status !== 'valid'} onPress={begin} testID="study-session-start" />
-                <ForgeAction icon="settings-outline" iconOnly label="Configurar duração" expanded={settingsOpen} onPress={() => setSettingsOpen((open) => !open)} />
-              </View>
-              {raidEndedNotice ? (
-                <FeedbackMessage
-                  variant="error"
-                  title="A Raid foi encerrada"
-                  message="Não foi possível iniciar a sessão de guilda. Você pode iniciar uma sessão solo."
-                  testID="study-session-raid-ended"
-                />
-              ) : start.isError ? <WiseText color="feedbackDanger" variant="body">Não foi possível confirmar o início. Tente novamente.</WiseText> : null}
-            </View>
-          </WiseCard>
-          <View style={[styles.sideColumn, wideLayout && styles.sideColumnWide]}>
-          {settingsOpen && wideLayout ? <DurationSettings selected={selected} focusedDuration={focusedDuration} startPending={start.isPending} onSelect={(duration) => { pendingKey.current = null; setSelected(duration); }} onFocus={setFocusedDuration} onClose={() => setSettingsOpen(false)} /> : <WiseCard style={styles.sideCard}>
-            <ForgeCardTitle>Seu progresso</ForgeCardTitle>
-            <Text allowFontScaling style={[styles.cardCopy, { color: theme.color.textSecondary }]}>O foco válido e o XP aparecem ao concluir a sessão.</Text>
-            <Text allowFontScaling style={[styles.cardCopy, { color: theme.color.textTertiary }]}>Se encerrar antes de 5 minutos, a sessão não concede XP.</Text>
-          </WiseCard>}
-          </View>
-          </View>
+        {showSetup ? (
+          <ForgeColumns
+            wide={wideLayout}
+            testID="study-session-setup"
+            anvil={
+              <ForgeAnvil
+                wide={wideLayout}
+                reading={selected === FREE_FOCUS ? { elapsed: 0 } : { remaining: selected, duration: selected }}
+                timerCaption={selected === FREE_FOCUS ? 'conta até você parar' : undefined}
+                phase={phase}
+                ringSize={ringSize}
+              >
+                <ForgeReadyHero compact={phoneSetup} />
+                {phoneSetup ? prepCard : <ForgeReadySummary selected={selected} />}
+              </ForgeAnvil>
+            }
+            support={<>
+              {phoneSetup ? null : prepCard}
+              <ForgeRulesCard />
+              <ForgeTodayCard />
+            </>}
+          />
         ) : null}
-        <ForgeHistory wide={wideLayout} />
+        <ForgeHistory showToday={!showSetup && !(showResult && wideLayout)} wide={wideLayout} />
       </View>
     </Screen>
   );
 }
-
-const styles = StyleSheet.create({
-  screenContent: { justifyContent: 'flex-start' },
-  layout: { width: '100%', maxWidth: 1040, alignSelf: 'center', gap: theme.space.sectionGap },
-  todayPill: { alignSelf: 'flex-end', flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 14, paddingVertical: 8, borderWidth: 1, borderColor: theme.color.borderEmphasis, borderRadius: theme.radius.pill, backgroundColor: theme.color.surfaceCard },
-  todayLabel: { fontFamily: 'Inter-SemiBold', fontSize: 13, color: theme.color.textSecondary },
-  todayBars: { flexDirection: 'row', gap: 4 },
-  todayBar: { width: 18, height: 6, borderRadius: 2, borderWidth: 1, borderColor: theme.color.borderSubtle, backgroundColor: theme.color.surfaceInset },
-  todayBarDone: { backgroundColor: theme.color.accentPrimary },
-  todayValue: { fontFamily: 'JetBrainsMono-Medium', fontSize: 11, color: theme.color.textPrimary },
-  breakOffer: { gap: theme.space.stackTight, borderTopWidth: 1, borderTopColor: theme.color.borderGhost, paddingTop: theme.space.controlInset },
-  messageCard: { maxWidth: 580, alignSelf: 'center', padding: theme.space.cardInset, gap: theme.space.controlInset },
-  forgeColumns: { width: '100%', gap: theme.space.cardInset },
-  forgeColumnsWide: { flexDirection: 'row', alignItems: 'flex-start' },
-  stage: { minWidth: 0 },
-  stageWide: { flex: 1 },
-  stageHeader: { paddingHorizontal: theme.space.cardInset, paddingVertical: 18, borderBottomWidth: 1, borderBottomColor: theme.color.borderGhost, gap: 6 },
-  stageTitle: { fontFamily: 'Inter-Bold', fontSize: 11, lineHeight: 16, letterSpacing: 2.6, textTransform: 'uppercase', color: theme.color.accentPrimary },
-  stageMeta: { fontFamily: 'Inter-Regular', fontSize: 11, lineHeight: 16, color: theme.color.accentHighlight },
-  subjectTitle: { fontFamily: 'Cinzel-SemiBold', fontSize: 18, lineHeight: 24, color: theme.color.textPrimary },
-  subjectTitleEmpty: { fontFamily: 'Inter-Regular', fontSize: 14, lineHeight: 20, color: theme.color.textTertiary },
-  subjectSection: { borderTopWidth: 1, borderTopColor: theme.color.borderGhost, paddingHorizontal: theme.space.cardInset, paddingVertical: theme.space.stackDefault },
-  suggestions: { flexDirection: 'row', flexWrap: 'wrap', gap: theme.space.inlineTight, marginTop: theme.space.stackTight },
-  suggestion: { maxWidth: '100%', minHeight: 36, paddingHorizontal: theme.space.stackTight, justifyContent: 'center', borderWidth: 1, borderColor: theme.color.borderGhost, borderRadius: theme.radius.pill, backgroundColor: theme.color.surfaceInset },
-  suggestionText: { fontFamily: 'Inter-Regular', fontSize: 13, lineHeight: 18, color: theme.color.textSecondary },
-  suggestionTextSelected: { color: theme.color.textPrimary },
-  stageBody: { alignItems: 'center', justifyContent: 'center', paddingVertical: theme.space.sectionGap, paddingHorizontal: theme.space.controlInset },
-  stageActions: { borderTopWidth: 1, borderTopColor: theme.color.borderGhost, paddingHorizontal: theme.space.cardInset, paddingVertical: theme.space.stackDefault, alignItems: 'center', gap: theme.space.stackTight },
-  stageActionsCompact: { paddingHorizontal: theme.space.inlineTight },
-  actionRow: { width: '100%', flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 14 },
-  actionRowCompact: { gap: theme.space.inlineTight },
-  actionButton: { minHeight: theme.layout.touchTarget, borderWidth: 1, borderRadius: theme.radius.detail, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
-  actionButtonPrimary: { minWidth: 200, borderColor: theme.color.accentHighlight, shadowColor: theme.color.accentPrimary, shadowOpacity: 0.35, shadowRadius: 14, elevation: 4 },
-  actionButtonPrimaryCompact: { minWidth: 0, flexGrow: 1, flexShrink: 1, maxWidth: 200 },
-  actionButtonIcon: { width: theme.layout.touchTarget, height: theme.layout.touchTarget, borderColor: theme.color.borderEmphasis, backgroundColor: theme.color.surfaceCard },
-  actionButtonDisabled: { opacity: 0.5 },
-  actionButtonPlaceholder: { width: theme.layout.touchTarget, height: theme.layout.touchTarget },
-  actionGradient: { minHeight: theme.layout.touchTarget, width: '100%', paddingHorizontal: theme.space.controlInset, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: theme.space.inlineTight },
-  actionLabel: { fontFamily: 'Cinzel-SemiBold', color: theme.color.textPrimary, fontSize: 11, letterSpacing: 2, textTransform: 'uppercase' },
-  actionLabelPrimary: { fontFamily: 'Cinzel-Bold', color: theme.color.backgroundCanvas },
-  stageFeedback: { borderTopWidth: 1, borderTopColor: theme.color.borderGhost, padding: theme.space.controlInset },
-  sideColumn: { width: '100%', gap: theme.space.cardInset },
-  sideColumnWide: { maxWidth: 320 },
-  sideCard: { padding: 22, gap: 14, borderRadius: theme.radius.control },
-  cardTitle: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 2 },
-  cardTitleText: { fontFamily: 'Cinzel-SemiBold', fontSize: 11, lineHeight: 16, letterSpacing: 2.6, textTransform: 'uppercase', color: theme.color.accentPrimary },
-  cardCopy: { fontFamily: 'Inter-Regular', fontSize: 12, lineHeight: 19 },
-  statLabel: { fontFamily: 'Inter-Regular', fontSize: 12, lineHeight: 18, color: theme.color.textSecondary, flexShrink: 1 },
-  statRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: theme.space.inlineTight, borderBottomWidth: 1, borderBottomColor: theme.color.borderGhost, paddingBottom: theme.space.stackTight },
-  timerRingWrap: { justifyContent: 'center', alignItems: 'center' },
-  timerRing: { transform: [{ rotate: '-90deg' }] },
-  timerCenter: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, alignItems: 'center', justifyContent: 'center', gap: 6 },
-  timerPhase: { fontFamily: 'Inter-Medium', fontSize: 10, lineHeight: 14, letterSpacing: 3.2, textTransform: 'uppercase', color: theme.color.accentPrimary },
-  timerTarget: { fontFamily: 'JetBrainsMono-Medium', fontSize: 12, lineHeight: 16, letterSpacing: 1.2, color: theme.color.textTertiary, textAlign: 'center' },
-  timerDigits: { ...theme.type.display, color: theme.color.textPrimary, textAlign: 'center', letterSpacing: 2, fontVariant: ['tabular-nums'], textShadowColor: theme.color.accentGlow, textShadowRadius: 24, textShadowOffset: { width: 0, height: 0 } },
-  controls: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 8 },
-  inlineSettingsCard: { width: '100%', padding: theme.space.controlInset, gap: theme.space.controlInset },
-  presets: { flexDirection: 'row', flexWrap: 'wrap', gap: theme.space.stackTight },
-  preset: { minWidth: theme.layout.touchTarget, minHeight: theme.layout.touchTarget, paddingHorizontal: 14, justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: theme.color.borderGhost, borderRadius: theme.radius.pill, backgroundColor: theme.color.surfaceInset },
-  selected: { backgroundColor: 'rgba(212, 168, 90, 0.08)', borderColor: theme.color.borderEmphasis },
-});

@@ -1,10 +1,20 @@
 # Wise — PRD (Product Requirements Document)
 
-**Versão:** 1.3
-**Branch:** `dev/phase-1`
+**Versão:** 1.4
+**Branch:** `develop`
 **Autor:** Assistente técnico (Claude Code), a partir da síntese dos documentos orientadores do Grupo 2
-**Data:** 21/08/2026 (v1.0) — 21/08/2026 (v1.1) — 03/09/2026 (v1.2, frontend universal) — 17/09/2026 (v1.3, repriorização da Fase 1)
-**Status:** Decisões de escopo e arquitetura fechadas; migração universal pendente de execução
+**Data:** 21/08/2026 (v1.0), 21/08/2026 (v1.1), 03/09/2026 (v1.2, frontend universal), 17/09/2026 (v1.3, repriorização da Fase 1), 27/10/2026 (v1.4, reconciliação com o código, issue #5)
+**Status:** Decisões de escopo e arquitetura fechadas. A migração universal terminou; o estado de cada item da Fase 1 está na seção 7.5.
+
+### Qual fonte prevalece
+
+Quando duas fontes discordam, vale a primeira desta lista:
+
+1. O código e os testes da branch `develop`. Se um documento descreve algo diferente do que o código faz, o documento está desatualizado e deve ser corrigido, a menos que um ADR diga que o código é que precisa mudar.
+2. Os ADRs deste PRD. Entre dois ADRs, vale o mais recente, e uma emenda vale sobre o texto original do ADR que ela altera.
+3. Os contratos em `docs/api/openapi.yaml` e `docs/api/asyncapi.yaml`, e o glossário em `CONTEXT.md`.
+4. O restante deste PRD e os planos em `docs/plans/`, que registram o que foi planejado na data de cada um.
+5. Os documentos acadêmicos em `docs/`. O Documento de Visão, o Documento de Arquitetura e a Documentação de Interface foram atualizados para a versão 2.0 em 27/10/2026, com base no código, exceto pelas partes de infraestrutura e hospedagem, que seguem como na versão 1.0 até o time decidir a divergência registrada na issue #5. O Pitch e os Casos de Uso UC01 a UC04 continuam como foram entregues. As versões 1.0 estão no histórico do Git. Onde qualquer um deles diverge deste PRD, vale o PRD.
 
 ### Registro de decisões fechadas em 21/08/2026
 | Ponto aberto | Decisão | ADR |
@@ -43,6 +53,18 @@
 | Ganho e gasto de Moedas | 1 Moeda a cada 2 min de foco válido, +50 por Raid vencida, 90 no cadastro; Missões de 90 a 480, itens de 30 a 300; Badge nunca à venda | ADR-012 (Aceito) |
 | Fúria do dragão | Chefe recupera 5% da meta por dia inteiro sem Contribuição, até a Meta batida, que passa a ser vida zero | ADR-012 (Aceito, emenda #145) |
 
+### Registro de decisões fechadas em 21/10/2026
+
+| Ponto aberto | Decisão | ADR |
+|---|---|---|
+| Como o Avatar aparece no Herói | Corpo base único com camadas de Avatar, Arma e Acessório; sem classe; Arma é nova categoria de Cosmetic Item | ADR-013 (Aceito) |
+
+### Registro de decisões fechadas em 22/10/2026
+
+| Ponto aberto | Decisão | ADR |
+|---|---|---|
+| Recompensa dos Objetivos de Crônicas | Moedas pagas automaticamente, nunca XP; lista fixa de 3 diários e 3 semanais, renovando no horário de São Paulo | ADR-014 (Aceito) |
+
 > Este documento consolida e substitui as lacunas dos documentos orientadores (Documento de Visão, Documento de Arquitetura, Documentação de Interface, Pitch e Casos de Uso UC01–UC04), resolvendo inconsistências entre eles e propondo um caminho técnico único para a Fase 1 de desenvolvimento.
 
 ---
@@ -76,6 +98,7 @@ Esta é a análise crítica solicitada — onde os documentos se contradizem, fi
 ### 3.1 Conflito de stack: README vs. Documento de Arquitetura
 O `README.md` do repositório descreve o frontend como **"HTML · CSS · JavaScript"** e lista **Koa.js** como parte do backend. O Documento de Arquitetura (mais recente, v1.0) descreve o frontend como **SPA React + TypeScript** e não atribui nenhuma responsabilidade concreta ao Koa.js — todos os módulos de backend (auth, users, sessions, progression, guilds, raids, chat, notifications, shared) são descritos exclusivamente em termos de NestJS.
 **Decisão proposta:** o Documento de Arquitetura prevalece (é o artefato técnico mais recente e detalhado). Koa.js deve ser **removido do escopo** — não há caso de uso que justifique um segundo framework HTTP rodando junto ao NestJS; isso apenas adicionaria complexidade operacional sem benefício. O README deve ser atualizado na Fase 1 para refletir React/TypeScript e remover Koa.js.
+**Situação em 27/10/2026:** resolvido (ADR-002). Nenhum `package.json` do monorepo depende de Koa.js, e o README descreve o frontend Expo e o backend NestJS.
 
 ### 3.2 Feature "Companheiro" (mascote RPG) não rastreada
 O UC01 (Realizar Sessão de Estudo) descreve em detalhe um sistema de **companheiro/mascote pixel art** que acompanha o usuário, ganha XP próprio e evolui — isso não aparece no Documento de Visão (seção 4.1, resumo de funcionalidades), no Documento de Arquitetura (módulos de backend) nem no Documento de Interface (telas T01–T06 e paleta). É uma funcionalidade com especificação comportamental rica, mas sem dono formal no escopo.
@@ -147,7 +170,7 @@ O usuário pediu que as informações se propaguem "no mesmo ambiente" por um si
 | **Should** | Perfil com itens cosméticos e equipagem | `users` | Importante |
 | **Should** | Notificações em tempo real (level-up, raid concluída, convite) | `notifications` | Importante |
 | **Should** | Flags de entitlement (`plan_tier`) nos recursos marcados como premium no Pitch | `users`/`shared` | ADR-007 — sem gateway de pagamento, só a checagem de flag |
-| **Could** | i18n multi-idioma (além de pt-BR) | frontend `shared` | `react-i18next` já preparado, mas só pt-BR é necessário no MVP |
+| **Could** | i18n multi-idioma (além de pt-BR) | frontend `shared` | Só pt-BR é necessário no MVP; o frontend não tem biblioteca de i18n instalada |
 | **Won't (nesta fase)** | Companheiro/mascote RPG com XP próprio | `progression` (sub-feature) | ADR-004 — adiado para Fase 2 |
 | **Won't (nesta fase)** | Cobrança/assinatura premium (gateway de pagamento) | — | ADR-007 — fora do horizonte técnico da Fase 1 |
 | **Won't (nesta fase)** | Parcerias educacionais / integrações externas | — | Modelo de negócio, não requisito técnico do MVP |
@@ -174,15 +197,19 @@ encerramento antecipado com XP proporcional e conclusão automática enquanto o
 aplicativo estiver ativo. Controle entre dispositivos, matéria e resiliência não
 fazem parte desse primeiro corte.
 
+Em 27/10/2026 as oito etapas estavam entregues. Depois delas entraram a economia
+de Moedas e a Loja (ADR-012), o Herói em camadas (ADR-013), o Foco livre
+(emendas #273) e Crônicas (ADR-014).
+
 ---
 
 ## 7. Requisitos funcionais (formato EARS)
 
 **Sessões de estudo**
 - Quando o usuário aciona "Iniciar Sessão" com matéria e duração configuradas, o sistema shall iniciar um temporizador regressivo no modo selecionado (Pomodoro/Pausa Curta/Pausa Longa).
-- Quando um ciclo de foco é concluído, o sistema shall creditar XP parcial e exibir o progresso do companheiro (se habilitado) sem interromper o temporizador.
+- Quando um ciclo de foco é concluído, o sistema shall creditar o XP do foco válido sem interromper a cadência Pomodoro. (O progresso do Companheiro previsto no UC01 está adiado pelo ADR-004.)
 - Quando a sessão é encerrada pelo servidor como completa, o sistema shall registrar duração, matéria e XP total no histórico do usuário e shall contribuir a duração para a raid ativa da guilda, caso o modo seja Guilda.
-- Se a duração reportada de uma sessão exceder o limite antifraude (ver RN-ANTIFRAUDE), o sistema shall descartar a sessão para fins de XP e ranking e shall registrar o evento para auditoria.
+- Se o foco válido de uma sessão exceder um limite antifraude (ver RN-ANTIFRAUDE), o sistema shall truncar a sessão ao limite, calcular XP sobre o tempo truncado e registrar o motivo em `capped_reason` (ADR-011, que substituiu o descarte previsto na v1.0).
 - Onde a conexão de rede for perdida durante uma sessão solo, o sistema shall preservar o progresso local e sincronizar ao reconectar.
 
 **Progressão (XP/Nível)**
@@ -201,7 +228,7 @@ fazem parte desse primeiro corte.
 **Sessão persistente multi-dispositivo (novo — ADR-009)**
 - Quando um usuário efetua login, o sistema shall criar uma nova sessão persistente (linha em `Session`) sem invalidar sessões ativas em outros dispositivos, até um limite de 5 sessões simultâneas — ao exceder, o sistema shall revogar automaticamente a sessão menos recentemente usada.
 - Quando qualquer evento de progresso (XP, nível, raid, convite de guilda) ocorre, o sistema shall propagá-lo em tempo real para todas as conexões WebSocket ativas do mesmo usuário, independentemente do dispositivo.
-- Onde o usuário revoga uma sessão específica ou aciona "sair de todos os dispositivos", o sistema shall invalidar o(s) refresh token(s) correspondente(s) imediatamente, encerrando a conexão WebSocket associada.
+- Onde o usuário revoga uma sessão específica ou aciona "encerrar os outros dispositivos", o sistema shall invalidar o(s) refresh token(s) correspondente(s) imediatamente, encerrando a conexão WebSocket associada, e shall preservar a sessão do dispositivo em uso.
 
 **Experiência universal (ADR-008 revisado)**
 - Onde o cliente for Web desktop, o sistema shall usar navegação lateral e composições amplas derivadas do standalone.
@@ -243,24 +270,44 @@ fazem parte desse primeiro corte.
 - Dado um usuário já logado no notebook, quando ele faz login no celular, então a sessão do notebook permanece ativa e ambas aparecem em `GET /users/me/sessions`.
 - Dado dois dispositivos logados do mesmo usuário, quando um deles ganha XP numa sessão de estudo, então o outro dispositivo recebe o evento `progress:xpUpdated` via WebSocket em até 1 segundo, sem recarregar a página.
 - Dado um usuário com 5 sessões ativas, quando ele faz login num 6º dispositivo, então a sessão menos recentemente usada é revogada automaticamente.
-- Dado um usuário que aciona "sair de todos os dispositivos", quando a ação é confirmada, então toda sessão ativa é revogada e cada dispositivo é desconectado do WebSocket na próxima tentativa de uso do access token expirado.
+- Dado um usuário que aciona "encerrar os outros dispositivos", quando a ação é confirmada, então toda sessão ativa exceto a do dispositivo em uso é revogada, cada dispositivo encerrado é desconectado do WebSocket na próxima tentativa de uso do access token expirado, e o dispositivo em uso continua logado.
 
-### 7.5 Checklist de implementação — backlog Must da Fase 1
+### 7.5 Checklist de implementação da Fase 1
 
-- [x] `auth`: registro, login, refresh rotativo, logout, sessão multi-dispositivo (ADR-009)
-- [x] `users`: perfil, listagem/revogação de sessões, equipar cosmético com checagem de `plan_tier` (ADR-007)
-- [x] `progression`: fórmula de XP/nível como domínio puro testado, notificação de level-up em tempo real
-- [x] `sessions`: start/heartbeat/complete, validação antifraude (RN-ANTIFRAUDE) como domínio puro testado
-- [x] `guilds`: criar/entrar/detalhe
-- [x] `raids`: entrar, registrar contribuição, ranking
-- [x] `realtime`: gateway Socket.IO com rooms `user:{id}` e `guild:{id}`
-- [x] Frontend Web atual: shell responsivo e páginas de login/cadastro/dashboard/sessão/guilda/perfil
-- [x] Frontend universal ADR-008: migrado para Expo e validado em Web/iOS/Android (M1–M5, `docs/validation/`)
-- [x] Contrato de API publicado e validado (`docs/api/openapi.yaml`, lint limpo — seção 10)
-- [x] `docs/api/asyncapi.yaml` (contrato dos eventos WebSocket) — publicado com `raid:progress`, `progress:xpUpdated`, `notification:levelup` e o aviso de Raid encerrada
-- [x] Migrations TypeORM versionadas (`apps/backend/src/migrations`, com teste de upgrade e downgrade)
-- [ ] Provisionamento real da VM Oracle Always Free e primeiro deploy (ADR-006)
-- [x] Boot do NestJS + testes de integração contra MySQL real (job `backend` da CI, com serviço MySQL 8.0, e E2E Playwright via Docker Compose)
+Situação conferida no código da branch `develop` em 27/10/2026. Os estados são:
+
+- **Entregue:** o código existe, tem testes automatizados e cobre o que o PRD e os ADRs pedem.
+- **Parcial:** parte do comportamento existe; a coluna Situação diz o que falta.
+- **Não iniciado:** está no escopo e não há código.
+- **Adiado:** um ADR tirou o item da Fase 1.
+
+| Item | Estado | Situação |
+|---|---|---|
+| `auth`: cadastro, login, refresh rotativo e logout | Entregue | Rotas Web (cookie `httpOnly`) e nativas (`/auth/native/*`, SecureStore). Até 5 sessões por usuário (`MAX_SESSIONS_PER_USER`); a 6ª revoga a menos usada. Revogar uma sessão derruba o socket daquele dispositivo (ADR-009). |
+| `users`: perfil, nome do guerreiro e Dispositivos conectados | Entregue | `GET/PATCH /users/me`, listagem e revogação de dispositivos e "Encerrar os outros dispositivos", com telas em Configuração. |
+| Flags de entitlement `plan_tier` (ADR-007) | Parcial | A coluna `plan_tier` existe e bloqueia Equipar um Item premium para quem não é `premium`; `COSMETICS_PREMIUM_FOR_ALL` libera todos (padrão). "Raids avançados" e "perfil destacado", citados no Pitch, não existem como recurso, então não há o que checar. O desenho freemium segue em validação (#7). |
+| `progression`: XP, Nível e desbloqueio por Nível | Entregue | Fórmula `500 × N^1.5` e taxa `XP_PER_MINUTE` em domínio puro, com testes. Subir de Nível desbloqueia itens. |
+| `sessions`: Study Session, Pomodoro e antifraude | Entregue | Ciclos de 15/25/50 min, Foco livre, pausa e retomada, cancelamento, encerramento antecipado, prazo no servidor, `Idempotency-Key`, controle por qualquer dispositivo, recuperação após recarga e offline, histórico e matéria. Antifraude por truncamento com `capped_reason` (ADR-011). |
+| `guilds`: criar, descobrir, entrar, sair, membros e Líder | Entregue | Uma Guild por usuário. A entrada é aberta pela descoberta; não existe convite. |
+| `raids`: Raid semanal, Missões, Contribuição, Ranking, Fúria e Recompensa | Entregue | Fechamento semanal agendado, Nível da Guild, Raids anteriores, Golpe ao vivo, Fúria do dragão, escolha da Missão pelo Líder e cenas próprias para as 8 Missões (ADR-012). |
+| `chat`: Mural da Guild e Presença | Entregue | Mensagens persistentes com `seq`, histórico paginado, recuperação na reconexão, limite de envio, filtro de termos, retenção das mensagens mais recentes e Avisos automáticos dos Golpes. Estava previsto para a Fase 2 e entrou na Fase 1. |
+| Notificações em tempo real | Parcial | `notification:levelup`, `notification:raidComplete` e `progress:xpUpdated` chegam a todos os dispositivos e atualizam as telas. Falta um aviso visível ao usuário (o app só reconsulta os dados) e não existe `notification:guildInvite`, porque não há convite. Não há módulo `notifications` separado; os eventos saem de `progression` e `raids`. Push remoto está fora do aceite (ADR-008). |
+| Cosmetic Items: Catálogo, Inventário, Equipar e Herói em camadas | Entregue | Desbloqueio por Nível, Raid, Compra e Marco; Prévia; categoria Arma; Herói em camadas sem classe (ADR-010, ADR-013). Estava previsto como "cosméticos completos" na Fase 2 e entrou na Fase 1. |
+| `economy` e `shop`: Moedas, Extrato e Loja | Entregue | Ganho por foco, Raid vencida, cadastro e Objetivos; Loja de Missões e de itens À venda (ADR-012). |
+| `objectives`: Crônicas com Objetivos, Marcos e Diário | Entregue | 3 Objetivos diários e 3 semanais pagos em Moedas, no horário de São Paulo (ADR-014). |
+| `realtime`: gateway Socket.IO | Entregue | Rooms `user:{id}` e `guild:{id}`, atualizadas ao entrar ou sair da Guild sem reconectar. |
+| Companheiro (mascote RPG) | Adiado | ADR-004. A issue #15 foi fechada sem implementação. A coluna `characters.companion_id` existe e não é usada. |
+| Gateway de pagamento | Adiado | ADR-007. |
+| Redis Adapter | Adiado | ADR-003. O backend roda em uma réplica com o `IoAdapter` padrão do Socket.IO. |
+| i18n além de pt-BR | Não iniciado | Prioridade Could; nenhuma biblioteca de i18n instalada. |
+| Frontend universal (ADR-008) | Entregue | Expo + Expo Router + React Native Web; registros de validação dos marcos M1, M2, M4 e M5 em `docs/validation/`. Mercado, Crônicas e Configuração já têm telas e não aparecem mais como "Em breve". |
+| Validação de responsividade e acessibilidade das telas T01 a T06 | Não iniciado | Issue #23 aberta. As validações por marco em `docs/validation/` não substituem essa revisão. |
+| Contrato REST (`docs/api/openapi.yaml`) | Entregue | As 53 rotas dos controllers estão no contrato, e `npm run lint:openapi` passa. |
+| Contrato de eventos (`docs/api/asyncapi.yaml`) | Entregue | Cobre todos os eventos que o backend emite, incluindo `member:online`, e os comandos do Mural (`chat:join`, `chat:send`, `chat:history`, `chat:sync`) com seus acks. |
+| Migrations TypeORM | Entregue | 33 migrations em `apps/backend/src/migrations`, com `synchronize: false`. `migration.integration.test.ts` aplica todas em ordem num MySQL real, reverte até o schema vazio e testa a transformação de dados das migrations que migram dados. |
+| Testes de integração e E2E | Entregue | Job `backend` da CI contra MySQL 8.0 e job E2E com Playwright sobre o Docker Compose (seção 16). |
+| Segurança: rate limiting, helmet e boot seguro (#13) | Entregue | Rate limit em login, cadastro e refresh, em `POST /sessions`, nas Compras da Loja e na escolha da Missão; o boot em produção recusa valores de exemplo (`change-me`) na configuração. |
+| Provisionamento da VM Oracle Always Free (ADR-006) | Não iniciado | As issues #8 e #14 foram fechadas sem implementação. |
 
 ---
 
@@ -295,9 +342,9 @@ fazem parte desse primeiro corte.
 ### ADR-008: Frontend universal com Expo para Web, iOS e Android
 **Status:** Revisado e aceito em 03/09/2026; substitui integralmente a versão “Web responsivo mobile-first, sem app nativo”. **Contexto:** o frontend Web responsivo já existe, mas o objetivo passou a exigir as mesmas capacidades em Web, iOS e Android. Não há versão pública a manter durante a migração, e o projeto acadêmico pode validar aplicativos localmente sem publicação nas lojas. **Decisão:** transformar `apps/frontend` numa única aplicação Expo com Expo Router e React Native Web. A UI usa primitivas React Native, `StyleSheet`, tokens TypeScript e componentes próprios; diferenças legítimas ficam em adaptadores ou arquivos específicos por plataforma. REST permanece canônico, TanStack Query gerencia somente estado remoto e Socket.IO invalida consultas. Web mantém refresh token em cookie protegido; iOS/Android usam credencial rotativa em armazenamento seguro. A compatibilidade segue a matriz oficial do Expo SDK fixado.
 
-**Experiência:** Web desktop usa sidebar; celulares usam navegação inferior. O standalone é referência de identidade e UX, não implementação a incorporar. Tema Ouro/Índigo é o único exposto. Mercado Arcano, Crônicas e Configuração permanecem visíveis como “Em breve”. Tablets, áudio ambiente, push remoto, múltiplos temas e publicação nas lojas ficam fora do aceite inicial.
+**Experiência:** Web desktop usa sidebar; celulares usam navegação inferior. O standalone é referência de identidade e UX, não implementação a incorporar. Tema Ouro/Índigo é o único exposto. Mercado Arcano, Crônicas e Configuração permanecem visíveis como “Em breve”. Tablets, áudio ambiente, push remoto, múltiplos temas e publicação nas lojas ficam fora do aceite inicial. *Situação em 27/10/2026:* Mercado (Loja e Extrato), Crônicas e Configuração já têm telas e saíram de "Em breve". O app toca um som ao fim de um foco ou de uma pausa (#241); isso não é o áudio ambiente excluído acima.
 
-**Domínio relacionado:** no máximo uma Study Session ativa por usuário, controlável em qualquer dispositivo. Ela inicia online, sobrevive a perda de conexão, usa timestamps canônicos e comandos idempotentes. Pause/resume exige rede. Foco de 15/25/50 minutos conclui automaticamente; término antecipado após cinco minutos recebe 10 XP por minuto completo. Pausas Pomodoro de 5/15 minutos são locais e não concedem XP.
+**Domínio relacionado:** no máximo uma Study Session ativa por usuário, controlável em qualquer dispositivo. Ela inicia online, sobrevive a perda de conexão, usa timestamps canônicos e comandos idempotentes. Pause/resume exige rede. Foco de 15/25/50 minutos conclui automaticamente; término antecipado após cinco minutos recebe 10 XP por minuto completo. Pausas Pomodoro de 5/15 minutos são locais e não concedem XP. **Emenda (#273):** além do Ciclo de 15/25/50 minutos, existe o Foco livre, uma Study Session sem duração planejada que conta para cima até o usuário parar; ele não avança a cadência Pomodoro e só conclui sozinho no teto do antifraude (ADR-011).
 
 **Consequências:** Vite, React Router DOM, DOM/CSS direto e Vitest deixam de compor o frontend final; a migração ocorre incrementalmente com validação Web/iOS/Android. O backend e o OpenAPI recebem extensões retrocompatíveis para autenticação nativa, estados, concorrência e idempotência. Eventos Socket.IO ganham AsyncAPI. Detalhes, alternativas, testes e glossário: `docs/plans/2026-09-03-react-native-universal-design.md`.
 
@@ -306,7 +353,7 @@ fazem parte desse primeiro corte.
 - Cada login cria uma linha na tabela `Session` (seção 9), com um refresh token próprio (rotativo, hash armazenado — nunca o token em texto puro). Limite de 5 sessões simultâneas por usuário (configurável); ao exceder, a sessão mais antiga é revogada automaticamente.
 - Refresh token entregue como cookie `httpOnly` + `Secure` + `SameSite=Lax` no client web (não em `localStorage`, para reduzir superfície de XSS); access token JWT de vida curta (15 min) usado no `Authorization` header.
 - Todo evento relevante (XP ganho, level-up, progresso de raid, convite de guilda) é emitido pelo backend na room Socket.IO `user:{id}` (já prevista na seção 10) — cada dispositivo logado abre sua própria conexão de socket e entra automaticamente nessa room ao autenticar, recebendo o mesmo evento em paralelo.
-- Endpoint de "sair de todos os dispositivos" revoga todas as linhas de `Session` do usuário de uma vez; endpoint de listagem de sessões ativas permite revogar um dispositivo específico (ex.: notebook antigo esquecido logado).
+- Endpoint de "encerrar os outros dispositivos" revoga de uma vez todas as linhas de `Session` do usuário exceto a do dispositivo em uso (identificada pelo access token); para sair também do dispositivo atual, o usuário usa o logout; endpoint de listagem de sessões ativas permite revogar um dispositivo específico (ex.: notebook antigo esquecido logado).
 **Consequência:** nenhuma duplicação de estado entre dispositivos é necessária — o MySQL já é a fonte única de verdade (arquitetura já documentada); este ADR só formaliza como a autenticação e o tempo real acompanham múltiplos dispositivos do mesmo usuário.
 
 ### ADR-010: Título é o Cosmetic Item equipado da categoria `title`
@@ -321,7 +368,7 @@ fazem parte desse primeiro corte.
 5. Modo Guilda usa a mesma taxa de XP do modo solo; o XP concedido é simultaneamente a Contribuição para a Raid ativa.
 6. O timer é server-side (`runDeadlineAt`); a sessão completa no prazo independentemente de heartbeat — o cliente não é fonte de verdade.
 7. Tabela de recompensas de Raid (Cosmetic Item por Missão) ficou fora do escopo desta decisão — ver sub-issue de Missões.
-**Consequência:** `xp-rate.ts` lê `XP_PER_MINUTE` do env; `session-validator.ts` lê os limiares do env e implementa truncamento; `applyStudySessionStop` passa a receber e aplicar `priorDailySeconds`; a entidade `StudySession` ganha a coluna `capped_reason nullable`.
+**Consequência:** `xp-rate.ts` lê `XP_PER_MINUTE` do env; `session-validator.ts` lê os limiares do env e implementa truncamento; `applyStudySessionStop` passa a receber e aplicar `priorDailySeconds`; a entidade `StudySession` ganha a coluna `capped_reason nullable`. **Emenda (#273):** no Foco livre, `runDeadlineAt` é o teto, o menor entre o limite contínuo e o saldo diário restante, recalculado no início e na retomada; ao atingi-lo, a sessão conclui com `capped_reason`. Parar com pelo menos 5 minutos conclui o Foco livre (não há encerramento antecipado), e o início é recusado quando o saldo diário já está zerado.
 
 ### ADR-012: Economia de Moedas, Loja e Fúria do dragão
 **Status:** Aceito em 16/10/2026. **Contexto:** a issue #159 fechou o que o ADR-011 deixou de fora: a moeda do jogo. A spec #145 propunha um tesouro coletivo da Guild e um mercado de missões comprado pelo Líder, o que contradizia o termo Loja do `CONTEXT.md`. **Alternativas:** (a) Moeda por usuário, gasta numa Loja pessoal; (b) tesouro da Guild alimentado pelas sessões dos membros. Para itens: (c) Compra como mais uma Condição de desbloqueio; (d) Compra como entrada separada no Inventário. **Decisão:** (a) e (c).
@@ -332,7 +379,27 @@ fazem parte desse primeiro corte.
 5. **Fúria do dragão:** a cada dia (`America/Sao_Paulo`) sem nenhuma Contribuição da Guild, o chefe recupera `RAID_FURY_REGEN_PERCENT`% do `goalXp` (padrão `5`), sem passar da vida cheia. Para quando a Meta é batida. *Emenda de 16/10/2026 (#145):* a Meta batida passa a ser a Vida do chefe chegar a zero (`progress >= goal + regenerado`), não mais `progress >= goal`; sem isso a Fúria seria só visual. Regeneram apenas os dias inteiros da Raid que não foram Dia de estudo: o dia em que a Raid começou no meio e o último dia (fechado pelo fechamento semanal no mesmo instante) não contam. Dias perdidos com a aplicação fora do ar são aplicados na volta, uma vez por Raid e dia.
 **Consequência:** a #160 implementa Moeda, Extrato e Loja (Missões e itens); a #145 implementa a Fúria e paga a Recompensa de Raid pelo Service da Moeda (ADR-001); a #148 implementa as telas. O tesouro, o mercado e o quadro de missões da versão anterior da #145 ficam descartados. Glossário em `CONTEXT.md`.
 
-### 8.1 Diagrama de arquitetura (implementado em `dev/phase-1`)
+### ADR-013: Herói em camadas, sem classe, com a categoria Arma
+**Status:** Aceito em 21/10/2026. **Contexto:** a issue #178 apontou que equipar um Avatar não muda a arte do Herói. A Raid já trocava o sprite inteiro por Avatar (#192), e o Personagem desenhava só a classe, um sprite com roupa embutida. **Alternativas:** (a) sprite inteiro por Avatar; (b) troca de paleta da classe; (c) corpo base único com camadas de Avatar, Arma e Acessório, como no Habitica. **Decisão:** (c).
+1. **Herói:** é o corpo base único mais as camadas do Avatar, da Arma e do Acessório equipados, todas na grade 16 × 24 do corpo. Sem Avatar, ou com um Avatar sem arte própria, vale o visual do Avatar inicial.
+2. **Sem classe:** a seleção de classe (Erudito, Guerreira, Arcanista, Paladino), seus desbloqueios por nível e por plano e o painel "Trocar herói" saem. A variedade visual vem só dos Cosmetic Items.
+3. **Arma:** nova categoria de Cosmetic Item, só visual, sem efeito em XP, Raid ou Moedas. A Espada é o Item inicial; Cajado e Besta são as primeiras Armas À venda, com preço definido pelo PO. Desequipada, o Herói aparece sem arma. Aparece em Personagem, Prévia e Raid, e fora do retrato de 32 px da Guild. A aparência de Raid e Guild passa a expor Arma além de Avatar e Acessório.
+4. **Prévia:** segue só para itens do Inventário e compõe todas as camadas.
+**Consequência:** o mapa nome do Avatar → classe da Raid e a arma derivada da classe são substituídos. O trabalho se divide em backend e API da Arma, Herói em camadas no frontend e a arte de cada Avatar. Glossário em `CONTEXT.md`.
+
+### ADR-014: Objetivos pagam Moedas, não XP
+**Status:** Aceito em 22/10/2026. **Contexto:** a proposta de Crônicas v2 (Figma `09 · Crônicas — v2`) traz Objetivos diários e semanais com recompensa em XP. Hoje o XP vem só do foco válido de uma Study Session e passa pelo antifraude (ADR-011), que calibrou a curva de nível sobre essa única fonte. **Alternativas:** (a) XP, como no design; (b) Moedas, que já têm Extrato com origem (ADR-012). **Decisão:** (b).
+1. **XP continua sendo só tempo de foco.** Cumprir um Objetivo nunca dá XP nem Contribuição para Raid.
+2. **Pagamento automático:** as Moedas entram no Extrato quando o Objetivo é cumprido, sem botão Resgatar.
+3. **Valores iniciais, configuráveis no servidor:** diários de +5, +15 e +10 (30 por dia); semanais de +40, +50 e +30 (120 por semana). Para quem estuda 2h por dia, isso soma cerca de 50% à renda de foco.
+4. **Lista fixa:** 3 Objetivos diários e 3 semanais, iguais para todos e alcançáveis sem Guild. Os diários renovam à meia-noite e os semanais na segunda às 00:00, no horário de São Paulo.
+5. **O que conta:** toda Study Session não descartada que termina, no dia e na semana em que terminou. Objetivos de duração usam o foco válido.
+6. **Um único dia:** as métricas do Dashboard, a Constância e o histórico de sessões passam do dia UTC para o dia de São Paulo. O `dailyGoal` fixo do Dashboard sai, e o Dashboard mostra o Objetivo "Conclua 4 sessões hoje". O limite diário do antifraude (ADR-011) não muda.
+7. **Marcos:** um Marco é a Condição de desbloqueio de um Badge mostrada com progresso. Madrugador passa de `level:3` para 5 Study Sessions terminadas antes das 7h, e Cem Sessões passa de `level:12` para 100 Study Sessions não descartadas. Quem já desbloqueou esses Badges continua com eles.
+8. **Sem Capítulos:** a trilha de Capítulos da proposta sai do escopo.
+**Consequência:** a curva de nível da ADR-011 não muda; a economia da ADR-012 ganha uma fonte de Moedas, com origem própria no Extrato. Crônicas sai de "Em breve" com Objetivos, Marcos e Diário juntos. Glossário em `CONTEXT.md`.
+
+### 8.1 Diagrama de arquitetura (módulos presentes em `develop`)
 
 ```mermaid
 graph TD
@@ -348,6 +415,10 @@ graph TD
             Sess["sessions<br/>+ antifraude"]
             Guilds["guilds"]
             Raids["raids"]
+            Chat["chat<br/>Mural e Presença"]
+            Economy["economy<br/>Moedas e Extrato"]
+            Shop["shop<br/>Loja"]
+            Objectives["objectives<br/>Crônicas"]
             RT["realtime<br/>(Socket.IO Gateway)"]
         end
         MySQL[("MySQL 8<br/>(HeatWave Always Free)")]
@@ -358,13 +429,29 @@ graph TD
     SPA -->|"HTTPS REST"| Sess
     SPA -->|"HTTPS REST"| Guilds
     SPA -->|"HTTPS REST"| Raids
+    SPA -->|"HTTPS REST"| Economy
+    SPA -->|"HTTPS REST"| Shop
+    SPA -->|"HTTPS REST"| Objectives
     SPA <-->|"WSS — room user:{id}<br/>room guild:{id}"| RT
+    SPA <-->|"WSS: comandos do Mural"| Chat
 
+    Auth --> Users
+    Auth --> Economy
     Sess --> Prog
+    Sess --> Economy
     Sess --> Raids
+    Sess --> Objectives
+    Objectives --> Economy
+    Prog --> Users
+    Shop --> Economy
+    Shop --> Raids
     Raids --> Guilds
+    Raids --> Economy
+    Raids --> Chat
+    Chat --> Guilds
     Prog --> RT
     Raids --> RT
+    Economy --> RT
 
     Auth --> MySQL
     Users --> MySQL
@@ -372,9 +459,10 @@ graph TD
     Sess --> MySQL
     Guilds --> MySQL
     Raids --> MySQL
+    Economy --> MySQL
 ```
 
-Setas de `Sess`/`Raids`/`Prog` para módulos vizinhos representam chamadas ao Service público do módulo destino (nunca ao repositório — regra do Documento de Arquitetura, seção 3.2, reaplicada em todo o código da Fase 1). Redis (adapter multi-réplica) não aparece porque está adiado (ADR-003).
+Setas entre módulos representam chamadas ao Service público do módulo destino, nunca ao repositório (regra do Documento de Arquitetura, seção 3.2, reaplicada em todo o código da Fase 1). O diagrama mostra as dependências principais; o README tem a lista completa. Redis (adapter multi-réplica) não aparece porque está adiado (ADR-003).
 
 **Redundância e ponto único de falha (cloud-architect):** a VM Oracle é, por desenho, um SPOF — não há Multi-AZ nem segunda réplica nesta fase (ADR-006/ADR-003). Isso é um risco aceito explicitamente, não um descuido: o projeto é acadêmico, sem orçamento, e o `docker-compose.yml` é a mitigação — se a instância for terminada (risco real, ver ADR-006), o mesmo arquivo sobe em qualquer VM/provedor em minutos, sem reescrever infraestrutura. Backup do MySQL via dump periódico pro Object Storage Always Free (seção 11) é a única redundância de dado disponível nesse orçamento.
 
@@ -382,20 +470,24 @@ Setas de `Sess`/`Raids`/`Prog` para módulos vizinhos representam chamadas ao Se
 
 ## 9. Modelo de dados essencial (novo — preenche o "Dicionário de Dados" vazio do Documento de Visão)
 
-Entidades principais (nomes lógicos, DDL real fica para a implementação):
+A DDL real está nas migrations de `apps/backend/src/migrations`. A lista abaixo resume as entidades TypeORM em `develop`, com os campos que importam para as regras de negócio:
 
 - **User** `(id, email, password_hash[argon2id], display_name, plan_tier, created_at)`
-- **Character** `(id, user_id FK, level, xp_total, avatar_config JSON, companion_id FK nullable)` — o Título vem do Cosmetic Item `title` equipado (ADR-010)
-- **Companion** `(id, species, level, xp_total)` — sub-feature ADR-004
-- **CosmeticItem** `(id, category, name, unlock_condition)`
-- **UserCosmeticItem** `(user_id FK, cosmetic_item_id FK, equipped BOOL, unlocked_at)`
-- **StudySession** `(id, user_id FK, subject, mode[solo|guild], started_at, ended_at, duration_valid_seconds, xp_awarded, discarded_reason nullable, capped_reason nullable['continuous-limit'|'daily-limit'])` — `capped_reason` não nulo indica que o XP foi truncado pelo antifraude (ADR-011)
-- **Guild** `(id, name, level, created_by FK)`
-- **GuildMembership** `(guild_id FK, user_id FK, role, joined_at)`
-- **Raid** `(id, guild_id FK, title, goal_xp, progress_xp, starts_at, ends_at, status)`
-- **RaidContribution** `(raid_id FK, user_id FK, study_session_id FK, xp_contributed)`
-- **GuildChatMessage** `(id, guild_id FK, user_id FK, body, sent_at)` — reter apenas últimas N mensagens por guilda, conforme Documento de Arquitetura
-- **Session** `(id, user_id FK, refresh_token_hash, device_label, user_agent, created_at, last_used_at, revoked_at nullable)` — uma linha por dispositivo logado, conforme ADR-009
+- **Character** `(id, user_id FK, level, xp_total, companion_id nullable)`: o Título vem do Cosmetic Item `title` equipado (ADR-010), e a aparência vem dos itens equipados (ADR-013). `companion_id` não é usado, porque o Companheiro está adiado (ADR-004) e não existe tabela de Companheiro.
+- **CosmeticItem** `(id, category[avatar|badge|title|accessory|weapon], name, unlock_condition, requires_premium, price nullable, for_sale)`
+- **UserCosmeticItem** `(id, user_id FK, cosmetic_item_id FK, equipped, unlocked_at)`
+- **StudySession** `(id, user_id FK, subject, mode[solo|guild], raid_id nullable, kind[cycle|free], state, planned_duration_seconds nullable, started_at, run_deadline_at, paused_at, paused_total, pause_count, version, ended_at, terminal_reason, duration_valid_seconds, xp_awarded, discarded_reason nullable, capped_reason nullable['continuous-limit'|'daily-limit'])`: `capped_reason` não nulo indica que o XP foi truncado pelo antifraude (ADR-011)
+- **Guild** `(id, name, level, created_by FK, created_at)`
+- **GuildMembership** `(id, guild_id FK, user_id FK, role, joined_at)`: no máximo uma Guild por usuário
+- **Mission** `(id, slug, name, description, image_url, rotation_order, price nullable)` e **MissionRewardItem** `(mission_id, cosmetic_item_id)`
+- **UserMission** `(id, user_id FK, mission_id FK, acquired_at)`: Missões compradas na Loja
+- **GuildMissionChoice** `(guild_id, mission_id, owner_user_id, chosen_at)`: Missão escolhida pelo Líder para a próxima Raid
+- **Raid** `(id, guild_id FK, mission_id FK, mission_owner_user_id, goal_xp, progress_xp, starts_at, ends_at, goal_reached_at, regenerated_xp, fury_through, opened_at, status)`
+- **RaidParticipation** `(id, raid_id FK, user_id FK, created_at)`
+- **RaidContribution** `(id, raid_id FK, user_id FK, study_session_id FK, xp_contributed, created_at)`
+- **GuildChatMessage** `(id, guild_id FK, user_id FK, seq, kind[message|raid_hit], contribution_id nullable, xp nullable, body, sent_at)`: o serviço apaga as mensagens mais antigas e guarda só as mais recentes de cada Guild
+- **CoinBalance** `(user_id, balance, updated_at)` e **CoinLedgerEntry** `(id, user_id, amount, balance_after, origin_type, origin_ref, created_at)`: o Extrato, com uma entrada por origem (ADR-012)
+- **Session** `(id, user_id FK, refresh_token_hash, device_label, user_agent, created_at, last_used_at, revoked_at nullable)`: uma linha por dispositivo logado (ADR-009). **SessionRefreshTokenHistory** guarda os hashes já consumidos para detectar reuso de refresh token.
 
 Índices críticos: `StudySession(user_id, started_at)`, `RaidContribution(raid_id, user_id)`, `GuildMembership(guild_id, user_id)` — todos com chave composta para evitar full scan em ranking e cálculo de progresso de raid.
 
@@ -403,20 +495,23 @@ Entidades principais (nomes lógicos, DDL real fica para a implementação):
 
 ## 10. Contrato de API — visão de alto nível (novo — preenche gap 3.7)
 
-**REST (NestJS controllers, prefixo `/api/v1`)**
-- `POST /auth/register`, `POST /auth/login`, `POST /auth/refresh` (rotativo, seta cookie `httpOnly` de refresh — ADR-009), `POST /auth/logout` (revoga a sessão atual)
-- `GET /users/me/sessions` (lista dispositivos logados), `DELETE /users/me/sessions/{id}` (revoga um dispositivo), `DELETE /users/me/sessions` (sai de todos os dispositivos)
-- `GET /users/me`, `PATCH /users/me/cosmetics/{itemId}` (equipar)
-- `POST /sessions` (iniciar), `PATCH /sessions/{id}/heartbeat`, `POST /sessions/{id}/complete`
-- `GET /guilds/{id}`, `POST /guilds`, `POST /guilds/{id}/members`
-- `GET /raids/{id}`, `POST /raids/{id}/join`
-- Erros no formato RFC 7807 (`application/problem+json`), paginação por cursor em toda coleção (ranking, histórico de sessões, membros de guilda).
+Os contratos completos são `docs/api/openapi.yaml` (REST) e `docs/api/asyncapi.yaml` (Socket.IO). Em 27/10/2026 os dois cobriam tudo o que o backend expõe. Esta seção só resume os grupos.
 
-**WebSocket (Socket.IO namespaces)**
-- `guild:{id}` → eventos `chat:message`, `raid:progress`, `member:online`
-- `user:{id}` → eventos `notification:levelup`, `notification:raidComplete`, `notification:guildInvite`, `progress:xpUpdated` — toda conexão autenticada do usuário entra automaticamente nessa room, de qualquer dispositivo (ADR-009), garantindo que celular e notebook logados ao mesmo tempo recebam o mesmo evento
+**REST (NestJS controllers, prefixo `/api/v1`, 53 rotas)**
+- Autenticação Web, com refresh em cookie `httpOnly` (`/auth/register`, `/auth/login`, `/auth/refresh`, `/auth/logout`), e nativa, com credencial no corpo (`/auth/native/*`).
+- Dispositivos: `GET /users/me/sessions`, `DELETE /users/me/sessions/{sessionId}` (revoga um dispositivo) e `DELETE /users/me/sessions` (encerra os outros, preservando o atual).
+- Perfil e cosméticos: `GET/PATCH /users/me`, `GET /users/me/cosmetics`, `PATCH /users/me/cosmetics/{itemId}` (equipar) e `DELETE /users/me/cosmetics/{itemId}/equipped` (desequipar).
+- Study Session: `POST /sessions`, `GET /sessions/active`, `pause`, `resume`, `stop`, `heartbeat` e `complete` por id, além de histórico, sessões recentes, matérias recentes, Cadência, métricas e resumo da semana.
+- Crônicas: `GET /objectives` e `GET /milestones`.
+- Guild e Raid: listar, criar, detalhar, entrar e sair da Guild; membros; Raid ativa, Raids anteriores, Missão da próxima Raid; detalhe, Ranking interno e participação na Raid.
+- Moedas e Loja: saldo, Extrato, itens e Missões À venda, com as rotas de Compra.
+- Erros no formato RFC 7807 (`application/problem+json`) e paginação por cursor nas coleções.
 
-Este contrato deve ser versionado em `docs/api/openapi.yaml` e `docs/api/asyncapi.yaml` antes do início da implementação de telas, para permitir front e back avançarem em paralelo com mocks (Prism/MSW).
+**WebSocket (rooms Socket.IO)**
+- `guild:{id}` → `raid:progress`, `raid:hit`, `chat:message` e `member:online`.
+- `user:{id}` → `progress:xpUpdated`, `notification:levelup`, `notification:raidComplete`, `character:equipmentChanged`, `coins:changed` e `studySession:changed`. Toda conexão autenticada do usuário entra nessa room, de qualquer dispositivo (ADR-009).
+- O app envia só os comandos do Mural (`chat:join`, `chat:send`, `chat:history` e `chat:sync`), respondidos por ack.
+- `notification:guildInvite`, previsto na v1.0, não existe: a entrada na Guild é aberta e não há convite.
 
 ---
 
@@ -442,6 +537,8 @@ Pipeline (GitHub Actions) por PR:
 3. Build de imagem Docker (multi-stage) + scan de vulnerabilidades (Trivy).
 4. Deploy automático em `staging` na branch `dev/phase-1`; deploy em `production` requer aprovação manual explícita, nunca em sexta-feira sem monitoramento ativo.
 5. Deploy via SSH + `docker compose pull && docker compose up -d` na VM Oracle Always Free (ADR-006) — sem ECS/Terraform. Rollback documentado como `docker compose up -d` apontando para a tag de imagem anterior, mantida no registry (GHCR) por no mínimo as últimas 5 versões.
+
+**Situação em 27/10/2026:** os passos 1 e 2 estão em `.github/workflows/ci.yml`, que roda em PRs e pushes para `main` e `develop`. São quatro jobs: `backend` (build, lint, testes unitários e de integração contra um serviço MySQL 8.0), `frontend` (tipos, lint, Jest, bundles das três plataformas e entrega Web em container), `openapi` (lint do contrato REST) e E2E Web (Playwright sobre o Docker Compose). O job `ci-ok` falha se algum deles falhar. O workflow semanal `expo-drift.yml` roda `expo install --check` e o Expo Doctor fora do gate de PR. Os passos 3 a 5 (imagem com scan Trivy, deploy automático e registry com rollback) não estão em nenhum workflow, e o `docs/api/asyncapi.yaml` não é validado pela CI.
 
 ---
 
@@ -479,20 +576,50 @@ SLO de 99.0% de disponibilidade num período de 30 dias permite **7h12min de ind
 - **E2E:** fluxos críticos (cadastro→sessão→XP→raid) com Playwright contra ambiente `staging`.
 - **Tempo real:** testes de contrato dos eventos Socket.IO (schema dos payloads) para evitar dessincronia front/back.
 
+**Situação em 27/10/2026:**
+
+- **Domínio:** as regras puras ficam em `domain/` de cada módulo e têm testes Jest sem banco. O projeto não mede cobertura na CI, então a meta de 90% não é verificada.
+- **Integração:** os testes `*.integration.test.ts` rodam contra um MySQL 8.0 real. Na CI é um serviço do job `backend`; localmente, qualquer MySQL indicado por `TEST_DB_HOST` e `TEST_DB_PORT`. O projeto não usa Testcontainers. Cada teste cria um banco isolado.
+- **E2E:** oito specs Playwright em `apps/frontend/e2e` (autenticação, Dashboard, Study Session e sua recuperação, Guilda, Mural, Mercado e Personagem). Rodam contra a stack do `docker-compose.e2e.yml`, não contra um ambiente `staging`.
+- **Tempo real:** os testes de integração do `realtime` e do `chat` conectam clientes Socket.IO reais. Não há teste que compare os payloads com o `asyncapi.yaml`.
+
 ---
 
 ## 15. Roadmap proposto
 
 | Fase | Conteúdo | Referência |
 |---|---|---|
-| **Fase 1 — `dev/phase-1`** (esta branch) | Provisionamento da VM Oracle Always Free, `auth`, `sessions` (+antifraude), `progression` (XP/nível, sem Companheiro — ADR-004), `guilds`, `raids` básicos, flags de entitlement (ADR-007), contrato de API publicado | Seção 6, Must/Should |
-| Fase 2 | `chat`, `notifications`, cosméticos completos, implementação do "Companheiro" (ADR-004) | Seção 6, Should/Could |
+| **Fase 1 — `develop`** | Provisionamento da VM Oracle Always Free, `auth`, `sessions` (+antifraude), `progression` (XP/nível, sem Companheiro — ADR-004), `guilds`, `raids` básicos, flags de entitlement (ADR-007), contrato de API publicado. Também entraram na Fase 1 o chat, os eventos de notificação, os cosméticos completos, a economia de Moedas com a Loja e Crônicas; o estado de cada item está na seção 7.5 | Seção 6, Must/Should |
+| Fase 2 | Aviso visível das notificações, implementação do "Companheiro" (ADR-004) | Seção 6, Should/Could |
 | Fase 3 (pós-MVP) | Beta com usuários piloto (conforme Pitch: Q2), observabilidade completa, reavaliação de provedor/SLO se o produto sair do horizonte acadêmico, Redis quando houver 2ª réplica real (ADR-003) | Pitch — Q2/Q3 2026 |
 | Fora de escopo até validação de mercado | Gateway de pagamento real, parcerias educacionais | ADR-007 |
 
 ---
 
-## 16. Skills utilizadas
+## 16. Evidências de verificação e skills da v1.0
+
+### 16.1 Verificação em 27/10/2026
+
+Comandos executados na branch `develop` (commit `8811df4`, com as mudanças de documentação da issue #5), em macOS, com Node 22.22.3 e um MySQL 8.0 descartável em Docker para os testes de integração:
+
+| Verificação | Comando | Resultado |
+|---|---|---|
+| Build do backend | `npm run build --workspace apps/backend` | passou |
+| Lint do backend | `npm run lint --workspace apps/backend` | passou, sem erros |
+| Testes unitários do backend | `npm test --workspace apps/backend` | 45 suítes, 400 testes, todos passaram |
+| Integração do backend contra MySQL 8.0 | `npm run test:integration --workspace apps/backend` | 34 suítes, 395 testes, todos passaram (inclui o teste de upgrade e downgrade das migrations e o boot do `AppModule`) |
+| Tipos do frontend | `npm run typecheck --workspace apps/frontend` | passou |
+| Lint do frontend | `npm run lint --workspace apps/frontend` | passou |
+| Testes do frontend | `npm test --workspace apps/frontend` | 82 suítes, 1274 testes, todos passaram na segunda execução. A primeira terminou com código 1 e a saída guardada não mostra qual teste falhou; a issue #235 já registra um teste intermitente no Mercado. Nas duas execuções o Jest avisou que não encerrou um segundo depois dos testes |
+| Contrato REST | `npm run lint:openapi` | válido, com 1 aviso (`no-server-example-com`) |
+| Contrato de eventos | `npx redocly lint docs/api/asyncapi.yaml` | válido, sem avisos |
+| Rotas REST × OpenAPI | comparação dos decorators dos controllers com os `paths` | 53 rotas no código e 53 no contrato, sem diferença |
+
+Não executados nesta verificação: o E2E Playwright (`npm run test:e2e`), os bundles nativos (`npm run export:bundles`), a entrega Web em container (`test:delivery`) e builds iOS e Android. A CI roda o E2E, os bundles e a entrega Web em cada PR (seção 12).
+
+### 16.2 Skills utilizadas na v1.0
+
+A tabela abaixo registra as skills usadas para escrever a v1.0 deste PRD, em 21/08/2026. Ela não descreve o estado atual do código; os números de testes que ela cita são daquela data.
 
 Nota de processo: numa rodada anterior deste documento, esta seção listava várias skills como "consultadas e aplicadas" sem que o Skill tool tivesse sido de fato invocado para elas — o conteúdo foi escrito com conhecimento geral sob o rótulo da skill, não com as instruções reais carregadas. Isso foi corrigido: todas as 15 skills abaixo foram carregadas via Skill tool nesta sessão, e cada uma gerou uma ação concreta e verificável (não apenas prosa), listada a seguir.
 
@@ -516,17 +643,18 @@ Nota de processo: numa rodada anterior deste documento, esta seção listava vá
 
 `vue-expert` permanece deliberadamente não aplicado — o stack decidido é React, não Vue.
 
-**Verificação real feita** (não apenas planejada): `tsc --noEmit` + `nest build` limpos no backend; `tsc --noEmit` + `vite build` limpos no frontend; 28 + 2 testes automatizados passando; `docs/api/openapi.yaml` validado com `redocly lint` (0 erros) e exercitado contra um mock Prism real (200/401 corretos); tela de login carregada num navegador real em viewport mobile (375×812) sem erro de layout.
-
-**Não verificado nesta rodada** (limitação do ambiente, não do código): boot do grafo de DI do NestJS contra MySQL real, e os fluxos autenticados do frontend ponta a ponta contra o backend — ambos exigem `docker compose up` com Docker disponível, o que não existe neste sandbox de execução. Primeiro passo do time antes de confiar no código além da cobertura automatizada.
+Na v1.0, a verificação foi `tsc --noEmit` e `nest build` no backend, `tsc --noEmit` e `vite build` no frontend Web da época, 28 testes de backend e 2 de frontend, o `openapi.yaml` validado com `redocly lint` e exercitado num mock Prism, e a tela de login aberta num navegador em 375×812. O boot do NestJS contra MySQL real e os fluxos ponta a ponta ficaram sem verificação naquela rodada; hoje a CI cobre os dois (seção 12), e a verificação de 27/10/2026 rodou o boot contra MySQL (seção 16.1).
 
 ---
 
 ## 17. Próximos passos imediatos
 
 1. Provisionar a VM Oracle Cloud Always Free o quanto antes (ADR-006) — erros de "out of capacity" são comuns nessa modalidade; não deixar para o fim do prazo.
-2. Atualizar Documento de Visão (seção 4.4) e Documento de Arquitetura (tabela de tecnologias) para refletir Oracle Cloud em vez de AWS e a remoção do Koa.js (ADR-002/ADR-006) — `README.md` já foi atualizado nesta rodada.
-3. ~~Publicar `docs/api/openapi.yaml`~~ — feito nesta rodada, validado com `redocly lint` e testado contra mock Prism. `docs/api/asyncapi.yaml` já cobre os eventos de Raid; faltam os eventos de XP e level-up.
+2. Atualizar a infraestrutura no Documento de Visão (seção 4.4) e no Documento de Arquitetura (seções 1, 5 e 6) depois que o time decidir a divergência entre o ADR-006 e o repositório (issue #5). A remoção do Koa.js (ADR-002) e o restante desses documentos já foram atualizados na versão 2.0, de 27/10/2026.
+3. ~~Publicar `docs/api/openapi.yaml` e `docs/api/asyncapi.yaml`~~ — feito. Os dois cobrem as rotas e os eventos do backend (seção 7.5).
 4. ~~Escrever as migrations TypeORM versionadas~~ — feito (ver seção 7.5).
 5. Decidir, na primeira ticket de infraestrutura, entre MySQL gerenciado (Oracle HeatWave Always Free) ou MySQL em container na mesma VM (seção 11).
 6. ~~Validar o boot completo do backend contra MySQL real~~ — coberto pela CI (integração contra MySQL e E2E via Docker Compose).
+7. Validar responsividade e acessibilidade das telas T01 a T06 (#23).
+8. Fechar a validação do desenho freemium (#7) e decidir o que acontece com os recursos premium do Pitch que não existem ("raids avançados" e "perfil destacado").
+9. Decidir se as notificações de level-up e Raid encerrada ganham um aviso visível, ou se continuam só atualizando as telas.

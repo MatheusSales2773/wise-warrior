@@ -1,23 +1,29 @@
-import type { StudySession, StudySessionState, StudySessionTerminalReason } from './entities/study-session.entity';
+import type { StudySession, StudySessionKind, StudySessionState, StudySessionTerminalReason } from './entities/study-session.entity';
 import type { CappedReason } from './domain/session-validator';
 import { getStudySessionTime } from './domain/study-session-time';
 
 export type StudySessionSnapshot = {
   id: string;
+  kind: StudySessionKind;
   mode: 'solo' | 'guild';
   /** A Raid que recebe a Contribuição quando `mode` é `guild`. */
   raidId: string | null;
   subject: string | null;
   state: StudySessionState;
-  plannedDurationSeconds: number;
+  /** `null` no Foco livre, que não tem duração planejada. */
+  plannedDurationSeconds: number | null;
   startedAt: Date;
+  /** No Ciclo, o fim do foco; no Foco livre, o teto do antifraude. */
   runDeadlineAt: Date | null;
   pausedAt: Date | null;
   pausedTotalSeconds: number;
   durationValidSeconds: number;
+  /** Sem significado no Foco livre (sempre 0): o cliente conta para cima. */
   remainingSeconds: number;
   serverNow: Date;
   version: number;
+  /** Pausas aplicadas à sessão, iguais em todos os dispositivos. */
+  pauseCount: number;
   endedAt: Date | null;
   xpAwarded: number;
   terminalReason: StudySessionTerminalReason | null;
@@ -30,21 +36,24 @@ export function studySessionSnapshot(session: StudySession, now: Date): StudySes
   const deadline = session.runDeadlineAt ?? null;
   const state = session.state ?? 'running';
   const time = getStudySessionTime({ ...session, state }, now);
+  const kind = session.kind ?? 'cycle';
   return {
     id: session.id,
+    kind,
     mode: session.mode,
     raidId: session.raidId ?? null,
     subject: session.subject,
     state,
-    plannedDurationSeconds: session.plannedDurationSeconds ?? 1500,
+    plannedDurationSeconds: kind === 'free' ? null : session.plannedDurationSeconds ?? 1500,
     startedAt: session.startedAt,
     runDeadlineAt: deadline,
     pausedAt: session.pausedAt ?? null,
     pausedTotalSeconds: time.pausedTotalSeconds,
     durationValidSeconds: time.durationValidSeconds,
-    remainingSeconds: deadline ? time.remainingSeconds : 0,
+    remainingSeconds: deadline && kind === 'cycle' ? time.remainingSeconds : 0,
     serverNow: now,
     version: session.version ?? 1,
+    pauseCount: session.pauseCount ?? 0,
     endedAt: session.endedAt ?? null,
     xpAwarded: session.xpAwarded ?? 0,
     terminalReason: session.terminalReason ?? null,
@@ -59,7 +68,9 @@ export function deserializeStudySessionSnapshot(value: StudySessionSnapshot | st
   const original = typeof value === 'string' ? JSON.parse(value) as StudySessionSnapshot : value;
   return {
     ...original,
+    kind: original.kind ?? 'cycle', // receipts written before the Foco livre have no kind
     raidId: original.raidId ?? null, // receipts written before the guild mode have no raidId
+    pauseCount: original.pauseCount ?? 0, // receipts written before the pause count have no pauseCount
     startedAt: new Date(original.startedAt),
     runDeadlineAt: original.runDeadlineAt ? new Date(original.runDeadlineAt) : null,
     pausedAt: original.pausedAt ? new Date(original.pausedAt) : null,

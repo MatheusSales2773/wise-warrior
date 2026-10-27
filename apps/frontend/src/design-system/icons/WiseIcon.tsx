@@ -26,9 +26,20 @@ export const wiseIconNames = [
   'play',
   'storefront-outline',
   'storefront',
+  'book-outline',
+  'book',
   'bag-handle-outline',
   'checkmark',
+  'checkmark-circle',
   'arrow-forward',
+  'settings-outline',
+  'settings',
+  'key-outline',
+  'mail-outline',
+  'phone-portrait-outline',
+  'accessibility-outline',
+  'diamond-outline',
+  'log-out-outline',
 ] as const;
 
 export type WiseIconName = (typeof wiseIconNames)[number];

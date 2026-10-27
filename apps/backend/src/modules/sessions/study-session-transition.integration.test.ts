@@ -110,6 +110,7 @@ describe('Study Session transitions against MySQL', () => {
       economy,
       users,
       new StudySessionEventsService(realtime as unknown as RealtimeGateway),
+      { settleInTransaction: async () => [] } as never,
     );
   });
 
@@ -141,8 +142,8 @@ describe('Study Session transitions against MySQL', () => {
     await transition('resume', 2, 'signal-resume');
 
     expect(sessionEvents()).toEqual([
-      { studySessionId, version: 2, state: 'paused' },
-      { studySessionId, version: 3, state: 'running' },
+      { studySessionId, version: 2, pauseCount: 1, state: 'paused' },
+      { studySessionId, version: 3, pauseCount: 1, state: 'running' },
     ]);
 
     // A replayed receipt is not a new state: another device already got this one.
@@ -155,7 +156,7 @@ describe('Study Session transitions against MySQL', () => {
 
     await transition('stop', 1, 'signal-stop');
 
-    expect(sessionEvents()).toEqual([{ studySessionId, version: 2, state: 'ended' }]);
+    expect(sessionEvents()).toEqual([{ studySessionId, version: 2, pauseCount: 0, state: 'ended' }]);
     expect(rewardEvents()).toHaveLength(2);
   });
 
@@ -164,7 +165,7 @@ describe('Study Session transitions against MySQL', () => {
 
     await transition('stop', 1, 'signal-cancel');
 
-    expect(sessionEvents()).toEqual([{ studySessionId, version: 2, state: 'ended' }]);
+    expect(sessionEvents()).toEqual([{ studySessionId, version: 2, pauseCount: 0, state: 'ended' }]);
     expect(rewardEvents()).toHaveLength(0);
   });
 
@@ -177,7 +178,7 @@ describe('Study Session transitions against MySQL', () => {
     now = deadline;
 
     expect(await service.completeExpired(userId)).toMatchObject({ id: studySessionId, state: 'completed', version: 2 });
-    expect(sessionEvents()).toEqual([{ studySessionId, version: 2, state: 'ended' }]);
+    expect(sessionEvents()).toEqual([{ studySessionId, version: 2, pauseCount: 0, state: 'ended' }]);
 
     expect(await service.completeExpired(userId)).toBeNull();
     expect(sessionEvents()).toHaveLength(1);
@@ -228,6 +229,76 @@ describe('Study Session transitions against MySQL', () => {
 
     const persisted = await dataSource!.getRepository(StudySession).findOneByOrFail({ id: studySessionId });
     expect(persisted).toMatchObject({ state: 'paused', version: 2, durationValidSeconds: 300, xpAwarded: 0 });
+  });
+
+  it('counts each applied pause, never a resume, and carries the count in snapshots and receipts', async () => {
+    const active = await dataSource!.getRepository(StudySession).findOneByOrFail({ id: studySessionId });
+    expect(active.pauseCount).toBe(0);
+
+    now = new Date(now.getTime() + 300_000);
+    const firstPause = await transition('pause', 1, 'count-pause-1');
+    expect(firstPause.pauseCount).toBe(1);
+
+    now = new Date(now.getTime() + 60_000);
+    const resumed = await transition('resume', 2, 'count-resume-1');
+    expect(resumed.pauseCount).toBe(1);
+
+    now = new Date(now.getTime() + 60_000);
+    const secondPause = await transition('pause', 3, 'count-pause-2');
+    expect(secondPause.pauseCount).toBe(2);
+
+    // A replay returns the original receipt without adding to the count.
+    await expect(transition('pause', 3, 'count-pause-2')).resolves.toEqual(secondPause);
+    await expect(transition('pause', 1, 'count-pause-1')).resolves.toEqual(firstPause);
+    const persisted = await dataSource!.getRepository(StudySession).findOneByOrFail({ id: studySessionId });
+    expect(persisted.pauseCount).toBe(2);
+
+    now = new Date(now.getTime() + 60_000);
+    const stopped = await transition('stop', 4, 'count-stop');
+    expect(stopped.pauseCount).toBe(2);
+  });
+
+  it('keeps the count when the paused session resumes and completes at its deadline', async () => {
+    now = new Date(now.getTime() + 300_000);
+    await transition('pause', 1, 'complete-count-pause');
+    now = new Date(now.getTime() + 60_000);
+    const resumed = await transition('resume', 2, 'complete-count-resume');
+    now = new Date(resumed.runDeadlineAt!.getTime());
+
+    const completed = await transition('complete', 3, 'complete-count');
+    expect(completed).toMatchObject({ state: 'completed', pauseCount: 1 });
+  });
+
+  it('counts exactly one pause for concurrent pause commands', async () => {
+    now = new Date(now.getTime() + 300_000);
+    const results = await Promise.allSettled([
+      transition('pause', 1, 'count-concurrent-a'),
+      transition('pause', 1, 'count-concurrent-b'),
+    ]);
+
+    expect(results.filter((result) => result.status === 'fulfilled')).toHaveLength(1);
+    expect(results.filter((result) => result.status === 'rejected')).toHaveLength(1);
+    const persisted = await dataSource!.getRepository(StudySession).findOneByOrFail({ id: studySessionId });
+    expect(persisted.pauseCount).toBe(1);
+  });
+
+  it('reads a receipt stored before the pause count as 0', async () => {
+    now = new Date(now.getTime() + 300_000);
+    await transition('pause', 1, 'legacy-receipt');
+    const rows = await dataSource!.query(
+      'SELECT response_json FROM study_session_transition_receipts WHERE user_id = ? AND idempotency_key = ?',
+      [userId, 'legacy-receipt'],
+    ) as Array<{ response_json: Record<string, unknown> | string }>;
+    const row = rows[0]!;
+    const stored = typeof row.response_json === 'string' ? JSON.parse(row.response_json) : row.response_json;
+    delete stored.pauseCount;
+    await dataSource!.query(
+      'UPDATE study_session_transition_receipts SET response_json = ? WHERE user_id = ? AND idempotency_key = ?',
+      [JSON.stringify(stored), userId, 'legacy-receipt'],
+    );
+
+    const replay = await transition('pause', 1, 'legacy-receipt');
+    expect(replay.pauseCount).toBe(0);
   });
 
   it('serializes concurrent pause commands so exactly one version change wins', async () => {
@@ -317,7 +388,7 @@ describe('Study Session transitions against MySQL', () => {
       .toEqual([{ action: 'complete' }]);
     // 25 minutes of valid focus: one XP event and one coins event, both after the commit.
     expect(rewardEvents()).toHaveLength(2);
-    expect(sessionEvents()).toEqual([{ studySessionId, version: 2, state: 'ended' }]);
+    expect(sessionEvents()).toEqual([{ studySessionId, version: 2, pauseCount: 0, state: 'ended' }]);
     expect(realtime.emitToUser).toHaveBeenCalledWith(userId, 'progress:xpUpdated', {
       xpGained: 250, xpTotal: 250, level: 1,
     });
@@ -370,7 +441,7 @@ describe('Study Session transitions against MySQL', () => {
     expect(await dataSource!.query('SELECT * FROM study_session_transition_receipts WHERE user_id = ?', [userId])).toHaveLength(1);
     // Only the winner saved the transition, so only the winner signals the new state.
     expect(rewardEvents()).toHaveLength(2);
-    expect(sessionEvents()).toEqual([{ studySessionId, version: 2, state: 'ended' }]);
+    expect(sessionEvents()).toEqual([{ studySessionId, version: 2, pauseCount: 0, state: 'ended' }]);
   });
 
   it('serializes stop against automatic completion at the canonical deadline', async () => {
@@ -443,7 +514,7 @@ describe('Study Session transitions against MySQL', () => {
     expect(await dataSource!.getRepository(Character).findOneByOrFail({ id: characterId })).toMatchObject({ xpTotal: 100 });
     expect(await dataSource!.query('SELECT * FROM active_study_sessions WHERE user_id = ?', [userId])).toHaveLength(0);
     expect(rewardEvents()).toHaveLength(2);
-    expect(sessionEvents()).toEqual([{ studySessionId, version: 2, state: 'ended' }]);
+    expect(sessionEvents()).toEqual([{ studySessionId, version: 2, pauseCount: 0, state: 'ended' }]);
   });
 
   const insertEarlierFocus = (id: string, endedAt: Date, durationValidSeconds: number) => dataSource!.getRepository(StudySession).insert({
@@ -540,7 +611,7 @@ describe('Study Session transitions against MySQL', () => {
     expect(await dataSource!.getRepository(Character).findOneByOrFail({ id: characterId })).toMatchObject({ xpTotal: 0 });
     expect(await dataSource!.query('SELECT * FROM coin_ledger_entries WHERE user_id = ?', [userId])).toHaveLength(0);
     expect(rewardEvents()).toHaveLength(0);
-    expect(sessionEvents()).toEqual([{ studySessionId, version: 2, state: 'ended' }]);
+    expect(sessionEvents()).toEqual([{ studySessionId, version: 2, pauseCount: 0, state: 'ended' }]);
   });
 
   it('awards one proportional reward at 300 seconds and returns the same receipt on retry', async () => {

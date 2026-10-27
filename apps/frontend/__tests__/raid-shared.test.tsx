@@ -27,6 +27,7 @@ const raid = (overrides: Partial<ActiveRaid> = {}): ActiveRaid => ({
   streak: 0,
   me: { participating: false, contributionXp: 0, position: null },
   lastHit: null,
+  missionOwner: null,
   ...overrides,
 });
 

@@ -1,0 +1,262 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: Computacao do ambiente (NAT instance, app, ALB)
+
+Parameters:
+  NetworkStackName:
+    Type: String
+    Default: wise-warrior-network
+  SecurityStackName:
+    Type: String
+    Default: wise-warrior-security
+  LatestAmiId:
+    Type: AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>
+    Default: /aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-arm64
+  AppInstanceType:
+    Type: String
+    Default: t4g.medium
+  ApiHostName:
+    Type: String
+    Description: Host da API (ex. api-hmg.seudominio.com)
+  CertificateArn:
+    Type: String
+    Default: ""
+    Description: ARN do certificado ACM. Vazio publica so HTTP.
+  DataStackName:
+    Type: String
+    Default: wise-warrior-data
+
+Conditions:
+  HasCertificate: !Not [!Equals [!Ref CertificateArn, ""]]
+  NoCertificate: !Equals [!Ref CertificateArn, ""]
+
+Resources:
+  NatInstance:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId: !Ref LatestAmiId
+      InstanceType: t4g.micro
+      SubnetId: !ImportValue
+        Fn::Sub: "${NetworkStackName}-PublicSubnetAId"
+      SecurityGroupIds:
+        - !ImportValue
+          Fn::Sub: "${SecurityStackName}-NatSecurityGroupId"
+      SourceDestCheck: false
+      UserData: !Base64 |
+        #!/bin/bash
+        set -euxo pipefail
+        dnf install -y iptables-services
+        echo "net.ipv4.ip_forward = 1" > /etc/sysctl.d/90-nat.conf
+        sysctl --system
+        IFACE=$(ip -o -4 route show to default | awk '{print $5}' | head -n1)
+        iptables -t nat -A POSTROUTING -o "$IFACE" -j MASQUERADE
+        iptables -F FORWARD
+        service iptables save
+        systemctl enable --now iptables
+      Tags:
+        - Key: Name
+          Value: wise-warrior-nat
+
+  PrivateDefaultRoute:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !ImportValue
+        Fn::Sub: "${NetworkStackName}-RouteTablePrivateId"
+      DestinationCidrBlock: 0.0.0.0/0
+      InstanceId: !Ref NatInstance
+      
+  AppRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ec2.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
+        - arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly
+      Policies:
+        - PolicyName: read-app-config
+          PolicyDocument: 
+              Version: '2012-10-17'
+              Statement:
+                - Effect: Allow
+                  Action:
+                    - ssm:GetParameter
+                    - ssm:GetParameters
+                  Resource: !Sub "arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/wise-warrior/hmg/*"
+                - Effect: Allow
+                  Action: secretsmanager:GetSecretValue
+                  Resource: !ImportValue
+                    Fn::Sub: "${DataStackName}-DbSecretArn"
+            
+      Tags:
+        - Key: Name
+          Value: wise-warrior-app-role
+
+  AppInstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Roles:
+        - !Ref AppRole
+
+  AppInstance:
+    Type: AWS::EC2::Instance
+    DependsOn: PrivateDefaultRoute
+    Properties:
+      ImageId: !Ref LatestAmiId
+      InstanceType: !Ref AppInstanceType
+      SubnetId: !ImportValue
+        Fn::Sub: "${NetworkStackName}-AppSubnetAId"
+      SecurityGroupIds:
+        - !ImportValue
+          Fn::Sub: "${SecurityStackName}-AppSecurityGroupId"
+      IamInstanceProfile: !Ref AppInstanceProfile
+      MetadataOptions:
+        HttpTokens: required
+      BlockDeviceMappings:
+        - DeviceName: /dev/xvda
+          Ebs:
+            VolumeSize: 20
+            VolumeType: gp3
+            Encrypted: true
+      UserData: !Base64 |
+        #!/bin/bash
+        set -euxo pipefail
+        dnf install -y docker
+        systemctl enable --now docker
+        usermod -aG docker ssm-user || true
+      Tags:
+        - Key: Name
+          Value: wise-warrior-app
+
+  LoadBalancer:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Type: application
+      Scheme: internet-facing
+      Subnets:
+        - !ImportValue
+          Fn::Sub: "${NetworkStackName}-PublicSubnetAId"
+        - !ImportValue
+          Fn::Sub: "${NetworkStackName}-PublicSubnetBId"
+      SecurityGroups:
+        - !ImportValue
+          Fn::Sub: "${SecurityStackName}-AlbSecurityGroupId"
+      LoadBalancerAttributes:
+        - Key: idle_timeout.timeout_seconds
+          Value: "120"
+      Tags:
+        - Key: Name
+          Value: wise-warrior-alb
+
+  BackendTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      VpcId: !ImportValue
+        Fn::Sub: "${NetworkStackName}-VpcId"
+      TargetType: instance
+      Protocol: HTTP
+      Port: 3000
+      HealthCheckPath: /api/v1/health
+      Matcher:
+        HttpCode: "200"
+      Targets:
+        - Id: !Ref AppInstance
+      Tags:
+        - Key: Name
+          Value: wise-warrior-backend-tg
+
+  FrontendTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      VpcId: !ImportValue
+        Fn::Sub: "${NetworkStackName}-VpcId"
+      TargetType: instance
+      Protocol: HTTP
+      Port: 80
+      HealthCheckPath: /health
+      Matcher:
+        HttpCode: "200"
+      Targets:
+        - Id: !Ref AppInstance
+      Tags:
+        - Key: Name
+          Value: wise-warrior-frontend-tg
+
+  HttpListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      LoadBalancerArn: !Ref LoadBalancer
+      Port: 80
+      Protocol: HTTP
+      DefaultActions:
+        - !If
+          - HasCertificate
+          - Type: redirect
+            RedirectConfig:
+              Protocol: HTTPS
+              Port: "443"
+              StatusCode: HTTP_301
+          - Type: forward
+            TargetGroupArn: !Ref FrontendTargetGroup
+
+  HttpApiRule:
+    Type: AWS::ElasticLoadBalancingV2::ListenerRule
+    Condition: NoCertificate
+    Properties:
+      ListenerArn: !Ref HttpListener
+      Priority: 10
+      Conditions:
+        - Field: host-header
+          HostHeaderConfig:
+            Values:
+              - !Ref ApiHostName
+      Actions:
+        - Type: forward
+          TargetGroupArn: !Ref BackendTargetGroup
+
+  HttpsListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Condition: HasCertificate
+    Properties:
+      LoadBalancerArn: !Ref LoadBalancer
+      Port: 443
+      Protocol: HTTPS
+      Certificates:
+        - CertificateArn: !Ref CertificateArn
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref FrontendTargetGroup
+
+  HttpsApiRule:
+    Type: AWS::ElasticLoadBalancingV2::ListenerRule
+    Condition: HasCertificate
+    Properties:
+      ListenerArn: !Ref HttpsListener
+      Priority: 10
+      Conditions:
+        - Field: host-header
+          HostHeaderConfig:
+            Values:
+              - !Ref ApiHostName
+      Actions:
+        - Type: forward
+          TargetGroupArn: !Ref BackendTargetGroup
+
+Outputs:
+  LoadBalancerDnsName:
+    Description: Destino do CNAME no Cloudflare
+    Value: !GetAtt LoadBalancer.DNSName
+
+  AppInstanceId:
+    Value: !Ref AppInstance
+    Export:
+      Name: !Sub "${AWS::StackName}-AppInstanceId"
+
+  NatInstanceId:
+    Value: !Ref NatInstance
+    Export:
+      Name: !Sub "${AWS::StackName}-NatInstanceId"

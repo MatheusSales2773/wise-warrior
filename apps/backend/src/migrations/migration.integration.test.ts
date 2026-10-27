@@ -31,7 +31,14 @@ import { AddGuildMissionChoice1788460020000 } from './1788460020000-add-guild-mi
 import { KeepBadgesOffSale1788460080000 } from './1788460080000-keep-badges-off-sale';
 import { SeedCosmeticItemsForSale1788460140000 } from './1788460140000-seed-cosmetic-items-for-sale';
 import { SeedMissionsForSale1788460200000 } from './1788460200000-seed-missions-for-sale';
-import { raidWeekAt } from '../modules/raids/domain/raid-week';
+import { AddWeaponCategory1788460440000, STAFF_ID } from './1788460440000-add-weapon-category';
+import { AddStudySessionKind1788460500000 } from './1788460500000-add-study-session-kind';
+import {
+  CEM_SESSOES_ID,
+  MADRUGADOR_ID,
+  SessionCountBadgeConditions1788460560000,
+} from './1788460560000-session-count-badge-conditions';
+import { saoPauloWeekAt } from '../shared/time/sao-paulo-calendar';
 
 const ITEMS_FOR_SALE = [
   ['c05e71c0-0000-4000-8000-000000000101', 'Marcador de Fita', 30, 'accessory'],
@@ -1152,7 +1159,7 @@ describe('TypeORM migrations against an empty MySQL schema', () => {
 
     dataSource = new DataSource(database.options(migrationsThrough(AddGuildMissionChoice1788460020000)));
     await dataSource.initialize();
-    const before = raidWeekAt(new Date());
+    const before = saoPauloWeekAt(new Date());
     await dataSource.runMigrations();
 
     const missions = await rows(
@@ -1520,5 +1527,164 @@ describe('TypeORM migrations against an empty MySQL schema', () => {
 
     await dataSource.runMigrations();
     expect(await forSale()).toHaveLength(ITEMS_FOR_SALE.length);
+  });
+
+  it('adds the Arma category: the Espada to every existing Character, equipped once, and the Cajado and Besta À venda', async () => {
+    database = await createIntegrationDatabase('wise_migrations_test');
+    initialDataSource = new DataSource(database.options(migrationsBefore(AddWeaponCategory1788460440000)));
+    await initialDataSource.initialize();
+    await initialDataSource.runMigrations();
+    for (const id of ['veteran', 'newcomer']) {
+      await database.admin.query(
+        `INSERT INTO ${database.identifier}.users (id, email, password_hash, display_name, plan_tier)
+         VALUES (?, ?, 'hash', ?, 'free')`,
+        [id, `${id}@example.com`, id],
+      );
+      await database.admin.query(
+        `INSERT INTO ${database.identifier}.characters (id, user_id, level, xp_total) VALUES (?, ?, 1, 0)`,
+        [`${id}-character`, id],
+      );
+    }
+    // A Character that already equips another Arma keeps it: the Espada is granted but stays in the Inventário.
+    await database.admin.query(
+      `INSERT INTO ${database.identifier}.users (id, email, password_hash, display_name, plan_tier)
+       VALUES ('armed', 'armed@example.com', 'hash', 'armed', 'free')`,
+    );
+    await database.admin.query(
+      `INSERT INTO ${database.identifier}.characters (id, user_id, level, xp_total) VALUES ('armed-character', 'armed', 1, 0)`,
+    );
+    await database.admin.query(
+      `INSERT INTO ${database.identifier}.cosmetic_items (id, category, name, unlock_condition, requires_premium)
+       VALUES ('legacy-weapon', 'weapon', 'Machado', 'raid:legacy', 0)`,
+    );
+    await database.admin.query(
+      `INSERT INTO ${database.identifier}.user_cosmetic_items (id, user_id, cosmetic_item_id, equipped)
+       VALUES ('armed-row', 'armed', 'legacy-weapon', 1)`,
+    );
+    await initialDataSource.destroy();
+    initialDataSource = undefined;
+
+    dataSource = new DataSource(database.options(migrationsThrough(AddWeaponCategory1788460440000)));
+    await dataSource.initialize();
+    await dataSource.runMigrations();
+
+    const weapons = async () => (await rows(
+      database!.admin,
+      `SELECT name, unlock_condition, price, for_sale FROM ${database!.identifier}.cosmetic_items
+       WHERE category = 'weapon' ORDER BY name`,
+    )).map((row) => [row.name, row.unlock_condition, row.price === null ? null : Number(row.price), Number(row.for_sale)]);
+    const inventory = async () => (await rows(
+      database!.admin,
+      `SELECT uci.user_id, ci.name, uci.equipped FROM ${database!.identifier}.user_cosmetic_items uci
+       JOIN ${database!.identifier}.cosmetic_items ci ON ci.id = uci.cosmetic_item_id
+       WHERE ci.category = 'weapon' ORDER BY uci.user_id, ci.name`,
+    )).map((row) => [row.user_id, row.name, Number(row.equipped)]);
+    const expectedWeapons = [['Besta', 'purchase', 150, 1], ['Cajado', 'purchase', 90, 1], ['Espada', 'level:1', null, 0], ['Machado', 'raid:legacy', null, 0]];
+    expect(await weapons()).toEqual(expectedWeapons);
+    const armed = [['armed', 'Espada', 0], ['armed', 'Machado', 1]];
+    expect(await inventory()).toEqual([...armed, ['newcomer', 'Espada', 1], ['veteran', 'Espada', 1]]);
+
+    // Running it again duplicates nothing and keeps a choice made since: the veteran swapped to the Cajado.
+    await database.admin.query(
+      `UPDATE ${database.identifier}.user_cosmetic_items SET equipped = 0 WHERE user_id = 'veteran'`,
+    );
+    await database.admin.query(
+      `INSERT INTO ${database.identifier}.user_cosmetic_items (id, user_id, cosmetic_item_id, equipped)
+       VALUES ('veteran-cajado', 'veteran', ?, 1)`,
+      [STAFF_ID],
+    );
+    const runner = dataSource.createQueryRunner();
+    try {
+      await new AddWeaponCategory1788460440000().up(runner);
+    } finally {
+      await runner.release();
+    }
+    expect(await weapons()).toEqual(expectedWeapons);
+    expect(await inventory()).toEqual([
+      ...armed,
+      ['newcomer', 'Espada', 1],
+      ['veteran', 'Cajado', 1],
+      ['veteran', 'Espada', 0],
+    ]);
+
+    await revertThrough(dataSource, AddWeaponCategory1788460440000);
+    expect(await weapons()).toEqual([['Machado', 'raid:legacy', null, 0]]);
+    expect(await inventory()).toEqual([['armed', 'Machado', 1]]);
+
+    await dataSource.runMigrations();
+    expect(await weapons()).toEqual(expectedWeapons);
+  });
+
+  it('marks existing Study Sessions as Ciclo and reverts the kind column', async () => {
+    database = await createIntegrationDatabase('wise_migrations_test');
+    initialDataSource = new DataSource(database!.options(migrationsBefore(AddStudySessionKind1788460500000)));
+    await initialDataSource.initialize();
+    await initialDataSource.runMigrations();
+    await database!.admin.query(
+      `INSERT INTO ${database!.identifier}.users (id, email, password_hash, display_name, plan_tier)
+       VALUES ('kind-user', 'kind@example.com', 'hash', 'Kind', 'free')`,
+    );
+    await database!.admin.query(
+      `INSERT INTO ${database!.identifier}.study_sessions (id, user_id, subject, mode, planned_duration_seconds)
+       VALUES ('kind-legacy', 'kind-user', 'Cálculo', 'solo', NULL)`,
+    );
+    await initialDataSource.destroy();
+    initialDataSource = undefined;
+
+    dataSource = new DataSource(database!.options(migrationsThrough(AddStudySessionKind1788460500000)));
+    await dataSource.initialize();
+    await dataSource.runMigrations();
+    expect(await rows(database!.admin, `SELECT kind, planned_duration_seconds FROM ${database!.identifier}.study_sessions`))
+      .toEqual([{ kind: 'cycle', planned_duration_seconds: null }]);
+
+    await revertThrough(dataSource, AddStudySessionKind1788460500000);
+    const columns = await rows(
+      database!.admin,
+      'SELECT COLUMN_NAME FROM information_schema.columns WHERE table_schema = ? AND table_name = ? AND COLUMN_NAME = ?',
+      [database!.name, 'study_sessions', 'kind'],
+    );
+    expect(columns).toEqual([]);
+  });
+
+  it('moves Madrugador and Cem Sessões to session counts and keeps the Badges already in the Inventário', async () => {
+    database = await createIntegrationDatabase('wise_migrations_test');
+    initialDataSource = new DataSource(database.options(migrationsBefore(SessionCountBadgeConditions1788460560000)));
+    await initialDataSource.initialize();
+    await initialDataSource.runMigrations();
+    await database.admin.query(
+      `INSERT INTO ${database.identifier}.users (id, email, password_hash, display_name, plan_tier)
+       VALUES ('veteran', 'veteran@example.com', 'hash', 'veteran', 'free')`,
+    );
+    await database.admin.query(
+      `INSERT INTO ${database.identifier}.user_cosmetic_items (id, user_id, cosmetic_item_id, equipped)
+       VALUES ('veteran-madrugador', 'veteran', ?, 1)`,
+      [MADRUGADOR_ID],
+    );
+    await initialDataSource.destroy();
+    initialDataSource = undefined;
+
+    dataSource = new DataSource(database.options(migrationsThrough(SessionCountBadgeConditions1788460560000)));
+    await dataSource.initialize();
+    await dataSource.runMigrations();
+
+    const conditions = async () => (await rows(
+      database!.admin,
+      `SELECT name, unlock_condition FROM ${database!.identifier}.cosmetic_items WHERE id IN (?, ?) ORDER BY name`,
+      [MADRUGADOR_ID, CEM_SESSOES_ID],
+    )).map((row) => [row.name, row.unlock_condition]);
+    const owned = async () => (await rows(
+      database!.admin,
+      `SELECT cosmetic_item_id, equipped FROM ${database!.identifier}.user_cosmetic_items WHERE user_id = 'veteran'`,
+    )).map((row) => [row.cosmetic_item_id, Number(row.equipped)]);
+
+    expect(await conditions()).toEqual([['Cem Sessões', 'sessions:100'], ['Madrugador', 'early-sessions:5']]);
+    expect(await owned()).toEqual([[MADRUGADOR_ID, 1]]);
+
+    await revertThrough(dataSource, SessionCountBadgeConditions1788460560000);
+    expect(await conditions()).toEqual([['Cem Sessões', 'level:12'], ['Madrugador', 'level:3']]);
+    expect(await owned()).toEqual([[MADRUGADOR_ID, 1]]);
+
+    await dataSource.runMigrations();
+    expect(await conditions()).toEqual([['Cem Sessões', 'sessions:100'], ['Madrugador', 'early-sessions:5']]);
   });
 });

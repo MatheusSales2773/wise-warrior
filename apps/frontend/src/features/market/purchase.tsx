@@ -1,8 +1,7 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useState } from 'react';
-import { Modal, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
-import { FeedbackMessage, WiseButton, WiseIcon, theme } from '@/design-system';
-import { useRuntimeMotionDuration } from '@/design-system/components/motion-runtime';
+import { Platform, StyleSheet, Text, View } from 'react-native';
+import { FeedbackMessage, WiseButton, WiseDialog, WiseIcon, theme } from '@/design-system';
 import { cosmeticSprite, equipmentCategoryById } from '@/features/character/catalog';
 import { PixelSprite } from '@/features/character/PixelSprite';
 import { itemSprites } from '@/features/character/sprites';
@@ -96,7 +95,6 @@ function subtitle(target: PurchaseTarget): string {
 
 /** Centered dialog on desktop, bottom sheet on phones; both carry the same confirmation and outcome. */
 export function PurchaseDialog({ balance, desktop, purchase }: { balance: number; desktop: boolean; purchase: Purchase }) {
-  const motion = useRuntimeMotionDuration();
   const { target, close } = purchase;
 
   useEffect(() => {
@@ -165,31 +163,12 @@ export function PurchaseDialog({ balance, desktop, purchase }: { balance: number
       </View>
     </>;
 
-  return <Modal animationType={motion === theme.motion.none ? 'none' : desktop ? 'fade' : 'slide'} onRequestClose={close} transparent visible testID="purchase-modal">
-    <View aria-modal accessibilityViewIsModal style={[styles.overlay, desktop ? styles.overlayCentered : styles.overlayBottom]}>
-      <Pressable accessibilityElementsHidden accessible={false} focusable={false} importantForAccessibility="no-hide-descendants" onPress={close} style={StyleSheet.absoluteFill} testID="purchase-backdrop" />
-      <View accessibilityLabel={done ? `Compra concluída: ${name}` : `Confirmar compra de ${name}`} role="dialog" style={desktop ? styles.dialog : styles.sheet} testID="purchase-dialog">
-        {desktop ? null : <View style={styles.grab} />}
-        {body}
-      </View>
-    </View>
-  </Modal>;
+  return <WiseDialog accessibilityLabel={done ? `Compra concluída: ${name}` : `Confirmar compra de ${name}`} desktop={desktop} onClose={close} testID="purchase-dialog">
+    {body}
+  </WiseDialog>;
 }
 
 const styles = StyleSheet.create({
-  overlay: { flex: 1, backgroundColor: 'rgba(4, 4, 8, 0.74)' },
-  overlayCentered: { alignItems: 'center', justifyContent: 'center', padding: theme.space.cardInset },
-  overlayBottom: { justifyContent: 'flex-end' },
-  dialog: {
-    width: '100%', maxWidth: 452, gap: 20, padding: 28,
-    borderRadius: theme.radius.panel, borderWidth: theme.border.standard, borderColor: theme.color.borderEmphasis, backgroundColor: theme.color.surfaceCard,
-    ...theme.elevation.card,
-  },
-  sheet: {
-    width: '100%', gap: 16, paddingHorizontal: 20, paddingTop: 10, paddingBottom: 28,
-    borderTopLeftRadius: 16, borderTopRightRadius: 16, borderTopWidth: theme.border.standard, borderColor: theme.color.borderEmphasis, backgroundColor: theme.color.surfaceCard,
-  },
-  grab: { alignSelf: 'center', width: 40, height: 4, borderRadius: 2, backgroundColor: theme.color.borderEmphasis },
   head: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   doneMark: { width: 32, height: 32, alignItems: 'center', justifyContent: 'center', borderRadius: 16, backgroundColor: theme.color.surfaceInset },
   title: { flexShrink: 1, fontFamily: 'Cinzel-SemiBold', fontSize: 22, lineHeight: 28, color: theme.color.textPrimary },

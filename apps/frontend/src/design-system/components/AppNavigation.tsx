@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useRef } from 'react';
-import { useAuth } from '@/core/auth/auth-context';
-import { useRouter } from 'expo-router';
+import { useSignOut } from '@/features/auth/use-sign-out';
 import { AccessibilityInfo, findNodeHandle, Platform, type View } from 'react-native';
 import { MobileNavigation } from '../navigation/MobileNavigation';
 import { MoreMenu } from '../navigation/MoreMenu';
@@ -15,8 +14,7 @@ type AppNavigationProps = {
 };
 
 export function AppNavigation({ bottomInset, isDesktop, modalVisible, onModalVisibilityChange, pathname }: AppNavigationProps) {
-  const { logout } = useAuth();
-  const router = useRouter();
+  const handleLogout = useSignOut();
   const moreButtonRef = useRef<View>(null);
   const shownPathname = useRef(pathname);
 
@@ -26,11 +24,6 @@ export function AppNavigation({ bottomInset, isDesktop, modalVisible, onModalVis
     shownPathname.current = pathname;
     if (modalVisible) onModalVisibilityChange(false);
   }, [modalVisible, onModalVisibilityChange, pathname]);
-
-  const handleLogout = useCallback(async () => {
-    await logout();
-    router.replace('/entrar');
-  }, [logout, router]);
 
   const openMore = useCallback(() => {
     onModalVisibilityChange(true);

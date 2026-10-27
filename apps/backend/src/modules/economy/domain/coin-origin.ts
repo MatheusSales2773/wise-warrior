@@ -1,5 +1,5 @@
-/** Origens de crédito e débito da Moeda (ADR-012). Cada origem vale uma vez por usuário. */
-export const COIN_ORIGIN_TYPES = ['study-session', 'raid-win', 'purchase', 'signup', 'migration'] as const;
+/** Origens de crédito e débito da Moeda (ADR-012). Cada origem vale uma vez por usuário; a do Objetivo leva `<id>:<dia de São Paulo>`. */
+export const COIN_ORIGIN_TYPES = ['study-session', 'raid-win', 'purchase', 'signup', 'migration', 'objective'] as const;
 
 export type CoinOriginType = (typeof COIN_ORIGIN_TYPES)[number];
 

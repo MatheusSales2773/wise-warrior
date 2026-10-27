@@ -7,6 +7,7 @@ import { DEFAULT_HERO_ID, cosmeticSprite, equipmentCategoryById } from '@/featur
 import { useFocusRing } from '@/features/character/character-parts';
 import { PixelSprite } from '@/features/character/PixelSprite';
 import { heroSprites, itemSprites } from '@/features/character/sprites';
+import { raidSceneArt } from '@/features/guild/raid-scene-art';
 import { RaidScene } from '@/features/guild/raid-scene';
 import type { CosmeticCategory } from '@/features/profile/api';
 import type { ShopItem, StoreMission } from './api';
@@ -173,8 +174,8 @@ function MissionArt({ mission, viewportWidth }: { mission: StoreMission; viewpor
   if (mission.imageUrl) {
     return <Image accessibilityIgnoresInvertColors resizeMode="cover" source={{ uri: mission.imageUrl }} style={[styles.missionImage, { width: viewportWidth }]} />;
   }
-  // Until each Mission has its own art (#145), every contract shows the Raid scene.
-  return <RaidScene party={[]} scale={2} showTags={false} viewportWidth={viewportWidth} />;
+  // The Mission's own Raid scene, or the Vulcão do Devorador while it has none.
+  return <RaidScene art={raidSceneArt(mission.slug)} party={[]} scale={2} showTags={false} viewportWidth={viewportWidth} />;
 }
 
 function MissionContract({ contentWidth, desktop, mission, onBuy }: { contentWidth: number; desktop: boolean; mission: StoreMission; onBuy: () => void }) {

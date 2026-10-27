@@ -4,12 +4,14 @@ import {
   Inject,
   Injectable,
   NotFoundException,
+  forwardRef,
 } from '@nestjs/common';
 import { DataSource, type EntityManager } from 'typeorm';
 import { ProgressionService } from '../progression/progression.service';
 import { RaidsService, type RaidContributionOutcome } from '../raids/raids.service';
 import { EconomyService } from '../economy/economy.service';
 import { UsersService } from '../users/users.service';
+import { ObjectivesService } from '../objectives/objectives.service';
 import type { CoinMovementResult } from '../economy/domain/coin-origin';
 import { StudySession } from './entities/study-session.entity';
 import type { StudySessionSnapshot } from './study-session-snapshot';
@@ -26,6 +28,8 @@ import {
   StudySessionTransitionPolicyError,
   type StudySessionCommandAction,
 } from './domain/study-session-time';
+import { COUNTED_SESSION_SQL } from './domain/counted-session';
+import { countFinishedSessions } from './finished-session-counts';
 import type { XpApplicationResult } from '../progression/domain/progression-policy';
 
 export type StudySessionClock = { now(): Date };
@@ -50,6 +54,7 @@ type TerminalEffects = {
   xpGained: number;
   progressionResult: XpApplicationResult | null;
   coinMovement: CoinMovementResult | null;
+  objectiveCoinMovements: CoinMovementResult[];
   raidContributionOutcome: RaidContributionOutcome | null;
 };
 
@@ -65,6 +70,7 @@ const NO_TERMINAL_EFFECTS: TerminalEffects = {
   xpGained: 0,
   progressionResult: null,
   coinMovement: null,
+  objectiveCoinMovements: [],
   raidContributionOutcome: null,
 };
 
@@ -111,6 +117,7 @@ export class StudySessionTransitionService {
     private readonly economy: EconomyService,
     private readonly users: UsersService,
     private readonly events: StudySessionEventsService,
+    @Inject(forwardRef(() => ObjectivesService)) private readonly objectives: ObjectivesService,
   ) {}
 
   pause(command: StudySessionTransitionContext): Promise<StudySessionTransitionResult> {
@@ -216,7 +223,11 @@ export class StudySessionTransitionService {
         } else if (action === 'complete') {
           completionResult = await this.completeAtDeadline(manager, session, now);
         } else {
-          applyStudySessionTransition(session, action, now);
+          // Retomar um Foco livre recalcula o teto contra o saldo diário; o Ciclo não usa o valor.
+          const priorDailySeconds = action === 'resume' && session.kind === 'free'
+            ? await this.sumEligibleFocusSecondsToday(manager, userId, studySessionId, now)
+            : 0;
+          applyStudySessionTransition(session, action, now, priorDailySeconds);
         }
       } catch (error) {
         if (!(error instanceof StudySessionTransitionPolicyError)) throw error;
@@ -337,6 +348,7 @@ export class StudySessionTransitionService {
     const { userId, id: studySessionId } = saved;
     let progressionResult: XpApplicationResult | null = null;
     let coinMovement: CoinMovementResult | null = null;
+    let objectiveCoinMovements: CoinMovementResult[] = [];
     let raidContributionOutcome: RaidContributionOutcome | null = null;
     await manager.query(
       'DELETE FROM active_study_sessions WHERE user_id = ? AND study_session_id = ?',
@@ -350,6 +362,11 @@ export class StudySessionTransitionService {
         ref: studySessionId,
       });
     }
+    if (countsAsFinishedSession(saved)) {
+      await this.users.unlockSessionBadges(manager, userId, await countFinishedSessions(manager, userId));
+      // Objetivos pagam Moedas no mesmo commit, e nunca XP nem Contribuição (ADR-014).
+      objectiveCoinMovements = await this.objectives.settleInTransaction(manager, userId, saved.endedAt!);
+    }
     if (saved.mode === 'guild' && saved.raidId) {
       raidContributionOutcome = await this.raids.recordContributionInTransaction(manager, {
         raidId: saved.raidId,
@@ -359,7 +376,7 @@ export class StudySessionTransitionService {
         endedAt: saved.endedAt!,
       });
     }
-    return { xpGained: xpAwarded, progressionResult, coinMovement, raidContributionOutcome };
+    return { xpGained: xpAwarded, progressionResult, coinMovement, objectiveCoinMovements, raidContributionOutcome };
   }
 
   private publishTerminalEffects(userId: string, effects: TerminalEffects): void {
@@ -369,6 +386,9 @@ export class StudySessionTransitionService {
     if (effects.coinMovement?.applied) {
       this.economy.publishBalanceChanged(userId, effects.coinMovement);
     }
+    for (const movement of effects.objectiveCoinMovements) {
+      if (movement.applied) this.economy.publishBalanceChanged(userId, movement);
+    }
     if (effects.raidContributionOutcome) this.raids.publishContribution(effects.raidContributionOutcome);
   }
 
@@ -376,28 +396,35 @@ export class StudySessionTransitionService {
    * Focus of the day of `endedAt`. There is no upper bound: a late completion passes its deadline, and
    * no other session can have started after it while this one was running (D-005).
    */
-  private async sumEligibleFocusSecondsToday(
+  async sumEligibleFocusSecondsToday(
     manager: EntityManager,
     userId: string,
-    excludeStudySessionId: string,
+    excludeStudySessionId: string | null,
     endedAt: Date,
   ): Promise<number> {
     const startOfDay = new Date(endedAt);
     startOfDay.setHours(0, 0, 0, 0);
 
-    const row = await manager
+    const query = manager
       .getRepository(StudySession)
       .createQueryBuilder('session')
       .select('COALESCE(SUM(session.durationValidSeconds), 0)', 'total')
-      .where('session.userId = :userId', { userId })
-      .andWhere('session.id != :excludeStudySessionId', { excludeStudySessionId })
+      .where('session.userId = :userId', { userId });
+    if (excludeStudySessionId !== null) query.andWhere('session.id != :excludeStudySessionId', { excludeStudySessionId });
+    const row = await query
       .andWhere('session.startedAt >= :startOfDay', { startOfDay })
-      .andWhere('session.discardedReason IS NULL')
-      .andWhere("(session.state IS NULL OR session.state IN ('completed', 'stopped_early'))")
+      .andWhere(COUNTED_SESSION_SQL)
       .getRawOne<{ total: string }>();
 
     return Number(row?.total ?? 0);
   }
+}
+
+/** Cancellation and discarded sessions never count towards the session Badges. Same rule as `COUNTED_SESSION_SQL`. */
+function countsAsFinishedSession(session: StudySession): boolean {
+  return session.endedAt != null
+    && session.discardedReason == null
+    && (session.state == null || session.state === 'completed' || session.state === 'stopped_early');
 }
 
 function raidContributionFeedback(outcome: RaidContributionOutcome | null): RaidContributionFeedback | null {

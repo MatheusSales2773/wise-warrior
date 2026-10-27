@@ -48,6 +48,7 @@ describe('canonical Study Session start against MySQL', () => {
       {} as never,
       new StudySessionTransitionService(
         dataSource!, { now: clock }, progression, {} as never, economy, users, events,
+        { settleInTransaction: async () => [] } as never,
       ),
       events,
     );
@@ -99,7 +100,7 @@ describe('canonical Study Session start against MySQL', () => {
     const service = createService();
 
     const started = await service.start(userId, 'device-a', { plannedDurationSeconds: 900 }, 'signal-start');
-    expect(sessionEvents()).toEqual([{ studySessionId: started.id, version: 1, state: 'running' }]);
+    expect(sessionEvents()).toEqual([{ studySessionId: started.id, version: 1, pauseCount: 0, state: 'running' }]);
 
     await expect(service.start(userId, 'device-a', { plannedDurationSeconds: 900 }, 'signal-start')).resolves.toEqual(started);
     expect(sessionEvents()).toHaveLength(1);
@@ -118,9 +119,9 @@ describe('canonical Study Session start against MySQL', () => {
     const second = await later.start(userId, 'device-b', { plannedDurationSeconds: 900 }, 'expired-start-second');
 
     expect(sessionEvents()).toEqual([
-      { studySessionId: first.id, version: 1, state: 'running' },
-      { studySessionId: first.id, version: 2, state: 'ended' },
-      { studySessionId: second.id, version: 1, state: 'running' },
+      { studySessionId: first.id, version: 1, pauseCount: 0, state: 'running' },
+      { studySessionId: first.id, version: 2, pauseCount: 0, state: 'ended' },
+      { studySessionId: second.id, version: 1, pauseCount: 0, state: 'running' },
     ]);
     await later.start(userId, 'device-b', { plannedDurationSeconds: 900 }, 'expired-start-second');
     expect(sessionEvents()).toHaveLength(3);
@@ -138,8 +139,8 @@ describe('canonical Study Session start against MySQL', () => {
     const later = createService(() => new Date(deadline.getTime() + 30_000));
     expect(await later.active(userId)).toMatchObject({ id: started.id, state: 'completed', version: 2 });
     expect(sessionEvents()).toEqual([
-      { studySessionId: started.id, version: 1, state: 'running' },
-      { studySessionId: started.id, version: 2, state: 'ended' },
+      { studySessionId: started.id, version: 1, pauseCount: 0, state: 'running' },
+      { studySessionId: started.id, version: 2, pauseCount: 0, state: 'ended' },
     ]);
 
     expect(await later.active(userId)).toBeNull();
@@ -204,6 +205,7 @@ describe('canonical Study Session start against MySQL', () => {
       {} as never,
       lockingUsers(),
       new StudySessionEventsService(realtime as unknown as RealtimeGateway),
+      { settleInTransaction: async () => [] } as never,
     );
     const paused = await transitions.pause({
       userId, authSessionId: 'device-a', studySessionId: started.id, dto: { expectedVersion: 1 }, idempotencyKey: 'subject-pause',
@@ -276,6 +278,7 @@ describe('canonical Study Session start against MySQL', () => {
       {} as never,
       lockingUsers(),
       new StudySessionEventsService(realtime as unknown as RealtimeGateway),
+      { settleInTransaction: async () => [] } as never,
     );
     const pause = (idempotencyKey: string) => transitionService.pause({
       userId,

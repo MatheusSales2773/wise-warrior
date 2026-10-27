@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react-native';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { Dimensions, Platform } from 'react-native';
+import { Dimensions, Platform, StyleSheet } from 'react-native';
 import { ApiError } from '@/core/api/api-error';
 import {
   getCoinBalance, listShopItems, listShopMissions, purchaseShopItem, purchaseShopMission, type ShopItem, type StoreMission,
@@ -85,6 +85,21 @@ describe('Mercado on desktop', () => {
     expect(missing.getByText('108')).toBeTruthy();
     expect(missing.getByText('9 focos completos de 25 min cobrem a diferença.')).toBeTruthy();
     expect(screen.getByTestId('market-mission-m3').props.accessibilityLabel).toBe('O Devorador de Prazos. 240 Moedas. Faltam 108 Moedas.');
+  });
+
+  it('draws the own scene of each Mission in its contract, and the Vulcão do Devorador for one without art', async () => {
+    mocked.missions.mockResolvedValue([
+      mission({ id: 'g', slug: 'contrato-do-grifo', name: 'Contrato do Grifo' }),
+      mission({ id: 't', slug: 'torre-dos-ratos', name: 'Torre dos Ratos' }),
+      mission({ id: 'x', slug: 'missao-sem-arte', name: 'Sem Arte' }),
+    ]);
+    await renderMarket();
+
+    // The scene is ×2 in the contract; the boss sits at its scene position, which differs per Missão.
+    const bossOf = async (id: string) => StyleSheet.flatten(within(await screen.findByTestId(`market-mission-${id}`)).getByTestId('raid-scene-boss', { includeHiddenElements: true }).props.style);
+    expect(await bossOf('g')).toMatchObject({ left: 96 * 2, top: 29 * 2 });
+    expect(await bossOf('t')).toMatchObject({ left: 102 * 2, top: 33 * 2 });
+    expect(await bossOf('x')).toMatchObject({ left: 103 * 2, top: 36 * 2 });
   });
 
   it('confirms a Mission purchase with the balance after it, then shows the new balance', async () => {
@@ -186,7 +201,7 @@ describe('Mercado on a phone', () => {
     await renderMarket();
 
     const chip = await screen.findByTestId('market-purse');
-    expect(chip.props.accessibilityLabel).toBe('132 Moedas na bolsa');
+    await waitFor(() => expect(screen.getByTestId('market-purse').props.accessibilityLabel).toBe('132 Moedas na bolsa'));
     expect(chip.props.accessibilityRole).toBe('link');
     expect(screen.getByTestId('market-layout-mobile')).toBeTruthy();
   });

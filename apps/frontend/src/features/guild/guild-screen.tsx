@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { Platform, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { FeedbackMessage, ProgressBar, Screen, WiseButton, WiseCard, WiseText, isDesktopLayout, theme } from '@/design-system';
 import { isApiError } from '@/core/api/api-error';
-import { leaveGuild, type GuildMember, type MyGuild } from './api';
+import { leaveGuild, type GuildMember, type GuildRole, type MyGuild } from './api';
 import {
   formatGuildRole, formatGuildRoleSeal, formatGuildStats, leaveGuildErrorMessage,
 } from './messages';
@@ -12,23 +12,30 @@ import { profileQueryOptions } from '@/features/dashboard/queries';
 import { useGuildChat } from './guild-chat';
 import { SectionHeader } from '@/features/character/character-parts';
 import { GuildTabs, MuralAnnouncer, MuralPanel, OnlineIndicator, PresenceDot, formatOnlineCount, type GuildTab } from './guild-mural';
+import { PixelSprite } from '@/features/character/PixelSprite';
+import { itemSprites } from '@/features/character/sprites';
 import { HeroAvatar } from './hero-avatar';
+import { accessorySpriteOf } from './raid-battle';
 import { GuildEmblem } from './guild-emblem';
 import { PastRaidsCard } from './guild-past-raids';
 import { RaidCard } from './guild-raid-card';
+import { NextRaidCard } from './mission-choice';
 import { RankingCard } from './guild-ranking';
 import { RewardsCard } from './guild-rewards';
 import { columnStyles } from './guild-card-style';
 import { JoinGuild } from './guild-join';
 
 function MemberItem({ member, online }: { member: GuildMember; online: boolean | null }) {
+  const accessory = accessorySpriteOf(member.accessory);
   const presence = online === null ? '' : online ? ', online' : ', offline';
   const detail = online === null ? `Nv ${member.level}` : `Nv ${member.level} · ${online ? 'Online' : 'Offline'}`;
   return (
     <View accessible accessibilityLabel={`${member.displayName}${presence}, ${formatGuildRole(member.role)}. Nível ${member.level}`} style={styles.memberRow} testID={`guild-member-${member.userId}`}>
       <View style={styles.memberAvatar} testID={`guild-member-portrait-${member.userId}`}>
-        {/* The API does not return the equipped Avatar yet (#214): every member gets the default portrait. */}
-        <HeroAvatar entry={{ avatar: null }} style={styles.memberPortrait} />
+        <HeroAvatar entry={member} style={styles.memberPortrait} />
+        {accessory
+          ? <View aria-hidden pointerEvents="none" style={styles.memberAccessory}><PixelSprite scale={1} sprite={itemSprites[accessory]} testID={`guild-member-accessory-${member.userId}`} /></View>
+          : null}
         {online === null ? null : <View style={styles.memberPresence}><PresenceDot online={online} testID={`guild-member-${online ? 'online' : 'offline'}-${member.userId}`} /></View>}
       </View>
       <View style={styles.memberText}>
@@ -116,11 +123,12 @@ function GuildCard({ mine, onlineUserIds, desktop }: { mine: MyGuild; onlineUser
 }
 
 /** The Raid of the week and, below it, its Ranking interno. The ranking only exists while there is a Raid to rank. */
-function RaidSection({ compact, guildId }: { compact: boolean; guildId: string }) {
+function RaidSection({ compact, guildId, role }: { compact: boolean; guildId: string; role: GuildRole }) {
   const raid = useQuery(activeRaidQueryOptions(guildId));
   return (
     <View style={styles.stack}>
       <RaidCard desktop={!compact} guildId={guildId} />
+      <NextRaidCard desktop={!compact} guildId={guildId} raidId={raid.data?.id} role={role} />
       {raid.data ? <RankingCard compact={compact} guildId={guildId} key={raid.data.id} raidId={raid.data.id} /> : null}
     </View>
   );
@@ -140,7 +148,7 @@ function MemberGuild({ mine, desktop, onLeft, onConflict }: { mine: MyGuild; des
       </View>
     </View>
   );
-  const raid = <RaidSection compact={!desktop} guildId={guild.id} />;
+  const raid = <RaidSection compact={!desktop} guildId={guild.id} role={role} />;
   const rewards = <RewardsCard guildId={guild.id} />;
   const mural = <MuralPanel chat={chat} />;
   const members = <MembersCard guildId={guild.id} memberCount={guild.memberCount} onlineUserIds={chat.onlineUserIds} />;
@@ -239,6 +247,8 @@ const styles = StyleSheet.create({
   memberRow: { flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 31 },
   memberAvatar: { width: 30, height: 30 },
   memberPortrait: { width: 30, height: 30 },
+  /** Figma 06c has no Acessório on the member row: the 8 px sprite sits at the portrait's bottom-left, mirroring the presence dot. */
+  memberAccessory: { position: 'absolute', left: -2, top: 22 },
   memberPresence: { position: 'absolute', left: 23, top: 23 },
   memberText: { flex: 1, minWidth: 0, gap: 2 },
   memberName: { fontFamily: sans, fontSize: 13, lineHeight: 16, color: theme.color.textPrimary },

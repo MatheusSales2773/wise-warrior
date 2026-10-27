@@ -1,4 +1,5 @@
 import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
+import { Dimensions } from 'react-native';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { StudySessionScreen } from '@/features/study-session/study-session-screen';
 import {
@@ -11,10 +12,14 @@ import {
   type StudySessionTransitionResult,
 } from '@/features/study-session/api';
 import { clearCompletionIntent } from '@/features/study-session/completion-intent';
-import { playSessionSound } from '@/features/study-session/sounds';
+import { stopSessionSounds } from '@/features/study-session/sounds';
 import { useStudySessionAppActive } from '@/features/study-session/use-study-session-app-active';
+import { devicePreferences } from '@/core/preferences/device-preferences';
 
 // The day history and the week chart have their own tests (forge-history.test.tsx).
+jest.mock('@/core/preferences/preferences-storage', () => ({
+  preferencesStorage: { read: jest.fn(async () => null), write: jest.fn(async () => undefined) },
+}));
 jest.mock('@/features/study-session/forge-history', () => ({ ForgeHistory: () => null }));
 jest.mock('@/features/guild/api', () => ({
   getMyGuild: jest.fn(async () => null),
@@ -22,7 +27,9 @@ jest.mock('@/features/guild/api', () => ({
   joinRaid: jest.fn(),
 }));
 
-jest.mock('@/features/study-session/sounds', () => ({ playSessionSound: jest.fn(), releaseSessionSounds: jest.fn() }));
+jest.mock('@/features/study-session/sounds', () => ({
+  playSessionSound: jest.fn(), releaseSessionSounds: jest.fn(), stopSessionSounds: jest.fn(), unlockSessionSounds: jest.fn(),
+}));
 jest.mock('@/features/study-session/api', () => ({
   STUDY_SESSION_PRESETS: [900, 1500, 3000],
   completeStudySession: jest.fn(),
@@ -96,7 +103,14 @@ const advance = (seconds: number) => act(async () => {
   timerTick?.();
 });
 
-beforeEach(() => {
+const originalWindow = Dimensions.get('window');
+const originalScreen = Dimensions.get('screen');
+
+beforeEach(async () => {
+  // The desktop layout: the phone drops the "◈" around the phase (the mobile break is covered in study-session-after-focus).
+  Dimensions.set({ window: { width: 1440, height: 900, scale: 1, fontScale: 1 }, screen: { width: 1440, height: 900, scale: 1, fontScale: 1 } });
+  // The stop confirmation has its own tests (study-session-controls); here the stop control sends the command at once.
+  await devicePreferences.set('confirmBeforeStopping', false);
   clearCompletionIntent();
   mockedNow = new Date('2026-09-22T12:00:00.000Z').getTime();
   timerTick = undefined;
@@ -113,6 +127,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  Dimensions.set({ window: originalWindow, screen: originalScreen });
   clearCompletionIntent();
   queryClients.splice(0).forEach((client) => client.clear());
   jest.restoreAllMocks();
@@ -218,24 +233,40 @@ it('drops the break when a session is started on another device', async () => {
   expect(client.getQueryData(['study-session', 'break'])).toBeUndefined();
 });
 
-it('rings the focus cue on completion and the break cue when the break runs out', async () => {
+it('silences the alarm when a break starts and when a new session is chosen', async () => {
   const view = await renderCompletedFocus(inCycle(1));
-  expect(playSessionSound).toHaveBeenCalledTimes(1);
-  expect(playSessionSound).toHaveBeenLastCalledWith('focusEnd');
+  (stopSessionSounds as jest.Mock).mockClear();
 
   await fireEvent.press(await view.findByRole('button', { name: 'Iniciar pausa curta' }));
-  await advance(299);
-  expect(playSessionSound).toHaveBeenCalledTimes(1);
-  await advance(1);
+  expect(stopSessionSounds).toHaveBeenCalledTimes(1);
 
-  expect(playSessionSound).toHaveBeenCalledTimes(2);
-  expect(playSessionSound).toHaveBeenLastCalledWith('breakEnd');
+  await fireEvent.press(view.getByTestId('study-session-break-skip'));
+  expect(stopSessionSounds).toHaveBeenCalledTimes(2);
 });
 
-it('rings nothing when a break is skipped', async () => {
+it('silences the alarm when the finished break hands over to a new session', async () => {
   const view = await renderCompletedFocus(inCycle(1));
   await fireEvent.press(await view.findByRole('button', { name: 'Iniciar pausa curta' }));
-  await fireEvent.press(view.getByTestId('study-session-break-skip'));
+  await advance(300);
+  (stopSessionSounds as jest.Mock).mockClear();
 
-  expect(playSessionSound).toHaveBeenCalledTimes(1);
+  await fireEvent.press(await view.findByRole('button', { name: 'Nova sessão' }));
+
+  expect(stopSessionSounds).toHaveBeenCalledTimes(1);
+});
+
+it('concludes a Foco livre at the antifraude ceiling, names the cap and offers no break', async () => {
+  const free = { ...atZero(), kind: 'free' as const, plannedDurationSeconds: null };
+  getActive.mockResolvedValue(free);
+  complete.mockResolvedValue({ ...completedResult(), ...free, state: 'completed', raidContribution: null, durationValidSeconds: 7200, xpAwarded: 400, cappedReason: 'continuous-limit' });
+  cycle.mockResolvedValue(inCycle(1));
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 }, mutations: { retry: false, gcTime: 0 } } });
+  queryClients.push(queryClient);
+  const view = await render(<QueryClientProvider client={queryClient}><StudySessionScreen /></QueryClientProvider>);
+
+  await view.findByText('Sessão concluída');
+  expect(complete).toHaveBeenCalledTimes(1);
+  expect(view.getByTestId('study-session-result-capped')).toHaveTextContent('XP limitado ao máximo de sessão contínua.');
+  expect(view.queryByTestId('study-session-break-offer')).toBeNull();
+  view.unmount();
 });

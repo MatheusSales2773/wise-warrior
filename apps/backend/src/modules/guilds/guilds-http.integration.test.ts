@@ -246,6 +246,37 @@ describe('Guilds HTTP contract against MySQL', () => {
     ]);
   });
 
+  it('shows each member\'s equipped Avatar, Arma and Acessório, and null in an empty slot', async () => {
+    const { id } = await (await call('POST', '/guilds', ana, { name: 'Ordem da Aparência' })).json() as { id: string };
+    await call('POST', `/guilds/${id}/members`, bruno);
+    const items = dataSource!.getRepository(CosmeticItem);
+    const avatar = await items.findOneByOrFail({ category: 'avatar' });
+    const weapon = await items.findOneByOrFail({ category: 'weapon', name: 'Espada' });
+    const [accessory, unequipped] = await items.find({ where: { category: 'accessory' }, take: 2 });
+    const owned = dataSource!.getRepository(UserCosmeticItem);
+    await owned.insert({ userId: ana, cosmeticItemId: avatar.id, equipped: true });
+    await owned.insert({ userId: ana, cosmeticItemId: accessory!.id, equipped: true });
+    await owned.insert({ userId: ana, cosmeticItemId: weapon.id, equipped: true });
+    // Bruno owns an Acessório but has it unequipped.
+    await owned.insert({ userId: bruno, cosmeticItemId: unequipped!.id, equipped: false });
+
+    const page = await (await call('GET', `/guilds/${id}/members`, bruno)).json() as {
+      items: Array<{
+        displayName: string;
+        avatar: { itemId: string; name: string } | null;
+        weapon: { itemId: string; name: string } | null;
+        accessory: { itemId: string; name: string } | null;
+      }>;
+    };
+    const byName = Object.fromEntries(page.items.map((member) => [member.displayName, member]));
+    expect(byName.Ana).toMatchObject({
+      avatar: { itemId: avatar.id, name: avatar.name },
+      weapon: { itemId: weapon.id, name: weapon.name },
+      accessory: { itemId: accessory!.id, name: accessory!.name },
+    });
+    expect(byName.Bruno).toMatchObject({ avatar: null, weapon: null, accessory: null });
+  });
+
   it('shows the leader in the guild detail', async () => {
     const { id } = await (await call('POST', '/guilds', ana, { name: 'Ordem do Foco' })).json() as { id: string };
 

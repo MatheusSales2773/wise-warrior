@@ -3,9 +3,10 @@ import { Platform, StyleSheet, Text, View } from 'react-native';
 import { ProgressBar, WiseIcon, theme, type SemanticColor, type WiseIconName } from '@/design-system';
 import { controlStyles } from '@/design-system/components/control-styles';
 import type { SessionMetrics, UserProfile } from '@/features/dashboard/api';
-import { formatXp } from '@/features/dashboard/formatters';
-import type { HeroDefinition, HeroStatus } from './catalog';
-import { formatCompactXp, formatDeviceSummary } from './formatters';
+import { useSessionsObjective } from '@/features/chronicles/queries';
+import { formatSessionsToday, formatXp } from '@/features/dashboard/formatters';
+import type { EquippedItems } from './catalog';
+import { formatCompactXp } from './formatters';
 
 /* Pieces shared by the desktop and mobile Personagem layouts. `compact` is the mobile sizing from the Figma v2 frames. */
 
@@ -24,18 +25,14 @@ export function SectionHeader({ aside, children }: PropsWithChildren<{ aside?: R
   </View>;
 }
 
+/** The eyebrow under the Herói, which also names the equipped Avatar, Arma and Acessório for screen readers (the art is decorative). */
+export function describeHero(level: number, equipped: Pick<EquippedItems, 'avatar' | 'weapon' | 'accessory'>): string {
+  return ['✦ Nível ' + level, equipped.avatar?.name, equipped.weapon?.name, equipped.accessory?.name].filter(Boolean).join(' · ');
+}
+
 /** Shown under the title while the equipment drawer previews an item. */
 export function PreviewMark() {
   return <Text style={styles.previewMark} testID="character-preview">Prévia · nada foi salvo</Text>;
-}
-
-/* ---------- Dispositivos ---------- */
-
-export type DevicesState = { count: number | null; failed: boolean };
-
-export function describeDevices({ count, failed }: DevicesState, compact: boolean): string {
-  if (count !== null) return formatDeviceSummary(count, Platform.OS === 'web' ? 'Este navegador' : 'Este dispositivo', compact);
-  return failed ? 'Não foi possível carregar seus dispositivos' : 'Carregando dispositivos…';
 }
 
 /* ---------- Progressão de nível ---------- */
@@ -67,29 +64,13 @@ function Stat({ color, compact, icon, label, value }: { color: SemanticColor; co
 }
 
 export function SummaryRow({ compact = false, metrics, user }: { compact?: boolean; metrics: SessionMetrics | undefined; user: UserProfile }) {
-  const goal = metrics ? Math.max(0, metrics.dailyGoal) : 0;
+  const objective = useSessionsObjective();
   return <View accessibilityLabel="Resumo" role="region" style={styles.summary} testID="character-summary">
     <Stat color="feedbackEnergy" compact={compact} icon="flame" label={metrics?.currentStreakDays === 1 ? 'dia seguido' : 'dias seguidos'} value={metrics ? String(metrics.currentStreakDays) : '—'} />
     <View style={styles.statDivider} />
-    <Stat color="accentPrimary" compact={compact} icon="hammer-outline" label="sessões hoje" value={metrics ? `${metrics.sessionsToday}${goal ? `/${goal}` : ''}` : '—'} />
+    <Stat color="accentPrimary" compact={compact} icon="hammer-outline" label="sessões hoje" value={metrics ? formatSessionsToday(metrics.sessionsToday, objective).value : '—'} />
     <View style={styles.statDivider} />
     <Stat color="accentHighlight" compact={compact} icon="sparkles" label="XP total" value={formatCompactXp(user.xpTotal)} />
-  </View>;
-}
-
-/* ---------- Pílula de status do herói ---------- */
-
-const pillByStatus = {
-  equipped: { label: () => 'EQUIPADO', container: 'pillEquipped', text: 'pillTextEquipped' },
-  unlocked: { label: () => 'EQUIPAR', container: 'pillUnlocked', text: 'pillTextUnlocked' },
-  'level-locked': { label: (hero: HeroDefinition) => `NÍVEL ${hero.unlock.kind === 'level' ? hero.unlock.level : ''}`, container: 'pillLocked', text: 'pillTextLocked' },
-  'premium-locked': { label: () => '✦ PREMIUM', container: 'pillPremium', text: 'pillTextPremium' },
-} as const satisfies Record<HeroStatus, { label: (hero: HeroDefinition) => string; container: keyof typeof styles; text: keyof typeof styles }>;
-
-export function HeroPill({ compact = false, hero, status }: { compact?: boolean; hero: HeroDefinition; status: HeroStatus }) {
-  const pill = pillByStatus[status];
-  return <View style={[styles.pill, compact && styles.pillCompact, styles[pill.container]]}>
-    <Text style={[styles.pillText, compact && styles.pillTextCompact, styles[pill.text]]}>{pill.label(hero)}</Text>
   </View>;
 }
 
@@ -120,16 +101,4 @@ const styles = StyleSheet.create({
   statLabel: { fontFamily: 'Inter-Regular', fontSize: 12, lineHeight: 15, color: theme.color.textSecondary },
   statLabelCompact: { fontSize: 11, lineHeight: 13 },
 
-  pill: { paddingHorizontal: 10, paddingVertical: theme.space.inlineHairline, borderRadius: theme.radius.pill, borderWidth: theme.border.standard, backgroundColor: theme.color.surfaceInset },
-  pillCompact: { paddingHorizontal: 8, paddingVertical: 3 },
-  pillEquipped: { borderColor: theme.color.accentPrimary },
-  pillUnlocked: { borderColor: theme.color.borderEmphasis },
-  pillLocked: { borderColor: theme.color.borderGhost },
-  pillPremium: { borderColor: theme.color.accentMuted },
-  pillText: { fontFamily: mono, fontSize: 10, lineHeight: 13, letterSpacing: 1 },
-  pillTextCompact: { fontSize: 9, lineHeight: 12 },
-  pillTextEquipped: { color: theme.color.accentHighlight },
-  pillTextUnlocked: { color: theme.color.textPrimary },
-  pillTextLocked: { color: theme.color.textTertiary },
-  pillTextPremium: { color: theme.color.accentPrimary },
 });

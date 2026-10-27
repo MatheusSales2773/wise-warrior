@@ -3,7 +3,7 @@ import { StyleSheet, Text, View } from 'react-native';
 import { FeedbackMessage, WiseButton, WiseCard, WiseText, theme } from '@/design-system';
 import type { CadenceDay, SessionHistoryItem } from '@/features/dashboard/api';
 import { formatCappedReason, formatDuration } from '@/features/dashboard/formatters';
-import { sessionHistoryQueryOptions, sessionMetricsQueryOptions, utcDay } from '@/features/dashboard/queries';
+import { sessionHistoryQueryOptions, sessionMetricsQueryOptions, saoPauloDay } from '@/features/dashboard/queries';
 
 
 /** Focuses in a Pomodoro cycle, as `/sessions/cycle` reports in `cycleLength` (D-027). */
@@ -12,7 +12,14 @@ const TIME = new Intl.DateTimeFormat('pt-BR', { hour: '2-digit', minute: '2-digi
 const WEEKDAY = new Intl.DateTimeFormat('pt-BR', { weekday: 'short', timeZone: 'UTC' });
 const DAY_MONTH = new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: '2-digit', timeZone: 'UTC' });
 
+/** A Foco livre is marked "Livre" in the Histórico; completed in full, that is all there is to say. */
 export function historyOutcome(item: SessionHistoryItem): string {
+  const outcome = baseOutcome(item);
+  if (item.kind !== 'free') return outcome;
+  return item.state === 'completed' && !item.cappedReason ? 'Livre' : `Livre · ${outcome}`;
+}
+
+function baseOutcome(item: SessionHistoryItem): string {
   if (item.state === 'discarded') return 'Não contabilizada pelo antifraude';
   if (item.cappedReason) return formatCappedReason(item.cappedReason);
   switch (item.state) {
@@ -47,7 +54,7 @@ function HistoryItem({ item }: { item: SessionHistoryItem }) {
 }
 
 function TodayHistory() {
-  const history = useInfiniteQuery(sessionHistoryQueryOptions(utcDay()));
+  const history = useInfiniteQuery(sessionHistoryQueryOptions({ date: saoPauloDay() }));
   const items = history.data?.pages.flatMap((page) => page.items) ?? [];
 
   const body = (() => {
@@ -140,11 +147,11 @@ function WeeklyFocusChart() {
   );
 }
 
-/** Histórico do dia and the week, below the Forja (#17). Both refresh when XP lands on any device. */
-export function ForgeHistory({ wide }: { wide: boolean }) {
+/** Histórico do dia and the week, below the Forja (#17). Both refresh when XP lands on any device. The Pronta lists the day in its own card, so it leaves it out here. */
+export function ForgeHistory({ wide, showToday = true }: { wide: boolean; showToday?: boolean }) {
   return (
     <View style={[styles.section, wide && styles.sectionWide]} testID="forge-history-section">
-      <TodayHistory />
+      {showToday ? <TodayHistory /> : null}
       <WeeklyFocusChart />
     </View>
   );

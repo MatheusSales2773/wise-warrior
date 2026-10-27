@@ -245,6 +245,27 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/UserProfile" }
         "401": { $ref: "#/components/responses/Unauthorized" }
+    patch:
+      summary: Renomeia o guerreiro
+      description: >
+        Mesma validação do registro (2 a 60 caracteres, depois de remover os espaços das pontas, que também não são gravados). O nome não precisa ser
+        único, não há cooldown e não há evento em tempo real: o Mural lê o nome
+        por join, então mensagens antigas passam a mostrar o nome novo.
+      operationId: updateMyProfile
+      tags: [Users]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateProfileRequest" }
+      responses:
+        "200":
+          description: Perfil atualizado
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/UserProfile" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
 
   /users/me/cosmetics:
     get:
@@ -402,11 +423,15 @@ paths:
                 items: { $ref: "#/components/schemas/SessionSummary" }
         "401": { $ref: "#/components/responses/Unauthorized" }
     delete:
-      summary: Encerra todas as sessões do usuário ("sair de todos os dispositivos")
-      operationId: revokeAllMySessions
+      summary: Encerra os outros dispositivos do usuário
+      description: >
+        Revoga e desconecta do realtime todas as sessões do usuário exceto a
+        do access token em uso, que continua válida junto com o seu refresh
+        token. Sem outras sessões ativas, não faz nada e devolve 204.
+      operationId: revokeOtherMySessions
       tags: [Users]
       responses:
-        "204": { description: Todas as sessões revogadas }
+        "204": { description: Os outros dispositivos foram revogados }
         "401": { $ref: "#/components/responses/Unauthorized" }
 
   /users/me/sessions/{sessionId}:
@@ -430,9 +455,12 @@ paths:
       summary: Inicia uma Study Session solo ou de modo Guilda
       description: >
         Aceita presets de 900, 1500 ou 3000 segundos; o padrão defensivo é
-        1500. Idempotency-Key é única por usuário entre inícios e transições.
+        1500. Com `kind: free` inicia um Foco livre, sem `plannedDurationSeconds`
+        (enviá-lo é 400): o snapshot volta `running` com `plannedDurationSeconds: null` e
+        `runDeadlineAt` no teto, o menor entre o limite contínuo e o saldo diário restante
+        (ADR-011). Sem saldo diário, o início devolve 409 `daily-limit-reached`. Idempotency-Key é única por usuário entre inícios e transições.
         Um replay idêntico devolve o snapshot original; reutilizar a chave por
-        outro comando, com duração, Matéria ou modo diferente devolve
+        outro comando, com duração, Matéria, modo ou tipo diferente devolve
         conflito estável. No modo `guild`, `raidId` precisa ser a Raid ativa da
         Guild do usuário e ele precisa ser Participante: quem não é Participante
         ou é de outra Guild recebe 403, e uma Raid encerrada recebe 409
@@ -615,23 +643,32 @@ paths:
 
   /sessions/history:
     get:
-      summary: Histórico do dia do usuário autenticado
+      summary: Diário de Study Sessions do usuário autenticado
       description: >
-        Toda Sessão de estudo encerrada num dia em UTC (o mesmo recorte das métricas
-        do Dashboard), da mais recente para a mais antiga, com todos os desfechos:
-        concluída, encerrada antecipadamente, cancelada e descartada. Cada foco
-        concluído por inteiro traz `cyclePosition`, sua posição no ciclo Pomodoro
-        (1 a 4), contada sobre os mesmos focos de `/sessions/cycle`. `nextCursor` é
-        opaco; `null` indica a última página.
+        Toda Sessão de estudo encerrada que contou, da mais recente para a mais antiga, paginada
+        por cursor através de vários dias de São Paulo. Os Cancelamentos nunca aparecem.
+        Encerramento antecipado e Foco livre contam como concluídos. A Sessão truncada traz
+        `cappedReason` e o XP já reduzido; a Sessão descartada traz `state: discarded` e XP 0.
+        Cada foco concluído por inteiro traz `cyclePosition`, sua posição no ciclo Pomodoro
+        (1 a 4), contada sobre os mesmos focos de `/sessions/cycle`. `date` limita a lista a
+        um dia de São Paulo; sem ele a lista atravessa todos os dias. `nextCursor` é opaco;
+        `null` indica a última página.
       operationId: getStudySessionHistory
       tags: [Sessions]
       parameters:
-        - { name: date, in: query, required: false, description: "Dia em UTC (AAAA-MM-DD); hoje por padrão", schema: { type: string, format: date } }
+        - { name: date, in: query, required: false, description: "Limita a um dia de São Paulo (AAAA-MM-DD); sem ele, todos os dias", schema: { type: string, format: date } }
+        - name: state
+          in: query
+          required: false
+          description: >
+            Filtro de desfecho. `completed`: concluídas sem truncamento (inclui encerramento antecipado);
+            `truncated`: limitadas pelo antifraude; `discarded`: não contabilizadas. Sem o filtro, todas.
+          schema: { type: string, enum: [completed, truncated, discarded] }
         - { name: cursor, in: query, required: false, schema: { type: string, maxLength: 200 } }
         - { name: limit, in: query, required: false, schema: { type: integer, minimum: 1, maximum: 50, default: 20 } }
       responses:
         "200":
-          description: Página do histórico do dia
+          description: Página do Diário
           content:
             application/json:
               schema: { $ref: "#/components/schemas/StudySessionHistoryPage" }
@@ -683,6 +720,64 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/SessionMetrics" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /objectives:
+    get:
+      summary: Objetivos de Crônicas do usuário autenticado
+      description: >
+        Os Objetivos diários de hoje (dia de São Paulo) e os semanais da semana corrente, de segunda a domingo de São
+        Paulo, com o progresso de quem pede (ADR-014). A lista e as Moedas vêm de configuração do servidor, iguais para
+        todos, e todos são alcançáveis sem Guild. Cumprir um Objetivo credita as Moedas automaticamente, uma vez por
+        Objetivo por dia (diários) ou por semana (semanais), no término da Study Session que o cumpre, com a origem
+        `objective` no Extrato (`ref` `<id>:<dia>` ou `weekly:<id>:<segunda>`).
+        Objetivos nunca dão XP nem Contribuição de Raid. Cancelamento e Sessão descartada não avançam o progresso.
+      operationId: getObjectives
+      tags: [Objectives]
+      responses:
+        "200":
+          description: Objetivos diários e semanais
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Objectives" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /milestones:
+    get:
+      summary: Marcos de Crônicas do usuário autenticado
+      description: >
+        Os 4 Marcos (ADR-014): Madrugador, Cem Sessões, Marcador do Grimório e Brasão da Forja, nessa ordem. Cada
+        Marco é a Condição de desbloqueio de um Badge do Catálogo com o progresso de quem pede. Madrugador conta
+        Study Sessions terminadas antes das 7h de São Paulo, Cem Sessões conta Study Sessions não descartadas, e os
+        Badges de Raid valem 0 de 1 ou 1 de 1. Um Badge no Inventário vem com `earned` e `progress` igual a `target`.
+        Acessórios, como o Selo dos Madrugadores, não são Marcos. `earned` do topo conta os Badges do Inventário.
+      operationId: getMilestones
+      tags: [Objectives]
+      responses:
+        "200":
+          description: Marcos
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Milestones" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /sessions/week:
+    get:
+      summary: Resumo da semana corrente de São Paulo, de segunda a domingo
+      description: >
+        Alimenta os cards "Esta semana" e "Matérias da semana" do Diário. Soma só
+        Study Sessions não descartadas que terminaram na semana; Cancelamentos e
+        Sessões descartadas ficam de fora. As matérias são agrupadas sem
+        diferenciar maiúsculas nem espaços nas pontas, sessões sem matéria entram
+        como "Sem matéria", e voltam as 4 com mais foco válido, em ordem.
+      operationId: getStudySessionWeek
+      tags: [Sessions]
+      responses:
+        "200":
+          description: Totais da semana, um dia por barra e as matérias com mais foco
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SessionWeekSummary" }
         "401": { $ref: "#/components/responses/Unauthorized" }
 
   /sessions/{id}/heartbeat:
@@ -1195,6 +1290,12 @@ components:
           enum: [Wise Web]
           description: Rótulo previsível do dispositivo; a Web assume Wise Web.
 
+    UpdateProfileRequest:
+      type: object
+      required: [displayName]
+      properties:
+        displayName: { type: string, minLength: 2, maxLength: 60 }
+
     LoginRequest:
       type: object
       required: [email, password]
@@ -1295,7 +1396,7 @@ components:
       type: object
       required: [category, itemId, name]
       properties:
-        category: { type: string, enum: [avatar, badge, title, accessory] }
+        category: { type: string, enum: [avatar, badge, title, accessory, weapon] }
         itemId: { type: string, format: uuid }
         name: { type: string }
 
@@ -1307,7 +1408,7 @@ components:
       required: [id, category, name, requiresPremium, unlocked, equipped, forSale, unlockCondition]
       properties:
         id: { type: string, format: uuid }
-        category: { type: string, enum: [avatar, badge, title, accessory] }
+        category: { type: string, enum: [avatar, badge, title, accessory, weapon] }
         name: { type: string }
         requiresPremium: { type: boolean, description: "Item premium (✦), ADR-007." }
         unlocked: { type: boolean }
@@ -1333,13 +1434,25 @@ components:
           description: Item da Loja, desbloqueado pela Compra (ADR-012).
           properties:
             type: { type: string, const: purchase }
+        - type: object
+          required: [type, count]
+          description: Badge por hábito de estudo (ADR-014), desbloqueado no término da sessão que alcança a contagem de Study Sessions não descartadas.
+          properties:
+            type: { type: string, const: sessions }
+            count: { type: integer, minimum: 1 }
+        - type: object
+          required: [type, count]
+          description: Badge por hábito de estudo (ADR-014), por Study Sessions terminadas antes das 7h de São Paulo.
+          properties:
+            type: { type: string, const: early-sessions }
+            count: { type: integer, minimum: 1 }
 
     ShopItem:
       type: object
       required: [id, category, name, price, state, missing]
       properties:
         id: { type: string, format: uuid }
-        category: { type: string, enum: [avatar, badge, title, accessory] }
+        category: { type: string, enum: [avatar, badge, title, accessory, weapon] }
         name: { type: string }
         price: { type: integer, minimum: 30, maximum: 300, description: Preço em Moedas }
         state: { type: string, enum: [owned, purchasable, insufficient] }
@@ -1415,7 +1528,7 @@ components:
           properties:
             id: { type: string, format: uuid }
             name: { type: string }
-            category: { type: string, enum: [avatar, badge, title, accessory] }
+            category: { type: string, enum: [avatar, badge, title, accessory, weapon] }
         state: { type: string, enum: [owned, purchasable, insufficient] }
         missing: { type: integer, minimum: 0, description: "Moedas que faltam; 0 quando já possui ou o saldo basta" }
 
@@ -1437,8 +1550,8 @@ components:
       type: object
       required: [type, ref]
       properties:
-        type: { type: string, enum: [study-session, raid-win, purchase, signup, migration] }
-        ref: { type: string, maxLength: 64, description: "Referência da origem, como o id da Study Session" }
+        type: { type: string, enum: [study-session, raid-win, purchase, signup, migration, objective] }
+        ref: { type: string, maxLength: 64, description: "Referência da origem, como o id da Study Session; no Objetivo, `<id do Objetivo>:<dia de São Paulo>`" }
 
     CoinStatementItem:
       type: object
@@ -1449,6 +1562,73 @@ components:
         balanceAfter: { type: integer, minimum: 0, description: "Saldo logo depois deste lançamento" }
         origin: { $ref: "#/components/schemas/CoinOrigin" }
         createdAt: { type: string, format: date-time }
+
+    DailyObjective:
+      type: object
+      required: [id, title, progress, target, coins, completed]
+      properties:
+        id: { type: string, maxLength: 32, example: four-sessions, description: "Estável. `four-sessions` ('Conclua 4 sessões hoje') é o Objetivo que o Dashboard, o Personagem e a Forja mostram como sessões de hoje." }
+        title: { type: string, example: Conclua 4 sessões hoje }
+        progress: { type: integer, minimum: 0, description: "Limitado a `target`" }
+        target: { type: integer, minimum: 1 }
+        coins: { type: integer, minimum: 0, description: "Moedas pagas uma vez, quando o Objetivo é cumprido" }
+        completed: { type: boolean }
+
+    WeeklyObjective:
+      allOf:
+        - $ref: "#/components/schemas/DailyObjective"
+        - type: object
+          required: [unit]
+          properties:
+            unit:
+              type: string
+              enum: [days, minutes, subjects]
+              description: >
+                O que `progress` e `target` contam: dias de São Paulo com sessão, minutos de foco válido ou
+                matérias distintas (mesmo agrupamento do Diário; sessão sem matéria não conta).
+
+    Objectives:
+      type: object
+      required: [daily, weekly]
+      properties:
+        weekly:
+          type: object
+          required: [weekStart, renewsAt, items]
+          properties:
+            weekStart: { type: string, format: date, description: "Segunda-feira da semana de São Paulo coberta" }
+            renewsAt: { type: string, format: date-time, description: "Segunda 00:00 de São Paulo em que os Objetivos renovam" }
+            items:
+              type: array
+              items: { $ref: "#/components/schemas/WeeklyObjective" }
+        daily:
+          type: object
+          required: [date, renewsAt, items]
+          properties:
+            date: { type: string, format: date, description: "Dia de São Paulo coberto" }
+            renewsAt: { type: string, format: date-time, description: "Meia-noite de São Paulo em que os Objetivos renovam" }
+            items:
+              type: array
+              items: { $ref: "#/components/schemas/DailyObjective" }
+
+    Milestone:
+      type: object
+      required: [id, name, progress, target, earned]
+      properties:
+        id: { type: string, format: uuid, description: "Id do Badge no Catálogo" }
+        name: { type: string, example: Cem Sessões }
+        progress: { type: integer, minimum: 0, description: "Limitado a `target`; igual a `target` quando `earned`" }
+        target: { type: integer, minimum: 1 }
+        earned: { type: boolean, description: "O Badge está no Inventário" }
+
+    Milestones:
+      type: object
+      required: [earned, total, items]
+      properties:
+        earned: { type: integer, minimum: 0, description: "Badges do Inventário entre os Marcos (o N de \"N de 4\")" }
+        total: { type: integer, minimum: 0 }
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/Milestone" }
 
     CoinStatementPage:
       type: object
@@ -1473,7 +1653,18 @@ components:
       type: object
       additionalProperties: false
       properties:
-        plannedDurationSeconds: { type: integer, enum: [900, 1500, 3000], default: 1500 }
+        kind:
+          type: string
+          enum: [cycle, free]
+          default: cycle
+          description: >
+            `cycle` (Ciclo) tem duração planejada; `free` (Foco livre) conta para cima até o usuário parar
+            ou o teto do antifraude. Ausente é `cycle`.
+        plannedDurationSeconds:
+          type: integer
+          enum: [900, 1500, 3000]
+          default: 1500
+          description: "Só no Ciclo. Enviado junto de `kind: free`, a API responde 400."
         subject:
           type: [string, "null"]
           description: >
@@ -1524,24 +1715,35 @@ components:
 
     StudySessionSnapshot:
       type: object
-      required: [id, mode, raidId, subject, state, plannedDurationSeconds, startedAt, runDeadlineAt, pausedAt, pausedTotalSeconds, durationValidSeconds, remainingSeconds, serverNow, version, endedAt, xpAwarded, terminalReason, discardedReason, cappedReason, canControl]
+      required: [id, kind, mode, raidId, subject, state, plannedDurationSeconds, startedAt, runDeadlineAt, pausedAt, pausedTotalSeconds, durationValidSeconds, remainingSeconds, serverNow, version, pauseCount, endedAt, xpAwarded, terminalReason, discardedReason, cappedReason, canControl]
       properties:
         id: { type: string, format: uuid }
+        kind: { type: string, enum: [cycle, free], description: "Ciclo ou Foco livre" }
         mode: { type: string, enum: [solo, guild] }
         raidId: { type: [string, "null"], format: uuid, description: A Raid que recebe a Contribuição; null no modo solo }
         subject:
           type: [string, "null"]
           description: Matéria normalizada definida no início; null é Sem matéria. Não muda depois do início.
         state: { type: string, enum: [running, paused, completed, stopped_early, cancelled, discarded] }
-        plannedDurationSeconds: { type: integer, enum: [900, 1500, 3000] }
+        plannedDurationSeconds:
+          type: [integer, "null"]
+          enum: [900, 1500, 3000, null]
+          description: null no Foco livre, que não tem duração planejada.
         startedAt: { type: string, format: date-time }
-        runDeadlineAt: { type: [string, "null"], format: date-time }
+        runDeadlineAt:
+          type: [string, "null"]
+          format: date-time
+          description: No Ciclo, o fim do foco; no Foco livre, o teto do antifraude (limite contínuo ou saldo diário), recalculado ao retomar.
         pausedAt: { type: [string, "null"], format: date-time }
         pausedTotalSeconds: { type: integer, minimum: 0 }
         durationValidSeconds: { type: integer, minimum: 0 }
-        remainingSeconds: { type: integer, minimum: 0 }
+        remainingSeconds: { type: integer, minimum: 0, description: "Sem significado no Foco livre (sempre 0); o cliente conta para cima." }
         serverNow: { type: string, format: date-time }
         version: { type: integer, minimum: 1 }
+        pauseCount:
+          type: integer
+          minimum: 0
+          description: Pausas aplicadas à Study Session; retomar, encerrar e concluir não alteram. Igual em todos os dispositivos.
         endedAt:
           type: [string, "null"]
           format: date-time
@@ -1557,6 +1759,7 @@ components:
           description: Sempre true. Mantido por compatibilidade; qualquer Session autenticada do usuário controla a Study Session (D-006).
       example:
         id: 00000000-0000-4000-8000-000000000074
+        kind: cycle
         mode: solo
         raidId: null
         subject: null
@@ -1570,6 +1773,7 @@ components:
         remainingSeconds: 1500
         serverNow: "2026-09-23T12:00:00.000Z"
         version: 1
+        pauseCount: 0
         endedAt: null
         xpAwarded: 0
         terminalReason: null
@@ -1596,10 +1800,11 @@ components:
 
     RecentStudySession:
       type: object
-      required: [id, subject, mode, state, startedAt, endedAt, durationValidSeconds, xpAwarded, discardedReason, cappedReason]
+      required: [id, subject, kind, mode, state, startedAt, endedAt, durationValidSeconds, xpAwarded, discardedReason, cappedReason]
       properties:
         id: { type: string, format: uuid }
         subject: { type: [string, "null"] }
+        kind: { type: string, enum: [cycle, free] }
         mode: { type: string, enum: [solo, guild] }
         state: { type: [string, "null"], enum: [running, paused, completed, stopped_early, cancelled, discarded, null] }
         startedAt: { type: string, format: date-time }
@@ -1622,13 +1827,12 @@ components:
               type: [integer, "null"]
               minimum: 1
               maximum: 4
-              description: Posição do foco concluído por inteiro no ciclo Pomodoro; null para os outros desfechos
+              description: Posição do Ciclo concluído por inteiro no ciclo Pomodoro; null para os outros desfechos, inclusive todo Foco livre
 
     StudySessionHistoryPage:
       type: object
-      required: [date, items, nextCursor]
+      required: [items, nextCursor]
       properties:
-        date: { type: string, format: date, description: "O dia em UTC listado" }
         items:
           type: array
           items: { $ref: "#/components/schemas/StudySessionHistoryItem" }
@@ -1656,15 +1860,64 @@ components:
 
     SessionMetrics:
       type: object
-      description: Métricas calculadas no calendário UTC; sessões ativas ou descartadas não são contabilizadas.
-      required: [currentStreakDays, longestStreakDays, sessionsToday, dailyGoal, validSecondsToday, cadence]
+      description: |
+        Métricas calculadas no calendário de São Paulo; sessões ativas ou descartadas não são contabilizadas.
+        Não traz meta diária: o Dashboard lê o alvo e o progresso do Objetivo `four-sessions` em `GET /objectives`.
+      required: [currentStreakDays, longestStreakDays, sessionsToday, validSecondsToday, todayByKind, cadence]
       properties:
         currentStreakDays: { type: integer, minimum: 0 }
         longestStreakDays: { type: integer, minimum: 0 }
         sessionsToday: { type: integer, minimum: 0 }
-        dailyGoal: { type: integer, const: 4 }
         validSecondsToday: { type: integer, minimum: 0 }
+        todayByKind:
+          type: object
+          description: Sessões e segundos válidos de hoje por tipo; `sessionsToday` e `validSecondsToday` somam os dois.
+          required: [cycle, free]
+          properties:
+            cycle: { $ref: "#/components/schemas/SessionMetricsKindTotals" }
+            free: { $ref: "#/components/schemas/SessionMetricsKindTotals" }
         cadence: { $ref: "#/components/schemas/SessionMetricsCadence" }
+
+    SessionWeekSummary:
+      type: object
+      description: Semana de São Paulo (segunda a domingo) que contém o momento da requisição.
+      required: [weekStart, weekEnd, today, validSeconds, sessionCount, xp, days, subjects]
+      properties:
+        weekStart: { type: string, format: date, description: Segunda-feira da semana }
+        weekEnd: { type: string, format: date, description: Domingo da semana }
+        today: { type: string, format: date, description: Dia de hoje em São Paulo }
+        validSeconds: { type: integer, minimum: 0 }
+        sessionCount: { type: integer, minimum: 0 }
+        xp: { type: integer, minimum: 0, description: XP de sessão da semana }
+        days:
+          type: array
+          minItems: 7
+          maxItems: 7
+          description: Um item por dia, de segunda a domingo
+          items:
+            type: object
+            required: [date, sessionCount, validSeconds]
+            properties:
+              date: { type: string, format: date }
+              sessionCount: { type: integer, minimum: 0 }
+              validSeconds: { type: integer, minimum: 0 }
+        subjects:
+          type: array
+          maxItems: 4
+          description: As matérias com mais foco válido, da maior para a menor
+          items:
+            type: object
+            required: [subject, validSeconds]
+            properties:
+              subject: { type: string, description: 'Nome da matéria, ou "Sem matéria"' }
+              validSeconds: { type: integer, minimum: 0 }
+
+    SessionMetricsKindTotals:
+      type: object
+      required: [sessionCount, validSeconds]
+      properties:
+        sessionCount: { type: integer, minimum: 0 }
+        validSeconds: { type: integer, minimum: 0 }
 
     SessionMetricsCadence:
       type: object
@@ -1727,7 +1980,7 @@ components:
 
     GuildMember:
       type: object
-      required: [userId, displayName, level, title, role, joinedAt]
+      required: [userId, displayName, level, title, avatar, weapon, accessory, role, joinedAt]
       properties:
         userId: { type: string, format: uuid }
         displayName: { type: string }
@@ -1735,6 +1988,9 @@ components:
         title:
           type: [string, "null"]
           description: Nome do Título equipado pelo membro (ADR-010), ou null.
+        avatar: { $ref: "#/components/schemas/EquippedAppearanceItem" }
+        weapon: { $ref: "#/components/schemas/EquippedAppearanceItem" }
+        accessory: { $ref: "#/components/schemas/EquippedAppearanceItem" }
         role: { type: string, enum: [leader, member] }
         joinedAt: { type: string, format: date-time }
 
@@ -1798,7 +2054,7 @@ components:
 
     ActiveRaid:
       type: object
-      required: [id, mission, rewards, coins, party, goalXp, progressXp, regeneratedXp, healthXp, furyPercent, goalReachedAt, startsAt, endsAt, status, weekDays, today, studyDays, streak, me, lastHit]
+      required: [id, mission, missionOwner, rewards, coins, party, goalXp, progressXp, regeneratedXp, healthXp, furyPercent, goalReachedAt, startsAt, endsAt, status, weekDays, today, studyDays, streak, me, lastHit]
       properties:
         id: { type: string, format: uuid }
         mission:
@@ -1809,6 +2065,13 @@ components:
             name: { type: string }
             description: { type: string, maxLength: 140 }
             imageUrl: { type: [string, "null"], description: Nulo enquanto a Missão não tem imagem }
+        missionOwner:
+          type: [object, "null"]
+          description: De quem é a Missão que o Líder escolheu (ADR-012), gravado quando a Raid consome a escolha. Nulo na Missão do rodízio. Segue nomeado mesmo se o dono sair da Guild.
+          required: [userId, displayName]
+          properties:
+            userId: { type: string, format: uuid }
+            displayName: { type: string }
         rewards:
           type: array
           description: Recompensa de Raid, todos os Cosmetic Items da Missão em ordem estável. Dados a quem tiver Contribuição numa Raid vencida, junto com `coins`.
@@ -1819,7 +2082,7 @@ components:
             properties:
               itemId: { type: string, format: uuid }
               name: { type: string }
-              category: { type: string, enum: [avatar, badge, title, accessory] }
+              category: { type: string, enum: [avatar, badge, title, accessory, weapon] }
         coins: { type: integer, minimum: 0, description: "Moedas que cada premiado também recebe (`RAID_WIN_COINS`)" }
         party:
           type: array
@@ -1886,7 +2149,7 @@ components:
 
     RaidRankingEntry:
       type: object
-      required: [position, userId, displayName, level, title, avatar, accessory, contributionXp, isMe]
+      required: [position, userId, displayName, level, title, avatar, weapon, accessory, contributionXp, isMe]
       properties:
         position: { type: integer, minimum: 1 }
         userId: { type: string, format: uuid }
@@ -1894,6 +2157,7 @@ components:
         level: { type: integer, minimum: 1 }
         title: { type: [string, "null"], description: "O Título equipado (ADR-010); null com o espaço vazio" }
         avatar: { $ref: "#/components/schemas/EquippedAppearanceItem" }
+        weapon: { $ref: "#/components/schemas/EquippedAppearanceItem" }
         accessory: { $ref: "#/components/schemas/EquippedAppearanceItem" }
         contributionXp: { type: integer, minimum: 0 }
         isMe: { type: boolean, description: "Se a linha é de quem consulta" }
@@ -1981,7 +2245,7 @@ components:
         application/problem+json:
           schema: { $ref: "#/components/schemas/Problem" }
     StudySessionStartConflict:
-      description: Study Session ativa, Raid encerrada no modo Guilda ou reutilização incompatível de Idempotency-Key.
+      description: Study Session ativa, saldo diário esgotado no Foco livre, Raid encerrada no modo Guilda ou reutilização incompatível de Idempotency-Key.
       content:
         application/problem+json:
           schema: { $ref: "#/components/schemas/Problem" }
@@ -2000,7 +2264,15 @@ components:
                 type: https://wise.app/errors/idempotency-key-reused
                 title: ConflictException
                 status: 409
-                detail: Idempotency-Key já foi usada com outra duração, Matéria ou modo
+                detail: Idempotency-Key já foi usada com outra duração, Matéria, modo ou tipo
+                instance: /api/v1/sessions
+            dailyLimitReached:
+              summary: O saldo diário do antifraude já foi usado (só para Foco livre)
+              value:
+                type: https://wise.app/errors/daily-limit-reached
+                title: ConflictException
+                status: 409
+                detail: O limite diário de foco já foi atingido
                 instance: /api/v1/sessions
             raidEnded:
               summary: A Raid da sessão de modo Guilda já foi encerrada

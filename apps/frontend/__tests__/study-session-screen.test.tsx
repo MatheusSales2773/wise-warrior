@@ -7,17 +7,31 @@ import { getActiveStudySession, getRecentStudySessionSubjects, heartbeatStudySes
 import { STUDY_SESSION_HEARTBEAT_INTERVAL_MS } from '@/features/study-session/use-study-session-heartbeat';
 import { formatRemainingTime, remainingStudySeconds } from '@/features/study-session/timer';
 import { clearCompletionIntent } from '@/features/study-session/completion-intent';
+import { stopSessionSounds, unlockSessionSounds } from '@/features/study-session/sounds';
 import { ApiError } from '@/core/api/api-error';
+import { devicePreferences } from '@/core/preferences/device-preferences';
 import { getActiveRaid, getMyGuild, joinRaid, type ActiveRaid, type MyGuild } from '@/features/guild/api';
 
 // The day history and the week chart have their own tests (forge-history.test.tsx).
 jest.mock('@/features/study-session/forge-history', () => ({ ForgeHistory: () => null }));
+jest.mock('@/features/dashboard/api', () => ({
+  getMyProfile: jest.fn(async () => { throw new Error('offline'); }),
+  getSessionMetrics: jest.fn(async () => { throw new Error('offline'); }),
+  getSessionHistory: jest.fn(async () => ({ items: [], nextCursor: null })),
+  getRecentStudySessions: jest.fn(async () => []),
+}));
 jest.mock('@/features/guild/api', () => ({
   getMyGuild: jest.fn(),
   getActiveRaid: jest.fn(),
   joinRaid: jest.fn(),
 }));
 
+jest.mock('@/core/preferences/preferences-storage', () => ({
+  preferencesStorage: { read: jest.fn(async () => null), write: jest.fn(async () => undefined) },
+}));
+jest.mock('@/features/study-session/sounds', () => ({
+  playSessionSound: jest.fn(), releaseSessionSounds: jest.fn(), stopSessionSounds: jest.fn(), unlockSessionSounds: jest.fn(),
+}));
 jest.mock('@/features/study-session/api', () => ({
   STUDY_SESSION_PRESETS: [900, 1500, 3000],
   getActiveStudySession: jest.fn(),
@@ -86,15 +100,30 @@ afterEach(() => {
   jest.clearAllMocks();
 });
 
-it('offers only three presets, starts with 25 minutes and sends the chosen duration', async () => {
+it('opens on the device default duration and still lets the user pick another before starting', async () => {
+  getActive.mockResolvedValue(null);
+  start.mockResolvedValue(snapshot);
+  await devicePreferences.set('defaultFocusDuration', 3000);
+  const { view } = await renderStudySession();
+  await view.findByTestId('study-session-setup');
+
+  expect(view.getByText('50:00')).toBeTruthy();
+  expect(view.getByTestId('study-duration-50').props.accessibilityState.checked).toBe(true);
+  await fireEvent.press(view.getByTestId('study-duration-15'));
+  await fireEvent.press(view.getByTestId('study-session-start'));
+  await waitFor(() => expect(start).toHaveBeenCalledWith(900, expect.any(String), null));
+  view.unmount();
+  await devicePreferences.set('defaultFocusDuration', 1500);
+});
+
+it('offers three presets and Livre, starts with 25 minutes and sends the chosen duration', async () => {
   getActive.mockResolvedValue(null);
   start.mockResolvedValue(snapshot);
   const { view } = await renderStudySession();
   await view.findByTestId('study-session-setup');
 
-  await fireEvent.press(view.getByRole('button', { name: 'Configurar duração' }));
   expect(view.getByTestId('study-duration-25').props.accessibilityState.checked).toBe(true);
-  expect(view.getAllByRole('radio')).toHaveLength(3);
+  expect(view.getAllByRole('radio')).toHaveLength(4);
   await fireEvent.press(view.getByTestId('study-duration-15'));
   await waitFor(() => expect(view.getByTestId('study-duration-15').props.accessibilityState.checked).toBe(true));
   await fireEvent.press(view.getByTestId('study-session-start'));
@@ -104,34 +133,17 @@ it('offers only three presets, starts with 25 minutes and sends the chosen durat
   view.unmount();
 });
 
-it('configures focus duration from the gear before starting the forge', async () => {
+it('unlocks the audio on the start gesture and silences a ringing alarm once the session started', async () => {
   getActive.mockResolvedValue(null);
   start.mockResolvedValue(snapshot);
   const { view } = await renderStudySession();
   await view.findByTestId('study-session-setup');
 
-  expect(view.queryByRole('radio')).toBeNull();
-  await fireEvent.press(view.getByRole('button', { name: 'Configurar duração' }));
-  expect(view.getByRole('radio', { name: '25 minutos' }).props.accessibilityState.checked).toBe(true);
-  await fireEvent.press(view.getByRole('radio', { name: '15 minutos' }));
-  await fireEvent.press(view.getByRole('button', { name: 'Fechar configurações' }));
-  expect(view.getByText('15:00')).toBeTruthy();
-  await fireEvent.press(view.getByRole('button', { name: 'Iniciar foco' }));
-  await waitFor(() => expect(start).toHaveBeenCalledWith(900, expect.any(String), null));
-  view.unmount();
-});
+  await fireEvent.press(view.getByTestId('study-session-start'));
+  expect(unlockSessionSounds).toHaveBeenCalledTimes(1);
+  await view.findByTestId('study-session-active');
 
-it('opens and closes the focus duration options by tapping the same gear', async () => {
-  getActive.mockResolvedValue(null);
-  const { view } = await renderStudySession();
-  await view.findByTestId('study-session-setup');
-
-  const gear = view.getByRole('button', { name: 'Configurar duração' });
-  expect(view.queryByRole('radio')).toBeNull();
-  await fireEvent.press(gear);
-  expect(view.getAllByRole('radio')).toHaveLength(3);
-  await fireEvent.press(gear);
-  expect(view.queryByRole('radio')).toBeNull();
+  expect(stopSessionSounds).toHaveBeenCalledTimes(1);
   view.unmount();
 });
 
@@ -145,8 +157,8 @@ describe('Matéria on the Forja', () => {
     const { view } = await renderStudySession();
     await view.findByTestId('study-session-setup');
 
-    const field = view.getByLabelText('Matéria (opcional)');
-    expect(within(view.getByTestId('study-session-stage')).getByLabelText('Matéria (opcional)')).toBe(field);
+    const field = view.getByLabelText('Matéria');
+    expect(within(view.getByTestId('study-session-prep')).getByLabelText('Matéria')).toBe(field);
     expect(field.props.value ?? '').toBe('');
     await fireEvent.press(view.getByRole('button', { name: 'Iniciar foco' }));
     await waitFor(() => expect(start).toHaveBeenCalledWith(1500, expect.any(String), null));
@@ -159,7 +171,7 @@ describe('Matéria on the Forja', () => {
     const { view } = await renderStudySession();
     await view.findByTestId('study-session-setup');
 
-    await fireEvent.changeText(view.getByLabelText('Matéria (opcional)'), '  Cálculo   II ');
+    await fireEvent.changeText(view.getByLabelText('Matéria'), '  Cálculo   II ');
     await fireEvent.press(view.getByRole('button', { name: 'Iniciar foco' }));
     await waitFor(() => expect(start).toHaveBeenCalledWith(1500, expect.any(String), 'Cálculo II'));
     view.unmount();
@@ -170,7 +182,7 @@ describe('Matéria on the Forja', () => {
     start.mockResolvedValue(snapshot);
     const { view } = await renderStudySession();
     await view.findByTestId('study-session-setup');
-    await fireEvent.changeText(view.getByLabelText('Matéria (opcional)'), '   ');
+    await fireEvent.changeText(view.getByLabelText('Matéria'), '   ');
     await fireEvent.press(view.getByRole('button', { name: 'Iniciar foco' }));
     await waitFor(() => expect(start).toHaveBeenCalledWith(1500, expect.any(String), null));
     view.unmount();
@@ -182,15 +194,15 @@ describe('Matéria on the Forja', () => {
     const { view } = await renderStudySession();
     await view.findByTestId('study-session-setup');
 
-    await fireEvent.changeText(view.getByLabelText('Matéria (opcional)'), 'a'.repeat(80));
+    await fireEvent.changeText(view.getByLabelText('Matéria'), 'a'.repeat(80));
     expect(view.queryByText(/máximo é 80/)).toBeNull();
-    await fireEvent.changeText(view.getByLabelText('Matéria (opcional)'), 'a'.repeat(81));
+    await fireEvent.changeText(view.getByLabelText('Matéria'), 'a'.repeat(81));
     expect(view.getByText('A Matéria tem 81 caracteres; o máximo é 80.')).toBeTruthy();
     expect(view.getByRole('button', { name: 'Iniciar foco' }).props.accessibilityState.disabled).toBe(true);
     await fireEvent.press(view.getByRole('button', { name: 'Iniciar foco' }));
     expect(start).not.toHaveBeenCalled();
 
-    await fireEvent.changeText(view.getByLabelText('Matéria (opcional)'), 'a'.repeat(80));
+    await fireEvent.changeText(view.getByLabelText('Matéria'), 'a'.repeat(80));
     expect(view.queryByText(/máximo é 80/)).toBeNull();
     await fireEvent.press(view.getByRole('button', { name: 'Iniciar foco' }));
     await waitFor(() => expect(start).toHaveBeenCalledWith(1500, expect.any(String), 'a'.repeat(80)));
@@ -202,7 +214,7 @@ describe('Matéria on the Forja', () => {
     const { view } = await renderStudySession();
     await view.findByTestId('study-session-setup');
 
-    await fireEvent.changeText(view.getByLabelText('Matéria (opcional)'), 'Cálculo\nII');
+    await fireEvent.changeText(view.getByLabelText('Matéria'), 'Cálculo\nII');
     expect(view.getByText('A Matéria não pode conter quebras de linha nem caracteres de controle.')).toBeTruthy();
     await fireEvent.press(view.getByRole('button', { name: 'Iniciar foco' }));
     expect(start).not.toHaveBeenCalled();
@@ -215,7 +227,7 @@ describe('Matéria on the Forja', () => {
     const { view } = await renderStudySession();
     await view.findByTestId('study-session-setup');
 
-    await fireEvent.changeText(view.getByLabelText('Matéria (opcional)'), 'Física');
+    await fireEvent.changeText(view.getByLabelText('Matéria'), 'Física');
     await fireEvent.press(view.getByRole('button', { name: 'Iniciar foco' }));
     await waitFor(() => expect(start).toHaveBeenCalledTimes(1));
     await waitFor(() => expect(view.getByRole('button', { name: 'Iniciar foco' }).props.accessibilityState.disabled).toBe(false));
@@ -223,7 +235,7 @@ describe('Matéria on the Forja', () => {
     await waitFor(() => expect(start).toHaveBeenCalledTimes(2));
     expect(start.mock.calls[1]?.[1]).toBe(start.mock.calls[0]?.[1]);
 
-    await fireEvent.changeText(view.getByLabelText('Matéria (opcional)'), 'Química');
+    await fireEvent.changeText(view.getByLabelText('Matéria'), 'Química');
     await waitFor(() => expect(view.getByRole('button', { name: 'Iniciar foco' }).props.accessibilityState.disabled).toBe(false));
     await fireEvent.press(view.getByRole('button', { name: 'Iniciar foco' }));
     await waitFor(() => expect(start).toHaveBeenCalledTimes(3));
@@ -240,7 +252,7 @@ describe('Matéria on the Forja', () => {
     const { view } = await renderStudySession();
     await view.findByTestId('study-session-active');
     expect(view.getByTestId('study-session-subject')).toHaveTextContent('Cálculo II');
-    expect(view.queryByLabelText('Matéria (opcional)')).toBeNull();
+    expect(view.queryByLabelText('Matéria')).toBeNull();
     view.unmount();
   });
 
@@ -249,6 +261,36 @@ describe('Matéria on the Forja', () => {
     const { view } = await renderStudySession();
     await view.findByTestId('study-session-active');
     expect(view.getByTestId('study-session-subject')).toHaveTextContent('Sem matéria');
+    view.unmount();
+  });
+});
+
+describe('Pausas on the Forja', () => {
+  afterEach(() => clearCompletionIntent());
+
+  it('shows the pause count from the snapshot in the session card', async () => {
+    getActive.mockResolvedValue({ ...snapshot, pauseCount: 3 });
+    const { view } = await renderStudySession();
+    await view.findByTestId('study-session-active');
+    expect(view.getByText('Pausas')).toBeTruthy();
+    expect(view.getByTestId('study-session-pause-count')).toHaveTextContent(/^Pausas\s*3$/);
+    view.unmount();
+  });
+
+  it('shows 0 for a session never paused', async () => {
+    getActive.mockResolvedValue({ ...snapshot, pauseCount: 0 });
+    const { view } = await renderStudySession();
+    await view.findByTestId('study-session-active');
+    expect(view.getByTestId('study-session-pause-count')).toHaveTextContent(/^Pausas\s*0$/);
+    view.unmount();
+  });
+
+  it('hides the Pausas row when an older server does not send the field', async () => {
+    getActive.mockResolvedValue(snapshot);
+    const { view } = await renderStudySession();
+    await view.findByTestId('study-session-active');
+    expect(view.queryByText('Pausas')).toBeNull();
+    expect(view.queryByTestId('study-session-pause-count')).toBeNull();
     view.unmount();
   });
 });
@@ -270,12 +312,12 @@ describe('Recent Matéria suggestions on the Forja', () => {
 
     const physics = await view.findByRole('button', { name: 'Física' });
     expect(view.getByRole('button', { name: 'Cálculo II' })).toBeTruthy();
-    expect(within(view.getByTestId('study-session-stage')).getByRole('button', { name: 'Física' })).toBe(physics);
-    expect(view.getByLabelText('Matéria (opcional)').props.value ?? '').toBe('');
+    expect(within(view.getByTestId('study-session-prep')).getByRole('button', { name: 'Física' })).toBe(physics);
+    expect(view.getByLabelText('Matéria').props.value ?? '').toBe('');
 
     await fireEvent.press(physics);
 
-    expect(view.getByLabelText('Matéria (opcional)').props.value).toBe('Física');
+    expect(view.getByLabelText('Matéria').props.value).toBe('Física');
     expect(start).not.toHaveBeenCalled();
     view.unmount();
   });
@@ -284,7 +326,7 @@ describe('Recent Matéria suggestions on the Forja', () => {
     const { view } = await renderSetupWithSuggestions(['Cálculo']);
 
     await fireEvent.press(await view.findByRole('button', { name: 'Cálculo' }));
-    await fireEvent.changeText(view.getByLabelText('Matéria (opcional)'), 'Cálculo II');
+    await fireEvent.changeText(view.getByLabelText('Matéria'), 'Cálculo II');
     await fireEvent.press(view.getByRole('button', { name: 'Iniciar foco' }));
 
     await waitFor(() => expect(start).toHaveBeenCalledWith(1500, expect.any(String), 'Cálculo II'));
@@ -313,13 +355,13 @@ describe('Recent Matéria suggestions on the Forja', () => {
     expect(isSelected('Física')).toBe(true);
     expect(isSelected('Química')).toBe(false);
 
-    await fireEvent.changeText(view.getByLabelText('Matéria (opcional)'), '  Física ');
+    await fireEvent.changeText(view.getByLabelText('Matéria'), '  Física ');
     expect(isSelected('Física')).toBe(true);
 
-    await fireEvent.changeText(view.getByLabelText('Matéria (opcional)'), 'Fisica');
+    await fireEvent.changeText(view.getByLabelText('Matéria'), 'Fisica');
     expect(isSelected('Física')).toBe(false);
 
-    await fireEvent.changeText(view.getByLabelText('Matéria (opcional)'), 'Química');
+    await fireEvent.changeText(view.getByLabelText('Matéria'), 'Química');
     expect(isSelected('Química')).toBe(true);
     view.unmount();
   });
@@ -370,11 +412,35 @@ describe('Recent Matéria suggestions on the Forja', () => {
 
     expect(view.queryByTestId('study-session-subject-suggestions')).toBeNull();
     expect(view.queryByText(/erro|falha|não foi possível/i)).toBeNull();
-    await fireEvent.changeText(view.getByLabelText('Matéria (opcional)'), 'Física');
+    await fireEvent.changeText(view.getByLabelText('Matéria'), 'Física');
     await fireEvent.press(view.getByRole('button', { name: 'Iniciar foco' }));
 
     await waitFor(() => expect(start).toHaveBeenCalledWith(1500, expect.any(String), 'Física'));
     view.unmount();
+  });
+
+  it('requests and shows the recent Matérias when the preference is on', async () => {
+    await devicePreferences.set('suggestRecentSubjects', true);
+    const { view } = await renderSetupWithSuggestions(['Física']);
+
+    expect(await view.findByRole('button', { name: 'Física' })).toBeTruthy();
+    expect(getRecent).toHaveBeenCalledTimes(1);
+    view.unmount();
+  });
+
+  it('hides the suggestions and never requests the recent Matérias when the preference is off', async () => {
+    await devicePreferences.set('suggestRecentSubjects', false);
+    try {
+      const { view } = await renderSetupWithSuggestions(['Física']);
+      await waitFor(() => expect(devicePreferences.isLoaded()).toBe(true));
+
+      expect(view.queryByRole('button', { name: 'Física' })).toBeNull();
+      expect(view.queryByTestId('study-session-subject-suggestions')).toBeNull();
+      expect(getRecent).not.toHaveBeenCalled();
+      view.unmount();
+    } finally {
+      await devicePreferences.set('suggestRecentSubjects', true);
+    }
   });
 
   it('shows no suggestions area and no message when there are no recent Matérias', async () => {
@@ -384,7 +450,7 @@ describe('Recent Matéria suggestions on the Forja', () => {
     expect(view.queryByTestId('study-session-subject-suggestions')).toBeNull();
     expect(view.queryByText(/recentes/i)).toBeNull();
     expect(view.getAllByRole('button').map((button) => button.props.accessibilityLabel))
-      .toEqual(['Iniciar foco', 'Configurar duração']);
+      .toEqual(['Iniciar foco']);
     view.unmount();
   });
 });
@@ -419,6 +485,7 @@ describe('Sessão de guilda on the Forja', () => {
     status: 'active',
     me: { participating: true, contributionXp: 0, position: 1 },
     lastHit: null,
+    missionOwner: null,
     ...overrides,
   });
   const guildSnapshot: StudySessionSnapshot = { ...snapshot, mode: 'guild', raidId: 'raid-1' };
@@ -472,7 +539,7 @@ describe('Sessão de guilda on the Forja', () => {
 
     await waitFor(() => expect(start).toHaveBeenCalledWith(1500, expect.any(String), null, 'raid-1'));
     expect(joinGuildRaid).not.toHaveBeenCalled();
-    expect(await view.findByText('25 min de foco · Sessão de guilda')).toBeTruthy();
+    expect(await view.findByTestId('study-session-mode-tag')).toHaveTextContent('GUILDA');
     view.unmount();
   });
 
@@ -563,37 +630,31 @@ describe('Sessão de guilda on the Forja', () => {
   });
 });
 
-it('keeps the iPhone forge header and duration choices in the visible stage', async () => {
+it('keeps the Forja header and the duration choices on the setup', async () => {
   getActive.mockResolvedValue(null);
   const { view } = await renderStudySession();
   await view.findByTestId('study-session-setup');
 
   expect(view.getByTestId('study-session-safe-area').props.edges.top).toBe('off');
-  await fireEvent.press(view.getByRole('button', { name: 'Configurar duração' }));
-  expect(within(view.getByTestId('study-session-stage')).getAllByRole('radio')).toHaveLength(3);
+  expect(view.getAllByRole('radio')).toHaveLength(4);
   view.unmount();
 });
 
-it('shows the fixed duration in settings during an active session', async () => {
-  getActive.mockResolvedValue(snapshot);
-  const { view } = await renderStudySession();
-  await view.findByTestId('study-session-active');
-
-  await fireEvent.press(view.getByRole('button', { name: 'Configurações da sessão' }));
-  expect(view.getByText('A duração não pode ser alterada durante a sessão.')).toBeTruthy();
-  expect(view.queryByRole('radio')).toBeNull();
-  await fireEvent.press(view.getByRole('button', { name: 'Fechar configurações' }));
-  expect(view.queryByText('A duração não pode ser alterada durante a sessão.')).toBeNull();
-  view.unmount();
-});
-
-it('renders the forge with a gold background glow and gold primary action', async () => {
+it('renders the forge with a gold background glow', async () => {
   getActive.mockResolvedValue(snapshot);
   const { view } = await renderStudySession();
   await view.findByTestId('study-session-active');
 
   expect(view.getByTestId('study-session-page-gradient', { includeHiddenElements: true })).toBeTruthy();
   expect(view.getByTestId('study-session-stage-gradient', { includeHiddenElements: true })).toBeTruthy();
+  view.unmount();
+});
+
+it('renders the setup with a gold primary action', async () => {
+  getActive.mockResolvedValue(null);
+  const { view } = await renderStudySession();
+  await view.findByTestId('study-session-setup');
+
   expect(view.getByTestId('study-session-primary-gradient').props.colors).toEqual([processColor('#d4a85a'), processColor('#8a6a3a')]);
   view.unmount();
 });

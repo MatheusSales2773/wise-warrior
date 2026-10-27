@@ -9,6 +9,7 @@ export type StudySessionChangedState = 'running' | 'paused' | 'ended';
 export type StudySessionChangedEvent = {
   studySessionId: string;
   version: number;
+  pauseCount: number;
   state: StudySessionChangedState;
 };
 
@@ -24,11 +25,12 @@ export class StudySessionEventsService {
 
   publishChanged(
     userId: string,
-    snapshot: Pick<StudySessionSnapshot, 'id' | 'version' | 'state'>,
+    snapshot: Pick<StudySessionSnapshot, 'id' | 'version' | 'pauseCount' | 'state'>,
   ): void {
     this.realtime.emitToUser(userId, 'studySession:changed', {
       studySessionId: snapshot.id,
       version: snapshot.version,
+      pauseCount: snapshot.pauseCount,
       state: changedState(snapshot.state),
     });
   }

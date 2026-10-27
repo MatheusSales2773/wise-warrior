@@ -14,6 +14,7 @@ import { APPLICATION_MIGRATIONS, createIntegrationDatabase, type IntegrationData
 import { StudySession, type StudySessionState } from './entities/study-session.entity';
 import { SessionsController } from './sessions.controller';
 import { SessionsService } from './sessions.service';
+import { saoPauloDayKey, saoPauloDayStart } from '../../shared/time/sao-paulo-calendar';
 import { StudySessionStartService } from './study-session-start.service';
 import { StudySessionTransitionService } from './study-session-transition.service';
 
@@ -29,7 +30,9 @@ describe('Focus cycle HTTP contract against MySQL', () => {
   const userId = '00000000-0000-4000-8000-000000000a01';
   const otherUserId = '00000000-0000-4000-8000-000000000a02';
 
-  async function recordSessions(owner: string, state: StudySessionState | null, count: number) {
+  const noonToday = new Date(saoPauloDayStart(saoPauloDayKey(new Date())).getTime() + 12 * 3_600_000);
+
+  async function recordSessions(owner: string, state: StudySessionState | null, count: number, endedAtShift = 0) {
     for (let index = 0; index < count; index += 1) {
       sessionCounter += 1;
       await dataSource!.getRepository(StudySession).insert({
@@ -38,8 +41,8 @@ describe('Focus cycle HTTP contract against MySQL', () => {
         subject: null,
         mode: 'solo',
         raidId: null,
-        startedAt: new Date(Date.UTC(2026, 8, 1, 8, sessionCounter)),
-        endedAt: new Date(Date.UTC(2026, 8, 1, 8, sessionCounter, 30)),
+        startedAt: new Date(noonToday.getTime() + endedAtShift + sessionCounter * 60_000),
+        endedAt: new Date(noonToday.getTime() + endedAtShift + sessionCounter * 60_000 + 30_000),
         plannedDurationSeconds: 1500,
         state,
         durationValidSeconds: 1500,
@@ -134,6 +137,38 @@ describe('Focus cycle HTTP contract against MySQL', () => {
     await recordSessions(userId, 'completed', 5);
 
     expect(await (await getCycle()).json()).toEqual({ completedInCycle: 1, cycleLength: 4, nextBreak: 'short' });
+  });
+
+  it('restarts the cycle every São Paulo day, ignoring focuses completed on earlier days', async () => {
+    await recordSessions(userId, 'completed', 3, -24 * 3_600_000);
+    await recordSessions(userId, 'completed', 1);
+
+    expect(await (await getCycle()).json()).toEqual({ completedInCycle: 1, cycleLength: 4, nextBreak: 'short' });
+  });
+
+  it('splits the days at São Paulo midnight, not at UTC midnight', async () => {
+    const insert = (id: number, endedAt: string) => dataSource!.getRepository(StudySession).insert({
+      id: `00000000-0000-4000-8000-${String(9000 + id).padStart(12, '0')}`,
+      userId,
+      subject: null,
+      mode: 'solo',
+      raidId: null,
+      startedAt: new Date(new Date(endedAt).getTime() - 1_500_000),
+      endedAt: new Date(endedAt),
+      plannedDurationSeconds: 1500,
+      state: 'completed',
+      durationValidSeconds: 1500,
+      xpAwarded: 250,
+    });
+    await insert(1, '2026-09-01T02:59:59.000Z'); // 23:59:59 of Aug 31 in São Paulo
+    await insert(2, '2026-09-01T03:00:00.000Z'); // 00:00:00 of Sep 1
+    await insert(3, '2026-09-01T23:59:59.000Z'); // 20:59:59 of Sep 1
+    const sessions = new SessionsService(dataSource!.getRepository(StudySession), {} as never, {} as never);
+
+    expect(await sessions.focusCycle(userId, new Date('2026-09-01T02:59:59.500Z'))).toMatchObject({ completedInCycle: 1 });
+    expect(await sessions.focusCycle(userId, new Date('2026-09-01T03:00:00.000Z'))).toMatchObject({ completedInCycle: 2 });
+    expect(await sessions.focusCycle(userId, new Date('2026-09-02T02:59:59.999Z'))).toMatchObject({ completedInCycle: 2 });
+    expect(await sessions.focusCycle(userId, new Date('2026-09-02T03:00:00.000Z'))).toMatchObject({ completedInCycle: 0 });
   });
 
   it('ignores early stops, cancellations, discards, running sessions and legacy sessions', async () => {

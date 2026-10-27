@@ -1,6 +1,6 @@
 import { configure, fireEvent, render, screen, within } from '@testing-library/react-native';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { Dimensions, Platform } from 'react-native';
+import { Dimensions, Platform, StyleSheet } from 'react-native';
 import { ApiError } from '@/core/api/api-error';
 import { getActiveRaid, getMyGuild, getRaidRanking, type ActiveRaid, type MyGuild, type RaidRankingEntry } from '@/features/guild/api';
 import { RaidBattleScreen } from '@/features/guild/raid-screen';
@@ -24,7 +24,7 @@ const mine: MyGuild = {
   role: 'member',
 };
 const entry = (position: number, name: string, xp: number, isMe = false): RaidRankingEntry => ({
-  position, userId: `u-${name}`, displayName: name, level: 10 + position, title: null, avatar: null, accessory: null, contributionXp: xp, isMe,
+  position, userId: `u-${name}`, displayName: name, level: 10 + position, title: null, avatar: null, weapon: null, accessory: null, contributionXp: xp, isMe,
 });
 const ranking = [entry(1, 'Astaroth', 14_520), entry(2, 'Eldoria', 12_660), entry(3, 'Ravenstone', 11_160), entry(4, 'Guilherme', 6_780, true), entry(5, 'Brisa', 600)];
 
@@ -49,6 +49,7 @@ const raid = (overrides: Partial<ActiveRaid> = {}): ActiveRaid => ({
   streak: 0,
   me: { participating: true, contributionXp: 6_780, position: 4 },
   lastHit: null,
+  missionOwner: null,
   ...overrides,
 });
 function setViewport(width: number, height: number) {
@@ -70,6 +71,19 @@ beforeEach(() => {
 afterEach(() => { [mockedMine, mockedRaid, mockedRanking].forEach((mock) => mock.mockReset()); });
 
 describe('RaidBattleScreen on desktop', () => {
+  it('names whose Missão the Raid is', async () => {
+    mockedRaid.mockResolvedValue(raid({ missionOwner: { userId: 'u2', displayName: 'Bruno' } }));
+    await renderRaid();
+
+    expect(await screen.findByTestId('raid-mission-owner')).toHaveTextContent('Missão de Bruno');
+  });
+
+  it('names the rotation when nobody chose the Missão', async () => {
+    await renderRaid();
+
+    expect(await screen.findByTestId('raid-mission-owner')).toHaveTextContent('Missão do rodízio');
+  });
+
   it('shows the Mission, the time left and the boss life in focus hours', async () => {
     await renderRaid();
 
@@ -79,7 +93,7 @@ describe('RaidBattleScreen on desktop', () => {
     expect(screen.getByTestId('raid-layout-desktop')).toBeTruthy();
     expect(screen.getByTestId('raid-time-left').props.children).toBe('3d 14h restantes');
     expect(screen.getByTestId('raid-boss-life-percent').props.children).toEqual([31, '%']);
-    expect(screen.getByTestId('raid-boss-life').props.accessibilityLabel).toBe('Vida do dragão: 31%. 138h de 200h de foco coletivo.');
+    expect(screen.getByTestId('raid-boss-life').props.accessibilityLabel).toBe('Vida do Boss: 31%. 138h de 200h de foco coletivo.');
     expect(screen.getByTestId('raid-focus-hours').props.children).toEqual(['138h', ' de ', '200h', ' de foco coletivo']);
   });
 
@@ -88,7 +102,7 @@ describe('RaidBattleScreen on desktop', () => {
     await renderRaid();
 
     expect((await screen.findByTestId('raid-boss-life-percent')).props.children).toEqual([36, '%']);
-    expect(screen.getByTestId('raid-boss-life').props.accessibilityLabel).toBe('Vida do dragão: 36%. 138h de 210h de foco coletivo.');
+    expect(screen.getByTestId('raid-boss-life').props.accessibilityLabel).toBe('Vida do Boss: 36%. 138h de 210h de foco coletivo.');
     expect(screen.getByTestId('raid-focus-hours').props.children).toEqual(['138h', ' de ', '210h', ' de foco coletivo']);
   });
 
@@ -141,6 +155,16 @@ describe('RaidBattleScreen on desktop', () => {
     expect(screen.getByTestId('raid-scene-background', { includeHiddenElements: true })).toBeTruthy();
   });
 
+  it('draws the Herói of a bare member with the initial Avatar and no Arma', async () => {
+    mockedRaid.mockResolvedValue(raid({ party: [entry(1, 'Brisa', 9_000)] }));
+    await renderRaid();
+
+    const hero = within(await screen.findByTestId('raid-scene-hero-u-Brisa', { includeHiddenElements: true }));
+    expect(hero.getByTestId('character-hero-layer-avatar', { includeHiddenElements: true })).toBeTruthy();
+    expect(hero.queryByTestId('character-hero-layer-weapon', { includeHiddenElements: true })).toBeNull();
+    expect(hero.queryByTestId('character-hero-layer-accessory', { includeHiddenElements: true })).toBeNull();
+  });
+
   it('offers the Mission reward to everyone who contributes and opens the Forja in guild mode', async () => {
     await renderRaid();
 
@@ -172,14 +196,29 @@ describe('RaidBattleScreen on desktop', () => {
   });
 
   it('draws the party from the Raid with the equipped look and falls back to the default scene art', async () => {
-    const dressed = { ...entry(1, 'Astaroth', 14_520), avatar: { itemId: 'a1', name: 'Armadura do Lobo' }, accessory: { itemId: 'c1', name: 'Pena do Escriba' } };
+    const dressed = { ...entry(1, 'Astaroth', 14_520), avatar: { itemId: 'a1', name: 'Manto Estelar' }, weapon: { itemId: 'w1', name: 'Cajado' }, accessory: { itemId: 'c1', name: 'Selo dos Madrugadores' } };
     mockedRaid.mockResolvedValue(raid({ mission: { slug: 'missao-sem-arte', name: 'Sem Arte', description: 'x', imageUrl: null }, party: [dressed] }));
     await renderRaid();
 
-    expect(await screen.findByTestId('raid-scene-accessory-u-Astaroth', { includeHiddenElements: true })).toBeTruthy();
-    expect(screen.getByTestId('raid-scene-hero-u-Astaroth', { includeHiddenElements: true })).toBeTruthy();
+    const hero = within(await screen.findByTestId('raid-scene-hero-u-Astaroth', { includeHiddenElements: true }));
+    for (const layer of ['body', 'avatar', 'weapon', 'accessory']) expect(hero.getByTestId(`character-hero-layer-${layer}`, { includeHiddenElements: true })).toBeTruthy();
     expect(screen.queryByTestId('raid-scene-hero-u-Brisa', { includeHiddenElements: true })).toBeNull();
     expect(screen.getByTestId('raid-scene-background', { includeHiddenElements: true })).toBeTruthy();
+  });
+
+  it('draws the scene of the Missão, with the boss and the Golpe at its own scene position', async () => {
+    mockedRaid.mockResolvedValue(raid({
+      mission: { slug: 'forja-dos-sabios', name: 'Forja dos Sábios', description: 'x', imageUrl: null },
+      lastHit: { userId: 'u-Eldoria', displayName: 'Eldoria', xp: 75, focusMinutes: 25, at: new Date().toISOString() },
+    }));
+    await renderRaid();
+
+    const boss = StyleSheet.flatten((await screen.findByTestId('raid-scene-boss', { includeHiddenElements: true })).props.style);
+    const scale = boss.left / 110;
+    expect(Number.isInteger(scale) && scale >= 2).toBe(true);
+    expect(boss.top).toBe(20 * scale);
+    // The 220px Golpe slot is centered on the anchor at (148, 24).
+    expect(StyleSheet.flatten(screen.getByTestId('raid-scene-hit').props.style)).toMatchObject({ left: 148 * scale - 110, top: 24 * scale });
   });
 
   it('shows the boss defeated once the goal is reached', async () => {

@@ -6,8 +6,6 @@ export class SessionHistoryItemDto extends RecentSessionResponseDto {
 }
 
 export class SessionHistoryPageDto {
-  /** The UTC day listed. */
-  date: string;
   items: SessionHistoryItemDto[];
   nextCursor: string | null;
 }

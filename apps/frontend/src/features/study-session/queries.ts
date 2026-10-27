@@ -52,7 +52,7 @@ export function invalidateStudySessionResult(
     queryClient.invalidateQueries({ queryKey: dashboardKeys.profile() }),
     queryClient.invalidateQueries({ queryKey: dashboardKeys.recentActivity() }),
     queryClient.invalidateQueries({ queryKey: dashboardKeys.metrics() }),
-    // Every day of the history: the session lands in its UTC day, whatever day the screen shows.
+    // Every day of the history: the session lands in its São Paulo day, whatever day the screen shows.
     queryClient.invalidateQueries({ queryKey: [...dashboardKeys.all, 'history'] }),
     queryClient.invalidateQueries({ queryKey: focusCycleQueryKey }),
     // A guild-mode session may have become a Contribution; null means the mode is unknown, so refresh too.

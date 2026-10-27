@@ -19,18 +19,75 @@ function playerFor(sound: SessionSound): AudioPlayer {
   return player;
 }
 
-/** Plays a cue at the end of a focus or a break. A sound is never worth breaking the timer, so failures are swallowed. */
-export function playSessionSound(sound: SessionSound): void {
+// The cue ringing now: the start gesture must not mute it while unlocking the players.
+let ringing: SessionSound | null = null;
+// Bumped by every stop, so a play still waiting on its rewind does not ring after the user silenced it.
+let epoch = 0;
+
+/** A blocked play (the browser's autoplay policy) rejects asynchronously: nothing to do but not crash. */
+function playQuietly(player: AudioPlayer): void {
+  Promise.resolve(player.play()).catch(() => undefined);
+}
+
+function pauseSilently(player: AudioPlayer | undefined, rewind: boolean): void {
+  if (!player) return;
+  try {
+    player.pause();
+    player.loop = false;
+    if (rewind) player.seekTo(0).catch(() => undefined);
+  } catch {
+    // Already gone.
+  }
+}
+
+/**
+ * Plays a cue at the end of a focus or a break; `loop` keeps it ringing until `stopSessionSounds`.
+ * Only one cue rings at a time. A sound is never worth breaking the timer, so failures are swallowed.
+ */
+export function playSessionSound(sound: SessionSound, { loop = false }: { loop?: boolean } = {}): void {
   try {
     if (!audioModeReady) {
       audioModeReady = true;
       setAudioModeAsync({ playsInSilentMode: true }).catch(() => { audioModeReady = false; });
     }
+    for (const other of Object.keys(players) as SessionSound[]) {
+      if (other !== sound) pauseSilently(players[other], false);
+    }
     const player = playerFor(sound);
+    const ticket = epoch;
+    ringing = sound;
+    player.loop = loop;
     // A finished clip rests at its end: rewind first, and play only once the rewind landed.
-    player.seekTo(0).then(() => player.play()).catch(() => undefined);
+    player.seekTo(0).then(() => { if (ticket === epoch) playQuietly(player); }).catch(() => undefined);
   } catch {
     // Audio unavailable (missing native module): the visual end state still shows.
+  }
+}
+
+/** Silences whatever is ringing: the user acted on the alarm (new session, break) or ended the run. */
+export function stopSessionSounds(): void {
+  epoch += 1;
+  ringing = null;
+  for (const sound of Object.keys(players) as SessionSound[]) pauseSilently(players[sound], true);
+}
+
+/**
+ * Called from the "Iniciar foco" gesture: browsers only let a page play audio it was allowed to start
+ * from a user gesture, and the alarm later rings from a timer, often in a hidden tab.
+ */
+export function unlockSessionSounds(): void {
+  try {
+    for (const sound of Object.keys(sources) as SessionSound[]) {
+      if (sound === ringing) continue;
+      const player = playerFor(sound);
+      player.volume = 0;
+      playQuietly(player);
+      player.pause();
+      player.seekTo(0).catch(() => undefined);
+      player.volume = 1;
+    }
+  } catch {
+    // Audio unavailable: the alarm just stays silent.
   }
 }
 

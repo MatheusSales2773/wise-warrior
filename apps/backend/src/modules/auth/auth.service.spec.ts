@@ -1,3 +1,4 @@
+import { IsNull, Not } from 'typeorm';
 import { SIGNUP_COINS } from '../economy/domain/coin-config';
 import { ConflictException, UnauthorizedException } from '@nestjs/common';
 import { AuthService } from './auth.service';
@@ -536,12 +537,16 @@ describe('AuthService realtime disconnection', () => {
     expect(realtime.disconnectSessions).toHaveBeenCalledWith(['session-2']);
   });
 
-  it('closes every socket when all sessions are revoked', async () => {
-    const { service, realtime } = build([session({ id: 'a' }), session({ id: 'b' })]);
+  it('closes the socket of every device but the one in use when the others are revoked', async () => {
+    // The repository applies the id exclusion, so the stub returns only the rows the query would.
+    const { service, sessions, realtime } = build([session({ id: 'a' }), session({ id: 'c' })]);
 
-    await service.revokeAllSessions('user-1');
+    await service.revokeOtherSessions('user-1', 'b');
 
-    expect(realtime.disconnectSessions).toHaveBeenCalledWith(['a', 'b']);
+    expect(sessions.find).toHaveBeenCalledWith({
+      where: { userId: 'user-1', revokedAt: IsNull(), id: Not('b') },
+    });
+    expect(realtime.disconnectSessions).toHaveBeenCalledWith(['a', 'c']);
   });
 
   it('still revokes when closing the socket fails', async () => {

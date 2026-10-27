@@ -8,10 +8,15 @@ export type DeviceSession = {
   lastUsedAt: string;
 };
 
-export type CosmeticCategory = 'avatar' | 'badge' | 'title' | 'accessory';
+export type CosmeticCategory = 'avatar' | 'badge' | 'title' | 'accessory' | 'weapon';
 
 /** `slug` `*` vale para qualquer Raid. */
-export type UnlockCondition = { type: 'level'; level: number } | { type: 'raid'; slug: string } | { type: 'purchase' };
+export type UnlockCondition =
+  | { type: 'level'; level: number }
+  | { type: 'raid'; slug: string }
+  | { type: 'purchase' }
+  | { type: 'sessions'; count: number }
+  | { type: 'early-sessions'; count: number };
 
 export type CatalogCosmeticItem = {
   id: string;
@@ -50,7 +55,7 @@ export async function revokeMyDeviceSession(sessionId: string): Promise<void> {
   await getAuthenticatedHttpClient().delete(`/users/me/sessions/${encodeURIComponent(sessionId)}`);
 }
 
-/** "Sair de todos os dispositivos", inclusive este. */
-export async function revokeAllMyDeviceSessions(): Promise<void> {
+/** "Encerrar os outros dispositivos": o do access token em uso continua conectado. */
+export async function revokeOtherMyDeviceSessions(): Promise<void> {
   await getAuthenticatedHttpClient().delete('/users/me/sessions');
 }

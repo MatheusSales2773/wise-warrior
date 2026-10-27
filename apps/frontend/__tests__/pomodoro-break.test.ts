@@ -59,3 +59,12 @@ it('keeps the break past the default garbage collection time', () => {
     jest.useRealTimers();
   }
 });
+
+it('keeps the focus that earned the break, so the break card survives leaving the Forja', () => {
+  const previous = { subject: 'Cálculo II', validSeconds: 1500, xpAwarded: 250, completedInCycle: 3 };
+
+  const run = startBreak(queryClient, 'short', 0, previous);
+
+  expect(run.previous).toEqual(previous);
+  expect(currentBreak(queryClient)?.previous).toEqual(previous);
+});

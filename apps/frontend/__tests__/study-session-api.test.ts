@@ -28,6 +28,13 @@ it('sends the Matéria only when one was chosen and keeps Sem matéria as absenc
   expect(post).toHaveBeenLastCalledWith('/sessions', { plannedDurationSeconds: 900 }, { headers: { 'Idempotency-Key': 'without-subject' } });
 });
 
+it('starts a Foco livre with kind free and no planned duration', async () => {
+  const post = jest.fn().mockResolvedValue({ status: 201, data: { id: 'study-1', kind: 'free' } });
+  (getAuthenticatedHttpClient as jest.Mock).mockReturnValue({ post });
+  await startStudySession('free', 'free-start', 'Cálculo II', 'raid-1');
+  expect(post).toHaveBeenCalledWith('/sessions', { kind: 'free', subject: 'Cálculo II', mode: 'guild', raidId: 'raid-1' }, { headers: { 'Idempotency-Key': 'free-start' } });
+});
+
 it('starts in guild mode only when a Raid is given', async () => {
   const post = jest.fn().mockResolvedValue({ status: 201, data: { id: 'study-1', mode: 'guild', raidId: 'raid-1' } });
   (getAuthenticatedHttpClient as jest.Mock).mockReturnValue({ post });
