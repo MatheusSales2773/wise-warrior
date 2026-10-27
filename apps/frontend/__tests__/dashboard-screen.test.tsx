@@ -1396,7 +1396,7 @@ describe('DashboardScreen Objetivos de hoje and Próximo Marco', () => {
   it('refreshes the Objetivos and the Marcos when pulling down on iOS', async () => {
     jest.replaceProperty(Platform, 'OS', 'ios');
     await renderDashboard();
-    await waitFor(() => expect(mockedMilestones).toHaveBeenCalledTimes(1));
+    await waitForObjectivesAndMilestones();
     const objectivesCalls = mockedObjectives.mock.calls.length;
 
     await act(async () => { fireEvent(screen.getByTestId('dashboard-scroll'), 'refresh'); });
@@ -1427,7 +1427,7 @@ describe('DashboardScreen Objetivos de hoje and Próximo Marco', () => {
   it('refreshes the Objetivos and the Marcos with "Atualizar" and reports a partial failure', async () => {
     await renderDashboard();
     await screen.findByRole('button', { name: 'Atualizar dados' });
-    await waitFor(() => expect(mockedMilestones).toHaveBeenCalledTimes(1));
+    await waitForObjectivesAndMilestones();
     const objectivesCalls = mockedObjectives.mock.calls.length;
     mockedMilestones.mockRejectedValue(new Error('boom'));
 
@@ -1439,4 +1439,14 @@ describe('DashboardScreen Objetivos de hoje and Próximo Marco', () => {
     });
     expect(await screen.findByText('Alguns dados não foram atualizados.')).toBeTruthy();
   });
+
+  // The loading screen has a `dashboard-scroll` too, without pull-to-refresh, and a refetch joins a first fetch still in
+  // flight instead of starting another. So a refresh only counts once the profile, the Objetivos and the Marcos have data.
+  async function waitForObjectivesAndMilestones() {
+    await screen.findByTestId('dashboard-objectives');
+    await waitFor(() => {
+      expect(mockedMilestones).toHaveBeenCalledTimes(1);
+      expect(screen.queryByTestId('dashboard-milestone-loading')).toBeNull();
+    });
+  }
 });
