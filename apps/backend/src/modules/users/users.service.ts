@@ -25,6 +25,7 @@ import {
   UnlockCondition,
 } from './domain/unlock-condition';
 import { MILESTONE_BADGE_IDS, milestoneProgress } from './domain/milestone';
+import { isDevToolsEmail } from '../../shared/dev-tools/dev-tools';
 
 export interface UserProfile {
   id: string;
@@ -37,6 +38,8 @@ export interface UserProfile {
   nextLevelXp: number;
   /** ADR-010: nome do Cosmetic Item de categoria Título equipado, ou `null`. */
   title: string | null;
+  /** O e-mail está em `DEV_TOOLS_EMAILS`: o app mostra a seção Desenvolvedor. */
+  devTools: boolean;
   equipped: EquippedCosmeticItem[];
 }
 
@@ -140,6 +143,16 @@ export class UsersService {
       lock: { mode: 'pessimistic_write' },
     });
     return user?.planTier ?? null;
+  }
+
+  private isDevToolsEmail(email: string): boolean {
+    return isDevToolsEmail(email, this.config?.get<string>('DEV_TOOLS_EMAILS'));
+  }
+
+  /** O usuário pode usar as ferramentas de desenvolvedor (`DEV_TOOLS_EMAILS`); `false` também quando ele não existe. */
+  async isDevToolsUser(userId: string): Promise<boolean> {
+    const user = await this.users.findOne({ where: { id: userId }, select: { email: true } });
+    return user !== null && this.isDevToolsEmail(user.email);
   }
 
   /** O `plan_tier` do usuário; `null` quando ele não existe. */
@@ -402,6 +415,7 @@ export class UsersService {
       levelStartXp: projection.levelStartXp,
       nextLevelXp: projection.nextLevelXp,
       title: equipped.find((item) => item.category === 'title')?.name ?? null,
+      devTools: this.isDevToolsEmail(user.email),
       equipped,
     };
   }

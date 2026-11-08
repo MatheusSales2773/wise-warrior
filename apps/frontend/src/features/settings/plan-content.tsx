@@ -1,4 +1,4 @@
-import { useMutation, useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, type UseQueryResult } from '@tanstack/react-query';
 import { useLocalSearchParams } from 'expo-router';
 import { useEffect, useState, type ReactNode } from 'react';
 import { Platform, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
@@ -11,7 +11,7 @@ import { itemSprites } from '@/features/character/sprites';
 import { profileQueryOptions } from '@/features/dashboard/queries';
 import type { CatalogCosmeticItem } from '@/features/profile/api';
 import { cosmeticsCatalogQueryOptions } from '@/features/profile/queries';
-import { openBillingSession } from './api';
+import { openBillingSession, type SubscriptionView } from './api';
 import { billingErrorMessage, openStripePage, subscriptionQueryOptions } from './billing';
 import { PREMIUM_PRICE, planCard, type PlanCard } from './plan';
 import { settingsStyles } from './settings-content';
@@ -160,6 +160,19 @@ function Column({ children, desktop }: { children: ReactNode; desktop: boolean }
   return <View style={desktop ? styles.columnDesktop : styles.column}>{children}</View>;
 }
 
+/** The Plano loading indicator, or its error with "Tentar novamente"; shared by every section that reads the plan. */
+export function PlanUnavailable({ subscription }: { subscription: Pick<UseQueryResult<SubscriptionView>, 'isError' | 'isRefetching' | 'refetch'> }) {
+  if (subscription.isError) {
+    return <View style={settingsStyles.stateBlock} testID="settings-plan-error">
+      <FeedbackMessage message="Não foi possível carregar seu plano." title="Plano indisponível" variant="error" />
+      <WiseButton label="Tentar novamente" loading={subscription.isRefetching} onPress={() => void subscription.refetch()} variant="ghost" />
+    </View>;
+  }
+  return <View accessibilityLabel="Carregando seu plano" accessibilityState={{ busy: true }} aria-busy style={settingsStyles.stateBlock}>
+    <ProgressBar indeterminate accessibilityLabel="Carregando seu plano" />
+  </View>;
+}
+
 /** The Plano section, from `GET /billing/subscription`, the profile and the Catálogo (S5 behaviour, #380 layout). */
 export function PlanContent() {
   const subscription = useQuery(subscriptionQueryOptions());
@@ -181,17 +194,7 @@ export function PlanContent() {
     return () => clearTimeout(timer);
   }, [confirming]);
 
-  if (!subscription.data) {
-    if (subscription.isError) {
-      return <View style={settingsStyles.stateBlock} testID="settings-plan-error">
-        <FeedbackMessage message="Não foi possível carregar seu plano." title="Plano indisponível" variant="error" />
-        <WiseButton label="Tentar novamente" loading={subscription.isRefetching} onPress={() => void subscription.refetch()} variant="ghost" />
-      </View>;
-    }
-    return <View accessibilityLabel="Carregando seu plano" accessibilityState={{ busy: true }} aria-busy style={settingsStyles.stateBlock}>
-      <ProgressBar indeterminate accessibilityLabel="Carregando seu plano" />
-    </View>;
-  }
+  if (!subscription.data) return <PlanUnavailable subscription={subscription} />;
 
   const view = subscription.data;
   const card = planCard(view);

@@ -473,6 +473,24 @@ paths:
         "502": { $ref: "#/components/responses/BadGateway" }
         "503": { $ref: "#/components/responses/ServiceUnavailable" }
 
+  /billing/dev/reset-plan:
+    post:
+      summary: Cancelar a Assinatura agora (ferramenta de teste)
+      description: >
+        Só para e-mails em `DEV_TOOLS_EMAILS`; os demais recebem 404. Pede ao Stripe o cancelamento imediato da
+        Assinatura e responde 202 sem gravar nada: o plano volta a `free` quando chega o webhook
+        `customer.subscription.deleted`. Sem Assinatura premium, 409 "Nenhuma assinatura para cancelar"; cobrança não
+        configurada, 503 "Assinatura indisponível no momento"; falha no Stripe, 502 "Não foi possível cancelar a assinatura".
+      operationId: resetBillingPlan
+      tags: [Billing]
+      responses:
+        "202": { description: Cancelamento pedido ao Stripe }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "502": { $ref: "#/components/responses/BadGateway" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+
   /billing/packs:
     get:
       summary: Pacotes pagos com dinheiro
@@ -1511,7 +1529,7 @@ components:
       description: >
         A projeção mantém a coerência do progresso: levelStartXp <= xpTotal <
         nextLevelXp.
-      required: [id, email, displayName, planTier, level, levelStartXp, nextLevelXp, xpTotal, title, equipped]
+      required: [id, email, displayName, planTier, level, levelStartXp, nextLevelXp, xpTotal, title, devTools, equipped]
       properties:
         id: { type: string, format: uuid }
         email: { type: string, format: email }
@@ -1541,6 +1559,9 @@ components:
           description: >
             Nome do Cosmetic Item de categoria Título equipado (ADR-010), ou
             null quando não há Título equipado.
+        devTools:
+          type: boolean
+          description: O e-mail está em `DEV_TOOLS_EMAILS`; o app mostra a seção Desenvolvedor.
         equipped:
           type: array
           description: Cosmetic Items equipados, no máximo um por categoria.

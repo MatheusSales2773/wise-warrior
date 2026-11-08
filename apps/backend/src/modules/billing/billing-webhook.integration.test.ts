@@ -152,7 +152,7 @@ describe('Stripe webhook against MySQL', () => {
     );
     const stripeApi: StripeApi = {
       webhooks: signer.webhooks,
-      subscriptions: { retrieve },
+      subscriptions: { retrieve, cancel: jest.fn() },
       customers: { create: jest.fn() },
       checkout: { sessions: { create: jest.fn(), retrieve: jest.fn() } },
       billingPortal: { sessions: { create: jest.fn() } },
@@ -397,6 +397,18 @@ describe('Stripe webhook against MySQL', () => {
       expect(changes[0]).toMatchObject({ userId: user, payload: { planTier: 'premium' } });
       // The listener read the database at the moment of the emit, through its own connection: the commit had landed.
       expect(await changes[0]!.planTierWhenEmitted).toBe('premium');
+    });
+
+    it('is emitted once with free, after the commit, when the Subscription is deleted', async () => {
+      await seedPremiumUser([]);
+      retrieve.mockResolvedValue(stripeSubscription({ status: 'canceled' }));
+
+      await signed(subscriptionEvent('customer.subscription.deleted', 'canceled'));
+
+      const changes = eventsNamed('user:planChanged');
+      expect(changes).toHaveLength(1);
+      expect(changes[0]).toMatchObject({ userId: user, payload: { planTier: 'free' } });
+      expect(await changes[0]!.planTierWhenEmitted).toBe('free');
     });
 
     it('is not emitted when the plan stays the same', async () => {

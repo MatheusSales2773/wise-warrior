@@ -58,7 +58,7 @@ const catalog: CatalogCosmeticItem[] = [
 
 const profile: UserProfile = {
   id: 'user-1', email: 'wise@example.com', displayName: 'Membro da Ordem dos Madrugadores', planTier: 'free',
-  level: 14, levelStartXp: 126_450, nextLevelXp: 129_450, xpTotal: 128_400, title: 'Estudante Crepuscular',
+  level: 14, levelStartXp: 126_450, nextLevelXp: 129_450, xpTotal: 128_400, title: 'Estudante Crepuscular', devTools: false,
   equipped: [
     { category: 'avatar', itemId: 'item-Capuz do Erudito', name: 'Capuz do Erudito' },
     { category: 'title', itemId: 'item-Estudante Crepuscular', name: 'Estudante Crepuscular' },

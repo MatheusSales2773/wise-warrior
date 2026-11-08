@@ -21,12 +21,16 @@ export async function openStripePage(url: string): Promise<void> {
 }
 
 /** S5.11: the server's own words for 409, 502 and 503 (and 404 for a Pacote, S8.9); anything else gets a generic line. */
-export function billingErrorMessage(error: unknown, statuses: readonly number[] = [409, 502, 503]): string {
+export function billingErrorMessage(
+  error: unknown,
+  statuses: readonly number[] = [409, 502, 503],
+  fallback = 'Não foi possível abrir o pagamento. Tente de novo.',
+): string {
   if (isAxiosError(error) && statuses.includes(error.response?.status ?? 0)) {
     const detail = (error.response?.data as { detail?: unknown } | undefined)?.detail;
     if (typeof detail === 'string' && detail) return detail;
   }
-  return 'Não foi possível abrir o pagamento. Tente de novo.';
+  return fallback;
 }
 
 /** The plan in the Configuração list and menu; `undefined` until both the profile and the billing state are known. */

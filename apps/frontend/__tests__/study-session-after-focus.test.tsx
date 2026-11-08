@@ -97,7 +97,7 @@ const inCycle = (completedInCycle: number): FocusCycle => ({
 
 const user: UserProfile = {
   id: 'u-1', email: 'k@wise.app', displayName: 'Knightshade', planTier: 'free', level: 14,
-  levelStartXp: 8000, nextLevelXp: 10_000, xpTotal: 9200, title: null, equipped: [],
+  levelStartXp: 8000, nextLevelXp: 10_000, xpTotal: 9200, title: null, devTools: false, equipped: [],
 };
 const week: SessionMetrics = {
   currentStreakDays: 27, longestStreakDays: 30, sessionsToday: 3, validSecondsToday: 5700,

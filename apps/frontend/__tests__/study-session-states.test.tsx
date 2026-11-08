@@ -55,7 +55,7 @@ const guildSession: StudySessionSnapshot = { ...snapshot, mode: 'guild', raidId:
 
 const user: UserProfile = {
   id: 'u-1', email: 'k@wise.app', displayName: 'Knightshade', planTier: 'free', level: 14,
-  levelStartXp: 8000, nextLevelXp: 10_000, xpTotal: 8950, title: null, equipped: [],
+  levelStartXp: 8000, nextLevelXp: 10_000, xpTotal: 8950, title: null, devTools: false, equipped: [],
 };
 const week: SessionMetrics = {
   currentStreakDays: 27, longestStreakDays: 30, sessionsToday: 2, validSecondsToday: 4800,
