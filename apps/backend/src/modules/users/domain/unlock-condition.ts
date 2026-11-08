@@ -44,7 +44,10 @@ export function isUnlockedBySessionCounts(condition: UnlockCondition, counts: Se
   return false;
 }
 
-/** Item inicial: a condição é o nível 1, então todo Character começa com ele. */
-export function isStarterItem(condition: UnlockCondition): boolean {
-  return condition.type === 'level' && condition.level === 1;
+/**
+ * Item inicial: a condição é o nível 1 e o item não é premium (ADR-015). Todo Character começa com ele equipado; o
+ * Item premium de nível 1 também está no Inventário de todos, mas desequipado.
+ */
+export function isStarterItem(condition: UnlockCondition, requiresPremium: boolean): boolean {
+  return condition.type === 'level' && condition.level === 1 && !requiresPremium;
 }

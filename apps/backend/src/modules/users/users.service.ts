@@ -206,14 +206,14 @@ export class UsersService {
       .execute();
   }
 
-  /** Inventário de um Character recém-criado: os Itens iniciais, já equipados. */
+  /** Inventário de um Character recém-criado: os Itens iniciais equipados, e os Itens premium de nível 1 desequipados. */
   async grantStarterInventory(manager: EntityManager, userId: string): Promise<void> {
     await this.unlockCosmeticItems(manager, userId, 1);
     const inventory = manager.getRepository(UserCosmeticItem);
     const starters = (await inventory.find({ where: { userId }, relations: ['cosmeticItem'] }))
       .filter((row) => {
         const condition = parseUnlockCondition(row.cosmeticItem.unlockCondition);
-        return condition !== null && isStarterItem(condition);
+        return condition !== null && isStarterItem(condition, row.cosmeticItem.requiresPremium);
       });
     const equippedCategories = new Set<CosmeticCategory>();
     for (const starter of starters) {
@@ -358,10 +358,13 @@ export class UsersService {
   }
 
   /**
-   * Política de entitlement do MVP (ADR-007): enquanto `COSMETICS_PREMIUM_FOR_ALL` não for
-   * `false`, os itens premium ficam liberados para todos. A checagem continua no caminho de Equipar.
+   * Política de entitlement (ADR-007, revisada pela ADR-015): sem cobrança configurada, enquanto
+   * `COSMETICS_PREMIUM_FOR_ALL` não for `false`, os itens premium ficam liberados para todos. Com
+   * `STRIPE_SECRET_KEY` definido só o plano `premium` os equipa, qualquer que seja a flag. A checagem continua no
+   * caminho de Equipar.
    */
   private premiumReleasedToEveryone(): boolean {
+    if (this.config?.get<string>('STRIPE_SECRET_KEY')) return false;
     return this.config?.get<string>('COSMETICS_PREMIUM_FOR_ALL') !== 'false';
   }
 
