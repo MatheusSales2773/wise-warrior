@@ -324,6 +324,7 @@ Quem lê a documentação encontra a cobrança como ela está no código.
 | Descrição do Pacote do Dragão (`packs.description`) | "Elmo, presa e amuleto forjados no fogo de um dragão. Ficam com você para sempre, em qualquer plano." | user, ao implementar S6 (#360): escolheu a opção recomendada | y |
 | Item de Pacote sem posse na gaveta de equipamento | Mesma legenda "Do Pacote do Dragão", bloqueado; ordena e se descreve com os itens À venda ("comprados na Loja") | user, ao implementar S6 (#360): "Mesmo rótulo" | y |
 | Stripe nos testes | Os testes de integração trocam o cliente Stripe por um falso, e o webhook é assinado com um segredo de teste. Nenhum teste chama a rede | CI e e2e não podem depender do Stripe (ADR-015) | n |
+| Checkout do Pacote (S7) | Sessão só com cartão (`allowed_payment_method_types: ['card']`); slug em `metadata.packSlug`; quem já pagou um Pacote fora de venda recebe `409`, não `404`; evento pago de Pacote que saiu de venda ainda concede os itens | Detalhes internos que seguem a ADR-015 (só cartão) e o S7.2/S7.3 sem decidir produto novo | n |
 | Larguras de tela | As mesmas da Configuração e da Loja (sidebar no desktop, navegação inferior no celular) | Sem captura; segue o design system (ADR-008) | n |
 
 **Open questions:** one remains, listed below; nothing else is open.

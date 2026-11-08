@@ -101,7 +101,7 @@ Other routes of the Surface belong to other slices (`/api/v1/billing/subscriptio
 ## Handoff
 
 - **Settled mid-build:** none
-- **Dispatched:** Verifier at c7b0412 (diff 414242c..c7b0412), sent
+- **Dispatched:** Verifier at c7b0412, returned
 - **Boundary:** C1-C17 closed; the Verifier's F1-F6 closed in the next commit
 - **Abandoned:** none
 - **Walked:** n/a - no screen
