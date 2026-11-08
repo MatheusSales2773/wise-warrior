@@ -145,7 +145,8 @@ describe('the Pacotes tab', () => {
     expect(screen.getByTestId('market-purse')).toBeTruthy();
   });
 
-  it('hides the Moedas balance and the Extrato link in Pacotes', async () => {
+  it.each([[1440], [390]])('hides the Moedas balance and the Extrato link in Pacotes at %i px', async (width) => {
+    setViewport(width);
     mockParams = { secao: 'pacotes' };
     await renderMarket();
 
@@ -267,7 +268,10 @@ describe('coming back from the Checkout', () => {
       await renderMarket();
 
       expect(await screen.findByText('Confirmando seu pagamento…')).toBeTruthy();
-      await act(async () => { jest.advanceTimersByTime(30_000); });
+      await act(async () => { jest.advanceTimersByTime(29_000); });
+      expect(screen.getByText('Confirmando seu pagamento…')).toBeTruthy();
+      expect(screen.queryByText('Pagamento recebido. Os itens chegam em instantes.')).toBeNull();
+      await act(async () => { jest.advanceTimersByTime(1_000); });
       expect(await screen.findByText('Pagamento recebido. Os itens chegam em instantes.')).toBeTruthy();
       expect(screen.queryByText('Confirmando seu pagamento…')).toBeNull();
     } finally {
@@ -298,6 +302,22 @@ describe('coming back from the Checkout', () => {
     expect(screen.getByText('Itens do Pacote do Dragão no seu Inventário')).toBeTruthy();
     expect(screen.queryByText('Confirmando seu pagamento…')).toBeNull();
     expect(screen.queryByRole('button', { name: /Comprar/ })).toBeNull();
+  });
+
+  it('keeps the Inventário notice for a grant that arrives while another tab is open', async () => {
+    mockParams = { secao: 'itens' };
+    const { client, view } = await renderMarket();
+    await screen.findByTestId('market-tab-pacotes');
+
+    mocked.packs.mockResolvedValue(available([{ ...dragon, owned: true }]));
+    await act(async () => applyPackGranted(client));
+    await waitFor(() => expect(mocked.packs).toHaveBeenCalledTimes(2));
+
+    mockParams = { secao: 'pacotes' };
+    await view.rerender(<QueryClientProvider client={client}><MarketScreen /></QueryClientProvider>);
+
+    expect(await screen.findByText('Adquirido')).toBeTruthy();
+    expect(screen.getByText('Itens do Pacote do Dragão no seu Inventário')).toBeTruthy();
   });
 
   it('shows the Pacotes with no message after checkout=cancel', async () => {

@@ -44,6 +44,7 @@ export function MarketScreen() {
   const missions = useQuery(shopMissionsQueryOptions());
   const items = useQuery(shopItemsQueryOptions());
   const purchase = usePurchase();
+  const granted = usePackGrantNotice(packs.data?.packs);
 
   const content = <>
     <Header balance={balance.data} balanceFailed={balance.isError && balance.data === undefined} desktop={desktop} packs={packsOn} showPurse={section !== 'pacotes'} />
@@ -55,7 +56,7 @@ export function MarketScreen() {
     />
     {section === 'missoes' ? <MissionsSection desktop={desktop} purchase={purchase} query={missions} width={width} /> : null}
     {section === 'itens' ? <ItemsSection desktop={desktop} purchase={purchase} query={items} /> : null}
-    {section === 'pacotes' ? <PacksSection checkout={params.checkout} desktop={desktop} query={packs} /> : null}
+    {section === 'pacotes' ? <PacksSection checkout={params.checkout} desktop={desktop} granted={granted} query={packs} /> : null}
   </>;
 
   return <View style={styles.root} testID="market">
@@ -384,12 +385,26 @@ function PreviewLedger({ price }: { price: number }) {
 
 /* ---------- Pacotes ---------- */
 
-/** What Pacotes shows after Checkout: waiting for the webhook (S8.6) and the grant notice (S8.7). */
-function PacksSection({ checkout, desktop, query }: { checkout: string | undefined; desktop: boolean; query: { data: { packs: BillingPack[] } | undefined; isPending: boolean; isError: boolean; isRefetching: boolean; refetch: () => unknown } }) {
-  const packs = query.data?.packs;
-  const [late, setLate] = useState(false);
+/**
+ * S8.7: the name of a Pacote that turned `owned` while the Loja was open, on any tab, so the notice is waiting when Pacotes opens.
+ * shortcut: a grant that lands while the Loja is closed shows only "Adquirido"; upgrade if the notice must survive a reload.
+ */
+function usePackGrantNotice(packs: BillingPack[] | undefined): string | null {
   const [granted, setGranted] = useState<string | null>(null);
   const seen = useRef(new Map<string, boolean>());
+  useEffect(() => {
+    for (const pack of packs ?? []) {
+      if (seen.current.get(pack.slug) === false && pack.owned) setGranted(pack.name);
+      seen.current.set(pack.slug, pack.owned);
+    }
+  }, [packs]);
+  return granted;
+}
+
+/** What Pacotes shows after Checkout: waiting for the webhook (S8.6) and the grant notice (S8.7). */
+function PacksSection({ checkout, desktop, granted, query }: { checkout: string | undefined; desktop: boolean; granted: string | null; query: { data: { packs: BillingPack[] } | undefined; isPending: boolean; isError: boolean; isRefetching: boolean; refetch: () => unknown } }) {
+  const packs = query.data?.packs;
+  const [late, setLate] = useState(false);
   const confirming = checkout === 'success' && (packs?.some((pack) => !pack.owned) ?? false);
 
   useEffect(() => {
@@ -398,14 +413,6 @@ function PacksSection({ checkout, desktop, query }: { checkout: string | undefin
     const timer = setTimeout(() => setLate(true), CONFIRM_WAIT_MS);
     return () => clearTimeout(timer);
   }, [confirming]);
-
-  useEffect(() => {
-    // shortcut: the notice follows an owned flip seen on this screen; one that happened while elsewhere shows only "Adquirido".
-    for (const pack of packs ?? []) {
-      if (seen.current.get(pack.slug) === false && pack.owned) setGranted(pack.name);
-      seen.current.set(pack.slug, pack.owned);
-    }
-  }, [packs]);
 
   const status = <ListStatus
     empty={<WiseText color="textSecondary" variant="body">Nenhum Pacote à venda agora.</WiseText>}

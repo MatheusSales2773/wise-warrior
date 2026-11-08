@@ -57,7 +57,7 @@ Proof: run packs | ✓ marks the button busy, requests the checkout of dragao an
 Proof: run billing | ✓ leaves for Stripe in the same tab on the Web
 Proof: run billing | ✓ hands the page to the system browser on the native app
 
-**C13** - `checkout=success` with the Pacote not owned shows "Confirmando seu pagamento…"; 30 s without `user:packGranted` turns it into "Pagamento recebido. Os itens chegam em instantes." (S8.6)
+**C13** - `checkout=success` with the Pacote not owned shows "Confirmando seu pagamento…"; 30 s (still waiting at 29 s) without `user:packGranted` turns it into "Pagamento recebido. Os itens chegam em instantes." (S8.6)
 Proof: run packs | ✓ waits for the payment after checkout=success, then says the items arrive shortly
 
 **C14** - `checkout=success` with the Pacote already owned shows no waiting message (S8.6)
@@ -71,6 +71,7 @@ Proof: run realtime | ✓ listens to user:packGranted once and stops on dispose
 
 **C17** - When the grant arrives the screen shows "Adquirido" and the notice "Itens do Pacote do Dragão no seu Inventário", and the waiting message goes away (S8.7)
 Proof: run packs | ✓ shows Adquirido and the Inventário notice when user:packGranted arrives
+Proof: run packs | ✓ keeps the Inventário notice for a grant that arrives while another tab is open
 
 **C18** - `checkout=cancel` shows the Pacotes section with no error and no waiting message (S8.8)
 Proof: run packs | ✓ shows the Pacotes with no message after checkout=cancel
@@ -86,7 +87,8 @@ Proof: run billing | ✓ uses the server detail on 404 only when the caller list
 **C20** - The Pacotes section shows no Moedas balance and no Extrato link, the other sections still do, and the opening text covers Moedas and Pacotes while billing is available (S8.10)
 Proof: run packs | ✓ keeps the Moedas balance in Missões
 Proof: run packs | ✓ keeps the Moedas balance in Itens
-Proof: run packs | ✓ hides the Moedas balance and the Extrato link in Pacotes
+Proof: run packs | ✓ hides the Moedas balance and the Extrato link in Pacotes at 1440 px
+Proof: run packs | ✓ hides the Moedas balance and the Extrato link in Pacotes at 390 px
 Proof: run packs | ✓ mentions the Pacotes in the opening text while billing is available
 Proof: run packs | ✓ leaves the Pacotes out of the opening text while billing is not available
 
@@ -127,7 +129,7 @@ Other routes of the Surface belong to other slices (`/api/v1/billing/subscriptio
 ## Handoff
 
 - **Settled mid-build:** none
-- **Dispatched:** none yet
-- **Boundary:** none yet
+- **Dispatched:** Verifier at 696d7c9 (no screens sub-agent: no capture binds this slice)
+- **Boundary:** C1-C21 closed at 696d7c9
 - **Abandoned:** none
 - **Walked:** none yet
