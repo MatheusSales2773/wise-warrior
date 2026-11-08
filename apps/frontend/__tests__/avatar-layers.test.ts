@@ -5,11 +5,13 @@ import { FACE_ROWS, GRID_HEIGHT, GRID_WIDTH, HAND_ROWS, SKIN_KEYS, avatarLayers,
 /** The Avatars seeded in the Catalog by the backend migrations: each one needs a layer of its own (#261). */
 const MIGRATIONS = join(__dirname, '../../backend/src/migrations');
 const CATALOG_AVATARS = [
-  ...new Set(
-    readdirSync(MIGRATIONS)
+  ...new Set([
+    ...readdirSync(MIGRATIONS)
       .filter((file) => file.endsWith('.ts') && !file.endsWith('.test.ts'))
       .flatMap((file) => [...readFileSync(join(MIGRATIONS, file), 'utf8').matchAll(/'avatar',\s*'([^']+)'/g)].map((match) => match[1]!)),
-  ),
+    /** The premium Avatar of the Assinatura, drawn before its seed lands. */
+    'Manto do Arquimago',
+  ]),
 ];
 
 const isSkin = (pixel: string) => SKIN_KEYS.includes(pixel);
