@@ -5,8 +5,9 @@ import { FeedbackMessage, WiseButton, WiseDialog, WiseText, isDesktopLayout } fr
 import { profileQueryOptions } from '@/features/dashboard/queries';
 import { resetMyPlan } from './api';
 import { billingErrorMessage, subscriptionQueryOptions } from './billing';
-import { planName } from './plan';
-import { InfoRow, PlanUnavailable, planState, settingsStyles } from './settings-content';
+import { PlanUnavailable } from './plan-content';
+import { planCard } from './plan';
+import { InfoRow, settingsStyles } from './settings-content';
 
 /** Desenvolvedor: cancels the test Subscription now so the account can rehearse "assinar → premium" again. */
 export function DevContent() {
@@ -23,9 +24,10 @@ export function DevContent() {
   if (profile.data?.devTools !== true) return null;
   if (!subscription.data) return <PlanUnavailable subscription={subscription} />;
   const premium = subscription.data.planTier === 'premium';
+  const card = planCard(subscription.data);
   return <View style={settingsStyles.stateBlock}>
     <View style={settingsStyles.list}>
-      <InfoRow icon="diamond-outline" title="Plano atual" value={premium ? planState(subscription.data).text : planName(subscription.data.planTier)} />
+      <InfoRow icon="diamond-outline" title="Plano atual" value={premium ? `${card.name} · ${card.situation}` : 'Free'} />
     </View>
     {reset.isSuccess && premium ? <FeedbackMessage message="Assinatura cancelada. O plano volta a Free em instantes." testID="settings-dev-success" variant="info" /> : null}
     {reset.isError ? <FeedbackMessage message={billingErrorMessage(reset.error, [409, 502, 503], 'Não foi possível cancelar a assinatura. Tente de novo.')} testID="settings-dev-failure" variant="error" /> : null}

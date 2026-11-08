@@ -11,7 +11,7 @@ import { useSignOut } from '@/features/auth/use-sign-out';
 import { SectionHeader, useFocusRing } from '@/features/character/character-parts';
 import { profileQueryOptions } from '@/features/dashboard/queries';
 import { activeSettingsSection, menuHref, settingsSection, visibleSettingsSections, type SettingsSectionId } from './sections';
-import { usePlanLabel } from './billing';
+import { subscriptionQueryOptions, usePlanLabel } from './billing';
 import { useActiveDevicesLabel } from './devices-content';
 import { useDefaultFocusLabel } from './focus-content';
 import { RenameContent } from './rename-form';
@@ -61,6 +61,7 @@ export function SettingsSectionScreen({ id }: { id: SettingsSectionId }) {
   const section = settingsSection(id);
   const meta = useSectionMeta()[id];
   if (desktop) {
+    if (section.bare && section.Content) return <ScrollView contentContainerStyle={styles.desktopSection} testID={`settings-section-${id}`}><section.Content /></ScrollView>;
     return <ScrollView contentContainerStyle={styles.desktopSection} testID={`settings-section-${id}`}>
       <View style={styles.card}>
         <View style={styles.cardHeader}>
@@ -75,7 +76,7 @@ export function SettingsSectionScreen({ id }: { id: SettingsSectionId }) {
   return <ScrollView contentContainerStyle={styles.mobileScreen} testID={`settings-section-${id}`}>
     <BackToSettings />
     <Text accessibilityRole="header" aria-level={1} style={styles.mobileTitle}>{section.label}</Text>
-    <Text style={styles.description}>{section.description}</Text>
+    {section.bare ? null : <Text style={styles.description}>{section.description}</Text>}
     {section.Content ? <section.Content /> : null}
   </ScrollView>;
 }
@@ -151,13 +152,13 @@ export function SettingsHome() {
 
 /* ---------- Menu lateral (desktop) ---------- */
 
-function MenuItem({ active, href, icon, label, meta }: { active: boolean; href: Href; icon: WiseIconName; label: string; meta?: string }) {
+function MenuItem({ active, href, icon, label, meta, metaAccent }: { active: boolean; href: Href; icon: WiseIconName; label: string; meta?: string; metaAccent?: boolean }) {
   const { focusProps, focusStyle } = useFocusRing();
   return <Link asChild href={href}>
     <Pressable {...focusProps} accessibilityLabel={label} accessibilityRole="link" accessibilityState={{ selected: active }} style={StyleSheet.flatten([styles.menuItem, active && styles.menuItemActive, focusStyle])}>
       <WiseIcon color={active ? 'accentHighlight' : 'textSecondary'} name={icon} size="compact" />
       <Text style={[styles.menuLabel, active && styles.menuLabelActive]}>{label}</Text>
-      {meta ? <Text style={styles.menuMeta}>{meta}</Text> : null}
+      {meta ? <Text style={[styles.menuMeta, metaAccent && styles.menuMetaAccent]}>{meta}</Text> : null}
     </Pressable>
   </Link>;
 }
@@ -176,6 +177,10 @@ function SettingsMenu({ active }: { active: SettingsSectionId }) {
   const sectionMeta = useSectionMeta();
   const plan = usePlanLabel();
   const profile = useQuery(profileQueryOptions());
+  // Same rule as the Plano card: premium only while billing is on and the profile says so.
+  const profilePlan = profile.data?.planTier;
+  const billingOn = useQuery(subscriptionQueryOptions()).data?.available === true;
+  const premium = profilePlan === 'premium' && billingOn;
   return <View accessibilityLabel="Seções da configuração" role="navigation" style={styles.menu}>
     {visibleSettingsSections(profile.data).map((section) => <MenuItem
       active={section.id === active}
@@ -183,7 +188,8 @@ function SettingsMenu({ active }: { active: SettingsSectionId }) {
       icon={section.icon}
       key={section.id}
       label={section.label}
-      meta={section.id === 'plano' ? plan : sectionMeta[section.id]}
+      meta={section.id === 'plano' ? (premium ? 'PREMIUM ✦' : plan) : sectionMeta[section.id]}
+      metaAccent={section.id === 'plano' && premium}
     />)}
     <View style={styles.menuDivider} />
     <MenuSignOut />
@@ -249,6 +255,7 @@ const styles = StyleSheet.create({
   menuLabelActive: { color: theme.color.accentHighlight },
   menuLabelDanger: { color: theme.color.feedbackDanger },
   menuMeta: { fontFamily: mono, fontSize: 10, lineHeight: 13, color: theme.color.textTertiary },
+  menuMetaAccent: { color: theme.color.accentPrimary },
   menuDivider: { height: 1, backgroundColor: theme.color.borderGhost },
 
   cardHeader: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'baseline', justifyContent: 'space-between', gap: theme.space.inlineTight },

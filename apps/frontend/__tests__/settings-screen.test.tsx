@@ -9,7 +9,7 @@ import { preferencesStorage } from '@/core/preferences/preferences-storage';
 import { ApiError } from '@/core/api/api-error';
 import { queryClient as appQueryClient } from '@/core/query/query-runtime';
 import { getMyProfile, type UserProfile } from '@/features/dashboard/api';
-import { listMyDeviceSessions, revokeMyDeviceSession, revokeOtherMyDeviceSessions, type DeviceSession } from '@/features/profile/api';
+import { listCosmeticsCatalog, listMyDeviceSessions, revokeMyDeviceSession, revokeOtherMyDeviceSessions, type CatalogCosmeticItem, type DeviceSession } from '@/features/profile/api';
 import { getSubscription, openBillingSession, resetMyPlan, updateMyDisplayName, type SubscriptionView } from '@/features/settings/api';
 import { openStripePage } from '@/features/settings/billing';
 import { applyPlanChanged } from '@/core/realtime/realtime-client';
@@ -33,6 +33,7 @@ jest.mock('@/features/settings/api', () => ({ updateMyDisplayName: jest.fn(), ge
 jest.mock('@/features/settings/billing', () => ({ ...jest.requireActual('@/features/settings/billing'), openStripePage: jest.fn() }));
 
 jest.mock('@/features/profile/api', () => ({
+  listCosmeticsCatalog: jest.fn(),
   listMyDeviceSessions: jest.fn(),
   revokeMyDeviceSession: jest.fn(),
   revokeOtherMyDeviceSessions: jest.fn(),
@@ -55,6 +56,7 @@ const mockedSubscription = getSubscription as jest.MockedFunction<typeof getSubs
 const mockedOpenSession = openBillingSession as jest.MockedFunction<typeof openBillingSession>;
 const mockedReset = resetMyPlan as jest.MockedFunction<typeof resetMyPlan>;
 const mockedOpenPage = openStripePage as jest.MockedFunction<typeof openStripePage>;
+const mockedCatalog = listCosmeticsCatalog as jest.MockedFunction<typeof listCosmeticsCatalog>;
 const mockedProfile = getMyProfile as jest.MockedFunction<typeof getMyProfile>;
 const mockedRename = updateMyDisplayName as jest.MockedFunction<typeof updateMyDisplayName>;
 const mockedDevices = listMyDeviceSessions as jest.MockedFunction<typeof listMyDeviceSessions>;
@@ -414,38 +416,97 @@ describe('Configuração on desktop', () => {
   });
 });
 
-describe('Plano (S5)', () => {
+describe('Plano (S5, #380)', () => {
   const free: SubscriptionView = { ...unavailable, available: true };
   const premium: SubscriptionView = { available: true, planTier: 'premium', status: 'active', renewsAt: '2026-12-08T15:00:00.000Z', premiumUntil: null };
   const httpError = (status: number, detail: string) => Object.assign(new Error(detail), {
     isAxiosError: true, response: { status, data: { detail } },
   });
+  const item = (id: string, category: CatalogCosmeticItem['category'], name: string, level: number, requiresPremium = true): CatalogCosmeticItem => ({
+    id, category, name, requiresPremium, unlocked: true, equipped: false, forSale: false, unlockCondition: { type: 'level', level },
+  });
+  const catalog = [
+    item('t', 'title', 'Lenda do Foco', 1),
+    item('a', 'avatar', 'Manto do Arquimago', 1),
+    item('m', 'title', 'Mestre da Aurora', 15),
+    item('w', 'weapon', 'Cajado Astral', 1),
+    item('c', 'avatar', 'Capuz do Erudito', 1, false),
+  ];
+  const card = () => within(screen.getByTestId('settings-plan-card'));
+  const premiumProfile = { ...profile, planTier: 'premium' as const };
 
   beforeEach(async () => {
+    mockedCatalog.mockReset().mockResolvedValue(catalog);
     await setViewport('web', 1440);
   });
 
-  it('S5.2: keeps "Free · premium em breve" without a button while billing is off', async () => {
+  it('P6, P1: with billing off shows "Free · PREMIUM EM BREVE", no button and no offer', async () => {
     await openSettings('/configuracao/plano');
 
-    await waitFor(() => expect(screen.getAllByText('Free · premium em breve')).toHaveLength(2));
+    expect(await screen.findByText('PREMIUM EM BREVE')).toBeTruthy();
+    expect(card().getByText('Free')).toBeTruthy();
+    expect(card().getByText('◈ PLANO ATUAL')).toBeTruthy();
+    expect(card().getByText('Cobrança pelo Stripe')).toBeTruthy();
+    expect(card().getByText('A assinatura premium ainda não está disponível. Seus itens e moedas continuam iguais.')).toBeTruthy();
     expect(screen.queryByRole('button', { name: /assinar|gerenciar|atualizar/i })).toBeNull();
+    expect(screen.queryByTestId('settings-plan-offer')).toBeNull();
+    expect(screen.queryByTestId('settings-plan-how')).toBeNull();
+    expect(screen.getAllByText('Free · premium em breve')).toHaveLength(1);
   });
 
-  it('S5.3, S5.4, S5.13: offers premium and opens the Checkout url, busy while it loads', async () => {
+  it('P2, P1: a free plan on desktop shows the card, the offer beside it and "Como funciona" below', async () => {
+    mockedSubscription.mockResolvedValue(free);
+    await openSettings('/configuracao/plano');
+
+    expect(await screen.findByText('SEM ASSINATURA')).toBeTruthy();
+    expect(card().getByText('Free')).toBeTruthy();
+    expect(card().getByText('Você joga com tudo o que conquista no foco. O premium libera 3 Itens premium ✦ para o seu herói por R$ 9,90/mês.')).toBeTruthy();
+    expect(card().getByRole('button', { name: 'Assinar premium' })).toBeTruthy();
+
+    const offer = within(screen.getByTestId('settings-plan-offer'));
+    expect(offer.getByText('PRÉVIA NO SEU HERÓI')).toBeTruthy();
+    expect(offer.getByText('ASSINATURA MENSAL · CANCELE QUANDO QUISER')).toBeTruthy();
+    expect(offer.getByText('Premium ✦')).toBeTruthy();
+    expect(offer.getByText('R$ 9,90/mês')).toBeTruthy();
+    expect(offer.getByTestId('character-hero-layer-avatar', { includeHiddenElements: true })).toBeTruthy();
+    expect(offer.getByTestId('character-hero-layer-weapon', { includeHiddenElements: true })).toBeTruthy();
+    for (const name of ['Manto do Arquimago', 'Cajado Astral', 'Lenda do Foco']) expect(offer.getByText(name)).toBeTruthy();
+    expect(offer.queryByText('Mestre da Aurora')).toBeNull();
+    expect(offer.queryByText('Capuz do Erudito')).toBeNull();
+    expect(offer.getAllByText('✦ PREMIUM')).toHaveLength(3);
+    expect(offer.getByRole('button', { name: 'Assinar premium' })).toBeTruthy();
+    expect(offer.getByText('O pagamento abre na página segura do Stripe. Cancele no Portal do cliente: o premium fica até o fim do período pago.')).toBeTruthy();
+
+    const how = within(screen.getByTestId('settings-plan-how'));
+    expect(how.getByText('◈ COMO FUNCIONA')).toBeTruthy();
+    for (const number of ['01', '02', '03']) expect(how.getByText(number)).toBeTruthy();
+    expect(how.getByText(/^Você assina na página segura do Stripe e volta para cá/)).toBeTruthy();
+    expect(screen.queryByTestId('settings-plan-items')).toBeNull();
+  });
+
+  it('P2, P10: a free plan on a 390 px phone shows the offer below the card, without "Como funciona"', async () => {
+    await setViewport('android', 390);
+    mockedSubscription.mockResolvedValue(free);
+    await openSettings('/configuracao/plano');
+
+    expect(await screen.findByTestId('settings-plan-offer')).toBeTruthy();
+    expect(screen.getByRole('header', { name: 'Plano' })).toBeTruthy();
+    expect(screen.queryByTestId('settings-plan-how')).toBeNull();
+    expect(screen.getAllByRole('button', { name: 'Assinar premium' })).toHaveLength(2);
+  });
+
+  it.each(['card', 'offer'] as const)('P2: "Assinar premium" in the %s opens the Checkout url, both buttons busy while it loads', async (where) => {
     mockedSubscription.mockResolvedValue(free);
     let resolve!: (url: string) => void;
     mockedOpenSession.mockReturnValue(new Promise((done) => { resolve = done; }));
     await openSettings('/configuracao/plano');
 
-    expect(await screen.findByText('Premium · R$ 9,90/mês. Libera os Itens premium ✦ do Herói.')).toBeTruthy();
-    const menu = within(screen.getByLabelText('Seções da configuração'));
-    expect(await menu.findByText('Free')).toBeTruthy();
-    expect(screen.queryByText(/premium em breve/)).toBeNull();
-
-    await fireEvent.press(screen.getByRole('button', { name: 'Assinar premium' }));
+    const scope = within(await screen.findByTestId(where === 'card' ? 'settings-plan-card' : 'settings-plan-offer'));
+    await fireEvent.press(scope.getByRole('button', { name: 'Assinar premium' }));
     expect(mockedOpenSession).toHaveBeenCalledWith('checkout', expect.anything());
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Assinar premium' }).props.accessibilityState.busy).toBe(true));
+    await waitFor(() => {
+      for (const button of screen.getAllByRole('button', { name: 'Assinar premium' })) expect(button.props.accessibilityState.busy).toBe(true);
+    });
     await act(async () => resolve('https://checkout.stripe.test/s'));
     await waitFor(() => expect(mockedOpenPage).toHaveBeenCalledWith('https://checkout.stripe.test/s'));
   });
@@ -454,57 +515,180 @@ describe('Plano (S5)', () => {
     [409, 'Você já tem o plano premium'],
     [502, 'Não foi possível abrir o pagamento'],
     [503, 'Assinatura indisponível no momento'],
-  ])('S5.11: shows the server message on %i and frees the button', async (status, detail) => {
+  ])('P7: shows the server message of %i above the card and frees the buttons', async (status, detail) => {
     mockedSubscription.mockResolvedValue(free);
     mockedOpenSession.mockRejectedValue(httpError(status, detail));
     await openSettings('/configuracao/plano');
 
-    await fireEvent.press(await screen.findByRole('button', { name: 'Assinar premium' }));
+    await fireEvent.press(within(await screen.findByTestId('settings-plan-card')).getByRole('button', { name: 'Assinar premium' }));
     expect(await screen.findByText(detail)).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Assinar premium' }).props.accessibilityState.busy).toBeFalsy();
-    expect(screen.getByText('Premium · R$ 9,90/mês. Libera os Itens premium ✦ do Herói.')).toBeTruthy();
+    expect(screen.getByTestId('settings-plan-failure')).toBeTruthy();
+    expect(within(screen.getByTestId('settings-plan-card')).queryByText(detail)).toBeNull();
+    for (const button of screen.getAllByRole('button', { name: 'Assinar premium' })) expect(button.props.accessibilityState.busy).toBeFalsy();
     expect(mockedOpenPage).not.toHaveBeenCalled();
   });
 
-  it('S5.7, S5.10: shows the renewal and opens the Portal from "Gerenciar assinatura"', async () => {
+  it('P3, P1: an active premium shows "Premium ✦", the renewal, "ATIVO", the Portal button and the owned items', async () => {
     mockedSubscription.mockResolvedValue(premium);
+    mockedProfile.mockResolvedValue({ ...premiumProfile, equipped: [{ itemId: 'a', category: 'avatar', name: 'Manto do Arquimago' }] });
     mockedOpenSession.mockResolvedValue('https://billing.stripe.test/p');
     await openSettings('/configuracao/plano');
 
-    expect(await screen.findByText('Premium · renova em 08/12')).toBeTruthy();
-    await fireEvent.press(screen.getByRole('button', { name: 'Gerenciar assinatura' }));
+    expect(await screen.findByText('R$ 9,90/MÊS · RENOVA EM 08/12')).toBeTruthy();
+    expect(card().getByText('Premium ✦')).toBeTruthy();
+    expect(card().getByText('ATIVO')).toBeTruthy();
+    expect(card().getByText('Seus Itens premium ✦ estão liberados. Equipe no Personagem.')).toBeTruthy();
+    expect(screen.queryByTestId('settings-plan-offer')).toBeNull();
+    expect(screen.queryByTestId('settings-plan-how')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Assinar premium' })).toBeNull();
+
+    const owned = within(screen.getByTestId('settings-plan-items'));
+    expect(owned.getByText('◈ SEUS ITENS PREMIUM ✦')).toBeTruthy();
+    expect(owned.getByText('Equipe no Personagem')).toBeTruthy();
+    expect(owned.getByText('SEU HERÓI PREMIUM')).toBeTruthy();
+    for (const name of ['Manto do Arquimago', 'Cajado Astral', 'Lenda do Foco']) expect(owned.getByText(name)).toBeTruthy();
+    expect(owned.getAllByText('Liberado')).toHaveLength(3);
+    expect(owned.queryByText('✦ PREMIUM')).toBeNull();
+    expect(owned.getByText('Se a assinatura terminar, estes itens são desequipados e voltam a ficar bloqueados. Nada some do Inventário.')).toBeTruthy();
+    expect(owned.getByTestId('character-hero-layer-avatar', { includeHiddenElements: true })).toBeTruthy();
+
+    await fireEvent.press(card().getByRole('button', { name: 'Gerenciar assinatura' }));
     expect(mockedOpenSession).toHaveBeenCalledWith('portal', expect.anything());
     await waitFor(() => expect(mockedOpenPage).toHaveBeenCalledWith('https://billing.stripe.test/p'));
   });
 
-  it('S5.8: shows "Premium até dd/mm" when the Assinatura is set to end', async () => {
-    mockedSubscription.mockResolvedValue({ ...premium, renewsAt: null, premiumUntil: '2026-12-08T15:00:00.000Z' });
-    await openSettings('/configuracao/plano');
-
-    expect(await screen.findByText('Premium até 08/12')).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Gerenciar assinatura' })).toBeTruthy();
-  });
-
-  it('S5.9, S5.10: shows the pending payment and opens the Portal from "Atualizar cartão"', async () => {
+  it('P4: a past_due premium shows "PENDENTE", the in-card error and "Atualizar cartão" opening the Portal', async () => {
     mockedSubscription.mockResolvedValue({ ...premium, status: 'past_due' });
+    mockedProfile.mockResolvedValue(premiumProfile);
     mockedOpenSession.mockResolvedValue('https://billing.stripe.test/p');
     await openSettings('/configuracao/plano');
 
-    expect(await screen.findByText('Premium · pagamento pendente')).toBeTruthy();
-    await fireEvent.press(screen.getByRole('button', { name: 'Atualizar cartão' }));
+    expect(await screen.findByText('R$ 9,90/MÊS · PAGAMENTO PENDENTE')).toBeTruthy();
+    expect(card().getByText('PENDENTE')).toBeTruthy();
+    expect(card().getByText('A última cobrança não passou. Atualize o cartão para manter o premium.')).toBeTruthy();
+    expect(card().queryByText('ATIVO')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Gerenciar assinatura' })).toBeNull();
+    await fireEvent.press(card().getByRole('button', { name: 'Atualizar cartão' }));
     expect(mockedOpenSession).toHaveBeenCalledWith('portal', expect.anything());
+  });
+
+  it('P5: a premium set to end shows "ATÉ dd/mm", "NÃO RENOVA", the unequip notice and "Gerenciar assinatura"', async () => {
+    mockedSubscription.mockResolvedValue({ ...premium, renewsAt: null, premiumUntil: '2026-12-08T15:00:00.000Z' });
+    mockedProfile.mockResolvedValue(premiumProfile);
+    await openSettings('/configuracao/plano');
+
+    expect(await screen.findByText('NÃO RENOVA')).toBeTruthy();
+    expect(card().getByText('ATÉ 08/12')).toBeTruthy();
+    expect(card().getByText('O premium fica até 08/12. Depois o plano volta a Free e os Itens premium ✦ são desequipados.')).toBeTruthy();
+    expect(card().getByRole('button', { name: 'Gerenciar assinatura' })).toBeTruthy();
+    expect(card().queryByText('ATIVO')).toBeNull();
+  });
+
+  it('P8: the menu shows "PREMIUM ✦" for a premium plan and the plan name otherwise', async () => {
+    mockedSubscription.mockResolvedValue(premium);
+    mockedProfile.mockResolvedValue(premiumProfile);
+    await openSettings('/configuracao/plano');
+
+    expect(await within(screen.getByLabelText('Seções da configuração')).findByText('PREMIUM ✦')).toBeTruthy();
+  });
+
+  it('P8: the menu keeps "Free" for a free plan with billing on', async () => {
+    mockedSubscription.mockResolvedValue(free);
+    await openSettings('/configuracao/plano');
+
+    const menu = within(screen.getByLabelText('Seções da configuração'));
+    expect(await menu.findByText('Free')).toBeTruthy();
+    expect(menu.queryByText('PREMIUM ✦')).toBeNull();
+  });
+
+  it('P8: the menu keeps the plan name when the profile is premium but billing is off', async () => {
+    mockedProfile.mockResolvedValue(premiumProfile);
+    await openSettings('/configuracao/plano');
+
+    const menu = within(screen.getByLabelText('Seções da configuração'));
+    expect(await menu.findByText('Premium · premium em breve')).toBeTruthy();
+    expect(menu.queryByText('PREMIUM ✦')).toBeNull();
+  });
+
+  it('P4: past_due wins over premiumUntil', async () => {
+    mockedSubscription.mockResolvedValue({ ...premium, status: 'past_due', renewsAt: null, premiumUntil: '2026-12-08T15:00:00.000Z' });
+    mockedProfile.mockResolvedValue(premiumProfile);
+    await openSettings('/configuracao/plano');
+
+    expect(await screen.findByText('PENDENTE')).toBeTruthy();
+    expect(screen.queryByText('NÃO RENOVA')).toBeNull();
+  });
+
+  it('P5: dates use the São Paulo calendar (01:00Z of the 9th is still the 8th)', async () => {
+    mockedSubscription.mockResolvedValue({ ...premium, renewsAt: null, premiumUntil: '2026-12-09T01:00:00.000Z' });
+    mockedProfile.mockResolvedValue(premiumProfile);
+    await openSettings('/configuracao/plano');
+    expect(await screen.findByText('ATÉ 08/12')).toBeTruthy();
+  });
+
+  it('P3: an active premium without renewsAt shows only "R$ 9,90/MÊS"', async () => {
+    mockedSubscription.mockResolvedValue({ ...premium, renewsAt: null });
+    mockedProfile.mockResolvedValue(premiumProfile);
+    await openSettings('/configuracao/plano');
+    expect(await screen.findByText('R$ 9,90/MÊS')).toBeTruthy();
+  });
+
+  it('P2: shows at most 3 Itens premium and survives a failed Catálogo', async () => {
+    mockedSubscription.mockResolvedValue(free);
+    mockedCatalog.mockResolvedValue([...catalog, item('x', 'badge', 'Quarto Item', 1)]);
+    await openSettings('/configuracao/plano');
+    const offer = within(await screen.findByTestId('settings-plan-offer'));
+    expect(await offer.findAllByText('✦ PREMIUM')).toHaveLength(3);
+    for (const name of ['Manto do Arquimago', 'Cajado Astral', 'Lenda do Foco']) expect(offer.getByText(name)).toBeTruthy();
+    expect(offer.queryByText('Quarto Item')).toBeNull();
+  });
+
+  it('P2: a failed Catálogo leaves the offer with its buttons and no item rows', async () => {
+    mockedSubscription.mockResolvedValue(free);
+    mockedCatalog.mockRejectedValue(new Error('catalog down'));
+    await openSettings('/configuracao/plano');
+    const offer = within(await screen.findByTestId('settings-plan-offer'));
+    expect(offer.getByRole('button', { name: 'Assinar premium' })).toBeTruthy();
+    expect(offer.queryByText('✦ PREMIUM')).toBeNull();
+  });
+
+  it.each([
+    ['active', premium, 'Gerenciar assinatura'],
+    ['past_due', { ...premium, status: 'past_due' }, 'Atualizar cartão'],
+  ] as const)('P10: a %s premium on a 390 px phone keeps its button and stacks the owned items below', async (_name, view, button) => {
+    await setViewport('android', 390);
+    mockedSubscription.mockResolvedValue(view);
+    mockedProfile.mockResolvedValue({ ...premiumProfile, equipped: [{ itemId: 'a', category: 'avatar', name: 'Manto do Arquimago' }] });
+    await openSettings('/configuracao/plano');
+
+    expect(await screen.findByRole('button', { name: button })).toBeTruthy();
+    expect(screen.getByTestId('settings-plan-items')).toBeTruthy();
+    expect(screen.queryByTestId('settings-plan-offer')).toBeNull();
+    const order = (id: string) => JSON.stringify(screen.toJSON()).indexOf(`"testID":"${id}"`);
+    expect(order('settings-plan-card')).toBeLessThan(order('settings-plan-items'));
+  });
+
+  it('P2, P7: lays the offer beside the card and the messages above it (child order)', async () => {
+    mockedSubscription.mockResolvedValue(free);
+    await openSettings('/configuracao/plano?checkout=success');
+    const confirming = await screen.findByTestId('settings-plan-confirming');
+    const order = (id: string) => JSON.stringify(screen.toJSON()).indexOf(`"testID":"${id}"`);
+    expect(order('settings-plan-confirming')).toBeLessThan(order('settings-plan-card'));
+    expect(order('settings-plan-card')).toBeLessThan(order('settings-plan-how'));
+    expect(order('settings-plan-how')).toBeLessThan(order('settings-plan-offer'));
+    expect(confirming).toBeTruthy();
   });
 
   it('S5.6: back with ?checkout=cancel shows the free state with no error', async () => {
     mockedSubscription.mockResolvedValue(free);
     await openSettings('/configuracao/plano?checkout=cancel');
 
-    expect(await screen.findByRole('button', { name: 'Assinar premium' })).toBeTruthy();
+    expect((await screen.findAllByRole('button', { name: 'Assinar premium' })).length).toBe(2);
     expect(screen.queryByTestId('settings-plan-confirming')).toBeNull();
     expect(screen.queryByTestId('settings-plan-failure')).toBeNull();
   });
 
-  it('S5.5, S5.12: waits for user:planChanged after ?checkout=success, then shows premium without reloading', async () => {
+  it('P7, S5.5, S5.12: waits for user:planChanged after ?checkout=success, then shows premium without reloading', async () => {
     jest.useFakeTimers({ doNotFake: ['nextTick', 'setImmediate', 'queueMicrotask'] });
     try {
       mockedSubscription.mockResolvedValue(free);
@@ -515,10 +699,10 @@ describe('Plano (S5)', () => {
       expect(await screen.findByText('Pagamento recebido. O plano atualiza em instantes.')).toBeTruthy();
 
       mockedSubscription.mockResolvedValue(premium);
-      mockedProfile.mockResolvedValue({ ...profile, planTier: 'premium' });
+      mockedProfile.mockResolvedValue(premiumProfile);
       const profileCalls = mockedProfile.mock.calls.length;
       await act(async () => applyPlanChanged(Platform.OS === 'web' ? clientOf() : appQueryClient));
-      expect(await screen.findByText('Premium · renova em 08/12')).toBeTruthy();
+      expect(await screen.findByText('R$ 9,90/MÊS · RENOVA EM 08/12')).toBeTruthy();
       expect(screen.queryByTestId('settings-plan-confirming')).toBeNull();
       await waitFor(() => expect(mockedProfile.mock.calls.length).toBeGreaterThan(profileCalls));
     } finally {
@@ -611,7 +795,7 @@ describe('Desenvolvedor (dev-reset-plano)', () => {
   it('AC16: shows "Plano atual" as the Plano section does, and the button, while premium', async () => {
     await openSettings('/configuracao/dev');
 
-    expect(await screen.findByLabelText('Plano atual: Premium · renova em 08/12')).toBeTruthy();
+    expect(await screen.findByLabelText('Plano atual: Premium ✦ · R$ 9,90/MÊS · RENOVA EM 08/12')).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Voltar ao plano Free' })).toBeTruthy();
   });
 
@@ -655,7 +839,7 @@ describe('Desenvolvedor (dev-reset-plano)', () => {
 
   it('AC21: shows Free without reloading when user:planChanged arrives', async () => {
     await openSettings('/configuracao/dev');
-    expect(await screen.findByLabelText('Plano atual: Premium · renova em 08/12')).toBeTruthy();
+    expect(await screen.findByLabelText('Plano atual: Premium ✦ · R$ 9,90/MÊS · RENOVA EM 08/12')).toBeTruthy();
 
     mockedSubscription.mockResolvedValue(free);
     mockedProfile.mockResolvedValue({ ...devProfile, planTier: 'free' });

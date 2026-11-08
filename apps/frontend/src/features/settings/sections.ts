@@ -7,7 +7,7 @@ import { DevContent } from './dev-content';
 import { DevicesContent } from './devices-content';
 import { FocusContent } from './focus-content';
 import { PublicProfile } from './public-profile-card';
-import { PlanContent } from './settings-content';
+import { PlanContent } from './plan-content';
 
 export type SettingsSectionId = 'conta' | 'foco' | 'dispositivos' | 'acessibilidade' | 'plano' | 'dev';
 
@@ -35,6 +35,8 @@ export type SettingsSection = {
   /** Only for profiles with `devTools`; the section stays out of the menu and the list for everyone else. */
   readonly devOnly?: true;
   readonly details?: (user: UserProfile) => readonly SettingsDetail[];
+  /** The section draws its own cards: no wrapping card and no description line (#380). */
+  readonly bare?: boolean;
   /** What the section shows below its description; `null` while it is still a skeleton. */
   readonly Content: ComponentType | null;
 };
@@ -61,7 +63,7 @@ export const settingsSections: readonly SettingsSection[] = [
   {
     id: 'plano', label: 'Plano', description: 'O plano da sua conta.', href: '/configuracao/plano', icon: 'diamond-outline',
     group: 'Plano', row: { title: 'Plano atual', icon: 'diamond-outline' },
-    Content: PlanContent,
+    bare: true, Content: PlanContent,
   },
   {
     id: 'dev', label: 'Desenvolvedor', description: 'Ferramentas de teste desta conta.', href: '/configuracao/dev', icon: 'construct-outline',
