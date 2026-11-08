@@ -193,6 +193,7 @@ Quem tem Assinatura abre o Portal do Stripe para cancelar, reativar ou trocar o 
 3. IF `STRIPE_SECRET_KEY` não estiver definido THEN `POST /billing/portal` SHALL responder `503` "Assinatura indisponível no momento".
 4. IF o Stripe falhar ao criar a sessão THEN o sistema SHALL responder `502` "Não foi possível abrir o pagamento".
 5. WHEN a pessoa cancela no Portal e o webhook traz `cancel_at` THEN o sistema SHALL manter `plan_tier = premium` e devolver `premiumUntil` igual a `cancel_at` em `GET /billing/subscription`.
+   - Construído na S4 (#357): a rota `GET /billing/subscription` e a função pura `subscriptionView` (o lado de backend de S5.1), porque `premiumUntil` não é observável sem ela. A tela Plano e os demais critérios de S5 ficam na S5.
 
 ### S5: Tela Plano (P1)
 

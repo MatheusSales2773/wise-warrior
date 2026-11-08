@@ -32,6 +32,12 @@ Seen once or not yet corroborated. Tracked, not trusted.
 - evidence: C12 billing-webhook.integration.test.ts (billing)
 - last seen: 2026-11-08T16:24:09Z
 
+### L-004 - Test a pass-through field with a value other than the one every fixture shares, so a hard-coded constant cannot pass
+- signal: `weak_test` · recurrence: 1 feature(s) · scope: `billing` · harmful: 0
+- features: assinatura-premium-s4
+- evidence: C10 subscription-view.spec.ts (billing)
+- last seen: 2026-11-08T16:58:41Z
+
 ## Quarantined (failed when applied - ignore)
 
 A confirmed lesson that recurred alongside failure. Kept for the maintainer to review.

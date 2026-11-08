@@ -20,6 +20,11 @@ export interface StripeApi {
   customers: {
     create(params: Stripe.CustomerCreateParams): Promise<Stripe.Customer>;
   };
+  billingPortal: {
+    sessions: {
+      create(params: Stripe.BillingPortal.SessionCreateParams): Promise<Stripe.BillingPortal.Session>;
+    };
+  };
   checkout: {
     sessions: {
       create(params: Stripe.Checkout.SessionCreateParams): Promise<Stripe.Checkout.Session>;

@@ -135,6 +135,12 @@ export class UsersService {
     return user?.planTier ?? null;
   }
 
+  /** O `plan_tier` do usuário; `null` quando ele não existe. */
+  async findPlanTier(userId: string): Promise<PlanTier | null> {
+    const user = await this.users.findOne({ where: { id: userId }, select: { planTier: true } });
+    return user?.planTier ?? null;
+  }
+
   /**
    * Regra de Desbloqueio: concede todo Cosmetic Item cuja condição de nível seja
    * ≤ `level` e que ainda não esteja no Inventário. Roda na transação de quem

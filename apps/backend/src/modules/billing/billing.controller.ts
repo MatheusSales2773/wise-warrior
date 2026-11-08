@@ -1,9 +1,10 @@
-import { Controller, Headers, HttpCode, HttpStatus, Post, Req, UseGuards, type RawBodyRequest } from '@nestjs/common';
+import { Controller, Get, Headers, HttpCode, HttpStatus, Post, Req, UseGuards, type RawBodyRequest } from '@nestjs/common';
 import type { Request } from 'express';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import type { JwtPayload } from '../auth/strategies/jwt.strategy';
 import { BillingService } from './billing.service';
+import type { SubscriptionView } from './domain/subscription-view';
 
 @Controller('billing')
 export class BillingController {
@@ -15,6 +16,21 @@ export class BillingController {
   @HttpCode(HttpStatus.CREATED)
   checkout(@CurrentUser() user: JwtPayload): Promise<{ url: string }> {
     return this.billing.openCheckout(user.sub);
+  }
+
+  /** Abre o Portal do cliente do Stripe para o próprio usuário (S4). */
+  @Post('portal')
+  @UseGuards(JwtAuthGuard)
+  @HttpCode(HttpStatus.CREATED)
+  portal(@CurrentUser() user: JwtPayload): Promise<{ url: string }> {
+    return this.billing.openPortal(user.sub);
+  }
+
+  /** Estado da Assinatura do próprio usuário (S5.1); aqui por causa de `premiumUntil` (S4.5). */
+  @Get('subscription')
+  @UseGuards(JwtAuthGuard)
+  subscription(@CurrentUser() user: JwtPayload): Promise<SubscriptionView> {
+    return this.billing.getSubscription(user.sub);
   }
 
   /** Rota pública: quem autentica é a assinatura do Stripe sobre o corpo bruto (`rawBody` no bootstrap). */
