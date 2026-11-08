@@ -121,6 +121,7 @@ describe('PATCH /users/me against MySQL', () => {
     expect((await (await getProfile(ana)).json() as { devTools: boolean }).devTools).toBe(true);
     expect((await (await getProfile(bruno)).json() as { devTools: boolean }).devTools).toBe(false);
     expect((await (await patch({ displayName: 'Ana 2' })).json() as { devTools: boolean }).devTools).toBe(true);
+    expect((await (await patch({ displayName: 'Bruno 2' }, bruno)).json() as { devTools: boolean }).devTools).toBe(false);
   });
 
   it('saves the name without the spaces around it', async () => {

@@ -591,6 +591,15 @@ describe('Desenvolvedor (dev-reset-plano)', () => {
     expect(screen.queryByRole('link', { name: 'Desenvolvedor' })).toBeNull();
   });
 
+  it('AC14: keeps Desenvolvedor out of the phone list while the profile has not loaded', async () => {
+    await setViewport('android', 390);
+    mockedProfile.mockReturnValue(new Promise(() => undefined));
+    await openSettings('/configuracao');
+
+    expect(screen.queryByRole('link', { name: 'Desenvolvedor' })).toBeNull();
+    expect(screen.queryByText('DESENVOLVEDOR')).toBeNull();
+  });
+
   it('AC15: takes an account without devTools from /configuracao/dev to /configuracao', async () => {
     mockedProfile.mockResolvedValue({ ...devProfile, devTools: false });
     const { router } = await openSettings('/configuracao/dev');
@@ -654,6 +663,18 @@ describe('Desenvolvedor (dev-reset-plano)', () => {
 
     expect(await screen.findByLabelText('Plano atual: Free')).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Voltar ao plano Free' })).toBeNull();
+  });
+
+  it('AC20, AC21: the cancel notice goes away once the plan is Free', async () => {
+    await fireEvent.press(within(await openDialog()).getByRole('button', { name: 'Cancelar assinatura' }));
+    expect(await screen.findByText('Assinatura cancelada. O plano volta a Free em instantes.')).toBeTruthy();
+
+    mockedSubscription.mockResolvedValue(free);
+    mockedProfile.mockResolvedValue({ ...devProfile, planTier: 'free' });
+    await act(async () => applyPlanChanged(Platform.OS === 'web' ? clientOf() : appQueryClient));
+
+    expect(await screen.findByLabelText('Plano atual: Free')).toBeTruthy();
+    expect(screen.queryByText('Assinatura cancelada. O plano volta a Free em instantes.')).toBeNull();
   });
 
   it.each([
