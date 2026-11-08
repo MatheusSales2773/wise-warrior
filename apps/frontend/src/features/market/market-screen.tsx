@@ -479,9 +479,11 @@ function PackCard({ buying, desktop, onBuy, onEquip, pack }: PackActions & { des
     >
       <Text style={styles.linkText}>{previewing ? 'Fechar prévia' : 'Prévia no herói'}</Text>
     </Pressable>}
+    <View style={desktop ? undefined : styles.packButton}>
     {owned
       ? <WiseButton label="Equipar no Personagem" leading={<WiseIcon color="textPrimary" name="person-outline" size="small" />} onPress={onEquip} testID={`market-pack-${pack.slug}-equip`} variant="secondary" />
       : <WiseButton label={`Comprar por ${price}`} loading={buying} onPress={onBuy} testID={`market-pack-${pack.slug}-buy`} />}
+    </View>
   </>;
   return <View accessibilityLabel={`${pack.name}. ${price}. ${owned ? 'Adquirido.' : 'Disponível para comprar.'}`} role="article" style={[styles.pack, owned && styles.packOwned]} testID={`market-pack-${pack.slug}`}>
     <View style={styles.packBanner}>
@@ -575,7 +577,7 @@ const styles = StyleSheet.create({
   purseFigures: { flexDirection: 'row', alignItems: 'center', gap: 16 },
   purseRule: { width: theme.border.standard, alignSelf: 'stretch', backgroundColor: theme.color.borderSubtle },
   statementLink: { flexDirection: 'row', alignItems: 'center', gap: 6, minHeight: theme.layout.touchTarget, paddingHorizontal: 4 },
-  linkText: { fontFamily: 'Inter-SemiBold', fontSize: 13, lineHeight: 16, color: theme.color.accentPrimary },
+  linkText: { flexShrink: 0, fontFamily: 'Inter-SemiBold', fontSize: 13, lineHeight: 16, color: theme.color.accentPrimary },
   chip: {
     flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: theme.layout.touchTarget, paddingHorizontal: 14,
     borderRadius: theme.radius.pill, borderWidth: theme.border.standard, borderColor: theme.color.borderEmphasis, backgroundColor: theme.color.surfaceCard,
@@ -676,8 +678,8 @@ const styles = StyleSheet.create({
   packsMain: { flex: 1, minWidth: 0, gap: 16 },
   packsDesktop: { flexDirection: 'row', alignItems: 'flex-start', gap: 24 },
   packsHeader: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', gap: 12 },
-  packsHeaderTitle: { fontFamily: cinzel, fontSize: 12, lineHeight: 15, letterSpacing: 2, textTransform: 'uppercase', color: theme.color.accentPrimary },
-  packsHeaderCount: { fontFamily: 'JetBrainsMono-Medium', fontSize: 11, lineHeight: 13, color: theme.color.textTertiary },
+  packsHeaderTitle: { flexShrink: 0, fontFamily: cinzel, fontSize: 12, lineHeight: 15, letterSpacing: 2, textTransform: 'uppercase', color: theme.color.accentPrimary },
+  packsHeaderCount: { flex: 1, textAlign: 'right', fontFamily: 'JetBrainsMono-Medium', fontSize: 11, lineHeight: 13, color: theme.color.textTertiary },
   packsNote: {
     padding: 13, borderRadius: theme.radius.control, borderWidth: theme.border.standard, borderColor: theme.color.borderSubtle, borderStyle: 'dashed',
     fontFamily: 'Inter-Regular', fontSize: 13, lineHeight: 18, color: theme.color.textTertiary,
@@ -713,6 +715,7 @@ const styles = StyleSheet.create({
   packReleased: { fontFamily: 'Inter-Medium', fontSize: 13, lineHeight: 18, color: theme.color.feedbackSuccess },
   packFoot: { gap: 12, paddingVertical: 18, paddingHorizontal: 24, backgroundColor: theme.color.backgroundRaised },
   packFootDesktop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  packButton: { flex: 1, minWidth: 0 },
   packActions: { flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', gap: 16 },
   packPrice: { fontFamily: 'JetBrainsMono-SemiBold', fontSize: 22, lineHeight: 28, color: theme.color.accentHighlight },
   packPriceOwned: { color: theme.color.textTertiary },
