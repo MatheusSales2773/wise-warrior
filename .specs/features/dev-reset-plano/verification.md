@@ -47,6 +47,7 @@
 | C37 | `grep -qF 'DEV_TOOLS_EMAILS: ${DEV_TOOLS_EMAILS:-}' docker-compose.yml` | yes (does not check it sits under the backend service) |
 | C38 | `grep -q '^DEV_TOOLS_EMAILS=' apps/backend/.env.example` | no - AC 25 also requires the line saying empty frees nobody and staging only; the grep passes without the comment |
 | C39 | `npm run lint:openapi && grep -q '/billing/dev/reset-plan' ... && grep -q 'devTools' ...` | no - the greps match the path and the word anywhere; they do not hold 202/401/404/409/502/503 on the route nor `devTools` in the profile schema (the Redocly lint only checks the file is valid) |
+| C40 | `auth.integration.test.ts` suites boot the real `AppModule` (added after the Verifier round, by the author) | yes - the boot fails if the module wiring of the new route or `UsersService` is unresolved |
 
 ## Findings
 
