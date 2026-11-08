@@ -33,7 +33,8 @@ const CATEGORY_ORDER = ['avatar', 'weapon', 'title'];
 function premiumItems(catalog: readonly CatalogCosmeticItem[] | undefined): CatalogCosmeticItem[] {
   return (catalog ?? [])
     .filter((item) => item.requiresPremium && item.unlockCondition.type === 'level' && item.unlockCondition.level <= 1)
-    .sort((a, b) => CATEGORY_ORDER.indexOf(a.category) - CATEGORY_ORDER.indexOf(b.category));
+    .sort((a, b) => CATEGORY_ORDER.indexOf(a.category) - CATEGORY_ORDER.indexOf(b.category))
+    .slice(0, 3);
 }
 
 function CardHeader({ aside, title }: { aside?: string; title: string }) {

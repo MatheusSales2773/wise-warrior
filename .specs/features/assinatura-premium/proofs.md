@@ -1,77 +1,65 @@
 # assinatura-premium proofs
 
-**HEAD**: 18592fd
+**HEAD**: efc3130
 **Tree**: clean
 **Shell**: /bin/sh
-**Result**: 36 pass, 0 fail
+**Result**: 24 pass, 0 fail
 
 | Check | Proof | Result |
 | --- | --- | --- |
-| C1 | `run packs / ✓ shows the tabs Missões, Itens and Pacotes, in that order, while billing is available` | pass |
-| C2 | `run packs / ✓ shows only Missões and Itens while billing is not available` | pass |
-| C3 | `run packs / ✓ hides the Pacotes tab and keeps Missões and Itens when the packs request fails` | pass |
-| C4 | `run packs / ✓ opens on Pacotes with ?secao=pacotes` | pass |
-| C5 | `run packs / ✓ opens on Missões without secao, with the Pacotes tab present` | pass |
-| C6 | `run packs / ✓ opens on Missões with ?secao=pacotes while billing is not available` | pass |
-| C7 | `run packs / ✓ shows the unowned Pacote with name, description, 3 items and Comprar por R$ 4,90` | pass |
-| C8 | `run packs / ✓ shows Adquirido and no buy button for an owned Pacote` | pass |
-| C9 | `run packs / ✓ writes the price in reais from the cents` | pass |
-| C10 | `run packs / ✓ previews the 3 items on the hero at once without persisting anything` | pass |
-| C11 | `run packs / ✓ marks the button busy, requests the checkout of dragao and opens the url` | pass |
+| C1 | `run settings / ✓ P6, P1: with billing off shows "Free · PREMIUM EM BREVE", no button and no offer` | pass |
+| C1 | `run settings / ✓ P2, P1: a free plan on desktop shows the card, the offer beside it and "Como funciona" below` | pass |
+| C1 | `run settings / ✓ P3, P1: an active premium shows "Premium ✦", the renewal, "ATIVO", the Portal button and the ` | pass |
+| C2 | `run settings / ✓ P2, P1: a free plan on desktop shows the card, the offer beside it and "Como funciona" below` | pass |
+| C3 | `run settings / ✓ P2, P10: a free plan on a 390 px phone shows the offer below the card, without "Como funciona` | pass |
+| C4 | `run settings / ✓ P2: "Assinar premium" in the card opens the Checkout url, both buttons busy while it loads` | pass |
+| C4 | `run settings / ✓ P2: "Assinar premium" in the offer opens the Checkout url, both buttons busy while it loads` | pass |
+| C5 | `run settings / ✓ P3, P1: an active premium shows "Premium ✦", the renewal, "ATIVO", the Portal button and the ` | pass |
+| C6 | `run settings / ✓ P4: a past_due premium shows "PENDENTE", the in-card error and "Atualizar cartão" opening the` | pass |
+| C7 | `run settings / ✓ P5: a premium set to end shows "ATÉ dd/mm", "NÃO RENOVA", the unequip notice and "Gerenciar a` | pass |
+| C8 | `run settings / ✓ P6, P1: with billing off shows "Free · PREMIUM EM BREVE", no button and no offer` | pass |
+| C9 | `run settings / ✓ P7, S5.5, S5.12: waits for user:planChanged after ?checkout=success, then shows premium witho` | pass |
+| C10 | `run settings / ✓ P7: shows the server message of 409 above the card and frees the buttons` | pass |
+| C10 | `run settings / ✓ P7: shows the server message of 502 above the card and frees the buttons` | pass |
+| C10 | `run settings / ✓ P7: shows the server message of 503 above the card and frees the buttons` | pass |
+| C10 | `run settings / ✓ S5.6: back with ?checkout=cancel shows the free state with no error` | pass |
+| C11 | `run settings / ✓ P8: the menu shows "PREMIUM ✦" for a premium plan and the plan name otherwise` | pass |
+| C11 | `run settings / ✓ P8: the menu keeps "Free" for a free plan with billing on` | pass |
+| C12 | `run settings / ✓ points each item of the inner menu at its own address` | pass |
 | C12 | `run billing / ✓ leaves for Stripe in the same tab on the Web` | pass |
-| C12 | `run billing / ✓ hands the page to the system browser on the native app` | pass |
-| C13 | `run packs / ✓ waits for the payment after checkout=success, then says the items arrive shortly` | pass |
-| C14 | `run packs / ✓ shows no waiting message with checkout=success when the Pacote is already owned` | pass |
-| C15 | `run realtime / ✓ refreshes the Pacotes, the profile and the cosmetics catalog when a Pacote is granted` | pass |
-| C16 | `run realtime / ✓ listens to user:packGranted once and stops on dispose` | pass |
-| C17 | `run packs / ✓ shows Adquirido and the Inventário notice when user:packGranted arrives` | pass |
-| C17 | `run packs / ✓ keeps the Inventário notice for a grant that arrives while another tab is open` | pass |
-| C18 | `run packs / ✓ shows the Pacotes with no message after checkout=cancel` | pass |
-| C19 | `run packs / ✓ shows the server message on 404 and frees the button` | pass |
-| C19 | `run packs / ✓ shows the server message on 409 and frees the button` | pass |
-| C19 | `run packs / ✓ shows the server message on 502 and frees the button` | pass |
-| C19 | `run packs / ✓ shows the server message on 503 and frees the button` | pass |
-| C19 | `run packs / ✓ shows a generic line on any other failure and frees the button` | pass |
-| C19 | `run billing / ✓ uses the server detail on 404 only when the caller lists it` | pass |
-| C20 | `run packs / ✓ keeps the Moedas balance in Missões` | pass |
-| C20 | `run packs / ✓ keeps the Moedas balance in Itens` | pass |
-| C20 | `run packs / ✓ hides the Moedas balance and the Extrato link in Pacotes at 1440 px` | pass |
-| C20 | `run packs / ✓ hides the Moedas balance and the Extrato link in Pacotes at 390 px` | pass |
-| C20 | `run packs / ✓ mentions the Pacotes in the opening text while billing is available` | pass |
-| C20 | `run packs / ✓ leaves the Pacotes out of the opening text while billing is not available` | pass |
-| C21 | `run market / ✓ leads with the purse and lists each Mission in its state` | pass |
-| C21 | `run market / ✓ switches to Itens through the URL and previews the first item to buy` | pass |
+| C13 | `run settings / ✓ P2, P10: a free plan on a 390 px phone shows the offer below the card, without "Como funciona` | pass |
+| C13 | `run settings / ✓ opens the Plano atual: Free · premium em breve row on its own screen and returns with ‹ Confi` | pass |
 | Build | `npm run typecheck --workspace apps/frontend` | pass |
-| Build | `npm run lint --workspace apps/frontend` | pass |
+| Build | `cd apps/frontend && npx eslint src/features/settings __tests__/settings-screen.test.tsx` | pass |
 
 ## Output
 
-`Run packs` - exit 0
+`Run settings` - exit 0
 
 ```
-    ✓ shows the server message on 502 and frees the button (66 ms)
-    ✓ shows the server message on 503 and frees the button (65 ms)
-    ✓ shows a generic line on any other failure and frees the button (67 ms)
-  coming back from the Checkout
-    ✓ waits for the payment after checkout=success, then says the items arrive shortly (18 ms)
-    ✓ shows no waiting message with checkout=success when the Pacote is already owned (10 ms)
-    ✓ shows Adquirido and the Inventário notice when user:packGranted arrives (105 ms)
-    ✓ keeps the Inventário notice for a grant that arrives while another tab is open (15 ms)
-    ✓ shows the Pacotes with no message after checkout=cancel (7 ms)
+    on phones
+      ✓ shows the current name and the 2–60 rule, with Salvar off until the name changes (25 ms)
+      ✓ keeps Salvar off for the invalid name "" (37 ms)
+      ✓ keeps Salvar off for the invalid name "A" (35 ms)
+      ✓ keeps Salvar off for the invalid name "   " (26 ms)
+      ✓ keeps Salvar off for the invalid name "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" (28 ms)
+      ✓ saves the trimmed name, confirms it and updates the cached profile (32 ms)
+      ✓ says so when there is no connection and keeps the typed name to try again (37 ms)
+      ✓ shows a generic failure for a server error (33 ms)
 
 Test Suites: 1 passed, 1 total
-Tests:       27 passed, 27 total
+Tests:       67 passed, 67 total
 Snapshots:   0 total
-Time:        1.586 s, estimated 2 s
-Ran all test suites matching /__tests__\/market-packs.test.tsx/i.
+Time:        3.025 s
+Ran all test suites matching /__tests__\/settings-screen.test.tsx/i.
 ```
 
 `Run billing` - exit 0
 
 ```
   openStripePage (S5.4)
-    ✓ leaves for Stripe in the same tab on the Web (3 ms)
-    ✓ hands the page to the system browser on the native app (1 ms)
+    ✓ leaves for Stripe in the same tab on the Web (2 ms)
+    ✓ hands the page to the system browser on the native app (4 ms)
   billingErrorMessage (S5.11)
     ✓ uses the server detail on 404 only when the caller lists it (a Pacote) (1 ms)
     ✓ uses the server detail on 409
@@ -82,46 +70,6 @@ Ran all test suites matching /__tests__\/market-packs.test.tsx/i.
 Test Suites: 1 passed, 1 total
 Tests:       9 passed, 9 total
 Snapshots:   0 total
-Time:        0.246 s, estimated 1 s
+Time:        0.362 s, estimated 1 s
 Ran all test suites matching /__tests__\/billing.test.ts/i.
-```
-
-`Run realtime` - exit 0
-
-```
-    ✓ also refreshes the Raid when the guild session that ended elsewhere had counted for it
-    ✓ does not cancel a read already in flight, which may be bringing the canonical result (5 ms)
-    ✓ registers the listener once and removes it on dispose
-    ✓ refetches the active session after a reconnection, where events may have been missed
-    ✓ keeps the pure invalidation rule usable outside the socket
-  chat channel on the same socket
-    ✓ answers a command with the gateway ack once connected, and refuses while disconnected (1 ms)
-    ✓ fails a command in flight as soon as the connection drops
-    ✓ lets screens listen to room events and stop listening
-
-Test Suites: 1 passed, 1 total
-Tests:       43 passed, 43 total
-Snapshots:   0 total
-Time:        0.251 s, estimated 1 s
-Ran all test suites matching /__tests__\/realtime-client.test.ts/i.
-```
-
-`Run market` - exit 0
-
-```
-    ✓ keeps the balance and explains a purchase the server refused (423 ms)
-    ✓ switches to Itens through the URL and previews the first item to buy (58 ms)
-    ✓ buys an item, refreshes the Inventário and equips it on request (164 ms)
-    ✓ filters the items by category and shows what is missing for the selected one (30 ms)
-    ✓ says so when nothing is for sale (4 ms)
-    ✓ offers a retry when the Loja cannot load (347 ms)
-  Mercado on a phone
-    ✓ shows the purse as a chip that opens the Extrato (432 ms)
-    ✓ opens the sheet from a tile and explains a price the balance does not cover (65 ms)
-
-Test Suites: 1 passed, 1 total
-Tests:       11 passed, 11 total
-Snapshots:   0 total
-Time:        3.648 s, estimated 4 s
-Ran all test suites matching /__tests__\/market-screen.test.tsx/i.
 ```

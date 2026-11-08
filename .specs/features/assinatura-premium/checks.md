@@ -12,7 +12,7 @@ the offer and the owned card draw `Manto do Arquimago`, `Cajado Astral` and `Len
 `sprites.ts` (the Cajado Astral and Lenda do Foco are recoloured from existing art, as S1 recorded), so no new recolouring.
 The Figma frames are links, not files in `captures/`, and the app was not run (see `Walked`).
 
-13 checks below · 0 new one-way doors · 0 open questions
+16 checks below · 0 new one-way doors · 0 open questions
 
 ## Checks
 
@@ -66,6 +66,21 @@ Proof: run billing | ✓ leaves for Stripe in the same tab on the Web
 Proof: run settings | ✓ P2, P10: a free plan on a 390 px phone shows the offer below the card, without "Como funciona"
 Proof: run settings | ✓ opens the Plano atual: Free · premium em breve row on its own screen and returns with ‹ Configuração
 
+**C14** - The menu shows "PREMIUM ✦" only when billing is on and the profile is premium; a premium profile with billing off keeps "Premium · premium em breve" (P8)
+Proof: run settings | ✓ P8: the menu keeps the plan name when the profile is premium but billing is off
+
+**C15** - `past_due` wins over `premiumUntil`; "ATÉ dd/mm" uses the São Paulo calendar (01:00Z of the 9th is the 8th); an active premium without `renewsAt` shows only "R$ 9,90/MÊS" (P3, P4, P5)
+Proof: run settings | ✓ P4: past_due wins over premiumUntil
+Proof: run settings | ✓ P5: dates use the São Paulo calendar (01:00Z of the 9th is still the 8th)
+Proof: run settings | ✓ P3: an active premium without renewsAt shows only "R$ 9,90/MÊS"
+
+**C16** - The offer shows at most 3 Itens premium, keeps its buttons with a failed Catálogo, and the premium states keep their buttons and owned card at 390 px; the messages, the card, "Como funciona" and the offer come in that order (P2, P7, P10)
+Proof: run settings | ✓ P2: shows at most 3 Itens premium and survives a failed Catálogo
+Proof: run settings | ✓ P2: a failed Catálogo leaves the offer with its buttons and no item rows
+Proof: run settings | ✓ P10: a active premium on a 390 px phone keeps "Gerenciar assinatura" and stacks the owned items below
+Proof: run settings | ✓ P10: a past_due premium on a 390 px phone keeps "Atualizar cartão" and stacks the owned items below
+Proof: run settings | ✓ P2, P7: lays the offer beside the card and the messages above it (child order)
+
 ## Coverage
 
 This slice consumes `GET /api/v1/billing/subscription` (S5, merged), `POST /api/v1/billing/checkout` (S3) and `POST /api/v1/billing/portal` (S4) and owns no route. Startup configuration: S10 adds no bootstrap setting and no module `imports`.
@@ -79,7 +94,7 @@ This slice consumes `GET /api/v1/billing/subscription` (S5, merged), `POST /api/
 | checkout failure statuses (3) | 409 C10 · 502 C10 · 503 C10 | - |
 | layouts (2) | desktop C2 · 390 px C3 | - |
 | buttons that open Stripe (4) | Assinar premium (card) C4 · Assinar premium (offer) C4 · Gerenciar assinatura C5 · Atualizar cartão C6 | - |
-| menu meta of Plano (2) | PREMIUM ✦ C11 · Free C11 | - |
+| menu meta of Plano (3) | PREMIUM ✦ C11 · Free C11 · premium profile, billing off C14 | - |
 
 ## Swept
 
@@ -96,7 +111,7 @@ This slice consumes `GET /api/v1/billing/subscription` (S5, merged), `POST /api/
 ## Handoff
 
 - **Settled mid-build:** user: "Sim, deve seguir" - follow #380 as the contract and update the plan with a new slice
-- **Dispatched:** none yet
-- **Boundary:** none yet
+- **Dispatched:** Verifier at efc3130 (no screens sub-agent: the Figma frames are links, no capture file binds a picture)
+- **Boundary:** C1-C13 closed at efc3130; Verifier findings closed at the next commit
 - **Abandoned:** none
-- **Walked:** not walked in a running app: it needs the backend with MySQL and a Stripe test account, which the open question `blocks go-live` still holds. The screen is exercised by 15 component tests at 1440 px and 390 px.
+- **Walked:** not walked in a running app: it needs the backend with MySQL and a Stripe test account, which the open question `blocks go-live` still holds. The screen is exercised by 24 component tests at 1440 px and 390 px.

@@ -296,11 +296,11 @@ A tela `/configuracao/plano` segue o Figma "App v2 · 11 · Monetização" sem m
 1. The system SHALL mostrar o cartão "Plano atual" com cabeçalho "◈ PLANO ATUAL" e "Cobrança pelo Stripe", um selo `diamond-outline`, o nome do plano em Cinzel, a situação em JetBrains Mono, a pill de estado quando houver e a ação (P1).
 2. WHILE `available` for `true` e o plano for `free`, the system SHALL mostrar "Free", "SEM ASSINATURA", "Você joga com tudo o que conquista no foco. O premium libera 3 Itens premium ✦ para o seu herói por R$ 9,90/mês." e "Assinar premium"; a oferta (herói com Manto do Arquimago e Cajado Astral, "Premium ✦", "R$ 9,90/mês", os 3 Itens premium do Catálogo com "✦ PREMIUM", outro "Assinar premium" e a nota do Stripe) ao lado no desktop (392 px) e abaixo no celular; e o cartão "Como funciona" (3 passos) abaixo do "Plano atual" só no desktop (P2).
 2. WHILE o plano for `premium` sem `premiumUntil` e sem `past_due`, the system SHALL mostrar "Premium ✦", "R$ 9,90/MÊS · RENOVA EM dd/mm", a pill "ATIVO", "Gerenciar assinatura" (secundário) e, abaixo, o cartão "Seus Itens premium ✦" com o herói equipado e os 3 itens "Liberado" (P3).
-3. WHILE `status` for `past_due`, the system SHALL mostrar a pill "PENDENTE", a situação "R$ 9,90/MÊS · PAGAMENTO PENDENTE" em `feedbackDanger`, a mensagem de erro dentro do cartão e "Atualizar cartão" (primário) (P4).
+3. WHILE `status` for `past_due` (com precedência sobre `premiumUntil`: a cobrança que falhou é o que pede ação), the system SHALL mostrar a pill "PENDENTE", a situação "R$ 9,90/MÊS · PAGAMENTO PENDENTE" em `feedbackDanger`, a mensagem de erro dentro do cartão e "Atualizar cartão" (primário) (P4).
 4. WHILE houver `premiumUntil`, the system SHALL mostrar a pill "ATÉ dd/mm", "NÃO RENOVA", o aviso dos Itens premium ✦ desequipados e "Gerenciar assinatura" (P5).
 5. WHILE `available` for `false`, the system SHALL mostrar "Free", "PREMIUM EM BREVE" e o texto "A assinatura premium ainda não está disponível. Seus itens e moedas continuam iguais.", sem botão e sem oferta (P6).
 6. The system SHALL manter acima do cartão as mensagens de confirmação e de falha de abertura do Stripe, com os textos e regras de S5.5 e S5.11 (P7).
-7. WHILE o plano for `premium`, the system SHALL mostrar "PREMIUM ✦" em `accentPrimary` no item Plano do menu da Configuração; nos outros casos, o rótulo de hoje (P8).
+7. WHILE o plano for `premium` e `available` for `true`, the system SHALL mostrar "PREMIUM ✦" em `accentPrimary` no item Plano do menu da Configuração; nos outros casos, o rótulo de hoje (P8).
 8. The system SHALL manter os testIDs e os rótulos de acessibilidade dos botões, e SHALL funcionar a 1440 px e a 390 px sem rolagem horizontal, com o alvo mínimo de toque dos botões (P9, P10).
 
 ## Out of scope

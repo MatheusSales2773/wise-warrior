@@ -11,7 +11,7 @@ import { useSignOut } from '@/features/auth/use-sign-out';
 import { SectionHeader, useFocusRing } from '@/features/character/character-parts';
 import { profileQueryOptions } from '@/features/dashboard/queries';
 import { activeSettingsSection, menuHref, settingsSection, settingsSections, type SettingsSectionId } from './sections';
-import { usePlanLabel } from './billing';
+import { subscriptionQueryOptions, usePlanLabel } from './billing';
 import { useActiveDevicesLabel } from './devices-content';
 import { useDefaultFocusLabel } from './focus-content';
 import { RenameContent } from './rename-form';
@@ -176,7 +176,10 @@ function MenuSignOut() {
 function SettingsMenu({ active }: { active: SettingsSectionId }) {
   const sectionMeta = useSectionMeta();
   const plan = usePlanLabel();
-  const premium = useQuery(profileQueryOptions()).data?.planTier === 'premium';
+  // Same rule as the Plano card: premium only while billing is on and the profile says so.
+  const profilePlan = useQuery(profileQueryOptions()).data?.planTier;
+  const billingOn = useQuery(subscriptionQueryOptions()).data?.available === true;
+  const premium = profilePlan === 'premium' && billingOn;
   return <View accessibilityLabel="Seções da configuração" role="navigation" style={styles.menu}>
     {settingsSections.map((section) => <MenuItem
       active={section.id === active}

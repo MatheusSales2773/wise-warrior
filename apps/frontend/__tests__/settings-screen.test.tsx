@@ -598,6 +598,79 @@ describe('Plano (S5, #380)', () => {
     expect(menu.queryByText('PREMIUM ✦')).toBeNull();
   });
 
+  it('P8: the menu keeps the plan name when the profile is premium but billing is off', async () => {
+    mockedProfile.mockResolvedValue(premiumProfile);
+    await openSettings('/configuracao/plano');
+
+    const menu = within(screen.getByLabelText('Seções da configuração'));
+    expect(await menu.findByText('Premium · premium em breve')).toBeTruthy();
+    expect(menu.queryByText('PREMIUM ✦')).toBeNull();
+  });
+
+  it('P4: past_due wins over premiumUntil', async () => {
+    mockedSubscription.mockResolvedValue({ ...premium, status: 'past_due', renewsAt: null, premiumUntil: '2026-12-08T15:00:00.000Z' });
+    mockedProfile.mockResolvedValue(premiumProfile);
+    await openSettings('/configuracao/plano');
+
+    expect(await screen.findByText('PENDENTE')).toBeTruthy();
+    expect(screen.queryByText('NÃO RENOVA')).toBeNull();
+  });
+
+  it('P5: dates use the São Paulo calendar (01:00Z of the 9th is still the 8th)', async () => {
+    mockedSubscription.mockResolvedValue({ ...premium, renewsAt: null, premiumUntil: '2026-12-09T01:00:00.000Z' });
+    mockedProfile.mockResolvedValue(premiumProfile);
+    await openSettings('/configuracao/plano');
+    expect(await screen.findByText('ATÉ 08/12')).toBeTruthy();
+  });
+
+  it('P3: an active premium without renewsAt shows only "R$ 9,90/MÊS"', async () => {
+    mockedSubscription.mockResolvedValue({ ...premium, renewsAt: null });
+    mockedProfile.mockResolvedValue(premiumProfile);
+    await openSettings('/configuracao/plano');
+    expect(await screen.findByText('R$ 9,90/MÊS')).toBeTruthy();
+  });
+
+  it('P2: shows at most 3 Itens premium and survives a failed Catálogo', async () => {
+    mockedSubscription.mockResolvedValue(free);
+    mockedCatalog.mockResolvedValue([...catalog, item('x', 'badge', 'Quarto Item', 1)]);
+    await openSettings('/configuracao/plano');
+    expect(await within(await screen.findByTestId('settings-plan-offer')).findAllByText('✦ PREMIUM')).toHaveLength(3);
+  });
+
+  it('P2: a failed Catálogo leaves the offer with its buttons and no item rows', async () => {
+    mockedSubscription.mockResolvedValue(free);
+    mockedCatalog.mockRejectedValue(new Error('catalog down'));
+    await openSettings('/configuracao/plano');
+    const offer = within(await screen.findByTestId('settings-plan-offer'));
+    expect(offer.getByRole('button', { name: 'Assinar premium' })).toBeTruthy();
+    expect(offer.queryByText('✦ PREMIUM')).toBeNull();
+  });
+
+  it.each([
+    ['active', premium, 'Gerenciar assinatura'],
+    ['past_due', { ...premium, status: 'past_due' }, 'Atualizar cartão'],
+  ] as const)('P10: a %s premium on a 390 px phone keeps "%s" and stacks the owned items below', async (_name, view, button) => {
+    await setViewport('android', 390);
+    mockedSubscription.mockResolvedValue(view);
+    mockedProfile.mockResolvedValue({ ...premiumProfile, equipped: [{ itemId: 'a', category: 'avatar', name: 'Manto do Arquimago' }] });
+    await openSettings('/configuracao/plano');
+
+    expect(await screen.findByRole('button', { name: button })).toBeTruthy();
+    expect(screen.getByTestId('settings-plan-items')).toBeTruthy();
+    expect(screen.queryByTestId('settings-plan-offer')).toBeNull();
+  });
+
+  it('P2, P7: lays the offer beside the card and the messages above it (child order)', async () => {
+    mockedSubscription.mockResolvedValue(free);
+    await openSettings('/configuracao/plano?checkout=success');
+    const confirming = await screen.findByTestId('settings-plan-confirming');
+    const order = (id: string) => JSON.stringify(screen.toJSON()).indexOf(`"testID":"${id}"`);
+    expect(order('settings-plan-confirming')).toBeLessThan(order('settings-plan-card'));
+    expect(order('settings-plan-card')).toBeLessThan(order('settings-plan-how'));
+    expect(order('settings-plan-how')).toBeLessThan(order('settings-plan-offer'));
+    expect(confirming).toBeTruthy();
+  });
+
   it('S5.6: back with ?checkout=cancel shows the free state with no error', async () => {
     mockedSubscription.mockResolvedValue(free);
     await openSettings('/configuracao/plano?checkout=cancel');
