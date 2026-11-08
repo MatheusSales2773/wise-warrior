@@ -8,7 +8,7 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import type { JwtPayload } from '../auth/strategies/jwt.strategy';
 import { User } from '../users/entities/user.entity';
 import { HttpExceptionFilter } from '../../shared/filters/http-exception.filter';
-import { APPLICATION_MIGRATIONS, createIntegrationDatabase, type IntegrationDatabase } from '../../test/integration-database';
+import { APPLICATION_MIGRATIONS, createMigratedIntegrationDatabase, type IntegrationDatabase } from '../../test/integration-database';
 import { Guild } from './entities/guild.entity';
 import { GuildMembership } from './entities/guild-membership.entity';
 import { UserCosmeticItem } from '../users/entities/user-cosmetic-item.entity';
@@ -51,7 +51,7 @@ describe('Guilds HTTP contract against MySQL', () => {
   });
 
   beforeEach(async () => {
-    database = await createIntegrationDatabase('wise_guilds_http');
+    database = await createMigratedIntegrationDatabase('wise_guilds_http');
     dataSource = new DataSource(database.options(APPLICATION_MIGRATIONS));
     await dataSource.initialize();
     await dataSource.runMigrations();

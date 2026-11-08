@@ -23,7 +23,7 @@ import { UserCosmeticItem } from '../users/entities/user-cosmetic-item.entity';
 import { UsersController } from '../users/users.controller';
 import { UsersService, type CatalogCosmeticItem } from '../users/users.service';
 import { HttpExceptionFilter } from '../../shared/filters/http-exception.filter';
-import { APPLICATION_MIGRATIONS, createIntegrationDatabase, type IntegrationDatabase } from '../../test/integration-database';
+import { APPLICATION_MIGRATIONS, createMigratedIntegrationDatabase, type IntegrationDatabase } from '../../test/integration-database';
 import { SessionsController } from './sessions.controller';
 import { SessionsService } from './sessions.service';
 import { StudySessionStartService } from './study-session-start.service';
@@ -120,7 +120,7 @@ describe('Session-count Badge unlock at the end of a Study Session', () => {
     (await startSessionEndingAt(key, endsAt)).complete();
 
   beforeEach(async () => {
-    database = await createIntegrationDatabase('wise_session_badges');
+    database = await createMigratedIntegrationDatabase('wise_session_badges');
     dataSource = new DataSource(database.options(APPLICATION_MIGRATIONS));
     await dataSource.initialize();
     await dataSource.runMigrations();

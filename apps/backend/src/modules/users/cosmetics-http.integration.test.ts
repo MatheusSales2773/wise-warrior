@@ -16,7 +16,7 @@ import { Character } from '../progression/entities/character.entity';
 import { ProgressionService } from '../progression/progression.service';
 import type { RealtimeGateway } from '../realtime/realtime.gateway';
 import { HttpExceptionFilter } from '../../shared/filters/http-exception.filter';
-import { APPLICATION_MIGRATIONS, createIntegrationDatabase, type IntegrationDatabase } from '../../test/integration-database';
+import { APPLICATION_MIGRATIONS, createMigratedIntegrationDatabase, type IntegrationDatabase } from '../../test/integration-database';
 import { CosmeticItem } from './entities/cosmetic-item.entity';
 import { User } from './entities/user.entity';
 import { UserCosmeticItem } from './entities/user-cosmetic-item.entity';
@@ -46,7 +46,7 @@ describe('Cosmetics Catalog HTTP contract against MySQL', () => {
     .sort(([a], [b]) => String(a).localeCompare(String(b), 'pt-BR'));
 
   beforeEach(async () => {
-    database = await createIntegrationDatabase('wise_cosmetics_http');
+    database = await createMigratedIntegrationDatabase('wise_cosmetics_http');
     dataSource = new DataSource(database.options(APPLICATION_MIGRATIONS));
     await dataSource.initialize();
     await dataSource.runMigrations();

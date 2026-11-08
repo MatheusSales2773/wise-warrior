@@ -16,7 +16,7 @@ import { StudySessionStartService } from './study-session-start.service';
 import { StudySessionEventsService } from './study-session-events.service';
 import { StudySessionTransitionService, type StudySessionTransitionContext } from './study-session-transition.service';
 import type { StudySessionCommandAction } from './domain/study-session-time';
-import { APPLICATION_MIGRATIONS, createIntegrationDatabase, type IntegrationDatabase } from '../../test/integration-database';
+import { APPLICATION_MIGRATIONS, createMigratedIntegrationDatabase, type IntegrationDatabase } from '../../test/integration-database';
 
 async function expectConflictType(promise: Promise<unknown>, type: string): Promise<void> {
   try {
@@ -60,7 +60,7 @@ describe('Study Session transitions against MySQL', () => {
   const rewardEvents = () => realtime.emitToUser.mock.calls.filter(([, event]) => event !== 'studySession:changed');
 
   beforeEach(async () => {
-    database = await createIntegrationDatabase('wise_study_transition');
+    database = await createMigratedIntegrationDatabase('wise_study_transition');
     dataSource = new DataSource(database.options(APPLICATION_MIGRATIONS));
     await dataSource.initialize();
     await dataSource.runMigrations();

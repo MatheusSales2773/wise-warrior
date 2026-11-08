@@ -17,7 +17,7 @@ import { SessionsService } from './sessions.service';
 import { StudySessionStartService } from './study-session-start.service';
 import { StudySessionEventsService } from './study-session-events.service';
 import { StudySessionTransitionService } from './study-session-transition.service';
-import { APPLICATION_MIGRATIONS, createIntegrationDatabase, type IntegrationDatabase } from '../../test/integration-database';
+import { APPLICATION_MIGRATIONS, createMigratedIntegrationDatabase, type IntegrationDatabase } from '../../test/integration-database';
 import type { StudySessionSnapshot } from './study-session-snapshot';
 
 const CONTINUOUS_LIMIT_SECONDS = 4 * 3600;
@@ -43,7 +43,7 @@ describe('Foco livre against MySQL', () => {
 
   beforeEach(async () => {
     keys = 0;
-    database = await createIntegrationDatabase('wise_free_focus');
+    database = await createMigratedIntegrationDatabase('wise_free_focus');
     dataSource = new DataSource(database.options(APPLICATION_MIGRATIONS));
     await dataSource.initialize();
     await dataSource.runMigrations();
