@@ -1,9 +1,9 @@
 # assinatura-premium proofs
 
-**HEAD**: 62e8e13
+**HEAD**: 9bfba48
 **Tree**: clean
 **Shell**: /bin/sh
-**Result**: 56 pass, 0 fail
+**Result**: 57 pass, 0 fail
 
 | Check | Proof | Result |
 | --- | --- | --- |
@@ -53,6 +53,7 @@
 | C16 | `run webhook / ✓ ends in the same state and emits user:planChanged once when the same event arrives twice` | pass |
 | C17 | `run webhook / ✓ emits user:planChanged once when the same event arrives twice at the same time` | pass |
 | C18 | `run webhook / ✓ ends in the state the API reports whatever the order of the events` | pass |
+| C18 | `run webhook / ✓ ends canceled when a slow reread of an older event overlaps the faster reread of the cancellat` | pass |
 | C18 | `run webhook / ✓ does not let a late event of an old, ended Subscription cancel the one the user subscribed to ` | pass |
 | C19 | `run webhook / ✓ answers 500 and writes nothing when the Stripe API fails to reread the Subscription` | pass |
 | C20 | `run webhook / ✓ undoes subscriptions, plan_tier and the equipment together, and emits nothing, when the last w` | pass |
@@ -69,20 +70,20 @@
 `Run webhook` - exit 0
 
 ```
-      ✓ leaves the Inventário untouched: the premium items stay owned, only unequipped (1139 ms)
     retries and out-of-order delivery
-      ✓ ends in the same state and emits user:planChanged once when the same event arrives twice (1248 ms)
-      ✓ emits user:planChanged once when the same event arrives twice at the same time (2273 ms)
-      ✓ ends in the state the API reports whatever the order of the events (1710 ms)
-      ✓ does not let a late event of an old, ended Subscription cancel the one the user subscribed to afterwards (1419 ms)
+      ✓ ends in the same state and emits user:planChanged once when the same event arrives twice (1260 ms)
+      ✓ emits user:planChanged once when the same event arrives twice at the same time (1649 ms)
+      ✓ ends in the state the API reports whatever the order of the events (1991 ms)
+      ✓ ends canceled when a slow reread of an older event overlaps the faster reread of the cancellation (2098 ms)
+      ✓ does not let a late event of an old, ended Subscription cancel the one the user subscribed to afterwards (1342 ms)
     failures
-      ✓ answers 500 and writes nothing when the Stripe API fails to reread the Subscription (2214 ms)
-      ✓ undoes subscriptions, plan_tier and the equipment together, and emits nothing, when the last write fails (1464 ms)
+      ✓ answers 500 and writes nothing when the Stripe API fails to reread the Subscription (1862 ms)
+      ✓ undoes subscriptions, plan_tier and the equipment together, and emits nothing, when the last write fails (1570 ms)
 
 Test Suites: 1 passed, 1 total
-Tests:       30 passed, 30 total
+Tests:       31 passed, 31 total
 Snapshots:   0 total
-Time:        69.682 s, estimated 82 s
+Time:        68.129 s, estimated 167 s
 Ran all test suites matching /billing-webhook/i.
 ```
 
@@ -91,38 +92,38 @@ Ran all test suites matching /billing-webhook/i.
 ```
 <claude-code-hint v="1" type="plugin" value="stripe@claude-plugins-official" />
 <claude-code-hint v="1" type="plugin" value="stripe@claude-plugins-official" />
-PASS src/app.module.spec.ts (6.403 s)
+PASS src/app.module.spec.ts (7.064 s)
   AppModule wiring
     ✓ has no undefined module in the import graph (3 ms)
 
-PASS src/main.spec.ts (6.456 s)
+PASS src/main.spec.ts (7.129 s)
   main bootstrap
-    ✓ creates the application with rawBody enabled (57 ms)
+    ✓ creates the application with rawBody enabled (53 ms)
 
 Test Suites: 4 passed, 4 total
 Tests:       34 passed, 34 total
 Snapshots:   0 total
-Time:        6.807 s
+Time:        7.54 s
 Ran all test suites matching /src\/modules\/billing|src\/main.spec.ts|src\/app.module.spec.ts/i.
 ```
 
 `Run migration` - exit 0
 
 ```
-    ✓ dates the Meta batida, reopens the Raids of the current week and keeps one Contribution per Study Session (1336 ms)
-    ✓ keeps the rotation Missões free, lets priced Missões leave the rotation and drops them on downgrade (2855 ms)
-    ✓ seeds the four Missões for sale with off-sale reward items, reverts them and reapplies (2700 ms)
-    ✓ credits 90 welcome coins once to each existing account, skips repeats and reverts cleanly (2578 ms)
-    ✓ seeds the Cosmetic Items À venda, clears the old test item, and removes only the seeded ids on revert (1865 ms)
-    ✓ adds the Arma category: the Espada to every existing Character, equipped once, and the Cajado and Besta À venda (1707 ms)
-    ✓ marks existing Study Sessions as Ciclo and reverts the kind column (1439 ms)
-    ✓ moves Madrugador and Cem Sessões to session counts and keeps the Badges already in the Inventário (2059 ms)
-    ✓ creates subscriptions with one row per user, Customer and Subscription, deletes it with the user, and drops it on revert (8786 ms)
+    ✓ dates the Meta batida, reopens the Raids of the current week and keeps one Contribution per Study Session (1414 ms)
+    ✓ keeps the rotation Missões free, lets priced Missões leave the rotation and drops them on downgrade (991 ms)
+    ✓ seeds the four Missões for sale with off-sale reward items, reverts them and reapplies (1463 ms)
+    ✓ credits 90 welcome coins once to each existing account, skips repeats and reverts cleanly (1500 ms)
+    ✓ seeds the Cosmetic Items À venda, clears the old test item, and removes only the seeded ids on revert (931 ms)
+    ✓ adds the Arma category: the Espada to every existing Character, equipped once, and the Cajado and Besta À venda (1531 ms)
+    ✓ marks existing Study Sessions as Ciclo and reverts the kind column (2006 ms)
+    ✓ moves Madrugador and Cem Sessões to session counts and keeps the Badges already in the Inventário (1987 ms)
+    ✓ creates subscriptions with one row per user, Customer and Subscription, deletes it with the user, and drops it on revert (1921 ms)
 
 Test Suites: 1 passed, 1 total
 Tests:       17 passed, 17 total
 Snapshots:   0 total
-Time:        39.148 s, estimated 43 s
+Time:        30.265 s, estimated 40 s
 Ran all test suites matching /migration.integration/i.
 ```
 
@@ -132,13 +133,13 @@ Ran all test suites matching /migration.integration/i.
 > @wise/backend@0.1.0 test:auth:integration
 > jest --runInBand --testRegex '.*auth.integration.test.ts$'
 
-PASS src/modules/auth/auth.integration.test.ts (11.283 s)
+PASS src/modules/auth/auth.integration.test.ts (11.485 s)
 <claude-code-hint v="1" type="plugin" value="stripe@claude-plugins-official" />
 PASS src/modules/auth/universal-auth.integration.test.ts
 
 Test Suites: 2 passed, 2 total
 Tests:       14 passed, 14 total
 Snapshots:   0 total
-Time:        16.187 s, estimated 26 s
+Time:        16.374 s, estimated 17 s
 Ran all test suites.
 ```
