@@ -45,8 +45,16 @@ describe('Pagar o Pacote (S7) against MySQL', () => {
   const createCustomer = jest.fn<Promise<Stripe.Customer>, [Stripe.CustomerCreateParams]>();
   const createSession = jest.fn<Promise<Stripe.Checkout.Session>, [Stripe.Checkout.SessionCreateParams]>();
   const retrieveSession = jest.fn<Promise<Stripe.Checkout.Session>, [string]>();
-  const emitted: Array<{ userId: string; event: string; payload: unknown }> = [];
-  const realtime = { emitToUser: jest.fn((userId: string, event: string, payload: unknown) => { emitted.push({ userId, event, payload }); }) };
+  const emitted: Array<{ userId: string; event: string; payload: unknown; paymentsWhenEmitted: Promise<number> }> = [];
+  // Counted through the pool, a connection other than the transaction's: it sees the Pagamento only once committed.
+  const realtime = {
+    emitToUser: jest.fn((userId: string, event: string, payload: unknown) => {
+      emitted.push({
+        userId, event, payload,
+        paymentsWhenEmitted: dataSource!.query('SELECT COUNT(*) AS n FROM pack_payments').then((rows: Array<{ n: string }>) => Number(rows[0]!.n)),
+      });
+    }),
+  };
   const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation();
 
   const start = async (stripe: StripeApi | null) => {
@@ -179,6 +187,7 @@ describe('Pagar o Pacote (S7) against MySQL', () => {
       ]);
       expect(createSession).toHaveBeenCalledWith({
         mode: 'payment',
+        allowed_payment_method_types: ['card'],
         customer: CUSTOMER,
         line_items: [{
           price_data: { currency: 'brl', unit_amount: 490, product_data: { name: 'Pacote do Dragão' } },
@@ -237,6 +246,17 @@ describe('Pagar o Pacote (S7) against MySQL', () => {
       expect(await detail(response)).toBe('Você já tem este Pacote');
       expect(createCustomer).not.toHaveBeenCalled();
       expect(createSession).not.toHaveBeenCalled();
+    });
+
+    it('answers 409, not 404, to a user who paid a Pacote that left the shelf', async () => {
+      await seedUser();
+      await dataSource!.getRepository(Pack).update({ slug: 'dragao' }, { forSale: false });
+      await dataSource!.getRepository(PackPayment).insert({
+        userId: user, packId: (await dragao()).id, stripeCheckoutSessionId: 'cs_old', amountCents: 490, currency: 'brl', paidAt: new Date(),
+      });
+      await start(fakeStripe());
+
+      expect((await checkout()).status).toBe(409);
     });
 
     it('answers 404 "Pacote não encontrado" for an unknown slug and for a Pacote off sale the user did not pay', async () => {
@@ -298,7 +318,8 @@ describe('Pagar o Pacote (S7) against MySQL', () => {
       const ids = await packItemIds();
       expect(ids).toHaveLength(3);
       expect((await inventory()).map((row) => [row.cosmeticItemId, row.equipped]).sort()).toEqual(ids.map((id) => [id, false]).sort());
-      expect(emitted).toEqual([{ userId: user, event: 'user:packGranted', payload: { slug: 'dragao', cosmeticItemIds: expect.arrayContaining(ids) } }]);
+      expect(emitted).toEqual([expect.objectContaining({ userId: user, event: 'user:packGranted', payload: { slug: 'dragao', cosmeticItemIds: expect.arrayContaining(ids) } })]);
+      expect(await emitted[0]!.paymentsWhenEmitted).toBe(1);
       expect((emitted[0]!.payload as { cosmeticItemIds: string[] }).cosmeticItemIds).toHaveLength(3);
     });
 
@@ -313,6 +334,43 @@ describe('Pagar o Pacote (S7) against MySQL', () => {
       expect(await payments()).toEqual([]);
       expect(await inventory()).toEqual([]);
       expect(emitted).toEqual([]);
+    });
+
+    it.each([
+      ['no_payment_required', { payment_status: 'no_payment_required' }],
+      ['a session that is not a one-time payment', { mode: 'subscription' }],
+    ] as const)('answers 200 and writes nothing for %s read from the API', async (_label, overrides) => {
+      await seedUser();
+      await start(fakeStripe());
+      retrieveSession.mockResolvedValue(paidSession(overrides as Partial<Stripe.Checkout.Session>));
+
+      const response = await webhook(completed());
+
+      expect(response.status).toBe(200);
+      expect(await payments()).toEqual([]);
+      expect(emitted).toEqual([]);
+    });
+
+    it('answers 200, writes nothing and logs the session when the payer no longer exists', async () => {
+      await start(fakeStripe());
+
+      const response = await webhook(completed());
+
+      expect(response.status).toBe(200);
+      expect(await payments()).toEqual([]);
+      expect(emitted).toEqual([]);
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining('cs_test_paid'));
+    });
+
+    it('still gives the items of a Pacote that left the shelf after the session was opened', async () => {
+      await seedUser();
+      await dataSource!.getRepository(Pack).update({ slug: 'dragao' }, { forSale: false });
+      await start(fakeStripe());
+
+      await webhook(completed());
+
+      expect(await payments()).toHaveLength(1);
+      expect(await inventory()).toHaveLength(3);
     });
 
     it('answers 500 and writes nothing when Stripe fails to return the session, so Stripe retries', async () => {

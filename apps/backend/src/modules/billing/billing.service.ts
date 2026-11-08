@@ -161,6 +161,8 @@ export class BillingService {
       const returnUrl = `${this.config.get<string>('APP_URL')}/mercado?secao=pacotes`;
       return this.openSession(manager, stripe, userId, {
         mode: 'payment',
+        // ADR-015: só cartão, que confirma na hora; um meio atrasado deixaria a sessão `unpaid` sem evento que a conceda.
+        allowed_payment_method_types: ['card'],
         line_items: [{
           price_data: { currency: pack.currency, unit_amount: pack.priceCents, product_data: { name: pack.name } },
           quantity: 1,
@@ -249,7 +251,10 @@ export class BillingService {
     }
 
     const granted = await this.dataSource.transaction(async (manager) => {
-      if (!(await this.users.lockForUpdate(userId, manager))) return null;
+      if (!(await this.users.lockForUpdate(userId, manager))) {
+        this.logger.warn(`Evento ${eventId}: a sessão ${sessionId} foi paga por um usuário que não existe mais (${userId})`);
+        return null;
+      }
       const pack = await manager.getRepository(Pack).findOne({ where: { slug } });
       if (!pack) {
         this.logger.warn(`Evento ${eventId} ignorado: o Pacote ${slug} da sessão ${sessionId} não existe`);
