@@ -95,8 +95,9 @@ Proof: run webhook | ✓ ends in the same state and emits user:planChanged once 
 **C17** - The same event 3 times at the same time emits `user:planChanged` and `character:equipmentChanged` once (S2.8)
 Proof: run webhook | ✓ emits user:planChanged once when the same event arrives twice at the same time
 
-**C18** - Events out of order end in the state the API reports, with one `user:planChanged`; a late event of an old, ended Subscription does not cancel the newer one (S2.8)
+**C18** - Events out of order end in the state the API reports, with one `user:planChanged`; a slow reread of an older event that overlaps the cancellation never leaves `premium` on top of it; a late event of an old, ended Subscription does not cancel the newer one (S2.8)
 Proof: run webhook | ✓ ends in the state the API reports whatever the order of the events
+Proof: run webhook | ✓ ends canceled when a slow reread of an older event overlaps the faster reread of the cancellation
 Proof: run webhook | ✓ does not let a late event of an old, ended Subscription cancel the one the user subscribed to afterwards
 
 **C19** - If the Stripe API fails to reread, the answer is `500` and nothing is written or emitted (S2.9)
@@ -147,7 +148,7 @@ The other 5 routes of the plan's Surface (`/api/v1/billing/subscription`, `check
 ## Handoff
 
 - **Settled mid-build:** none
-- **Dispatched:** none yet
-- **Boundary:** none yet
+- **Dispatched:** Verifier at 62e8e13 (diff 7360926..62e8e13), sent; screens sub-agent n/a (no capture)
+- **Boundary:** C1-C23 closed at 62e8e13; proofs.md green (56 pass)
 - **Abandoned:** none
 - **Walked:** n/a - no screen in S2

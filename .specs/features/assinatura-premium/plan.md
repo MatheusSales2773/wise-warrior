@@ -161,7 +161,7 @@ O Stripe muda a Assinatura e o `plan_tier` segue, sem ninguém tocar no banco.
 8. IF o mesmo evento chegar duas vezes, ou dois eventos chegarem fora de ordem THEN o sistema SHALL terminar com o mesmo estado e não emitir uma segunda `user:planChanged` para um plano que não mudou.
    - Releitura na API em vez de ordem de entrega: o estado final é o que a API devolve, qualquer que seja a ordem.
    - Evento atrasado de uma Assinatura antiga e já encerrada (outro `stripe_subscription_id` que o da linha, com plano `free`) não grava nada: não derruba a Assinatura que a pessoa fez depois.
-   - Dois eventos ao mesmo tempo: o `BillingService` trava o usuário (`UsersService.lockForUpdate`) antes de ler qualquer coisa na transação, então só o primeiro vê o plano mudar e emite.
+   - Dois eventos ao mesmo tempo: o `BillingService` trava o usuário (`UsersService.lockForUpdate`) antes de ler qualquer coisa na transação, inclusive a releitura na API do Stripe. Os eventos se serializam, o último a gravar é o último a reler, e só o primeiro vê o plano mudar e emite.
 9. IF a API do Stripe falhar ao reler THEN o sistema SHALL responder `500` sem gravar nada, para o Stripe reenviar.
 10. IF a gravação falhar depois de o plano mudar THEN o sistema SHALL desfazer `subscriptions`, `plan_tier` e a equipagem juntos, sem emitir evento nenhum.
    - Implementação: `UsersService.applyPlanTier(manager, userId, planTier)` grava `plan_tier` e a equipagem na transação do `BillingService`, que emite só depois do commit.

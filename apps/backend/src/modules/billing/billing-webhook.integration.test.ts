@@ -395,14 +395,19 @@ describe('Stripe webhook against MySQL', () => {
     });
 
     it('leaves the Inventário untouched: the premium items stay owned, only unequipped', async () => {
-      await seedPremiumUser([MESTRE_DA_AURORA]);
+      await seedPremiumUser([MESTRE_DA_AURORA, CAJADO]);
+      const owned = async () => (await dataSource!.getRepository(UserCosmeticItem).find({ where: { userId: user } }))
+        .map((entry) => entry.cosmeticItemId).sort();
+      const ownedBefore = await owned();
+      expect(ownedBefore).toEqual(expect.arrayContaining([MESTRE_DA_AURORA, CAJADO, AMULETO_PREMIUM, CAPUZ]));
       retrieve.mockResolvedValue(stripeSubscription({ status: 'canceled' }));
 
       await signed(subscriptionEvent('customer.subscription.deleted', 'canceled'));
 
-      const owned = (await dataSource!.getRepository(UserCosmeticItem).find({ where: { userId: user } })).map((entry) => entry.cosmeticItemId);
-      expect(owned).toEqual(expect.arrayContaining([MESTRE_DA_AURORA, CAJADO, AMULETO_PREMIUM]));
-      expect(owned).toContain(CAPUZ);
+      expect(await planTier()).toBe('free');
+      expect(await owned()).toEqual(ownedBefore);
+      expect(await equippedIds()).not.toEqual(expect.arrayContaining([MESTRE_DA_AURORA]));
+      expect(await equippedIds()).not.toEqual(expect.arrayContaining([CAJADO]));
     });
   });
 
@@ -413,10 +418,11 @@ describe('Stripe webhook against MySQL', () => {
       const body = subscriptionEvent('customer.subscription.deleted', 'canceled');
 
       expect((await signed(body)).status).toBe(200);
-      const afterFirst = { row: await row(), equipped: await equippedIds() };
+      const afterFirst = { status: (await row()).status, equipped: await equippedIds() };
       expect((await signed(body)).status).toBe(200);
 
       expect(await equippedIds()).toEqual(afterFirst.equipped);
+      expect((await row()).status).toBe(afterFirst.status);
       expect((await row()).status).toBe('canceled');
       expect(await planTier()).toBe('free');
       expect(eventsNamed('user:planChanged')).toHaveLength(1);
@@ -447,6 +453,25 @@ describe('Stripe webhook against MySQL', () => {
       expect(await planTier()).toBe('premium');
       expect((await row()).status).toBe('active');
       expect(eventsNamed('user:planChanged')).toHaveLength(1);
+    });
+
+    it('ends canceled when a slow reread of an older event overlaps the faster reread of the cancellation', async () => {
+      await seedPremiumUser([MESTRE_DA_AURORA]);
+      // The first reread answers `active` slowly; the second, sent 100 ms later, answers `canceled` at once.
+      retrieve
+        .mockImplementationOnce(() => new Promise((resolve) => setTimeout(() => resolve(stripeSubscription({ status: 'active' })), 500)))
+        .mockResolvedValue(stripeSubscription({ status: 'canceled' }));
+
+      const older = signed(subscriptionEvent('customer.subscription.updated', 'active'));
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      const newer = signed(subscriptionEvent('customer.subscription.deleted', 'canceled'));
+      const responses = await Promise.all([older, newer]);
+
+      expect(responses.map((response) => response.status)).toEqual([200, 200]);
+      expect((await row()).status).toBe('canceled');
+      expect(await planTier()).toBe('free');
+      expect(await equippedIds()).not.toContain(MESTRE_DA_AURORA);
+      expect(eventsNamed('user:planChanged').map((entry) => entry.payload).slice(-1)).toEqual([{ planTier: 'free' }]);
     });
 
     it('does not let a late event of an old, ended Subscription cancel the one the user subscribed to afterwards', async () => {

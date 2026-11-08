@@ -43,10 +43,10 @@ export class BillingService {
       this.logger.warn(`Evento ${event.id} ignorado: o Customer ${target.customerId} não tem Assinatura`);
       return;
     }
-    if (!target.subscriptionId) return;
+    const { subscriptionId } = target;
+    if (!subscriptionId) return;
 
-    const subscription = await this.readSubscription(event.id, target.subscriptionId);
-    const outcome = await this.dataSource.transaction((manager) => this.sync(manager, row.userId, subscription));
+    const outcome = await this.dataSource.transaction((manager) => this.sync(manager, row.userId, event.id, subscriptionId));
     if (!outcome) return;
 
     // Depois do commit: um rollback não deixa evento nenhum para trás.
@@ -76,12 +76,15 @@ export class BillingService {
   }
 
   /**
-   * Grava a Assinatura relida e o plano que ela dá, numa só transação. `null`: o evento não mexe em nada.
-   * Trava o usuário antes de ler qualquer coisa: a leitura consistente do MySQL (REPEATABLE READ) nasce na primeira
-   * consulta, e uma que viesse antes do lock veria o plano de antes de um evento concorrente, que emitiria de novo.
+   * Relê a Assinatura e grava o que ela devolveu, com o plano que ela dá, numa só transação. `null`: o evento não
+   * mexe em nada. Trava o usuário antes de ler qualquer coisa, inclusive a API do Stripe: eventos concorrentes se
+   * serializam, e o último a gravar é o último a reler, então a ordem de chegada não deixa um estado velho por cima
+   * de um novo. Também por isso a leitura consistente do MySQL (REPEATABLE READ), que nasce na primeira consulta,
+   * já vê o plano que o evento anterior commitou e não emite de novo.
    */
-  private async sync(manager: EntityManager, userId: string, subscription: Stripe.Subscription) {
+  private async sync(manager: EntityManager, userId: string, eventId: string, subscriptionId: string) {
     if (!(await this.users.lockForUpdate(userId, manager))) return null;
+    const subscription = await this.readSubscription(eventId, subscriptionId);
     const rows = manager.getRepository(Subscription);
     const row = await rows.findOne({ where: { userId } });
     if (!row) return null;
