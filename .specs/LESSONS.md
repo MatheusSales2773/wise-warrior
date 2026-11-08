@@ -26,6 +26,12 @@ Seen once or not yet corroborated. Tracked, not trusted.
 - evidence: C11 character-catalog.test.tsx (frontend)
 - last seen: 2026-11-08T14:37:25Z
 
+### L-003 - When a lookup filters on two keys, prove each key with a case where only the other one matches
+- signal: `weak_test` · recurrence: 1 feature(s) · scope: `billing` · harmful: 0
+- features: assinatura-premium-s3
+- evidence: C12 billing-webhook.integration.test.ts (billing)
+- last seen: 2026-11-08T16:24:09Z
+
 ## Quarantined (failed when applied - ignore)
 
 A confirmed lesson that recurred alongside failure. Kept for the maintainer to review.

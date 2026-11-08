@@ -3,7 +3,7 @@
   "promote_threshold": 2,
   "window_days": 45,
   "quarantine_threshold": 2,
-  "next_id": 3,
+  "next_id": 4,
   "lessons": [
     {
       "id": "L-001",
@@ -40,6 +40,24 @@
       ],
       "created": "2026-11-08T14:37:25Z",
       "last_seen": "2026-11-08T14:37:25Z"
+    },
+    {
+      "id": "L-003",
+      "key": "weak_test::when a lookup filters on two keys prove each key with a case where only the other one matches",
+      "text": "When a lookup filters on two keys, prove each key with a case where only the other one matches",
+      "signal": "weak_test",
+      "scope": "billing",
+      "status": "candidate",
+      "features": [
+        "assinatura-premium-s3"
+      ],
+      "recurrence": 1,
+      "harmful": 0,
+      "evidence": [
+        "C12 billing-webhook.integration.test.ts (billing)"
+      ],
+      "created": "2026-11-08T16:24:09Z",
+      "last_seen": "2026-11-08T16:24:09Z"
     }
   ]
 }
