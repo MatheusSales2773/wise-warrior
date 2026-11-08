@@ -9,6 +9,7 @@ const SECONDS = {
   '__tests__/dashboard-screen.test.tsx': 21,
   '__tests__/study-session-screen.test.tsx': 19,
   '__tests__/character-screen.test.tsx': 15,
+  '__tests__/chronicles-screen.test.tsx': 15,
   '__tests__/guild-screen.test.tsx': 8,
   '__tests__/market-screen.test.tsx': 8,
 };
