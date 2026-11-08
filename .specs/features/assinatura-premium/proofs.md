@@ -1,6 +1,6 @@
 # assinatura-premium proofs
 
-**HEAD**: c171a2f
+**HEAD**: cfca817
 **Tree**: dirty - develop/
 **Shell**: /bin/sh
 **Result**: 17 pass, 0 fail
@@ -30,20 +30,20 @@
 `Run portal` - exit 0
 
 ```
-      ✓ opens the Portal for the Customer of the caller that returns to the Plano screen (429 ms)
-      ✓ answers 409 to a user that never opened a Checkout (460 ms)
-      ✓ answers 409 to a user whose row has no Subscription (537 ms)
-      ✓ answers 503 when billing is not configured (857 ms)
-      ✓ answers 502 and keeps the row when Stripe fails to create the Portal session (713 ms)
-      ✓ answers 401 without a token to the Portal (682 ms)
+      ✓ opens the Portal for the Customer of the caller that returns to the Plano screen (674 ms)
+      ✓ answers 409 to a user that never opened a Checkout (836 ms)
+      ✓ answers 409 to a user whose row has no Subscription (959 ms)
+      ✓ answers 503 when billing is not configured (901 ms)
+      ✓ answers 502 and keeps the row when Stripe fails to create the Portal session (901 ms)
+      ✓ answers 401 without a token to the Portal (854 ms)
     GET /billing/subscription
-      ✓ answers premiumUntil with the cancel_at of a premium user that cancelled in the Portal (830 ms)
-      ✓ answers 401 without a token to the subscription (804 ms)
+      ✓ answers premiumUntil with the cancel_at of a premium user that cancelled in the Portal (777 ms)
+      ✓ answers 401 without a token to the subscription (816 ms)
 
 Test Suites: 1 passed, 1 total
 Tests:       9 passed, 9 total
 Snapshots:   0 total
-Time:        6.613 s, estimated 10 s
+Time:        8.177 s
 Ran all test suites matching /billing-portal/i.
 ```
 
@@ -51,38 +51,38 @@ Ran all test suites matching /billing-portal/i.
 
 ```
     retries and out-of-order delivery
-      ✓ ends in the same state and emits user:planChanged once when the same event arrives twice (237 ms)
-      ✓ emits user:planChanged once when the same event arrives twice at the same time (237 ms)
-      ✓ ends in the state the API reports whatever the order of the events (231 ms)
-      ✓ ends canceled when a slow reread of an older event overlaps the faster reread of the cancellation (737 ms)
-      ✓ does not let a late event of an old, ended Subscription cancel the one the user subscribed to afterwards (168 ms)
+      ✓ ends in the same state and emits user:planChanged once when the same event arrives twice (228 ms)
+      ✓ emits user:planChanged once when the same event arrives twice at the same time (250 ms)
+      ✓ ends in the state the API reports whatever the order of the events (219 ms)
+      ✓ ends canceled when a slow reread of an older event overlaps the faster reread of the cancellation (749 ms)
+      ✓ does not let a late event of an old, ended Subscription cancel the one the user subscribed to afterwards (155 ms)
     failures
-      ✓ answers 500 and writes nothing when the Stripe API fails to reread the Subscription (169 ms)
-      ✓ undoes subscriptions, plan_tier and the equipment together, and emits nothing, when the last write fails (189 ms)
+      ✓ answers 500 and writes nothing when the Stripe API fails to reread the Subscription (179 ms)
+      ✓ undoes subscriptions, plan_tier and the equipment together, and emits nothing, when the last write fails (198 ms)
 
 Test Suites: 1 passed, 1 total
 Tests:       34 passed, 34 total
 Snapshots:   0 total
-Time:        8.454 s, estimated 13 s
+Time:        10.489 s
 Ran all test suites matching /billing-webhook/i.
 ```
 
 `Run unit` - exit 0
 
 ```
-    ✓ gives free to a status Stripe adds later (1 ms)
-
-PASS src/modules/billing/domain/subscription-view.spec.ts
-  subscriptionView
-    ✓ renews at the period end when nothing was cancelled (5 ms)
-    ✓ ends at cancel_at instead of renewing when the Subscription was cancelled
-    ✓ passes the status of the row through untranslated
-    ✓ has no dates and no status for a user with no Subscription row (1 ms)
-    ✓ reports billing available only when Stripe is configured (1 ms)
+    ✓ maps the Stripe status trialing to premium
+    ✓ maps the Stripe status past_due to premium (1 ms)
+    ✓ maps the Stripe status canceled to free
+    ✓ maps the Stripe status unpaid to free (1 ms)
+    ✓ maps the Stripe status incomplete to free
+    ✓ maps the Stripe status incomplete_expired to free
+    ✓ maps the Stripe status paused to free
+    ✓ gives free to a user with no Subscription (1 ms)
+    ✓ gives free to a status Stripe adds later
 
 Test Suites: 3 passed, 3 total
 Tests:       38 passed, 38 total
 Snapshots:   0 total
-Time:        4.602 s, estimated 6 s
+Time:        4.843 s, estimated 5 s
 Ran all test suites matching /src\/modules\/billing/i.
 ```
