@@ -10,7 +10,7 @@ import { ApiError } from '@/core/api/api-error';
 import { queryClient as appQueryClient } from '@/core/query/query-runtime';
 import { getMyProfile, type UserProfile } from '@/features/dashboard/api';
 import { listMyDeviceSessions, revokeMyDeviceSession, revokeOtherMyDeviceSessions, type DeviceSession } from '@/features/profile/api';
-import { getSubscription, openBillingSession, updateMyDisplayName, type SubscriptionView } from '@/features/settings/api';
+import { getSubscription, openBillingSession, resetMyPlan, updateMyDisplayName, type SubscriptionView } from '@/features/settings/api';
 import { openStripePage } from '@/features/settings/billing';
 import { applyPlanChanged } from '@/core/realtime/realtime-client';
 import { resetViewport, setViewport } from '../test-utils/viewport';
@@ -29,7 +29,7 @@ jest.mock('@/features/dashboard/api', () => ({
 jest.mock('@/core/preferences/preferences-storage', () => ({
   preferencesStorage: { read: jest.fn(async () => null), write: jest.fn(async () => undefined) },
 }));
-jest.mock('@/features/settings/api', () => ({ updateMyDisplayName: jest.fn(), getSubscription: jest.fn(), openBillingSession: jest.fn() }));
+jest.mock('@/features/settings/api', () => ({ updateMyDisplayName: jest.fn(), getSubscription: jest.fn(), openBillingSession: jest.fn(), resetMyPlan: jest.fn() }));
 jest.mock('@/features/settings/billing', () => ({ ...jest.requireActual('@/features/settings/billing'), openStripePage: jest.fn() }));
 
 jest.mock('@/features/profile/api', () => ({
@@ -47,12 +47,13 @@ const otherDevice = 'Navegador no computador';
 
 const profile: UserProfile = {
   id: 'user-1', email: 'knightshade@wise.app', displayName: 'Knightshade', planTier: 'free',
-  level: 3, levelStartXp: 0, nextLevelXp: 1_000, xpTotal: 400, title: null, equipped: [],
+  level: 3, levelStartXp: 0, nextLevelXp: 1_000, xpTotal: 400, title: null, devTools: false, equipped: [],
 };
 
 const unavailable: SubscriptionView = { available: false, planTier: 'free', status: null, renewsAt: null, premiumUntil: null };
 const mockedSubscription = getSubscription as jest.MockedFunction<typeof getSubscription>;
 const mockedOpenSession = openBillingSession as jest.MockedFunction<typeof openBillingSession>;
+const mockedReset = resetMyPlan as jest.MockedFunction<typeof resetMyPlan>;
 const mockedOpenPage = openStripePage as jest.MockedFunction<typeof openStripePage>;
 const mockedProfile = getMyProfile as jest.MockedFunction<typeof getMyProfile>;
 const mockedRename = updateMyDisplayName as jest.MockedFunction<typeof updateMyDisplayName>;
@@ -68,6 +69,7 @@ const settingsRoutes = {
   'configuracao/dispositivos': require('../src/app/(app)/configuracao/dispositivos'),
   'configuracao/acessibilidade': require('../src/app/(app)/configuracao/acessibilidade'),
   'configuracao/plano': require('../src/app/(app)/configuracao/plano'),
+  'configuracao/dev': require('../src/app/(app)/configuracao/dev'),
 };
 
 /**
@@ -98,6 +100,7 @@ beforeEach(() => {
   mockedProfile.mockResolvedValue(profile);
   mockedSubscription.mockReset().mockResolvedValue(unavailable);
   mockedOpenSession.mockReset();
+  mockedReset.mockReset().mockResolvedValue(undefined);
   mockedOpenPage.mockReset().mockResolvedValue(undefined);
   mockedRename.mockReset();
   mockedDevices.mockReset().mockResolvedValue(devices);
@@ -521,6 +524,170 @@ describe('Plano (S5)', () => {
     } finally {
       jest.useRealTimers();
     }
+  });
+});
+
+describe('Desenvolvedor (dev-reset-plano)', () => {
+  const devProfile: UserProfile = { ...profile, devTools: true, planTier: 'premium' };
+  const premium: SubscriptionView = { available: true, planTier: 'premium', status: 'active', renewsAt: '2026-12-08T15:00:00.000Z', premiumUntil: null };
+  const free: SubscriptionView = { ...unavailable, available: true };
+  const httpError = (status: number, detail: string) => Object.assign(new Error(detail), {
+    isAxiosError: true, response: { status, data: { detail } },
+  });
+  const openDialog = async () => {
+    await openSettings('/configuracao/dev');
+    await fireEvent.press(await screen.findByRole('button', { name: 'Voltar ao plano Free' }));
+    return screen.findByTestId('settings-dev-dialog');
+  };
+
+  beforeEach(async () => {
+    await setViewport('web', 1440);
+    mockedProfile.mockResolvedValue(devProfile);
+    mockedSubscription.mockResolvedValue(premium);
+  });
+
+  it('AC13: lists Desenvolvedor last in the desktop menu, before Sair da conta, and describes it', async () => {
+    await openSettings('/configuracao/dev');
+
+    const menu = within(screen.getByLabelText('Seções da configuração'));
+    const link = await menu.findByRole('link', { name: 'Desenvolvedor' });
+    expect(link.props.href).toBe('/configuracao/dev');
+    const items = menu.getAllByRole('link').map((item) => item.props.accessibilityLabel);
+    expect(items[items.length - 1]).toBe('Desenvolvedor');
+    expect(items).toContain('Plano');
+    expect(link.props.accessibilityState.selected).toBe(true);
+    expect(screen.getByText('Ferramentas de teste desta conta.')).toBeTruthy();
+    expect(menu.getAllByRole('button').map((item) => item.props.accessibilityLabel)).toEqual(['Sair da conta']);
+  });
+
+  it('AC13: lists Desenvolvedor in its own last group of the phone list', async () => {
+    await setViewport('android', 390);
+    await openSettings('/configuracao');
+
+    const link = await screen.findByRole('link', { name: 'Desenvolvedor' });
+    expect(link.props.href).toBe('/configuracao/dev');
+    const labels = screen.getAllByRole('header').map((item) => item.props.children);
+    expect(labels[labels.length - 1]).toBe('DESENVOLVEDOR');
+    expect(screen.getAllByRole('link').filter((item) => item.props.accessibilityLabel === 'Desenvolvedor')).toHaveLength(1);
+  });
+
+  it('AC14: keeps Desenvolvedor out of the menu and the list when devTools is false', async () => {
+    mockedProfile.mockResolvedValue({ ...devProfile, devTools: false });
+    await openSettings('/configuracao');
+    await screen.findByLabelText('Nome do guerreiro');
+    expect(screen.queryByRole('link', { name: 'Desenvolvedor' })).toBeNull();
+
+    await setViewport('android', 390);
+    await openSettings('/configuracao');
+    await screen.findByTestId('settings-profile');
+    expect(screen.queryByRole('link', { name: 'Desenvolvedor' })).toBeNull();
+    expect(screen.queryByText('DESENVOLVEDOR')).toBeNull();
+  });
+
+  it('AC14: keeps Desenvolvedor out while the profile has not loaded', async () => {
+    mockedProfile.mockReturnValue(new Promise(() => undefined));
+    await openSettings('/configuracao');
+
+    expect(screen.queryByRole('link', { name: 'Desenvolvedor' })).toBeNull();
+  });
+
+  it('AC15: takes an account without devTools from /configuracao/dev to /configuracao', async () => {
+    mockedProfile.mockResolvedValue({ ...devProfile, devTools: false });
+    const { router } = await openSettings('/configuracao/dev');
+
+    await waitFor(() => expect(router).toHavePathname('/configuracao'));
+    expect(screen.queryByRole('button', { name: 'Voltar ao plano Free' })).toBeNull();
+  });
+
+  it('AC16: shows "Plano atual" as the Plano section does, and the button, while premium', async () => {
+    await openSettings('/configuracao/dev');
+
+    expect(await screen.findByLabelText('Plano atual: Premium · renova em 08/12')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Voltar ao plano Free' })).toBeTruthy();
+  });
+
+  it('AC17: shows Free and no button while the plan is free', async () => {
+    mockedSubscription.mockResolvedValue(free);
+    await openSettings('/configuracao/dev');
+
+    expect(await screen.findByLabelText('Plano atual: Free')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Voltar ao plano Free' })).toBeNull();
+  });
+
+  it('AC18: asks first, with the dialog copy, and calls nothing', async () => {
+    const dialog = within(await openDialog());
+
+    expect(dialog.getByText('Cancelar a assinatura agora?')).toBeTruthy();
+    expect(dialog.getByText('A assinatura de teste é cancelada no Stripe na hora e os Itens premium ✦ são desequipados.')).toBeTruthy();
+    expect(dialog.getByRole('button', { name: 'Cancelar assinatura' })).toBeTruthy();
+    expect(dialog.getByRole('button', { name: 'Voltar' })).toBeTruthy();
+    expect(mockedReset).not.toHaveBeenCalled();
+  });
+
+  it('AC19: Voltar closes the dialog and calls nothing', async () => {
+    await fireEvent.press(within(await openDialog()).getByRole('button', { name: 'Voltar' }));
+
+    expect(screen.queryByTestId('settings-dev-dialog')).toBeNull();
+    expect(mockedReset).not.toHaveBeenCalled();
+  });
+
+  it('AC20: confirming calls the route once, shows loading, then closes the dialog and says the plan comes back', async () => {
+    let finish!: () => void;
+    mockedReset.mockReturnValue(new Promise<void>((resolve) => { finish = resolve; }));
+    await fireEvent.press(within(await openDialog()).getByRole('button', { name: 'Cancelar assinatura' }));
+
+    expect(mockedReset).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Cancelar assinatura' }).props.accessibilityState.busy).toBe(true));
+    await act(async () => finish());
+
+    await waitFor(() => expect(screen.queryByTestId('settings-dev-dialog')).toBeNull());
+    expect(screen.getByText('Assinatura cancelada. O plano volta a Free em instantes.')).toBeTruthy();
+  });
+
+  it('AC21: shows Free without reloading when user:planChanged arrives', async () => {
+    await openSettings('/configuracao/dev');
+    expect(await screen.findByLabelText('Plano atual: Premium · renova em 08/12')).toBeTruthy();
+
+    mockedSubscription.mockResolvedValue(free);
+    mockedProfile.mockResolvedValue({ ...devProfile, planTier: 'free' });
+    await act(async () => applyPlanChanged(Platform.OS === 'web' ? clientOf() : appQueryClient));
+
+    expect(await screen.findByLabelText('Plano atual: Free')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Voltar ao plano Free' })).toBeNull();
+  });
+
+  it.each([
+    [409, 'Nenhuma assinatura para cancelar'],
+    [502, 'Não foi possível cancelar a assinatura'],
+    [503, 'Assinatura indisponível no momento'],
+  ])('AC22: closes the dialog and shows the server detail of a %s', async (status, detail) => {
+    mockedReset.mockRejectedValue(httpError(status, detail));
+    await fireEvent.press(within(await openDialog()).getByRole('button', { name: 'Cancelar assinatura' }));
+
+    expect(await screen.findByText(detail)).toBeTruthy();
+    expect(screen.queryByTestId('settings-dev-dialog')).toBeNull();
+  });
+
+  it('AC22: shows the generic line for any other error', async () => {
+    mockedReset.mockRejectedValue(httpError(500, 'boom'));
+    await fireEvent.press(within(await openDialog()).getByRole('button', { name: 'Cancelar assinatura' }));
+
+    expect(await screen.findByText('Não foi possível cancelar a assinatura. Tente de novo.')).toBeTruthy();
+    expect(screen.queryByTestId('settings-dev-dialog')).toBeNull();
+  });
+
+  it('AC23: shows the Plano loading indicator, then the Plano error with "Tentar novamente"', async () => {
+    mockedSubscription.mockReturnValue(new Promise(() => undefined));
+    await openSettings('/configuracao/dev');
+    expect((await screen.findAllByLabelText('Carregando seu plano')).length).toBeGreaterThan(0);
+    appQueryClient.clear();
+
+    mockedSubscription.mockRejectedValue(new Error('offline'));
+    await openSettings('/configuracao/dev');
+    expect(await screen.findByText('Não foi possível carregar seu plano.')).toBeTruthy();
+    mockedSubscription.mockResolvedValue(premium);
+    await fireEvent.press(screen.getByRole('button', { name: 'Tentar novamente' }));
+    expect(await screen.findByRole('button', { name: 'Voltar ao plano Free' })).toBeTruthy();
   });
 });
 

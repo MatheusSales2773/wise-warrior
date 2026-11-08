@@ -24,3 +24,8 @@ export async function getSubscription({ signal }: { signal?: AbortSignal } = {})
 export async function openBillingSession(kind: 'checkout' | 'portal'): Promise<string> {
   return (await getAuthenticatedHttpClient().post<{ url: string }>(`/billing/${kind}`, {})).data.url;
 }
+
+/** `POST /billing/dev/reset-plan`: cancels the Subscription now (202); the plan turns Free when the webhook arrives. */
+export async function resetMyPlan(): Promise<void> {
+  await getAuthenticatedHttpClient().post('/billing/dev/reset-plan', {});
+}

@@ -10,7 +10,7 @@ import { logoutErrorMessage } from '@/features/auth/messages';
 import { useSignOut } from '@/features/auth/use-sign-out';
 import { SectionHeader, useFocusRing } from '@/features/character/character-parts';
 import { profileQueryOptions } from '@/features/dashboard/queries';
-import { activeSettingsSection, menuHref, settingsSection, settingsSections, type SettingsSectionId } from './sections';
+import { activeSettingsSection, menuHref, settingsSection, visibleSettingsSections, type SettingsSectionId } from './sections';
 import { usePlanLabel } from './billing';
 import { useActiveDevicesLabel } from './devices-content';
 import { useDefaultFocusLabel } from './focus-content';
@@ -135,7 +135,7 @@ function SettingsList() {
   return <ScrollView contentContainerStyle={styles.mobileScreen} testID="settings-list">
     <Text accessibilityRole="header" aria-level={1} style={styles.mobileTitle}>Configuração</Text>
     <AccountHeader />
-    {settingsSections.map((section) => <Group key={section.id} label={section.group}>
+    {visibleSettingsSections(user).map((section) => <Group key={section.id} label={section.group}>
       <LinkRow href={section.row.href ?? section.href} icon={section.row.icon} title={section.row.title} value={meta[section.id] ?? (user && section.row.value?.(user))} />
       {user && section.details?.(user).map((detail) => <View key={detail.title} style={settingsStyles.rowDivided}><InfoRow {...detail} /></View>)}
     </Group>)}
@@ -175,8 +175,9 @@ function MenuSignOut() {
 function SettingsMenu({ active }: { active: SettingsSectionId }) {
   const sectionMeta = useSectionMeta();
   const plan = usePlanLabel();
+  const profile = useQuery(profileQueryOptions());
   return <View accessibilityLabel="Seções da configuração" role="navigation" style={styles.menu}>
-    {settingsSections.map((section) => <MenuItem
+    {visibleSettingsSections(profile.data).map((section) => <MenuItem
       active={section.id === active}
       href={menuHref(section)}
       icon={section.icon}

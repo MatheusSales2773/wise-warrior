@@ -35,6 +35,7 @@ export const wiseIconNames = [
   'settings-outline',
   'settings',
   'key-outline',
+  'construct-outline',
   'mail-outline',
   'phone-portrait-outline',
   'accessibility-outline',
