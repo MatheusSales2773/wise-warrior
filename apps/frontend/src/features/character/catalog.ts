@@ -46,6 +46,7 @@ const spriteByName: Record<string, ItemSpriteName> = {
   'Lanterna do Vigia': 'lanternaDoVigia',
   'Arquimago dos Prazos': 'arquimagoDosPrazos',
   'Manto Estelar': 'mantoEstelar',
+  'Manto do Arquimago': 'mantoDoArquimago',
   'Pluma de Grifo': 'plumaDeGrifo',
   'Sino da Torre': 'sinoDaTorre',
   'Chave da Torre': 'chaveDaTorre',
