@@ -26,6 +26,12 @@ Seen once or not yet corroborated. Tracked, not trusted.
 - evidence: C11 character-catalog.test.tsx (frontend)
 - last seen: 2026-11-08T14:37:25Z
 
+### L-003 - In an order test, give the rows a second key (slug, id) that sorts against the one the claim orders by
+- signal: `weak_test` · recurrence: 1 feature(s) · scope: `billing` · harmful: 0
+- features: assinatura-premium-s6
+- evidence: C2 billing-packs-http.integration.test.ts (billing)
+- last seen: 2026-11-08T17:17:38Z
+
 ## Quarantined (failed when applied - ignore)
 
 A confirmed lesson that recurred alongside failure. Kept for the maintainer to review.
