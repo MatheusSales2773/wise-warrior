@@ -333,6 +333,18 @@ export class UsersService {
   }
 
   /**
+   * Concede ao Inventário os itens do Pacote (Condição `pack:<slug>`), na transação de quem chama, desequipados e sem
+   * duplicar o que o usuário já tem. Devolve os ids dos itens do Pacote.
+   */
+  async grantPackItems(manager: EntityManager, userId: string, slug: string): Promise<string[]> {
+    const ids = (await this.readCatalog(manager.getRepository(CosmeticItem)))
+      .filter(({ condition }) => condition.type === 'pack' && condition.slug === slug)
+      .map(({ item }) => item.id);
+    if (ids.length > 0) await this.grantToInventory(manager, ids.map((cosmeticItemId) => ({ userId, cosmeticItemId })));
+    return ids;
+  }
+
+  /**
    * Os Marcos do usuário (`MILESTONE_BADGE_IDS`, na ordem de Crônicas) com o progresso até a Condição de
    * desbloqueio, segundo as `counts` de Study Sessions.
    */

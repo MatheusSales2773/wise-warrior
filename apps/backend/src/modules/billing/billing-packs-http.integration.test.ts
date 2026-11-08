@@ -75,7 +75,7 @@ function harness(billing: boolean) {
         subscriptions: { retrieve: unreachable },
         customers: { create: unreachable },
         billingPortal: { sessions: { create: unreachable } },
-        checkout: { sessions: { create: unreachable } },
+        checkout: { sessions: { create: unreachable, retrieve: unreachable } },
       };
       builder = builder.overrideProvider(STRIPE_API).useValue(fake);
     }

@@ -154,7 +154,7 @@ describe('Stripe webhook against MySQL', () => {
       webhooks: signer.webhooks,
       subscriptions: { retrieve },
       customers: { create: jest.fn() },
-      checkout: { sessions: { create: jest.fn() } },
+      checkout: { sessions: { create: jest.fn(), retrieve: jest.fn() } },
       billingPortal: { sessions: { create: jest.fn() } },
     };
     const config = { get: (key: string) => (key === 'STRIPE_WEBHOOK_SECRET' ? WEBHOOK_SECRET : undefined) } as ConfigService;

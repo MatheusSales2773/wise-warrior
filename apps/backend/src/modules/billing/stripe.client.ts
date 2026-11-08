@@ -28,6 +28,7 @@ export interface StripeApi {
   checkout: {
     sessions: {
       create(params: Stripe.Checkout.SessionCreateParams): Promise<Stripe.Checkout.Session>;
+      retrieve(id: string): Promise<Stripe.Checkout.Session>;
     };
   };
 }
