@@ -190,17 +190,6 @@ export const avatarLayers: Readonly<Record<string, PixelSpriteData>> = {
       rows[17] = '..abbbbiibbbba..';
     },
   ),
-  /**
-   * Item premium ✦ of the Assinatura (#354): a deep-violet robe with a gold trim and a flat crown. Recoloured from the
-   * Vigília robe until the Figma art is approved (plan, fallback); swapping it changes this entry only.
-   */
-  'Manto do Arquimago': robeLayer(
-    { cloth: ['#0a0a12', '#3b2a7a', '#6a50c8', '#241a52'], trim: ['#f0c97a', '#fff0b8', '#a67c1f', '#f3ead4'] },
-    (rows) => {
-      rows[0] = '.....aaaaaa.....';
-      for (const y of [13, 14, 15, 16]) rows[y] = rows[y]!.replace(/[jk]/g, (key) => (key === 'j' ? 'b' : 'c'));
-    },
-  ),
   /** The green robe of the Figma sprites page, worn by the traveler. */
   'Túnica do Viajante': avatarLayerFrom(druida),
   'Manto Estelar': avatarLayerFrom(heroSprites.arcanista),
@@ -346,11 +335,7 @@ export const itemSprites = {
     palette: ['#3a2a10', '#f0c97a', '#b8863a', '#fff6dc'],
     rows: ['..aaaa..', '.abbbca.', 'abbdbbca', 'abdbbbca', 'abbbbbca', 'abbbbcca', '.acccca.', '..aaaa..'],
   },
-  /** The three Itens premium ✦ of the Assinatura (#354), recoloured from existing art until the Figma sprites are approved. */
-  mantoDoArquimago: {
-    palette: ['#0a0a12', '#3b2a7a', '#f0c97a', '#6a50c8'],
-    rows: ['..aaaa..', '.abccba.', 'abbbbbba', 'abdbbdba', 'abdbbdba', 'abdbbdba', 'addbbdda', 'aaaaaaaa'],
-  },
+  /** The Cajado Astral and Lenda do Foco (#354), recoloured from existing art until the Figma sprites are approved. */
   cajadoAstral: {
     palette: ['#0a0a12', '#5b3fa0', '#f0c97a', '#fff6dc'],
     rows: ['.a.aa.a.', '..acda..', '...aa...', '...bb...', '...bb...', '...bb...', '...bb...', '...aa...'],

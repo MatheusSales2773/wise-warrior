@@ -37,7 +37,6 @@ const spriteByName: Record<string, ItemSpriteName> = {
   Aprendiz: 'estudanteCrepuscular',
   'Estudante Crepuscular': 'estudanteCrepuscular',
   'Mestre da Aurora': 'mestreDaAurora',
-  'Manto do Arquimago': 'mantoDoArquimago',
   'Cajado Astral': 'cajadoAstral',
   'Lenda do Foco': 'lendaDoFoco',
   'Selo dos Madrugadores': 'seloDosMadrugadores',
