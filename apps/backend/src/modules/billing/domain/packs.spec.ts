@@ -4,12 +4,13 @@ describe('visiblePacks', () => {
   const pack = (id: string, name: string, forSale: boolean) => ({ id, name, forSale });
 
   it('lists the Pacotes for sale ordered by name, each with owned false when the user paid none', () => {
-    const packs = [pack('z', 'Pacote Zeta', true), pack('d', 'Pacote do Dragão', true), pack('a', 'Pacote Alfa', true)];
+    // The ids sort the other way round, so ordering by id instead of name fails here.
+    const packs = [pack('a', 'Pacote Zeta', true), pack('d', 'Pacote do Dragão', true), pack('z', 'Pacote Alfa', true)];
 
     expect(visiblePacks(packs, new Set())).toEqual([
-      { id: 'a', name: 'Pacote Alfa', forSale: true, owned: false },
+      { id: 'z', name: 'Pacote Alfa', forSale: true, owned: false },
       { id: 'd', name: 'Pacote do Dragão', forSale: true, owned: false },
-      { id: 'z', name: 'Pacote Zeta', forSale: true, owned: false },
+      { id: 'a', name: 'Pacote Zeta', forSale: true, owned: false },
     ]);
   });
 

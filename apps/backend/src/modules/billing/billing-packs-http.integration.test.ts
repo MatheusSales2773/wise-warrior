@@ -159,11 +159,12 @@ describe('GET /billing/packs with billing configured, over HTTP against MySQL', 
     const buyer = await api.newAccount();
     await api.query(
       `INSERT INTO packs (id, slug, name, description, price_cents, currency, for_sale) VALUES
-        ('pack-zeta', 'zeta', 'Pacote Zeta', 'Z', 990, 'brl', 1),
-        ('pack-alfa', 'alfa', 'Pacote Alfa', 'A', 190, 'brl', 1)`,
+        ('pack-zeta', 'aa-zeta', 'Pacote Zeta', 'Z', 990, 'brl', 1),
+        ('pack-alfa', 'zz-alfa', 'Pacote Alfa', 'A', 190, 'brl', 1)`,
     );
     try {
-      expect((await api.packs(buyer)).packs.map((pack) => pack.slug)).toEqual(['alfa', 'dragao', 'zeta']);
+      // The slugs sort the other way round, so ordering by slug instead of name fails here.
+      expect((await api.packs(buyer)).packs.map((pack) => pack.name)).toEqual(['Pacote Alfa', 'Pacote do Dragão', 'Pacote Zeta']);
     } finally {
       await api.query("DELETE FROM packs WHERE id IN ('pack-zeta', 'pack-alfa')");
     }
