@@ -8,7 +8,7 @@ import Stripe from 'stripe';
 import { DataSource } from 'typeorm';
 import { APP_CREATE_OPTIONS } from '../../app.setup';
 import { HttpExceptionFilter } from '../../shared/filters/http-exception.filter';
-import { APPLICATION_MIGRATIONS, createIntegrationDatabase, type IntegrationDatabase } from '../../test/integration-database';
+import { APPLICATION_MIGRATIONS, createMigratedIntegrationDatabase, type IntegrationDatabase } from '../../test/integration-database';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
 import type { ProgressionService } from '../progression/progression.service';
 import { CosmeticItem } from '../users/entities/cosmetic-item.entity';
@@ -135,7 +135,7 @@ describe('Stripe webhook against MySQL', () => {
     emitted.length = 0;
     realtime.emitToUser.mockClear();
     retrieve.mockReset();
-    database = await createIntegrationDatabase('wise_billing_webhook');
+    database = await createMigratedIntegrationDatabase('wise_billing_webhook');
     dataSource = new DataSource(database.options(APPLICATION_MIGRATIONS));
     await dataSource.initialize();
     await dataSource.runMigrations();
