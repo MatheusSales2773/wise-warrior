@@ -320,6 +320,8 @@ Quem lê a documentação encontra a cobrança como ela está no código.
 | Entra na demo de sexta | Sim, depois da Assinatura; sai da demo se a Assinatura não fechar até 11/11 | user: "Aprovado" | y |
 | Textos e espera das telas Plano e Pacotes | Textos de S5 e S8, espera de 30 s, sem deep link, Prévia dos 3 itens, `?secao=pacotes` | Escolhido pelo usuário ("Aceito todos") | y |
 | Ordem dos Pacotes em `GET /billing/packs` | Por `name` | Só existe um Pacote; qualquer ordem estável serve | n |
+| Descrição do Pacote do Dragão (`packs.description`) | "Elmo, presa e amuleto forjados no fogo de um dragão. Ficam com você para sempre, em qualquer plano." | user, ao implementar S6 (#360): escolheu a opção recomendada | y |
+| Item de Pacote sem posse na gaveta de equipamento | Mesma legenda "Do Pacote do Dragão", bloqueado; ordena e se descreve com os itens À venda ("comprados na Loja") | user, ao implementar S6 (#360): "Mesmo rótulo" | y |
 | Stripe nos testes | Os testes de integração trocam o cliente Stripe por um falso, e o webhook é assinado com um segredo de teste. Nenhum teste chama a rede | CI e e2e não podem depender do Stripe (ADR-015) | n |
 | Larguras de tela | As mesmas da Configuração e da Loja (sidebar no desktop, navegação inferior no celular) | Sem captura; segue o design system (ADR-008) | n |
 

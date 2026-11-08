@@ -1,154 +1,108 @@
-# Assinatura premium - S2 checks (Webhook sincroniza a Assinatura e o plano)
+# Assinatura premium - S6 checks (Pacote do Dragão listado)
 
-Build: `npm run build --workspace apps/backend`; `npm run lint --workspace apps/backend`
-Run unit: `npm test --workspace apps/backend -- src/modules/billing src/main.spec.ts src/app.module.spec.ts --verbose`
-Run webhook: `npm run test:integration --workspace apps/backend -- --testPathPattern billing-webhook --verbose`
+Build: `npm run build --workspace apps/backend`; `npm run lint --workspace apps/backend`; `npm run typecheck --workspace apps/frontend`; `npm run lint --workspace apps/frontend`; `npm run lint:openapi`
+Run unit: `npm test --workspace apps/backend -- src/modules/billing/domain src/modules/users/domain --verbose`
+Run packs: `npm run test:integration --workspace apps/backend -- --testPathPattern billing-packs-http --verbose`
+Run catalog: `npm run test:integration --workspace apps/backend -- --testPathPattern cosmetics-http --verbose`
 Run migration: `npm run test:integration --workspace apps/backend -- --testPathPattern migration.integration --verbose`
+Run frontend: `npm test --workspace apps/frontend -- __tests__/character-catalog.test.tsx --verbose`
 Plan: `.specs/features/assinatura-premium/plan.md`
 
-Issue #355 (`S2`). This file covers only S2; S1, S3-S9 are other issues and get their own checks. S2 creates the
-shared foundations the plan lists as doors 1, 4 and 5 (the `subscriptions` table, `stripe@23.1.0`, `rawBody`) because
-the webhook cannot exist without them. Tests run against a MySQL 8.0 (`TEST_DB_*`), never against Stripe.
+Issue #360 (`S6`). This file covers only S6; S1 and S2 were closed in their own runs and S3-S5, S7-S9 are other
+issues. S6 creates door 2 (`packs`, `pack_payments`) and the Pacote half of door 3 (`pack:<slug>` and the seed of the
+Pacote do Dragão with its 3 items). S7 writes `pack_payments`; here the tests insert a Pagamento directly. Tests run
+against a MySQL 8.0 (`TEST_DB_*`) with a fake Stripe client, never against Stripe.
 
-7 checks groups below · 3 one-way doors touched (1, 4, 5) · 0 open questions
+14 checks below · 2 one-way doors touched (2, 3) · 0 open questions
 
 ## Checks
 
-### S2 - Webhook sincroniza a Assinatura e o plano
+### S6 - Pacote do Dragão listado
 
-**C1** - `POST /billing/webhook` without `Stripe-Signature` answers `400` and neither reads Stripe nor writes `subscriptions`, `plan_tier` or events (S2.1)
-Proof: run webhook | ✓ answers 400 and touches nothing when the Stripe-Signature header is missing
+**C1** - With billing available, `GET /billing/packs` answers `200` with `available: true` and the Pacote do Dragão: `slug` `dragao`, `name` "Pacote do Dragão", the settled `description`, `priceCents: 490`, `currency: "brl"`, the 3 items `{ id, name, category }` (Elmo de Escamas avatar, Presa do Dragão weapon, Amuleto de Brasa accessory) and `owned: false` for a user who paid nothing (S6.1)
+Proof: run packs | ✓ lists the Pacote do Dragão for sale with its price, its 3 items and owned false
 
-**C2** - A signature made with another secret answers `400` and touches nothing (S2.1)
-Proof: run webhook | ✓ answers 400 and touches nothing when the signature was made with another secret
+**C2** - The Pacotes for sale come ordered by `name`: "Pacote Alfa", "Pacote do Dragão", "Pacote Zeta" (S6.1)
+Proof: run unit | ✓ lists the Pacotes for sale ordered by name, each with owned false when the user paid none
+Proof: run packs | ✓ orders the Pacotes for sale by name
 
-**C3** - A body changed after it was signed answers `400` (S2.1)
-Proof: run webhook | ✓ answers 400 when the body was changed after it was signed
+**C3** - `owned` is per user: `true` for the user with a Pagamento of the Pacote, `false` for another user (S6.1)
+Proof: run unit | ✓ marks owned only the Pacote the user paid
+Proof: run packs | ✓ marks owned only for the user who paid the Pacote
 
-**C4** - A verified event outside the 6 handled types answers `200` and writes nothing: `customer.subscription.trial_will_end`, `invoice.created`, `payment_intent.succeeded` (S2.2)
-Proof: run webhook | ✓ answers 200 and writes nothing for customer.subscription.trial_will_end
-Proof: run webhook | ✓ answers 200 and writes nothing for invoice.created
-Proof: run webhook | ✓ answers 200 and writes nothing for payment_intent.succeeded
-Proof: run unit | ✓ lists exactly the 6 types of S2.2
+**C4** - A Pacote with `for_sale = false` stays listed with `owned: true` for the user who paid it, and is absent for a user who did not (`packs: []`) (S6.2)
+Proof: run unit | ✓ keeps a paid Pacote that left the shelf, owned, and drops an unpaid one off the shelf
+Proof: run packs | ✓ keeps a paid Pacote listed as owned after it leaves the shelf, and hides it from who did not pay
 
-**C5** - An event whose Customer is in no `subscriptions` row answers `200`, writes nothing, never calls Stripe and logs the event id (S2.3)
-Proof: run webhook | ✓ answers 200, writes nothing and logs the event id
+**C5** - Without `STRIPE_SECRET_KEY`, `GET /billing/packs` answers `200` `{ "available": false, "packs": [] }`, even to a user who paid a Pacote (S6.3)
+Proof: run packs | ✓ answers 200 with available false and no Pacote, even to a user who paid one
 
-**C6** - The payload says `active`, the API says `canceled`: the row stores `canceled` and the plan becomes `free` (S2.4)
-Proof: run webhook | ✓ writes canceled and turns the plan free when the payload says active and the API says canceled
+**C6** - `GET /billing/packs` without a token answers `401` (Surface)
+Proof: run packs | ✓ answers 401 without a token
 
-**C7** - `current_period_end` is read from the Subscription item and `cancel_at` from the API, not from the payload (S2.4)
-Proof: run webhook | ✓ stores current_period_end from the Subscription item and cancel_at from the API
+**C7** - `pack:dragao` parses to `{ type: 'pack', slug: 'dragao' }`; `pack:`, `pack:Dragão` and `pack:a b` are malformed; a Pacote condition is never unlocked by level, by Study Sessions or as an Item inicial (S6.4)
+Proof: run unit | ✓ reads a Pacote condition with its slug
+Proof: run unit | ✓ reads the malformed condition "pack:" as no condition
+Proof: run unit | ✓ reads the malformed condition "pack:Dragão" as no condition
+Proof: run unit | ✓ never unlocks a Pacote item by level, sessions or as an Item inicial
 
-**C8** - Every handled event reaches its Subscription: the 3 `customer.subscription.*` events, `invoice.paid`, `invoice.payment_failed` and a subscription `checkout.session.completed` give a Customer and a Subscription to reread; a one-time `checkout.session.completed` (Pacote) and an invoice without Subscription give none (S2.4)
-Proof: run unit | ✓ reads the Customer and the Subscription of customer.subscription.created
-Proof: run unit | ✓ reads the Customer and the Subscription of customer.subscription.updated
-Proof: run unit | ✓ reads the Customer and the Subscription of customer.subscription.deleted
-Proof: run unit | ✓ reads the Subscription of invoice.paid from the invoice parent
-Proof: run unit | ✓ reads the Subscription of invoice.payment_failed from the invoice parent
-Proof: run unit | ✓ reads the Customer and the Subscription of a subscription Checkout Session
-Proof: run unit | ✓ has no target for a one-time payment Checkout Session (Pacote)
-Proof: run unit | ✓ has no target for an invoice that does not belong to a Subscription
-Proof: run webhook | ✓ rereads the Subscription for an invoice event and for a subscription Checkout Session
+**C8** - `GET /users/me/cosmetics` returns the 3 Pacote items with `unlockCondition` `{ "type": "pack", "slug": "dragao" }`, `requiresPremium: false`, `forSale: false`, locked for a new user and unlocked once in the Inventário; the full Catálogo of a new user and of a level-12 Character lists them locked (S6.4)
+Proof: run packs | ✓ returns the Pacote items in the Catálogo with the pack condition, locked until the Pacote is paid
+Proof: run catalog | ✓ gives a new user the three starter items, equipped, and shows the rest of the Catalog locked
+Proof: run catalog | ✓ unlocks every item up to the character level without duplicating it when the rule runs again
 
-**C9** - Each of the 8 statuses gives its plan: `active`, `trialing`, `past_due` give `premium`; `canceled`, `unpaid`, `incomplete`, `incomplete_expired`, `paused` give `free`; no Subscription and an unknown status give `free` (S2.5)
-Proof: run unit | ✓ maps the Stripe status active to premium
-Proof: run unit | ✓ maps the Stripe status trialing to premium
-Proof: run unit | ✓ maps the Stripe status past_due to premium
-Proof: run unit | ✓ maps the Stripe status canceled to free
-Proof: run unit | ✓ maps the Stripe status unpaid to free
-Proof: run unit | ✓ maps the Stripe status incomplete to free
-Proof: run unit | ✓ maps the Stripe status incomplete_expired to free
-Proof: run unit | ✓ maps the Stripe status paused to free
-Proof: run unit | ✓ gives free to a user with no Subscription
-Proof: run unit | ✓ gives free to a status Stripe adds later
-Proof: run webhook | ✓ status active leaves the plan premium
-Proof: run webhook | ✓ status trialing leaves the plan premium
-Proof: run webhook | ✓ status past_due leaves the plan premium
-Proof: run webhook | ✓ status canceled leaves the plan free
-Proof: run webhook | ✓ status unpaid leaves the plan free
-Proof: run webhook | ✓ status incomplete leaves the plan free
-Proof: run webhook | ✓ status incomplete_expired leaves the plan free
-Proof: run webhook | ✓ status paused leaves the plan free
+**C9** - The frontend captions an owned Pacote item "Do Pacote do Dragão" and lets a `free` plan wear it; a Pacote item the user does not own is captioned "Do Pacote do Dragão" too, locked (S6.4, settled mid-build)
+Proof: run frontend | ✓ captions an owned Pacote item "Do Pacote do Dragão" and lets a free plan wear it
+Proof: run frontend | ✓ captions a Pacote item the user does not own "Do Pacote do Dragão" too, locked
 
-**C10** - An `active` Subscription with `cancel_at` in the future keeps `premium`, keeps the premium item equipped and emits nothing (S2.5)
-Proof: run webhook | ✓ keeps premium for an active Subscription that ends in the future
+**C10** - A locked Pacote item orders with the items for sale (`lockedByPurchase`), ahead of the Raid items, and the category hint reads "Os itens desta categoria são comprados na Loja." (settled mid-build)
+Proof: run frontend | ✓ orders and describes a locked Pacote item with the items for sale, ahead of the Raid items
 
-**C11** - When the plan changes, `user:planChanged` `{ planTier }` goes once to the user's room, after the commit (the committed plan is already readable when it is emitted) (S2.6)
-Proof: run webhook | ✓ is emitted once, to the user, with the new plan and only after the commit
+**C11** - `GET /shop/items` lists none of the 3 Pacote items nor the 4 Itens premium, and the database refuses `for_sale = 1` on each of them (`CHK_cosmetic_items_for_sale`) (S6.5)
+Proof: run packs | ✓ keeps the Pacote items and the Itens premium out of the Loja Itens section, and refuses to put them on sale
 
-**C12** - `user:planChanged` is not emitted when the plan stays the same (`premium` to `past_due`) (S2.6)
-Proof: run webhook | ✓ is not emitted when the plan stays the same
-
-**C13** - When the plan turns `free`: "Mestre da Aurora" (Título) is replaced by "Aprendiz", a premium Arma by the Item inicial "Espada", a premium Acessório with no Item inicial leaves the category empty, a Pacote item stays equipped, and `character:equipmentChanged` goes once per affected category (3) (S2.7)
-Proof: run webhook | ✓ puts the Título back to Aprendiz, empties a category with no Item inicial, restores the Item inicial of Arma and keeps a Pacote item
-
-**C14** - With only a Pacote item equipped, nothing is unequipped and no `character:equipmentChanged` is emitted, but `user:planChanged` is (S2.7)
-Proof: run webhook | ✓ keeps the Pacote item equipped and emits no equipment change when only a Pacote item was equipped
-
-**C15** - The premium items stay in the Inventário after the plan turns `free`; only `equipped` changes (S2.7)
-Proof: run webhook | ✓ leaves the Inventário untouched: the premium items stay owned, only unequipped
-
-**C16** - The same event twice ends in the same state with one `user:planChanged` and one `character:equipmentChanged` (S2.8)
-Proof: run webhook | ✓ ends in the same state and emits user:planChanged once when the same event arrives twice
-
-**C17** - The same event 3 times at the same time emits `user:planChanged` and `character:equipmentChanged` once (S2.8)
-Proof: run webhook | ✓ emits user:planChanged once when the same event arrives twice at the same time
-
-**C18** - Events out of order end in the state the API reports, with one `user:planChanged`; a slow reread of an older event that overlaps the cancellation never leaves `premium` on top of it; a late event of an old, ended Subscription does not cancel the newer one (S2.8)
-Proof: run webhook | ✓ ends in the state the API reports whatever the order of the events
-Proof: run webhook | ✓ ends canceled when a slow reread of an older event overlaps the faster reread of the cancellation
-Proof: run webhook | ✓ does not let a late event of an old, ended Subscription cancel the one the user subscribed to afterwards
-
-**C19** - If the Stripe API fails to reread, the answer is `500` and nothing is written or emitted (S2.9)
-Proof: run webhook | ✓ answers 500 and writes nothing when the Stripe API fails to reread the Subscription
-
-**C20** - If a write fails after the plan changed, `subscriptions`, `plan_tier` and the equipment roll back together and no event is emitted (S2.10)
-Proof: run webhook | ✓ undoes subscriptions, plan_tier and the equipment together, and emits nothing, when the last write fails
-
-**C21** - The real bootstrap (`main.ts`) creates the app with `rawBody: true` (door 5)
-Proof: run unit | ✓ creates the application with rawBody enabled
-
-**C22** - The `subscriptions` migration allows one row per user, per Customer and per Subscription (several rows may have no Subscription yet), deletes the row with the user, and reverts by dropping the table; the "applies every migration in order and reverts them all" test keeps the whole chain applying and reverting (door 1)
-Proof: run migration | ✓ creates subscriptions with one row per user, Customer and Subscription, deletes it with the user, and drops it on revert
+**C12** - The migration creates `packs` (slug unique, `price_cents > 0`) and `pack_payments` (one per user and Pacote, one per Checkout session, deleted with the user), seeds the Pacote do Dragão at 490 `brl` for sale and its 3 items with `pack:dragao`, not premium, not for sale; reverting drops both tables and the 3 items; the whole chain still applies and reverts (doors 2, 3)
+Proof: run migration | ✓ creates packs and pack_payments with the Pacote do Dragão and its 3 items, one Pagamento per user, Pacote and session, and drops them on revert
 Proof: run migration | ✓ applies every migration in order and reverts them all down to an empty schema
 
-**C23** - Adding `BillingModule` to `AppModule` leaves the module graph resolvable (ADR-001)
-Proof: run unit | ✓ has no undefined module in the import graph
+**C13** - The 3 Pacote items are drawn with their own sprites, recoloured from existing art (fallback of the plan): each differs from its category default in the drawer, and on the Herói each layer differs from the empty slot and from the art it was recoloured from (Armadura do Lobo, Espada, Selo dos Madrugadores)
+Proof: run frontend | ✓ draws each Pacote item with its own recoloured sprite, not the category default
+Proof: run frontend | ✓ draws the Elmo, the Presa and the Amuleto on the Herói, each different from the slot without it and from its source art
+
+**C14** - Adding `Pack` and `PackPayment` to `BillingModule`'s `TypeOrmModule.forFeature` leaves the real `AppModule` bootable (ADR-001)
 Proof: npm run test:auth:integration --workspace apps/backend
 
 ## Coverage
 
-The other 5 routes of the plan's Surface (`/api/v1/billing/subscription`, `checkout`, `portal`, `packs`, `packs/:slug/checkout`) belong to S3-S7, which are other issues.
+The other routes of the plan's Surface belong to other slices: `/api/v1/billing/webhook` (S2), `/api/v1/billing/subscription` (S5), `/api/v1/billing/checkout` (S3), `/api/v1/billing/portal` (S4) and `/api/v1/billing/packs/:slug/checkout` (S7). Door 6 (contracts) is S9; S6 adds only what it changes:
+`GET /billing/packs` and the `pack` `UnlockCondition` in `docs/api/openapi.yaml` (checked by `npm run lint:openapi` in Build).
 
 | Set (size) | Member -> proof | Unproven |
 | --- | --- | --- |
-| `POST /api/v1/billing/webhook` statuses (3) | 200 C4 · 400 C1 · 500 C19 | - |
-| Stripe statuses -> plan (10: 8 statuses, no Subscription, an unknown status) | `active` C9 · `trialing` C9 · `past_due` C9 · `canceled` C9 · `unpaid` C9 · `incomplete` C9 · `incomplete_expired` C9 · `paused` C9 · none C9 · unknown C9 | - |
-| handled event types (6) | `checkout.session.completed` C8 · `customer.subscription.created` C8 · `customer.subscription.updated` C8 · `customer.subscription.deleted` C8 · `invoice.paid` C8 · `invoice.payment_failed` C8 | - |
-| events outside the list (3 examples) | `customer.subscription.trial_will_end` C4 · `invoice.created` C4 · `payment_intent.succeeded` C4 | - |
-| signature failures (3) | missing C1 · other secret C2 · changed body C3 | - |
-| S2.7 equipment cases (4) | Título C13 · Arma with Item inicial C13 · Acessório without Item inicial C13 · Pacote item C13 and C14 | - |
-| startup config: raw request body (2 assemblies) | `main.ts` C21 · test harness (`APP_CREATE_OPTIONS`, shared with `main.ts`) C1 | - |
-| `user:planChanged` cases (3) | changes once C11 · same plan C12 · duplicate/concurrent C16 and C17 | - |
-| doors touched (3) | 1 `subscriptions` C22 · 4 `stripe` client (`apiVersion` fixed in `BillingModule`, SDK pinned `23.1.0`) C23 · 5 `rawBody` C21 | - |
+| `GET /api/v1/billing/packs` statuses (2) | 200 C1 C5 · 401 C6 | - |
+| Pacote fields (7) | `slug` C1 · `name` C1 · `description` C1 · `priceCents` C1 · `currency` C1 · `items` C1 · `owned` C1 C3 C4 | - |
+| design doc Pack states (6) | for sale, not owned C1 · paid C3 · off sale, paid C4 · off sale, not paid C4 · billing off C5 · item of Pacote on sale refused C11 | - |
+| Pacote items (3) | Elmo de Escamas C1 C8 C12 C13 · Presa do Dragão C1 C8 C12 C13 · Amuleto de Brasa C1 C8 C12 C13 | - |
+| items kept out of the Loja Itens section (7) | Elmo de Escamas C11 · Presa do Dragão C11 · Amuleto de Brasa C11 · Manto do Arquimago C11 · Cajado Astral C11 · Lenda do Foco C11 · Mestre da Aurora C11 | - |
+| frontend Pacote item states (2) | owned C9 · not owned C9 C10 | - |
+| doors touched (2) | 2 `packs`/`pack_payments` C12 · 3 `pack:<slug>` and the Pacote seed C7 C12 | - |
 
 ## Swept
 
-- validation: C1, C2, C3 (signature on the raw body); C5 (unknown Customer)
-- failure modes: C19, C20
-- idempotency: C16, C17, C18
-- authorization: C1-C3 - the route is public and the Stripe signature is its only gate; no JWT guard on it
-- concurrency: C17
-- data lifecycle: C15 (Inventário kept), C22 (row deleted with the user)
-- dependency failure: C19
-- state transitions: C9, C10, C13, C18
-- observability: C5 (event id logged for an unknown Customer)
+- validation: C7 (malformed `pack:` conditions); C11 (for-sale CHECK at the database)
+- failure modes: C5 (billing not configured)
+- idempotency: n/a - S6 only reads; the Pagamento write is S7
+- authorization: C6; C3 (`owned` read only from the caller's own Pagamentos)
+- concurrency: n/a - no write in S6
+- data lifecycle: C4 (paid Pacote kept after it leaves the shelf), C12 (Pagamento deleted with the user)
+- dependency failure: C5; the listing never calls Stripe (the fake throws on any call in C1-C4)
+- state transitions: C4 (for sale to off sale)
+- observability: n/a - a read with no side effect
 
 ## Handoff
 
-- **Settled mid-build:** none
-- **Dispatched:** Verifier at 62e8e13 (diff 7360926..62e8e13), sent; screens sub-agent n/a (no capture)
-- **Boundary:** C1-C23 closed at 62e8e13; proofs.md green (56 pass)
+- **Settled mid-build:** `packs.description` = "Elmo, presa e amuleto forjados no fogo de um dragão. Ficam com você para sempre, em qualquer plano." (user: recommended option); a Pacote item without ownership reads "Do Pacote do Dragão", orders with the items for sale and the hint says "comprados na Loja" (user: "Mesmo rótulo"). Both recorded in the plan's Assumptions.
+- **Dispatched:** none yet
+- **Boundary:** C1-C14 written after the build started; proofs pending
 - **Abandoned:** none
-- **Walked:** n/a - no screen in S2
+- **Walked:** n/a - S6 changes no screen a capture draws; the drawer captions are proven by C9 and C10
