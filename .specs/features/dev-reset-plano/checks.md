@@ -172,7 +172,7 @@ Proof: `TEST_DB_PORT=3327 npm run test:auth:integration --workspace apps/backend
 ## Handoff
 
 - **Settled mid-build:** none
-- **Dispatched:** Verifier at `e0700e9` (screens: n/a, no capture binds)
-- **Boundary:** C1-C39 closed at `8de9d6e`
+- **Dispatched:** Verifier at `59ee923` returned; screens n/a (no capture binds)
+- **Boundary:** C1-C40 closed at `6464e05`
 - **Abandoned:** nothing
 - **Walked:** no browser walk yet; no capture binds this feature, so no picture: the section is proven by the C24-C36 tests

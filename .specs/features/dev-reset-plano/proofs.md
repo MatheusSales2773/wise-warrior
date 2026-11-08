@@ -1,9 +1,9 @@
 # dev-reset-plano proofs
 
-**HEAD**: eeac2e7
+**HEAD**: 6464e05
 **Tree**: clean
 **Shell**: /bin/sh
-**Result**: 49 pass, 0 fail
+**Result**: 50 pass, 0 fail
 
 | Check | Proof | Result |
 | --- | --- | --- |
@@ -30,6 +30,7 @@
 | C21 | `run api / ✓ is emitted once with free, after the commit, when the Subscription is deleted` | pass |
 | C22 | `run api / ✓ answers devTools true to a listed user and false to the others, on GET and PATCH` | pass |
 | C23 | `run unit / ✓ answers devTools for dev@wise.app from DEV_TOOLS_EMAILS (true)` | pass |
+| C23 | `run unit / ✓ answers devTools false when no ConfigService is provided` | pass |
 | C24 | `run app / ✓ AC13: lists Desenvolvedor last in the desktop menu, before Sair da conta, and describes it` | pass |
 | C25 | `run app / ✓ AC13: lists Desenvolvedor in its own last group of the phone list` | pass |
 | C26 | `run app / ✓ AC14: keeps Desenvolvedor out of the menu and the list when devTools is false` | pass |
@@ -62,20 +63,20 @@
 `Run unit` - exit 0
 
 ```
-PASS src/shared/dev-tools/dev-tools.spec.ts
-  isDevToolsEmail
-    ✓ DEV_TOOLS_EMAILS=" Dev@Ex.com , b@ex.com" and e-mail "dev@ex.com" is true (1 ms)
-    ✓ DEV_TOOLS_EMAILS=" Dev@Ex.com , b@ex.com" and e-mail " B@EX.com " is true
-    ✓ DEV_TOOLS_EMAILS=" Dev@Ex.com , b@ex.com" and e-mail "devx@ex.com" is false
-    ✓ DEV_TOOLS_EMAILS="" and e-mail "dev@ex.com" is false
-    ✓ DEV_TOOLS_EMAILS="," and e-mail "dev@ex.com" is false
-    ✓ DEV_TOOLS_EMAILS="," and e-mail "" is false
     ✓ DEV_TOOLS_EMAILS=undefined and e-mail "dev@ex.com" is false
 
+PASS src/modules/users/users.service.spec.ts
+  UsersService
+    ✓ derives the level boundaries from the XP projection and the Título from the equipped item (8 ms)
+    ✓ uses the zero-XP projection when the character is missing without writing (2 ms)
+    ✓ answers devTools for dev@wise.app from DEV_TOOLS_EMAILS (true) (1 ms)
+    ✓ answers devTools for hero@wise.app from DEV_TOOLS_EMAILS (false) (1 ms)
+    ✓ answers devTools false when no ConfigService is provided (2 ms)
+
 Test Suites: 2 passed, 2 total
-Tests:       11 passed, 11 total
+Tests:       12 passed, 12 total
 Snapshots:   0 total
-Time:        1.915 s
+Time:        2.201 s
 Ran all test suites matching /src\/shared\/dev-tools|src\/modules\/users\/users.service.spec.ts/i.
 ```
 
@@ -83,19 +84,19 @@ Ran all test suites matching /src\/shared\/dev-tools|src\/modules\/users\/users.
 
 ```
     retries and out-of-order delivery
-      ✓ ends in the same state and emits user:planChanged once when the same event arrives twice (883 ms)
-      ✓ emits user:planChanged once when the same event arrives twice at the same time (869 ms)
-      ✓ ends in the state the API reports whatever the order of the events (907 ms)
-      ✓ ends canceled when a slow reread of an older event overlaps the faster reread of the cancellation (2063 ms)
-      ✓ does not let a late event of an old, ended Subscription cancel the one the user subscribed to afterwards (2271 ms)
+      ✓ ends in the same state and emits user:planChanged once when the same event arrives twice (830 ms)
+      ✓ emits user:planChanged once when the same event arrives twice at the same time (817 ms)
+      ✓ ends in the state the API reports whatever the order of the events (813 ms)
+      ✓ ends canceled when a slow reread of an older event overlaps the faster reread of the cancellation (1586 ms)
+      ✓ does not let a late event of an old, ended Subscription cancel the one the user subscribed to afterwards (1097 ms)
     failures
-      ✓ answers 500 and writes nothing when the Stripe API fails to reread the Subscription (1200 ms)
-      ✓ undoes subscriptions, plan_tier and the equipment together, and emits nothing, when the last write fails (1098 ms)
+      ✓ answers 500 and writes nothing when the Stripe API fails to reread the Subscription (3143 ms)
+      ✓ undoes subscriptions, plan_tier and the equipment together, and emits nothing, when the last write fails (2927 ms)
 
 Test Suites: 3 passed, 3 total
 Tests:       62 passed, 62 total
 Snapshots:   0 total
-Time:        44.414 s, estimated 64 s
+Time:        39.982 s, estimated 45 s
 Ran all test suites matching /billing-dev-reset|rename-http|billing-webhook/i.
 ```
 
@@ -103,19 +104,19 @@ Ran all test suites matching /billing-dev-reset|rename-http|billing-webhook/i.
 
 ```
     on phones
-      ✓ shows the current name and the 2–60 rule, with Salvar off until the name changes (30 ms)
-      ✓ keeps Salvar off for the invalid name "" (27 ms)
-      ✓ keeps Salvar off for the invalid name "A" (28 ms)
-      ✓ keeps Salvar off for the invalid name "   " (26 ms)
-      ✓ keeps Salvar off for the invalid name "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" (26 ms)
-      ✓ saves the trimmed name, confirms it and updates the cached profile (30 ms)
+      ✓ shows the current name and the 2–60 rule, with Salvar off until the name changes (43 ms)
+      ✓ keeps Salvar off for the invalid name "" (42 ms)
+      ✓ keeps Salvar off for the invalid name "A" (42 ms)
+      ✓ keeps Salvar off for the invalid name "   " (42 ms)
+      ✓ keeps Salvar off for the invalid name "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" (41 ms)
+      ✓ saves the trimmed name, confirms it and updates the cached profile (38 ms)
       ✓ says so when there is no connection and keeps the typed name to try again (28 ms)
-      ✓ shows a generic failure for a server error (27 ms)
+      ✓ shows a generic failure for a server error (25 ms)
 
 Test Suites: 1 passed, 1 total
 Tests:       80 passed, 80 total
 Snapshots:   0 total
-Time:        3.34 s
+Time:        5.891 s
 Ran all test suites matching /__tests__\/settings-screen.test.tsx/i.
 ```
 
@@ -145,7 +146,7 @@ Ran all test suites matching /__tests__\/settings-screen.test.tsx/i.
     ╚═══════════════════════════════════════════════════════╝
 
 validating docs/api/openapi.yaml...
-docs/api/openapi.yaml: validated in 55ms
+docs/api/openapi.yaml: validated in 48ms
 
 Woohoo! Your API description is valid. 🎉
 You have 1 warning.
@@ -157,13 +158,13 @@ You have 1 warning.
 > @wise/backend@0.1.0 test:auth:integration
 > jest --runInBand --testRegex '.*auth.integration.test.ts$'
 
-PASS src/modules/auth/auth.integration.test.ts (11.154 s)
+PASS src/modules/auth/auth.integration.test.ts (13.413 s)
 <claude-code-hint v="1" type="plugin" value="stripe@claude-plugins-official" />
-PASS src/modules/auth/universal-auth.integration.test.ts
+PASS src/modules/auth/universal-auth.integration.test.ts (8.171 s)
 
 Test Suites: 2 passed, 2 total
 Tests:       14 passed, 14 total
 Snapshots:   0 total
-Time:        15.929 s, estimated 23 s
+Time:        21.711 s
 Ran all test suites.
 ```
