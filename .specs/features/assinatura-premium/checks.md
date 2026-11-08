@@ -102,7 +102,7 @@ The other routes of the plan's Surface belong to other slices: `/api/v1/billing/
 ## Handoff
 
 - **Settled mid-build:** `packs.description` = "Elmo, presa e amuleto forjados no fogo de um dragão. Ficam com você para sempre, em qualquer plano." (user: recommended option); a Pacote item without ownership reads "Do Pacote do Dragão", orders with the items for sale and the hint says "comprados na Loja" (user: "Mesmo rótulo"). Both recorded in the plan's Assumptions.
-- **Dispatched:** none yet
+- **Dispatched:** Verifier at dd29d75 (diff 78c19f6..dd29d75), sent; screens sub-agent n/a (no capture)
 - **Boundary:** C1-C14 written after the build started; proofs pending
 - **Abandoned:** none
 - **Walked:** n/a - S6 changes no screen a capture draws; the drawer captions are proven by C9 and C10

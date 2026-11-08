@@ -1,129 +1,142 @@
 # assinatura-premium proofs
 
-**HEAD**: 9bfba48
+**HEAD**: dd29d75
 **Tree**: clean
 **Shell**: /bin/sh
-**Result**: 57 pass, 0 fail
+**Result**: 30 pass, 0 fail
 
 | Check | Proof | Result |
 | --- | --- | --- |
-| C1 | `run webhook / ✓ answers 400 and touches nothing when the Stripe-Signature header is missing` | pass |
-| C2 | `run webhook / ✓ answers 400 and touches nothing when the signature was made with another secret` | pass |
-| C3 | `run webhook / ✓ answers 400 when the body was changed after it was signed` | pass |
-| C4 | `run webhook / ✓ answers 200 and writes nothing for customer.subscription.trial_will_end` | pass |
-| C4 | `run webhook / ✓ answers 200 and writes nothing for invoice.created` | pass |
-| C4 | `run webhook / ✓ answers 200 and writes nothing for payment_intent.succeeded` | pass |
-| C4 | `run unit / ✓ lists exactly the 6 types of S2.2` | pass |
-| C5 | `run webhook / ✓ answers 200, writes nothing and logs the event id` | pass |
-| C6 | `run webhook / ✓ writes canceled and turns the plan free when the payload says active and the API says canceled` | pass |
-| C7 | `run webhook / ✓ stores current_period_end from the Subscription item and cancel_at from the API` | pass |
-| C8 | `run unit / ✓ reads the Customer and the Subscription of customer.subscription.created` | pass |
-| C8 | `run unit / ✓ reads the Customer and the Subscription of customer.subscription.updated` | pass |
-| C8 | `run unit / ✓ reads the Customer and the Subscription of customer.subscription.deleted` | pass |
-| C8 | `run unit / ✓ reads the Subscription of invoice.paid from the invoice parent` | pass |
-| C8 | `run unit / ✓ reads the Subscription of invoice.payment_failed from the invoice parent` | pass |
-| C8 | `run unit / ✓ reads the Customer and the Subscription of a subscription Checkout Session` | pass |
-| C8 | `run unit / ✓ has no target for a one-time payment Checkout Session (Pacote)` | pass |
-| C8 | `run unit / ✓ has no target for an invoice that does not belong to a Subscription` | pass |
-| C8 | `run webhook / ✓ rereads the Subscription for an invoice event and for a subscription Checkout Session` | pass |
-| C9 | `run unit / ✓ maps the Stripe status active to premium` | pass |
-| C9 | `run unit / ✓ maps the Stripe status trialing to premium` | pass |
-| C9 | `run unit / ✓ maps the Stripe status past_due to premium` | pass |
-| C9 | `run unit / ✓ maps the Stripe status canceled to free` | pass |
-| C9 | `run unit / ✓ maps the Stripe status unpaid to free` | pass |
-| C9 | `run unit / ✓ maps the Stripe status incomplete to free` | pass |
-| C9 | `run unit / ✓ maps the Stripe status incomplete_expired to free` | pass |
-| C9 | `run unit / ✓ maps the Stripe status paused to free` | pass |
-| C9 | `run unit / ✓ gives free to a user with no Subscription` | pass |
-| C9 | `run unit / ✓ gives free to a status Stripe adds later` | pass |
-| C9 | `run webhook / ✓ status active leaves the plan premium` | pass |
-| C9 | `run webhook / ✓ status trialing leaves the plan premium` | pass |
-| C9 | `run webhook / ✓ status past_due leaves the plan premium` | pass |
-| C9 | `run webhook / ✓ status canceled leaves the plan free` | pass |
-| C9 | `run webhook / ✓ status unpaid leaves the plan free` | pass |
-| C9 | `run webhook / ✓ status incomplete leaves the plan free` | pass |
-| C9 | `run webhook / ✓ status incomplete_expired leaves the plan free` | pass |
-| C9 | `run webhook / ✓ status paused leaves the plan free` | pass |
-| C10 | `run webhook / ✓ keeps premium for an active Subscription that ends in the future` | pass |
-| C11 | `run webhook / ✓ is emitted once, to the user, with the new plan and only after the commit` | pass |
-| C12 | `run webhook / ✓ is not emitted when the plan stays the same` | pass |
-| C13 | `run webhook / ✓ puts the Título back to Aprendiz, empties a category with no Item inicial, restores the Item i` | pass |
-| C14 | `run webhook / ✓ keeps the Pacote item equipped and emits no equipment change when only a Pacote item was equip` | pass |
-| C15 | `run webhook / ✓ leaves the Inventário untouched: the premium items stay owned, only unequipped` | pass |
-| C16 | `run webhook / ✓ ends in the same state and emits user:planChanged once when the same event arrives twice` | pass |
-| C17 | `run webhook / ✓ emits user:planChanged once when the same event arrives twice at the same time` | pass |
-| C18 | `run webhook / ✓ ends in the state the API reports whatever the order of the events` | pass |
-| C18 | `run webhook / ✓ ends canceled when a slow reread of an older event overlaps the faster reread of the cancellat` | pass |
-| C18 | `run webhook / ✓ does not let a late event of an old, ended Subscription cancel the one the user subscribed to ` | pass |
-| C19 | `run webhook / ✓ answers 500 and writes nothing when the Stripe API fails to reread the Subscription` | pass |
-| C20 | `run webhook / ✓ undoes subscriptions, plan_tier and the equipment together, and emits nothing, when the last w` | pass |
-| C21 | `run unit / ✓ creates the application with rawBody enabled` | pass |
-| C22 | `run migration / ✓ creates subscriptions with one row per user, Customer and Subscription, deletes it with the ` | pass |
-| C22 | `run migration / ✓ applies every migration in order and reverts them all down to an empty schema` | pass |
-| C23 | `run unit / ✓ has no undefined module in the import graph` | pass |
-| C23 | `npm run test:auth:integration --workspace apps/backend` | pass |
+| C1 | `run packs / ✓ lists the Pacote do Dragão for sale with its price, its 3 items and owned false` | pass |
+| C2 | `run unit / ✓ lists the Pacotes for sale ordered by name, each with owned false when the user paid none` | pass |
+| C2 | `run packs / ✓ orders the Pacotes for sale by name` | pass |
+| C3 | `run unit / ✓ marks owned only the Pacote the user paid` | pass |
+| C3 | `run packs / ✓ marks owned only for the user who paid the Pacote` | pass |
+| C4 | `run unit / ✓ keeps a paid Pacote that left the shelf, owned, and drops an unpaid one off the shelf` | pass |
+| C4 | `run packs / ✓ keeps a paid Pacote listed as owned after it leaves the shelf, and hides it from who did not pay` | pass |
+| C5 | `run packs / ✓ answers 200 with available false and no Pacote, even to a user who paid one` | pass |
+| C6 | `run packs / ✓ answers 401 without a token` | pass |
+| C7 | `run unit / ✓ reads a Pacote condition with its slug` | pass |
+| C7 | `run unit / ✓ reads the malformed condition "pack:" as no condition` | pass |
+| C7 | `run unit / ✓ reads the malformed condition "pack:Dragão" as no condition` | pass |
+| C7 | `run unit / ✓ never unlocks a Pacote item by level, sessions or as an Item inicial` | pass |
+| C8 | `run packs / ✓ returns the Pacote items in the Catálogo with the pack condition, locked until the Pacote is pai` | pass |
+| C8 | `run catalog / ✓ gives a new user the three starter items, equipped, and shows the rest of the Catalog locked` | pass |
+| C8 | `run catalog / ✓ unlocks every item up to the character level without duplicating it when the rule runs again` | pass |
+| C9 | `run frontend / ✓ captions an owned Pacote item "Do Pacote do Dragão" and lets a free plan wear it` | pass |
+| C9 | `run frontend / ✓ captions a Pacote item the user does not own "Do Pacote do Dragão" too, locked` | pass |
+| C10 | `run frontend / ✓ orders and describes a locked Pacote item with the items for sale, ahead of the Raid items` | pass |
+| C11 | `run packs / ✓ keeps the Pacote items and the Itens premium out of the Loja Itens section, and refuses to put t` | pass |
+| C12 | `run migration / ✓ creates packs and pack_payments with the Pacote do Dragão and its 3 items, one Pagamento per` | pass |
+| C12 | `run migration / ✓ applies every migration in order and reverts them all down to an empty schema` | pass |
+| C13 | `run frontend / ✓ draws each Pacote item with its own recoloured sprite, not the category default` | pass |
+| C13 | `run frontend / ✓ draws the Elmo, the Presa and the Amuleto on the Herói, each different from the slot without ` | pass |
+| C14 | `npm run test:auth:integration --workspace apps/backend` | pass |
 | Build | `npm run build --workspace apps/backend` | pass |
 | Build | `npm run lint --workspace apps/backend` | pass |
+| Build | `npm run typecheck --workspace apps/frontend` | pass |
+| Build | `npm run lint --workspace apps/frontend` | pass |
+| Build | `npm run lint:openapi` | pass |
 
 ## Output
 
-`Run webhook` - exit 0
+`Run packs` - exit 0
 
 ```
-    retries and out-of-order delivery
-      ✓ ends in the same state and emits user:planChanged once when the same event arrives twice (1260 ms)
-      ✓ emits user:planChanged once when the same event arrives twice at the same time (1649 ms)
-      ✓ ends in the state the API reports whatever the order of the events (1991 ms)
-      ✓ ends canceled when a slow reread of an older event overlaps the faster reread of the cancellation (2098 ms)
-      ✓ does not let a late event of an old, ended Subscription cancel the one the user subscribed to afterwards (1342 ms)
-    failures
-      ✓ answers 500 and writes nothing when the Stripe API fails to reread the Subscription (1862 ms)
-      ✓ undoes subscriptions, plan_tier and the equipment together, and emits nothing, when the last write fails (1570 ms)
+    ✓ lists the Pacote do Dragão for sale with its price, its 3 items and owned false (61 ms)
+    ✓ orders the Pacotes for sale by name (42 ms)
+    ✓ marks owned only for the user who paid the Pacote (67 ms)
+    ✓ keeps a paid Pacote listed as owned after it leaves the shelf, and hides it from who did not pay (70 ms)
+    ✓ answers 401 without a token (1 ms)
+    ✓ returns the Pacote items in the Catálogo with the pack condition, locked until the Pacote is paid (36 ms)
+    ✓ keeps the Pacote items and the Itens premium out of the Loja Itens section, and refuses to put them on sale (35 ms)
+  GET /billing/packs without STRIPE_SECRET_KEY, over HTTP against MySQL
+    ✓ answers 200 with available false and no Pacote, even to a user who paid one (35 ms)
 
 Test Suites: 1 passed, 1 total
-Tests:       31 passed, 31 total
+Tests:       8 passed, 8 total
 Snapshots:   0 total
-Time:        68.129 s, estimated 167 s
-Ran all test suites matching /billing-webhook/i.
+Time:        3.698 s, estimated 22 s
+Ran all test suites matching /billing-packs-http/i.
 ```
 
 `Run unit` - exit 0
 
 ```
-<claude-code-hint v="1" type="plugin" value="stripe@claude-plugins-official" />
-<claude-code-hint v="1" type="plugin" value="stripe@claude-plugins-official" />
-PASS src/app.module.spec.ts (7.064 s)
-  AppModule wiring
-    ✓ has no undefined module in the import graph (3 ms)
+    ✓ rejects an Item premium (1 ms)
+    ✓ rejects a premium item whatever its Condição de desbloqueio, and a Pacote item
+    ✓ refuses a Pacote item for sale
+    ✓ rejects a Badge: the Badge is always earned, never À venda
+    ✓ accepts a avatar À venda
+    ✓ accepts a title À venda
+    ✓ accepts a accessory À venda
+    ✓ accepts a weapon À venda
+    ✓ puts no constraint on an item that is not À venda
 
-PASS src/main.spec.ts (7.129 s)
-  main bootstrap
-    ✓ creates the application with rawBody enabled (53 ms)
-
-Test Suites: 4 passed, 4 total
-Tests:       34 passed, 34 total
+Test Suites: 6 passed, 6 total
+Tests:       90 passed, 90 total
 Snapshots:   0 total
-Time:        7.54 s
-Ran all test suites matching /src\/modules\/billing|src\/main.spec.ts|src\/app.module.spec.ts/i.
+Time:        2.759 s, estimated 3 s
+Ran all test suites matching /src\/modules\/billing\/domain|src\/modules\/users\/domain/i.
+```
+
+`Run catalog` - exit 0
+
+```
+
+PASS src/modules/users/cosmetics-http.integration.test.ts
+  Cosmetics Catalog HTTP contract against MySQL
+    ✓ requires authentication (480 ms)
+    ✓ gives a new user the three starter items, equipped, and shows the rest of the Catalog locked (456 ms)
+    ✓ exposes forSale: true for the item on sale and false for a level item (446 ms)
+    ✓ derives the profile Título and equipment from the equipped Cosmetic Items (464 ms)
+    ✓ leaves an item with a malformed unlock condition out of the Catalog instead of failing it (431 ms)
+    ✓ unlocks every item up to the character level without duplicating it when the rule runs again (473 ms)
+
+Test Suites: 1 passed, 1 total
+Tests:       6 passed, 6 total
+Snapshots:   0 total
+Time:        3.078 s, estimated 8 s
+Ran all test suites matching /cosmetics-http/i.
+```
+
+`Run frontend` - exit 0
+
+```
+    ✓ draws the premium items with their own sprite, not the category default
+    ✓ draws the Herói layers of the premium Avatar and Arma, different from the initial ones (1 ms)
+    ✓ draws the Cajado Astral weapon layer on the Herói, apart from the Cajado layer (41 ms)
+  Pacote do Dragão items (#360)
+    ✓ captions an owned Pacote item "Do Pacote do Dragão" and lets a free plan wear it
+    ✓ captions a Pacote item the user does not own "Do Pacote do Dragão" too, locked
+    ✓ orders and describes a locked Pacote item with the items for sale, ahead of the Raid items
+    ✓ draws each Pacote item with its own recoloured sprite, not the category default (1 ms)
+    ✓ draws the Elmo, the Presa and the Amuleto on the Herói, each different from the slot without it and from its source art (105 ms)
+
+Test Suites: 1 passed, 1 total
+Tests:       84 passed, 84 total
+Snapshots:   0 total
+Time:        0.682 s, estimated 1 s
+Ran all test suites matching /__tests__\/character-catalog.test.tsx/i.
 ```
 
 `Run migration` - exit 0
 
 ```
-    ✓ dates the Meta batida, reopens the Raids of the current week and keeps one Contribution per Study Session (1414 ms)
-    ✓ keeps the rotation Missões free, lets priced Missões leave the rotation and drops them on downgrade (991 ms)
-    ✓ seeds the four Missões for sale with off-sale reward items, reverts them and reapplies (1463 ms)
-    ✓ credits 90 welcome coins once to each existing account, skips repeats and reverts cleanly (1500 ms)
-    ✓ seeds the Cosmetic Items À venda, clears the old test item, and removes only the seeded ids on revert (931 ms)
-    ✓ adds the Arma category: the Espada to every existing Character, equipped once, and the Cajado and Besta À venda (1531 ms)
-    ✓ marks existing Study Sessions as Ciclo and reverts the kind column (2006 ms)
-    ✓ moves Madrugador and Cem Sessões to session counts and keeps the Badges already in the Inventário (1987 ms)
-    ✓ creates subscriptions with one row per user, Customer and Subscription, deletes it with the user, and drops it on revert (1921 ms)
+    ✓ adds the Arma category: the Espada to every existing Character, equipped once, and the Cajado and Besta À venda (1146 ms)
+    ✓ marks existing Study Sessions as Ciclo and reverts the kind column (1154 ms)
+    ✓ moves Madrugador and Cem Sessões to session counts and keeps the Badges already in the Inventário (1092 ms)
+    ✓ creates subscriptions with one row per user, Customer and Subscription, deletes it with the user, and drops it on revert (1861 ms)
+    ✓ creates packs and pack_payments with the Pacote do Dragão and its 3 items, one Pagamento per user, Pacote and session, and drops them on revert (3577 ms)
+    Itens premium (#354)
+      ✓ seeds the three premium items unequipped for every existing Character and keeps what is equipped (1119 ms)
+      ✓ seeds the premium items idempotently and removes them on revert (1111 ms)
+      ✓ refuses to put a premium or Pacote item for sale at the database (1167 ms)
 
 Test Suites: 1 passed, 1 total
-Tests:       17 passed, 17 total
+Tests:       21 passed, 21 total
 Snapshots:   0 total
-Time:        30.265 s, estimated 40 s
+Time:        30.343 s, estimated 83 s
 Ran all test suites matching /migration.integration/i.
 ```
 
@@ -133,13 +146,13 @@ Ran all test suites matching /migration.integration/i.
 > @wise/backend@0.1.0 test:auth:integration
 > jest --runInBand --testRegex '.*auth.integration.test.ts$'
 
-PASS src/modules/auth/auth.integration.test.ts (11.485 s)
+PASS src/modules/auth/auth.integration.test.ts (7.213 s)
 <claude-code-hint v="1" type="plugin" value="stripe@claude-plugins-official" />
 PASS src/modules/auth/universal-auth.integration.test.ts
 
 Test Suites: 2 passed, 2 total
 Tests:       14 passed, 14 total
 Snapshots:   0 total
-Time:        16.374 s, estimated 17 s
+Time:        11.087 s, estimated 25 s
 Ran all test suites.
 ```
