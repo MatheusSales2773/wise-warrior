@@ -97,7 +97,7 @@ Proof: run int | ✓ lists the three premium items in the Catalog of a new Chara
 ## Handoff
 
 - **Settled mid-build:** user: "A S1 não cria os itens do Pacote do Dragão, que são da #360."
-- **Dispatched:** none yet
+- **Dispatched:** Verifier at `c518417` (fresh sub-agent), screens: n/a - no capture
 - **Boundary:** C1-C12 closed at `f29f271`
 - **Abandoned:** nothing. Condição `pack:` em `parseUnlockCondition` fica para a #360 (S6.4); `pack:dragao` já é recusado À venda por não ser `purchase`.
 - **Walked:** not walked in a browser: no capture binds this slice and the drawer is covered by C9-C11 tests. Steps for the user: run the backend with `STRIPE_SECRET_KEY` set, open Personagem > gaveta de Avatar/Arma/Título as a `free` user and check that "Manto do Arquimago", "Cajado Astral" and "Lenda do Foco" read "Plano premium" and are disabled.
