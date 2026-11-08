@@ -649,7 +649,7 @@ describe('Plano (S5, #380)', () => {
   it.each([
     ['active', premium, 'Gerenciar assinatura'],
     ['past_due', { ...premium, status: 'past_due' }, 'Atualizar cartão'],
-  ] as const)('P10: a %s premium on a 390 px phone keeps "%s" and stacks the owned items below', async (_name, view, button) => {
+  ] as const)('P10: a %s premium on a 390 px phone keeps its button and stacks the owned items below', async (_name, view, button) => {
     await setViewport('android', 390);
     mockedSubscription.mockResolvedValue(view);
     mockedProfile.mockResolvedValue({ ...premiumProfile, equipped: [{ itemId: 'a', category: 'avatar', name: 'Manto do Arquimago' }] });

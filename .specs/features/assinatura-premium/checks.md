@@ -77,8 +77,8 @@ Proof: run settings | ✓ P3: an active premium without renewsAt shows only "R$ 
 **C16** - The offer shows at most 3 Itens premium, keeps its buttons with a failed Catálogo, and the premium states keep their buttons and owned card at 390 px; the messages, the card, "Como funciona" and the offer come in that order (P2, P7, P10)
 Proof: run settings | ✓ P2: shows at most 3 Itens premium and survives a failed Catálogo
 Proof: run settings | ✓ P2: a failed Catálogo leaves the offer with its buttons and no item rows
-Proof: run settings | ✓ P10: a active premium on a 390 px phone keeps "Gerenciar assinatura" and stacks the owned items below
-Proof: run settings | ✓ P10: a past_due premium on a 390 px phone keeps "Atualizar cartão" and stacks the owned items below
+Proof: run settings | ✓ P10: a active premium on a 390 px phone keeps its button and stacks the owned items below
+Proof: run settings | ✓ P10: a past_due premium on a 390 px phone keeps its button and stacks the owned items below
 Proof: run settings | ✓ P2, P7: lays the offer beside the card and the messages above it (child order)
 
 ## Coverage
