@@ -166,7 +166,7 @@ Proof: `npm run lint:openapi && grep -q '/billing/dev/reset-plan' docs/api/opena
 ## Handoff
 
 - **Settled mid-build:** none
-- **Dispatched:** none yet
+- **Dispatched:** Verifier at `e0700e9` (screens: n/a, no capture binds)
 - **Boundary:** C1-C39 closed at `8de9d6e`
 - **Abandoned:** nothing
 - **Walked:** no browser walk yet; no capture binds this feature, so no picture: the section is proven by the C24-C36 tests

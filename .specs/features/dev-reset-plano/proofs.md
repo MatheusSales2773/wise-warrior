@@ -1,9 +1,9 @@
 # dev-reset-plano proofs
 
-**HEAD**: 8de9d6e
+**HEAD**: e0700e9
 **Tree**: clean
 **Shell**: /bin/sh
-**Result**: 45 pass, 2 fail
+**Result**: 46 pass, 0 fail
 
 | Check | Proof | Result |
 | --- | --- | --- |
@@ -26,7 +26,7 @@
 | C17 | `run api / ✓ writes nothing on a 202: the plan and the row stay as they were` | pass |
 | C18 | `run api / ✓ answers 502, logs the user id and keeps the row when Stripe fails to cancel` | pass |
 | C19 | `run api / ✓ writes canceled and turns the plan free when the payload says active and the API says canceled` | pass |
-| C20 | `run api / ✓ puts the Título back to Aprendiz, empties a category with no Item inicial, restores the Item inici` | **fail** |
+| C20 | `run api / ✓ puts the Título back to Aprendiz, empties a category with no Item inicial, restores the Item inici` | pass |
 | C21 | `run api / ✓ is emitted once, to the user, with the new plan and only after the commit` | pass |
 | C22 | `run api / ✓ answers devTools true to a listed user and false to the others, on GET and PATCH` | pass |
 | C23 | `run unit / ✓ answers devTools for dev@wise.app from DEV_TOOLS_EMAILS (true)` | pass |
@@ -49,7 +49,6 @@
 | C37 | `grep -qF 'DEV_TOOLS_EMAILS: ${DEV_TOOLS_EMAILS:-}' docker-compose.yml` | pass |
 | C38 | `grep -q '^DEV_TOOLS_EMAILS=' apps/backend/.env.example` | pass |
 | C39 | `npm run lint:openapi && grep -q '/billing/dev/reset-plan' docs/api/openapi.yaml && grep -q 'devTools' docs/api` | pass |
-| Run api | `TEST_DB_PORT=3327 npm run test:integration --workspace apps/backend -- --testPathPattern 'billing-dev-reset/re` | **fail** - exit 1 |
 | Build | `npx tsc --noEmit -p apps/backend/tsconfig.json` | pass |
 | Build | `npm run lint --workspace apps/backend` | pass |
 | Build | `npm run lint --workspace apps/frontend` | pass |
@@ -61,59 +60,59 @@
 
 ```
     ✓ DEV_TOOLS_EMAILS="," and e-mail "" is false
-    ✓ DEV_TOOLS_EMAILS=undefined and e-mail "dev@ex.com" is false
+    ✓ DEV_TOOLS_EMAILS=undefined and e-mail "dev@ex.com" is false (1 ms)
 
-PASS src/modules/users/users.service.spec.ts
+PASS src/modules/users/users.service.spec.ts (5.13 s)
   UsersService
-    ✓ derives the level boundaries from the XP projection and the Título from the equipped item (7 ms)
+    ✓ derives the level boundaries from the XP projection and the Título from the equipped item (10 ms)
     ✓ uses the zero-XP projection when the character is missing without writing (2 ms)
     ✓ answers devTools for dev@wise.app from DEV_TOOLS_EMAILS (true) (1 ms)
-    ✓ answers devTools for hero@wise.app from DEV_TOOLS_EMAILS (false) (1 ms)
+    ✓ answers devTools for hero@wise.app from DEV_TOOLS_EMAILS (false) (4 ms)
 
 Test Suites: 2 passed, 2 total
 Tests:       11 passed, 11 total
 Snapshots:   0 total
-Time:        4.098 s
+Time:        5.519 s
 Ran all test suites matching /src\/shared\/dev-tools|src\/modules\/users\/users.service.spec.ts/i.
 ```
 
-`Run api` - exit 1
+`Run api` - exit 0
 
 ```
-      ✓ answers 409 without calling Stripe to a listed user that has a canceled Subscription (4372 ms)
-      ✓ answers 502, logs the user id and keeps the row when Stripe fails to cancel (4244 ms)
+      ✓ answers 404 without calling Stripe to a user that is not listed, even with an active Subscription (3464 ms)
+      ✓ answers 404, not 503, to a user that is not listed when billing is not configured (5132 ms)
+      ✓ answers 404, not 409, to a user that is not listed and has no Subscription (2757 ms)
+      ✓ answers 401 without a token (3053 ms)
+      ✓ answers 503 to a listed user when billing is not configured (2460 ms)
+      ✓ answers 409 without calling Stripe to a listed user that has no row (2448 ms)
+      ✓ answers 409 without calling Stripe to a listed user that has a row with only the Customer (2413 ms)
+      ✓ answers 409 without calling Stripe to a listed user that has a canceled Subscription (2676 ms)
+      ✓ answers 502, logs the user id and keeps the row when Stripe fails to cancel (2626 ms)
 
-Test Suites: 1 failed, 2 passed, 3 total
-Tests:       1 failed, 60 passed, 61 total
+Test Suites: 3 passed, 3 total
+Tests:       61 passed, 61 total
 Snapshots:   0 total
-Time:        94.073 s
+Time:        53.535 s
 Ran all test suites matching /billing-dev-reset|rename-http|billing-webhook/i.
-npm error Lifecycle script `test:integration` failed with error:
-npm error code 1
-npm error path /Users/guilherme/.t3/worktrees/wise-warrior/t3-fca4a424/apps/backend
-npm error workspace @wise/backend@0.1.0
-npm error location /Users/guilherme/.t3/worktrees/wise-warrior/t3-fca4a424/apps/backend
-npm error command failed
-npm error command sh -c jest --maxWorkers=3 --globalSetup '<rootDir>/test/integration-global-setup.ts' --globalTeardown '<rootDir>/test/integration-global-teardown.ts' --testRegex '.*integration.test.ts$' --testPathPattern 'billing-dev-reset|rename-http|billing-webhook' --verbose
 ```
 
 `Run app` - exit 0
 
 ```
     on phones
-      ✓ shows the current name and the 2–60 rule, with Salvar off until the name changes (36 ms)
-      ✓ keeps Salvar off for the invalid name "" (34 ms)
-      ✓ keeps Salvar off for the invalid name "A" (34 ms)
-      ✓ keeps Salvar off for the invalid name "   " (33 ms)
-      ✓ keeps Salvar off for the invalid name "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" (34 ms)
-      ✓ saves the trimmed name, confirms it and updates the cached profile (40 ms)
-      ✓ says so when there is no connection and keeps the typed name to try again (38 ms)
-      ✓ shows a generic failure for a server error (36 ms)
+      ✓ shows the current name and the 2–60 rule, with Salvar off until the name changes (24 ms)
+      ✓ keeps Salvar off for the invalid name "" (22 ms)
+      ✓ keeps Salvar off for the invalid name "A" (22 ms)
+      ✓ keeps Salvar off for the invalid name "   " (22 ms)
+      ✓ keeps Salvar off for the invalid name "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" (21 ms)
+      ✓ saves the trimmed name, confirms it and updates the cached profile (25 ms)
+      ✓ says so when there is no connection and keeps the typed name to try again (24 ms)
+      ✓ shows a generic failure for a server error (21 ms)
 
 Test Suites: 1 passed, 1 total
 Tests:       78 passed, 78 total
 Snapshots:   0 total
-Time:        4.591 s, estimated 6 s
+Time:        4.863 s, estimated 5 s
 Ran all test suites matching /__tests__\/settings-screen.test.tsx/i.
 ```
 
@@ -143,7 +142,7 @@ Ran all test suites matching /__tests__\/settings-screen.test.tsx/i.
     ╚═══════════════════════════════════════════════════════╝
 
 validating docs/api/openapi.yaml...
-docs/api/openapi.yaml: validated in 81ms
+docs/api/openapi.yaml: validated in 48ms
 
 Woohoo! Your API description is valid. 🎉
 You have 1 warning.
