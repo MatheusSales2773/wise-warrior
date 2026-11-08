@@ -27,7 +27,7 @@
 
 | Finding | Evidence | Fix | Closed |
 | --- | --- | --- | --- |
-| C2 does not tell the name order from the slug order: a sort by `slug` added at the service or query layer leaves both proofs green | `billing-packs-http.integration.test.ts` `orders the Pacotes for sale by name`: slugs `alfa`/`dragao`/`zeta` sort exactly like `Pacote Alfa`/`Pacote do Dragão`/`Pacote Zeta`; `packs.spec.ts` ids `a`/`d`/`z` sort exactly like the names. A throwaway at HEAD with slug `aaa` named "Pacote Zeta" and slug `zzz` named "Pacote Ábaco" came back in name order, so the code is right today; the proof would not catch a regression | in the HTTP test give the extra Pacotes slugs that sort against their names (e.g. `zeta` for "Pacote Alfa", `alfa` for "Pacote Zeta") || 6bba4c4 - slugs `zz-alfa`/`aa-zeta` and ids `z`/`a` now sort against the names; C2 proves it |
+| C2 does not tell the name order from the slug order: a sort by `slug` added at the service or query layer leaves both proofs green | `billing-packs-http.integration.test.ts` `orders the Pacotes for sale by name`: slugs `alfa`/`dragao`/`zeta` sort exactly like `Pacote Alfa`/`Pacote do Dragão`/`Pacote Zeta`; `packs.spec.ts` ids `a`/`d`/`z` sort exactly like the names. A throwaway at HEAD with slug `aaa` named "Pacote Zeta" and slug `zzz` named "Pacote Ábaco" came back in name order, so the code is right today; the proof would not catch a regression | in the HTTP test give the extra Pacotes slugs that sort against their names (e.g. `zeta` for "Pacote Alfa", `alfa` for "Pacote Zeta") | 6bba4c4 - slugs `zz-alfa`/`aa-zeta` and ids `z`/`a` now sort against the names; C2 proves it |
 
 Probed with throwaway tests at HEAD, deleted afterwards (not committed):
 
