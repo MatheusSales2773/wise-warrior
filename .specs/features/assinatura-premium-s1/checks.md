@@ -57,6 +57,7 @@ Proof: run web | ✓ draws the premium items with their own sprite, not the cate
 
 **C11** - A camada de Avatar do Herói com "Manto do Arquimago" equipado é diferente da do "Capuz do Erudito", e "Cajado Astral" tem camada de Arma própria (AC S1.6)
 Proof: run web | ✓ draws the Herói layers of the premium Avatar and Arma, different from the initial ones
+Proof: run web | ✓ draws the Cajado Astral weapon layer on the Herói, apart from the Cajado layer
 
 **C12** - O Catálogo (`GET /users/me/cosmetics`) de um cadastro novo traz os 3 itens com `requiresPremium: true`, `unlocked: true` e `equipped: false` (AC S1.1, leitor)
 Proof: run int | ✓ lists the three premium items in the Catalog of a new Character as unlocked, unequipped and premium

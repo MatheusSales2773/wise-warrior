@@ -3,7 +3,7 @@ import { cosmeticSprite, equipmentCategoryById, equippedItems, optionsFor } from
 import { formatCompactXp } from '@/features/character/formatters';
 import type { CatalogCosmeticItem } from '@/features/profile/api';
 import { cosmeticItemState, describeDevice, describeNextUnlock, describeUnlockCondition } from '@/features/profile/formatters';
-import { avatarLayerFor } from '@/features/character/layered-hero';
+import { LayeredHero, avatarLayerFor } from '@/features/character/layered-hero';
 import { PixelSprite } from '@/features/character/PixelSprite';
 import { accessoryLayers, avatarLayers, heroBody, heroSprites, itemSprites, companionSprites, initialAvatarLayer, weaponLayers, type PixelSpriteData } from '@/features/character/sprites';
 
@@ -234,5 +234,16 @@ describe('premium items (#354)', () => {
     expect(weaponLayers['Cajado Astral']).toBeDefined();
     expect(weaponLayers['Cajado Astral']).not.toEqual(weaponLayers.Cajado);
     expect(weaponLayers['Cajado Astral']).not.toEqual(weaponLayers.Espada);
+  });
+
+  it('draws the Cajado Astral weapon layer on the Herói, apart from the Cajado layer', async () => {
+    const hero = (weapon: string) => <LayeredHero equipped={{ avatar: null, weapon: { name: weapon }, accessory: null }} scale={4} testID="hero" />;
+    const view = await render(hero('Cajado Astral'));
+    expect(screen.getByTestId('character-hero-layer-weapon', { includeHiddenElements: true })).toBeTruthy();
+    const astral = JSON.stringify(screen.toJSON());
+    view.unmount();
+    await render(hero('Cajado'));
+    const plain = JSON.stringify(screen.toJSON());
+    expect(astral).not.toBe(plain);
   });
 });
