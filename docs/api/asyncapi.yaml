@@ -71,6 +71,10 @@ channels:
         $ref: "#/components/messages/coinsChanged"
       studySessionChanged:
         $ref: "#/components/messages/studySessionChanged"
+      planChanged:
+        $ref: "#/components/messages/planChanged"
+      packGranted:
+        $ref: "#/components/messages/packGranted"
 operations:
   receiveRaidProgress:
     action: receive
@@ -250,6 +254,29 @@ operations:
       resposta HTTP do comando em andamento. Não há sincronização por segundo.
     messages:
       - $ref: "#/channels/userRoom/messages/studySessionChanged"
+  receivePlanChanged:
+    action: receive
+    channel:
+      $ref: "#/channels/userRoom"
+    summary: O plano do usuário mudou
+    description: >
+      Emitido para todos os dispositivos do usuário depois do commit do webhook do Stripe que mudou o `plan_tier`
+      (ADR-015), uma única vez por mudança: evento repetido ou fora de ordem que não muda o plano não emite. Quando
+      o plano vira `free`, os `character:equipmentChanged` das categorias desequipadas saem junto. O app reconsulta
+      `GET /billing/subscription` e o perfil.
+    messages:
+      - $ref: "#/channels/userRoom/messages/planChanged"
+  receivePackGranted:
+    action: receive
+    channel:
+      $ref: "#/channels/userRoom"
+    summary: Os itens de um Pacote pago entraram no Inventário
+    description: >
+      Emitido para todos os dispositivos do usuário depois do commit do Pagamento de um Pacote (ADR-015), uma
+      única vez por Pagamento: o mesmo `checkout.session.completed` repetido não emite de novo. Os itens chegam
+      desequipados. O app reconsulta `GET /billing/packs`, o perfil e o Catálogo.
+    messages:
+      - $ref: "#/channels/userRoom/messages/packGranted"
 components:
   securitySchemes:
     accessToken:
@@ -374,6 +401,18 @@ components:
       contentType: application/json
       payload:
         $ref: "#/components/schemas/StudySessionChanged"
+    planChanged:
+      name: user:planChanged
+      title: Plano alterado
+      contentType: application/json
+      payload:
+        $ref: "#/components/schemas/PlanChanged"
+    packGranted:
+      name: user:packGranted
+      title: Pacote concedido
+      contentType: application/json
+      payload:
+        $ref: "#/components/schemas/PackGranted"
   schemas:
     ChatMessage:
       type: object
@@ -548,6 +587,26 @@ components:
           type: [string, "null"]
           format: uuid
           description: Item agora equipado na categoria, ou null quando ela ficou vazia
+    PlanChanged:
+      type: object
+      required: [planTier]
+      properties:
+        planTier:
+          type: string
+          enum: [free, premium]
+          description: Plano depois da mudança
+    PackGranted:
+      type: object
+      required: [slug, cosmeticItemIds]
+      properties:
+        slug:
+          type: string
+          description: Slug do Pacote pago
+          examples: [dragao]
+        cosmeticItemIds:
+          type: array
+          items: { type: string, format: uuid }
+          description: Cosmetic Items do Pacote que entraram no Inventário
     XpUpdated:
       type: object
       required: [xpGained, xpTotal, level]
