@@ -283,6 +283,15 @@ export const weaponLayers: Readonly<Record<string, PixelSpriteData>> = {
       [10, 11, 'accca'], [11, 12, 'ada'], [12, 12, 'ada'], [13, 13, 'd'], [14, 13, 'd'],
     ]),
   },
+  /** Item premium ✦ of the Assinatura (#354): the Cajado with a violet shaft and a five-point gold crown, until the Figma art is approved. */
+  'Cajado Astral': {
+    palette: ['#0a0a12', '#5b3fa0', '#f0c97a', '#fff6dc'],
+    rows: layerAt([
+      [0, 11, 'a.a.a'], [1, 11, 'acdca'], [2, 12, 'aca'], [3, 12, 'aba'],
+      ...[4, 5, 6, 7, 8, 9, 10, 11, 12, 15, 16, 17, 18, 19, 20].map((y) => [y, 12, 'aba'] as const),
+      [13, 13, 'b'], [14, 13, 'b'], [21, 13, 'a'],
+    ]),
+  },
   Cajado: {
     palette: ['#0a0a12', '#8a5a2b', '#6fd0ff', '#e0f6ff'],
     rows: layerAt([
@@ -325,6 +334,15 @@ export const itemSprites = {
   moedaDaGuilda: {
     palette: ['#3a2a10', '#f0c97a', '#b8863a', '#fff6dc'],
     rows: ['..aaaa..', '.abbbca.', 'abbdbbca', 'abdbbbca', 'abbbbbca', 'abbbbcca', '.acccca.', '..aaaa..'],
+  },
+  /** The Cajado Astral and Lenda do Foco (#354), recoloured from existing art until the Figma sprites are approved. */
+  cajadoAstral: {
+    palette: ['#0a0a12', '#5b3fa0', '#f0c97a', '#fff6dc'],
+    rows: ['.a.aa.a.', '..acda..', '...aa...', '...bb...', '...bb...', '...bb...', '...bb...', '...aa...'],
+  },
+  lendaDoFoco: {
+    palette: ['#0a0a12', '#f0c97a', '#5b3fa0', '#fff6dc'],
+    rows: ['.aaaaaa.', 'abbbbbba', '.abccba.', '.abddba.', '.abccba.', '.abbbba.', 'abbbbbba', '.aaaaaa.'],
   },
   mestreDaAurora: {
     palette: ['#0a0a12', '#f0c97a', '#c44545'],

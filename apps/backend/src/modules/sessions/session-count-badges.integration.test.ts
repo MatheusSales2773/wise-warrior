@@ -247,7 +247,7 @@ describe('Session-count Badge unlock at the end of a Study Session', () => {
 
     expect((await completeSessionEndingAt('late', '2026-09-18T13:15:00.000Z')).status).toBe(200);
 
-    expect(await unlockedNames()).toEqual(['Aprendiz', 'Capuz do Erudito', 'Espada']);
+    expect(await unlockedNames()).toEqual(['Aprendiz', 'Cajado Astral', 'Capuz do Erudito', 'Espada', 'Lenda do Foco', 'Manto do Arquimago']);
   });
 
   it('unlocks Cem Sessões on the 100th non-discarded session, counting stopped-early ones only', async () => {

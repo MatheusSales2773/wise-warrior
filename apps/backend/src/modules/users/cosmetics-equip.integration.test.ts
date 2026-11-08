@@ -23,6 +23,7 @@ const APRENDIZ = ITEM(2);
 const CREPUSCULAR = ITEM(4);
 const MESTRE_DA_AURORA = ITEM(8);
 const SELO = ITEM(7);
+const PREMIUM_NAMES = ['Cajado Astral', 'Lenda do Foco', 'Manto do Arquimago'];
 
 describe('Equipping Cosmetic Items against MySQL', () => {
   jest.setTimeout(30_000);
@@ -32,6 +33,7 @@ describe('Equipping Cosmetic Items against MySQL', () => {
   let app: INestApplication | undefined;
   let baseUrl: string;
   let premiumForAll = 'true';
+  let stripeSecretKey: string | undefined;
 
   const free = '00000000-0000-4000-8000-000000000c01';
   const stranger = '00000000-0000-4000-8000-000000000c02';
@@ -63,13 +65,16 @@ describe('Equipping Cosmetic Items against MySQL', () => {
 
   beforeEach(async () => {
     premiumForAll = 'true';
+    stripeSecretKey = undefined;
     database = await createIntegrationDatabase('wise_cosmetics_equip');
     dataSource = new DataSource(database.options(APPLICATION_MIGRATIONS));
     await dataSource.initialize();
     await dataSource.runMigrations();
 
     realtime = { emitToUser: jest.fn() };
-    const config = { get: (key: string) => (key === 'COSMETICS_PREMIUM_FOR_ALL' ? premiumForAll : undefined) } as ConfigService;
+    const config = {
+      get: (key: string) => ({ COSMETICS_PREMIUM_FOR_ALL: premiumForAll, STRIPE_SECRET_KEY: stripeSecretKey })[key],
+    } as ConfigService;
     users = new UsersService(
       dataSource.getRepository(User),
       dataSource.getRepository(UserCosmeticItem),
@@ -173,6 +178,69 @@ describe('Equipping Cosmetic Items against MySQL', () => {
     await seedUser(free, 15, 'premium');
 
     expect((await equip(free, MESTRE_DA_AURORA)).status).toBe(204);
+  });
+
+  describe('Itens premium ✦ (#354)', () => {
+    const inventoryOf = async (userId: string) => (await dataSource!.getRepository(UserCosmeticItem).find({
+      where: { userId },
+      relations: ['cosmeticItem'],
+    })).map((row) => [row.cosmeticItem.name, row.equipped] as const);
+
+    it('gives a new Character the three premium items unequipped and equips only the non-premium starters', async () => {
+      await seedUser(free, 1);
+
+      const inventory = await inventoryOf(free);
+      for (const name of PREMIUM_NAMES) expect(inventory).toContainEqual([name, false]);
+      expect(await equippedNames(free)).toEqual(['Aprendiz', 'Capuz do Erudito', 'Espada']);
+    });
+
+    it('lists the three premium items in the Catalog of a new Character as unlocked, unequipped and premium', async () => {
+      await seedUser(free, 1);
+
+      const response = await fetch(`${baseUrl}/api/v1/users/me/cosmetics`, {
+        headers: { authorization: 'Bearer integration-token', 'x-test-user-id': free },
+      });
+
+      expect(response.status).toBe(200);
+      const catalog = await response.json() as Array<{ name: string; requiresPremium: boolean; unlocked: boolean; equipped: boolean }>;
+      expect(catalog.filter((item) => PREMIUM_NAMES.includes(item.name))
+        .map(({ name, requiresPremium, unlocked, equipped }) => ({ name, requiresPremium, unlocked, equipped }))
+        .sort((left, right) => left.name.localeCompare(right.name)))
+        .toEqual(PREMIUM_NAMES.map((name) => ({ name, requiresPremium: true, unlocked: true, equipped: false })));
+    });
+
+    it('answers 403 to a free user on a premium item when billing is configured, even with the policy flag true', async () => {
+      stripeSecretKey = 'sk_test_configured';
+      premiumForAll = 'true';
+      await seedUser(free, 1);
+      const manto = (await dataSource!.getRepository(CosmeticItem).findOneByOrFail({ name: 'Manto do Arquimago' })).id;
+
+      const response = await equip(free, manto);
+
+      expect(response.status).toBe(403);
+      expect(await response.json()).toMatchObject({ detail: 'Item exclusivo do plano premium' });
+      expect(await equippedNames(free)).toEqual(['Aprendiz', 'Capuz do Erudito', 'Espada']);
+    });
+
+    it('lets a premium user equip a premium item when billing is configured', async () => {
+      stripeSecretKey = 'sk_test_configured';
+      await seedUser(free, 1, 'premium');
+      const manto = (await dataSource!.getRepository(CosmeticItem).findOneByOrFail({ name: 'Manto do Arquimago' })).id;
+
+      expect((await equip(free, manto)).status).toBe(204);
+
+      expect(await equippedNames(free)).toEqual(['Aprendiz', 'Espada', 'Manto do Arquimago']);
+    });
+
+    it('lets a free user equip a premium item while the MVP policy releases it to everyone with no billing configured', async () => {
+      stripeSecretKey = '';
+      await seedUser(free, 1);
+      const lenda = (await dataSource!.getRepository(CosmeticItem).findOneByOrFail({ name: 'Lenda do Foco' })).id;
+
+      expect((await equip(free, lenda)).status).toBe(204);
+
+      expect(await equippedNames(free)).toEqual(['Capuz do Erudito', 'Espada', 'Lenda do Foco']);
+    });
   });
 
   it('unequips any category, including Avatar, Título and Arma, and is idempotent', async () => {
