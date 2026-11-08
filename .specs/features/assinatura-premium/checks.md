@@ -1,135 +1,117 @@
-# Assinatura premium - S8 checks (Seção Pacotes na Loja)
+# Assinatura premium - S10 checks (Redesenho da tela Plano)
 
-Build: `npm run typecheck --workspace apps/frontend`; `npm run lint --workspace apps/frontend`
-Run packs: `npm test --workspace apps/frontend -- __tests__/market-packs.test.tsx --verbose`
-Run market: `npm test --workspace apps/frontend -- __tests__/market-screen.test.tsx --verbose`
-Run realtime: `npm test --workspace apps/frontend -- __tests__/realtime-client.test.ts --verbose`
+Build: `npm run typecheck --workspace apps/frontend`; `cd apps/frontend && npx eslint src/features/settings __tests__/settings-screen.test.tsx`
+Run settings: `npm test --workspace apps/frontend -- __tests__/settings-screen.test.tsx --verbose`
 Run billing: `npm test --workspace apps/frontend -- __tests__/billing.test.ts --verbose`
 Plan: `.specs/features/assinatura-premium/plan.md`
 
-Issue #362 (`S8`). Replaces the S7 checks (closed in #361). S8 is frontend only: it reads `GET /billing/packs` and calls
-`POST /billing/packs/:slug/checkout` (S6 and S7, merged), adds no table, no env var, no backend module and no `imports`, so
-`test:auth:integration` is not owed. Tests mock the HTTP functions of the feature and `openStripePage`; nothing reaches the
-network. Sprites: none new. The 3 items of the Pacote draw with the sprites already in `sprites.ts` (`Elmo de Escamas`,
-`Presa do Dragão`, `Amuleto de Brasa`, approved in S6), so no recolouring fallback is used. No capture draws this screen
-(`Differences from the source`: none), so no `.running.png` is owed; the screen follows the cards and tabs of Missões and Itens.
+Issue #380 (`S10`). Replaces the S8 checks (closed in #362). S10 is frontend only: it reads `GET /billing/subscription`, the
+profile and the Catálogo (all merged) and adds no route, table, env var, backend module or `imports`, so `test:auth:integration`
+is not owed. Tests mock the HTTP functions of the feature and `openStripePage`; nothing reaches the network. Sprites: none new;
+the offer and the owned card draw `Manto do Arquimago`, `Cajado Astral` and `Lenda do Foco` with the sprites already in
+`sprites.ts` (the Cajado Astral and Lenda do Foco are recoloured from existing art, as S1 recorded), so no new recolouring.
+The Figma frames are links, not files in `captures/`, and the app was not run (see `Walked`).
 
-21 checks below · 0 new one-way doors · 0 open questions
+16 checks below · 0 new one-way doors · 0 open questions
 
 ## Checks
 
-### S8 - Seção Pacotes na Loja
+### S10 - Redesenho da tela Plano
 
-**C1** - With `available: true` the Loja shows three tabs in the order Missões, Itens, Pacotes (S8.1)
-Proof: run packs | ✓ shows the tabs Missões, Itens and Pacotes, in that order, while billing is available
+**C1** - The card has the header "◈ PLANO ATUAL" and "Cobrança pelo Stripe", the plan name and the situation line, in every state drawn (P1)
+Proof: run settings | ✓ P6, P1: with billing off shows "Free · PREMIUM EM BREVE", no button and no offer
+Proof: run settings | ✓ P2, P1: a free plan on desktop shows the card, the offer beside it and "Como funciona" below
+Proof: run settings | ✓ P3, P1: an active premium shows "Premium ✦", the renewal, "ATIVO", the Portal button and the owned items
 
-**C2** - With `available: false` the Loja shows only Missões and Itens (S8.1)
-Proof: run packs | ✓ shows only Missões and Itens while billing is not available
+**C2** - Free with billing on shows "Free", "SEM ASSINATURA", the invitation text and "Assinar premium", the offer (hero layers, "Premium ✦", "R$ 9,90/mês", the 3 Itens premium with "✦ PREMIUM" and without "Mestre da Aurora", second button, Stripe note) and, on desktop, "Como funciona" with steps 01 to 03 (P2)
+Proof: run settings | ✓ P2, P1: a free plan on desktop shows the card, the offer beside it and "Como funciona" below
 
-**C3** - A failed `GET /billing/packs` hides the Pacotes tab and leaves Missões and Itens working (dependency failure, S8.1)
-Proof: run packs | ✓ hides the Pacotes tab and keeps Missões and Itens when the packs request fails
+**C3** - On a 390 px phone the offer is below the card, "Como funciona" is absent and there are two "Assinar premium" buttons (P2, P10)
+Proof: run settings | ✓ P2, P10: a free plan on a 390 px phone shows the offer below the card, without "Como funciona"
 
-**C4** - `?secao=pacotes` opens on Pacotes (S8.2)
-Proof: run packs | ✓ opens on Pacotes with ?secao=pacotes
+**C4** - Either "Assinar premium" button calls `POST /billing/checkout`, both show busy until the url arrives, and the url opens (P2, S5.4)
+Proof: run settings | ✓ P2: "Assinar premium" in the card opens the Checkout url, both buttons busy while it loads
+Proof: run settings | ✓ P2: "Assinar premium" in the offer opens the Checkout url, both buttons busy while it loads
 
-**C5** - Without `secao` the Loja opens on Missões, with the Pacotes tab present (S8.2)
-Proof: run packs | ✓ opens on Missões without secao, with the Pacotes tab present
+**C5** - An active premium shows "Premium ✦", "R$ 9,90/MÊS · RENOVA EM 08/12", "ATIVO", "Gerenciar assinatura" opening the Portal, and the card "Seus Itens premium ✦" with the hero and 3 items "Liberado", with no offer (P3, S5.10)
+Proof: run settings | ✓ P3, P1: an active premium shows "Premium ✦", the renewal, "ATIVO", the Portal button and the owned items
 
-**C6** - `?secao=pacotes` while billing is not available opens Missões, since the tab does not exist (S8.1, S8.2)
-Proof: run packs | ✓ opens on Missões with ?secao=pacotes while billing is not available
+**C6** - `past_due` shows "PENDENTE", "R$ 9,90/MÊS · PAGAMENTO PENDENTE", the error "A última cobrança não passou. Atualize o cartão para manter o premium." in the card and "Atualizar cartão" opening the Portal, with no "Gerenciar assinatura" (P4, S5.10)
+Proof: run settings | ✓ P4: a past_due premium shows "PENDENTE", the in-card error and "Atualizar cartão" opening the Portal
 
-**C7** - A Pacote the user does not own shows name, description, its 3 items and the button "Comprar por R$ 4,90" (490 cents) (S8.3)
-Proof: run packs | ✓ shows the unowned Pacote with name, description, 3 items and Comprar por R$ 4,90
+**C7** - With `premiumUntil` the card shows "ATÉ 08/12", "NÃO RENOVA", the unequip notice and "Gerenciar assinatura" (P5)
+Proof: run settings | ✓ P5: a premium set to end shows "ATÉ dd/mm", "NÃO RENOVA", the unequip notice and "Gerenciar assinatura"
 
-**C8** - An owned Pacote shows the "Adquirido" badge and no buy button (S8.3)
-Proof: run packs | ✓ shows Adquirido and no buy button for an owned Pacote
+**C8** - With `available: false` the card shows "Free", "PREMIUM EM BREVE" and its text, with no button, no offer and no "Como funciona" (P6)
+Proof: run settings | ✓ P6, P1: with billing off shows "Free · PREMIUM EM BREVE", no button and no offer
 
-**C9** - The price label is built from `priceCents`: 490 → "R$ 4,90", 1290 → "R$ 12,90", 100000 → "R$ 1000,00" (S8.3)
-Proof: run packs | ✓ writes the price in reais from the cents
+**C9** - "Confirmando sua assinatura…" turns into "Pagamento recebido. O plano atualiza em instantes." after 30 s and goes away when `user:planChanged` brings premium (P7, S5.5, S5.12)
+Proof: run settings | ✓ P7, S5.5, S5.12: waits for user:planChanged after ?checkout=success, then shows premium without reloading
 
-**C10** - The Prévia of the Pacote shows the 3 items on the hero at once and calls nothing: no equip, no purchase, no checkout (S8.4)
-Proof: run packs | ✓ previews the 3 items on the hero at once without persisting anything
+**C10** - A `409`, `502` or `503` from the checkout shows the server message above the card (not in it) and frees both buttons; `?checkout=cancel` shows no message (P7, S5.11, S5.6)
+Proof: run settings | ✓ P7: shows the server message of 409 above the card and frees the buttons
+Proof: run settings | ✓ P7: shows the server message of 502 above the card and frees the buttons
+Proof: run settings | ✓ P7: shows the server message of 503 above the card and frees the buttons
+Proof: run settings | ✓ S5.6: back with ?checkout=cancel shows the free state with no error
 
-**C11** - Tapping "Comprar por R$ 4,90" marks the button busy, calls `POST /billing/packs/dragao/checkout` (slug from the Pacote) and opens the returned url (S8.5)
-Proof: run packs | ✓ marks the button busy, requests the checkout of dragao and opens the url
+**C11** - The Plano item of the desktop menu shows "PREMIUM ✦" for a premium plan and "Free" for a free plan with billing on (P8)
+Proof: run settings | ✓ P8: the menu shows "PREMIUM ✦" for a premium plan and the plan name otherwise
+Proof: run settings | ✓ P8: the menu keeps "Free" for a free plan with billing on
 
-**C12** - The page opens in the same tab on the Web and in the system browser on the native app (S8.5)
+**C12** - The suites of Configuração and of billing keep passing with the same testIDs (P9)
+Proof: run settings | ✓ points each item of the inner menu at its own address
 Proof: run billing | ✓ leaves for Stripe in the same tab on the Web
-Proof: run billing | ✓ hands the page to the system browser on the native app
 
-**C13** - `checkout=success` with the Pacote not owned shows "Confirmando seu pagamento…"; 30 s (still waiting at 29 s) without `user:packGranted` turns it into "Pagamento recebido. Os itens chegam em instantes." (S8.6)
-Proof: run packs | ✓ waits for the payment after checkout=success, then says the items arrive shortly
+**C13** - The Plano shows at 1440 px and at 390 px, and the buttons keep the accessible names "Assinar premium", "Gerenciar assinatura" and "Atualizar cartão" (P10)
+Proof: run settings | ✓ P2, P10: a free plan on a 390 px phone shows the offer below the card, without "Como funciona"
+Proof: run settings | ✓ opens the Plano atual: Free · premium em breve row on its own screen and returns with ‹ Configuração
 
-**C14** - `checkout=success` with the Pacote already owned shows no waiting message (S8.6)
-Proof: run packs | ✓ shows no waiting message with checkout=success when the Pacote is already owned
+**C14** - The menu shows "PREMIUM ✦" only when billing is on and the profile is premium; a premium profile with billing off keeps "Premium · premium em breve" (P8)
+Proof: run settings | ✓ P8: the menu keeps the plan name when the profile is premium but billing is off
 
-**C15** - `user:packGranted` refetches Pacotes, the profile and the Catálogo, and only those (S8.7)
-Proof: run realtime | ✓ refreshes the Pacotes, the profile and the cosmetics catalog when a Pacote is granted
+**C15** - `past_due` wins over `premiumUntil`; "ATÉ dd/mm" uses the São Paulo calendar (01:00Z of the 9th is the 8th); an active premium without `renewsAt` shows only "R$ 9,90/MÊS" (P3, P4, P5)
+Proof: run settings | ✓ P4: past_due wins over premiumUntil
+Proof: run settings | ✓ P5: dates use the São Paulo calendar (01:00Z of the 9th is still the 8th)
+Proof: run settings | ✓ P3: an active premium without renewsAt shows only "R$ 9,90/MÊS"
 
-**C16** - The socket listens to `user:packGranted` once and stops on dispose (S8.7)
-Proof: run realtime | ✓ listens to user:packGranted once and stops on dispose
-
-**C17** - When the grant arrives the screen shows "Adquirido" and the notice "Itens do Pacote do Dragão no seu Inventário", and the waiting message goes away (S8.7)
-Proof: run packs | ✓ shows Adquirido and the Inventário notice when user:packGranted arrives
-Proof: run packs | ✓ keeps the Inventário notice for a grant that arrives while another tab is open
-
-**C18** - `checkout=cancel` shows the Pacotes section with no error and no waiting message (S8.8)
-Proof: run packs | ✓ shows the Pacotes with no message after checkout=cancel
-
-**C19** - A `404`, `409`, `502` or `503` from the checkout route shows the server's message and frees the button; any other failure shows the generic line (S8.9)
-Proof: run packs | ✓ shows the server message on 404 and frees the button
-Proof: run packs | ✓ shows the server message on 409 and frees the button
-Proof: run packs | ✓ shows the server message on 502 and frees the button
-Proof: run packs | ✓ shows the server message on 503 and frees the button
-Proof: run packs | ✓ shows a generic line on any other failure and frees the button
-Proof: run billing | ✓ uses the server detail on 404 only when the caller lists it
-
-**C20** - The Pacotes section shows no Moedas balance and no Extrato link, the other sections still do, and the opening text covers Moedas and Pacotes while billing is available (S8.10)
-Proof: run packs | ✓ keeps the Moedas balance in Missões
-Proof: run packs | ✓ keeps the Moedas balance in Itens
-Proof: run packs | ✓ hides the Moedas balance and the Extrato link in Pacotes at 1440 px
-Proof: run packs | ✓ hides the Moedas balance and the Extrato link in Pacotes at 390 px
-Proof: run packs | ✓ mentions the Pacotes in the opening text while billing is available
-Proof: run packs | ✓ leaves the Pacotes out of the opening text while billing is not available
-
-**C21** - The existing Missões and Itens sections keep working with the new tab in place: the Missões list, and `?secao=itens` opening Itens (S8.2, regression)
-Proof: run market | ✓ leads with the purse and lists each Mission in its state
-Proof: run market | ✓ switches to Itens through the URL and previews the first item to buy
+**C16** - The offer shows at most 3 Itens premium, keeps its buttons with a failed Catálogo, and the premium states keep their buttons and owned card at 390 px; the messages, the card, "Como funciona" and the offer come in that order (P2, P7, P10)
+Proof: run settings | ✓ P2: shows at most 3 Itens premium and survives a failed Catálogo
+Proof: run settings | ✓ P2: a failed Catálogo leaves the offer with its buttons and no item rows
+Proof: run settings | ✓ P10: a active premium on a 390 px phone keeps its button and stacks the owned items below
+Proof: run settings | ✓ P10: a past_due premium on a 390 px phone keeps its button and stacks the owned items below
+Proof: run settings | ✓ P2, P7: lays the offer beside the card and the messages above it (child order)
 
 ## Coverage
 
-Other routes of the Surface belong to other slices (`/api/v1/billing/subscription` S5, `/api/v1/billing/checkout` S3, `/api/v1/billing/portal` S4, `/api/v1/billing/webhook` S2). This slice consumes `GET /api/v1/billing/packs` (S6, merged) and `POST /api/v1/billing/packs/:slug/checkout` (S7, merged) and owns no route. Startup configuration: S8 adds no bootstrap setting and no module `imports`.
+This slice consumes `GET /api/v1/billing/subscription` (S5, merged), `POST /api/v1/billing/checkout` (S3) and `POST /api/v1/billing/portal` (S4) and owns no route. Startup configuration: S10 adds no bootstrap setting and no module `imports`.
 
 | Set (size) | Member -> proof | Unproven |
 | --- | --- | --- |
-| Loja tabs (3) | Missões C1 · Itens C1 · Pacotes C1 | - |
-| tabs by `available` (2) | `true` C1 · `false` C2 | - |
-| `secao` values (4) | `pacotes` C4 · absent C5 · `itens` C21 · `pacotes` with `available: false` C6 | - |
-| Pacote card parts, S8.3 (6) | name C7 · description C7 · 3 items C7 · button text C7 · "Adquirido" C8 · no button when owned C8 | - |
-| Pacote items (3) | Elmo de Escamas C7 C10 · Presa do Dragão C7 C10 · Amuleto de Brasa C7 C10 | - |
-| `checkout` values (3) | `success` not owned C13 · `success` owned C14 · `cancel` C18 | - |
-| checkout route failures (5) | 404 C19 · 409 C19 · 502 C19 · 503 C19 · other C19 | - |
-| platforms (2) | Web C12 · native C12 | - |
-| refetched on `user:packGranted` (3) | Pacotes C15 · profile C15 · Catálogo C15 | - |
-| price examples (3) | 490 C9 · 1290 C9 · 100000 C9 | - |
-| sections with the Moedas balance (3) | Missões C20 · Itens C20 · Pacotes (hidden) C20 | - |
+| card states drawn (5) | Free C2 · Premium ativo C5 · Pagamento pendente C6 · Cancelada C7 · Em breve C8 | - |
+| cards of the screen (4) | Plano atual C1 · Oferta C2 · Como funciona C2 · Seus Itens premium C5 | - |
+| Itens premium of the offer (3) | Manto do Arquimago C2 · Cajado Astral C2 · Lenda do Foco C2 | - |
+| messages above the card (4) | Confirmando C9 · Pagamento recebido C9 · erro de abertura C10 · cancel (none) C10 | - |
+| checkout failure statuses (3) | 409 C10 · 502 C10 · 503 C10 | - |
+| layouts (2) | desktop C2 · 390 px C3 | - |
+| buttons that open Stripe (4) | Assinar premium (card) C4 · Assinar premium (offer) C4 · Gerenciar assinatura C5 · Atualizar cartão C6 | - |
+| menu meta of Plano (3) | PREMIUM ✦ C11 · Free C11 · premium profile, billing off C14 | - |
 
 ## Swept
 
-- validation: C9 (cents to reais), C19 (only the four statuses carry the server text; 500 shows the generic line)
-- failure modes: C19 (the button is freed), C3 (packs request fails)
-- idempotency: C11 (the busy button blocks a second tap while the url is being fetched)
-- authorization: existing - `getAuthenticatedHttpClient` sends the token and the backend answers `401` (S7 C8)
-- concurrency: n/a - one request per tap, and the backend serialises the grant (S7 C12)
-- data lifecycle: C10 (the Prévia persists nothing), C17 (the Inventário is refetched, not patched locally)
-- dependency failure: C3, C19
-- state transitions: C13 → C17 (waiting → granted), C8 (owned), C14 (success with the Pacote already granted)
+- validation: existing - `billingErrorMessage` shows server text only for 409, 502 and 503 (S5.11, `billing.test.ts`)
+- failure modes: C10 (buttons freed), existing - the load failure of the plan keeps its retry (S5)
+- idempotency: C4 (both buttons busy while the url is fetched, so no second tap)
+- authorization: existing - `getAuthenticatedHttpClient` and the backend `401` (S5)
+- concurrency: n/a - one request per tap, no shared write
+- data lifecycle: n/a - the screen only reads; nothing is stored
+- dependency failure: existing - a failed Catálogo leaves the offer without the item rows, a failed profile draws the hero without equipment; neither blocks the buttons
+- state transitions: C9 (free to premium by `user:planChanged`), C5 to C8 (each state)
 - observability: n/a - the frontend has no logging requirement in this slice
 
 ## Handoff
 
-- **Settled mid-build:** none
-- **Dispatched:** Verifier at 696d7c9 (no screens sub-agent: no capture binds this slice), returned FAIL with 4 findings, closed at c6e9a9d
-- **Boundary:** C1-C21 closed at c6e9a9d
+- **Settled mid-build:** user: "Sim, deve seguir" - follow #380 as the contract and update the plan with a new slice
+- **Dispatched:** Verifier at efc3130 (no screens sub-agent: the Figma frames are links, no capture file binds a picture)
+- **Boundary:** C1-C13 closed at efc3130; Verifier findings closed at the next commit
 - **Abandoned:** none
-- **Walked:** not walked in a running app: it needs the backend with MySQL and a Stripe test account, which the open question `blocks go-live` still holds. The screen is exercised by 27 component tests at 1440 px and 390 px.
+- **Walked:** the Plano was opened in Chromium at 1440 px and 390 px against Expo web and a mock API (no backend, no Stripe), for the states Free, Premium ativo, Pagamento pendente and Em breve; the captures are in `captures/plano-*.png`. They are not compared against the Figma frames by a screens sub-agent. No horizontal scroll at either width. The "Reconectando" banner in them comes from the mock having no Socket.IO.
