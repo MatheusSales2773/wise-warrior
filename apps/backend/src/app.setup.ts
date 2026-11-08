@@ -27,6 +27,12 @@ export function parseTrustProxy(raw: string | undefined): boolean | number | str
 }
 
 /**
+ * Opções de `NestFactory.create` / `createNestApplication` que o bootstrap real e os testes compartilham. `rawBody`
+ * guarda o corpo bruto da requisição, de que o webhook do Stripe precisa para verificar a assinatura (ADR-015).
+ */
+export const APP_CREATE_OPTIONS = { rawBody: true } as const;
+
+/**
  * Configuração compartilhada entre o bootstrap real e os testes de contrato
  * HTTP: headers de segurança, proxy confiável, cookies, CORS consciente do path, validação, formato
  * Problem e prefixo.

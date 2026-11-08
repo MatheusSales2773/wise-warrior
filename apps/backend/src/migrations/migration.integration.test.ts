@@ -38,6 +38,7 @@ import {
   MADRUGADOR_ID,
   SessionCountBadgeConditions1788460560000,
 } from './1788460560000-session-count-badge-conditions';
+import { CreateSubscriptions1788460800000 } from './1788460800000-create-subscriptions';
 import { saoPauloWeekAt } from '../shared/time/sao-paulo-calendar';
 
 const ITEMS_FOR_SALE = [
@@ -1686,5 +1687,42 @@ describe('TypeORM migrations against an empty MySQL schema', () => {
 
     await dataSource.runMigrations();
     expect(await conditions()).toEqual([['Cem Sessões', 'sessions:100'], ['Madrugador', 'early-sessions:5']]);
+  });
+
+  it('creates subscriptions with one row per user, Customer and Subscription, deletes it with the user, and drops it on revert', async () => {
+    database = await createIntegrationDatabase('wise_migrations_test');
+    dataSource = new DataSource(database!.options(migrationsThrough(CreateSubscriptions1788460800000)));
+    await dataSource.initialize();
+    await dataSource.runMigrations();
+    const db = database!.identifier;
+    for (const id of ['sub-user-1', 'sub-user-2']) {
+      await database!.admin.query(
+        `INSERT INTO ${db}.users (id, email, password_hash, display_name, plan_tier) VALUES (?, ?, 'hash', 'Aluno', 'free')`,
+        [id, `${id}@example.com`],
+      );
+    }
+    const insert = (id: string, userId: string, customer: string, subscription: string | null) => database!.admin.query(
+      `INSERT INTO ${db}.subscriptions (id, user_id, stripe_customer_id, stripe_subscription_id) VALUES (?, ?, ?, ?)`,
+      [id, userId, customer, subscription],
+    );
+    await insert('row-1', 'sub-user-1', 'cus_1', 'sub_1');
+
+    await expect(insert('row-2', 'sub-user-1', 'cus_2', 'sub_2')).rejects.toThrow(/UQ_subscriptions_user_id/);
+    await expect(insert('row-3', 'sub-user-2', 'cus_1', 'sub_3')).rejects.toThrow(/UQ_subscriptions_stripe_customer_id/);
+    await expect(insert('row-4', 'sub-user-2', 'cus_4', 'sub_1')).rejects.toThrow(/UQ_subscriptions_stripe_subscription_id/);
+    // Without a Subscription yet (Customer created, Checkout not paid) several rows may have no stripe_subscription_id.
+    await insert('row-5', 'sub-user-2', 'cus_5', null);
+    expect(await rows(database!.admin, `SELECT status, current_period_end, cancel_at FROM ${db}.subscriptions WHERE id = 'row-5'`))
+      .toEqual([{ status: null, current_period_end: null, cancel_at: null }]);
+
+    await database!.admin.query(`DELETE FROM ${db}.users WHERE id = 'sub-user-1'`);
+    expect(await rows(database!.admin, `SELECT id FROM ${db}.subscriptions ORDER BY id`)).toEqual([{ id: 'row-5' }]);
+
+    await revertThrough(dataSource, CreateSubscriptions1788460800000);
+    expect(await rows(
+      database!.admin,
+      'SELECT table_name FROM information_schema.tables WHERE table_schema = ? AND table_name = ?',
+      [database!.name, 'subscriptions'],
+    )).toEqual([]);
   });
 });
