@@ -1,6 +1,6 @@
 # assinatura-premium proofs
 
-**HEAD**: c4e5691
+**HEAD**: bdb3241
 **Tree**: clean
 **Shell**: /bin/sh
 **Result**: 33 pass, 0 fail
@@ -47,19 +47,19 @@
 
 ```
     on phones
-      ✓ shows the current name and the 2–60 rule, with Salvar off until the name changes (93 ms)
-      ✓ keeps Salvar off for the invalid name "" (79 ms)
-      ✓ keeps Salvar off for the invalid name "A" (81 ms)
-      ✓ keeps Salvar off for the invalid name "   " (80 ms)
-      ✓ keeps Salvar off for the invalid name "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" (123 ms)
-      ✓ saves the trimmed name, confirms it and updates the cached profile (69 ms)
-      ✓ says so when there is no connection and keeps the typed name to try again (51 ms)
-      ✓ shows a generic failure for a server error (55 ms)
+      ✓ shows the current name and the 2–60 rule, with Salvar off until the name changes (46 ms)
+      ✓ keeps Salvar off for the invalid name "" (35 ms)
+      ✓ keeps Salvar off for the invalid name "A" (39 ms)
+      ✓ keeps Salvar off for the invalid name "   " (41 ms)
+      ✓ keeps Salvar off for the invalid name "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" (61 ms)
+      ✓ saves the trimmed name, confirms it and updates the cached profile (48 ms)
+      ✓ says so when there is no connection and keeps the typed name to try again (44 ms)
+      ✓ shows a generic failure for a server error (44 ms)
 
 Test Suites: 1 passed, 1 total
 Tests:       76 passed, 76 total
 Snapshots:   0 total
-Time:        8.746 s, estimated 12 s
+Time:        7.88 s, estimated 9 s
 Ran all test suites matching /__tests__\/settings-screen.test.tsx/i.
 ```
 
@@ -67,18 +67,18 @@ Ran all test suites matching /__tests__\/settings-screen.test.tsx/i.
 
 ```
   openStripePage (S5.4)
-    ✓ leaves for Stripe in the same tab on the Web (5 ms)
-    ✓ hands the page to the system browser on the native app (4 ms)
+    ✓ leaves for Stripe in the same tab on the Web (6 ms)
+    ✓ hands the page to the system browser on the native app (3 ms)
   billingErrorMessage (S5.11)
-    ✓ uses the server detail on 404 only when the caller lists it (a Pacote)
+    ✓ uses the server detail on 404 only when the caller lists it (a Pacote) (1 ms)
     ✓ uses the server detail on 409
-    ✓ uses the server detail on 502 (1 ms)
+    ✓ uses the server detail on 502
     ✓ uses the server detail on 503
-    ✓ falls back to a generic line for other failures
+    ✓ falls back to a generic line for other failures (1 ms)
 
 Test Suites: 1 passed, 1 total
 Tests:       9 passed, 9 total
 Snapshots:   0 total
-Time:        0.65 s, estimated 1 s
+Time:        0.638 s, estimated 1 s
 Ran all test suites matching /__tests__\/billing.test.ts/i.
 ```
