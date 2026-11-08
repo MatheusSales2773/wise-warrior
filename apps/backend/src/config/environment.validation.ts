@@ -43,6 +43,13 @@ export function validateEnvironment(config: Record<string, unknown>): Record<str
     }
   }
 
+  // Com a cobrança ligada (ADR-015), sem estas o checkout e o webhook falhariam só em tempo de requisição.
+  if (readString(config, 'STRIPE_SECRET_KEY') !== undefined) {
+    for (const key of ['STRIPE_WEBHOOK_SECRET', 'STRIPE_PRICE_PREMIUM', 'APP_URL']) {
+      if (readString(config, key) === undefined) problems.push(`${key} é obrigatório com STRIPE_SECRET_KEY definido`);
+    }
+  }
+
   if (readString(config, 'NODE_ENV') === 'production') {
     const accessSecret = readString(config, 'JWT_ACCESS_SECRET');
     if (accessSecret === undefined) {
