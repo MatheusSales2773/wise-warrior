@@ -110,15 +110,8 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Set up Node.js
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
-        with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: package-lock.json
-
       - name: Install dependencies
-        run: npm ci
+        uses: ./.github/actions/install-dependencies
 
       - name: Record resolved tool versions
         run: |
@@ -154,15 +147,8 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Set up Node.js
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
-        with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: package-lock.json
-
       - name: Install dependencies
-        run: npm ci
+        uses: ./.github/actions/install-dependencies
 
       - name: Record resolved tool versions
         run: |
@@ -180,7 +166,21 @@ jobs:
       - name: Export the web build
         run: npm run build --workspace apps/frontend
 
+      # The GitHub Actions layer cache needs a BuildKit container builder and the
+      # runtime token, which plain run steps do not get.
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      - name: Expose the GitHub Actions runtime to Buildx
+        uses: crazy-max/ghaction-github-runtime@04d248b84655b509d8c44dc1d6f990c879747487 # v4.0.0
+
       - name: Verify the web delivery container
+        env:
+          # --load: a container builder keeps images to itself unless told to load them.
+          DELIVERY_BUILD_FLAGS: >-
+            --load
+            --cache-from type=gha,scope=frontend-delivery
+            --cache-to type=gha,mode=max,scope=frontend-delivery,ignore-error=true
         run: npm run test:delivery --workspace apps/frontend
 
   # The unit tests stay --runInBand: on one machine, parallel workers time out the
@@ -200,15 +200,8 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Set up Node.js
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
-        with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: package-lock.json
-
       - name: Install dependencies
-        run: npm ci
+        uses: ./.github/actions/install-dependencies
 
       - name: Run unit tests
         run: npm test --workspace apps/frontend -- --shard=${{ matrix.shard }}/3
@@ -223,15 +216,8 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Set up Node.js
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
-        with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: package-lock.json
-
       - name: Install dependencies
-        run: npm ci
+        uses: ./.github/actions/install-dependencies
 
       - name: Lint OpenAPI contract
         run: npm run lint:openapi
@@ -250,21 +236,22 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Set up Node.js
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
-        with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: package-lock.json
-
       - name: Install dependencies
-        run: npm ci
+        uses: ./.github/actions/install-dependencies
 
       - name: Record resolved tool versions
         run: |
           node --version
           npm --version
           docker compose version
+
+      # The GitHub Actions layer cache needs a BuildKit container builder and the
+      # runtime token, which plain run steps do not get.
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      - name: Expose the GitHub Actions runtime to Buildx
+        uses: crazy-max/ghaction-github-runtime@04d248b84655b509d8c44dc1d6f990c879747487 # v4.0.0
 
       - name: Install Chromium
         working-directory: apps/frontend
@@ -278,6 +265,7 @@ jobs:
           E2E_BACKEND_PORT: 3000
           E2E_FRONTEND_PORT: 8443
           E2E_DB_PORT: 3307
+          E2E_COMPOSE_OVERRIDE: docker-compose.e2e.ci.yml
         run: npm run test:e2e
 
       - name: Upload Playwright failure artifacts
