@@ -16,6 +16,8 @@ export interface StripeApi {
   };
   subscriptions: {
     retrieve(id: string): Promise<Stripe.Subscription>;
+    /** Cancela na hora (status `canceled`) e dispara `customer.subscription.deleted`; só a rota de desenvolvedor usa. */
+    cancel(id: string): Promise<Stripe.Subscription>;
   };
   customers: {
     create(params: Stripe.CustomerCreateParams): Promise<Stripe.Customer>;

@@ -104,7 +104,7 @@ describe('Pagar o Pacote (S7) against MySQL', () => {
   };
   const fakeStripe = (): StripeApi => ({
     webhooks: signer.webhooks,
-    subscriptions: { retrieve: jest.fn() },
+    subscriptions: { retrieve: jest.fn(), cancel: jest.fn() },
     customers: { create: createCustomer },
     checkout: { sessions: { create: createSession, retrieve: retrieveSession } },
     billingPortal: { sessions: { create: jest.fn() } },

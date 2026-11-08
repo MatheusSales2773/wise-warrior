@@ -152,7 +152,7 @@ describe('Stripe webhook against MySQL', () => {
     );
     const stripeApi: StripeApi = {
       webhooks: signer.webhooks,
-      subscriptions: { retrieve },
+      subscriptions: { retrieve, cancel: jest.fn() },
       customers: { create: jest.fn() },
       checkout: { sessions: { create: jest.fn(), retrieve: jest.fn() } },
       billingPortal: { sessions: { create: jest.fn() } },

@@ -221,6 +221,26 @@ export class BillingService {
     }
   }
 
+  /**
+   * Ferramenta de teste: cancela já a Assinatura no Stripe. Não grava nada: o plano volta a Free quando chega o
+   * webhook `customer.subscription.deleted`. Quem não está em `DEV_TOOLS_EMAILS` recebe 404, antes de qualquer outra leitura.
+   */
+  async resetPlan(userId: string): Promise<void> {
+    if (!(await this.users.isDevToolsUser(userId))) throw new NotFoundException();
+    if (!this.stripe) throw new ServiceUnavailableException('Assinatura indisponível no momento');
+
+    const row = await this.subscriptions.findOne({ where: { userId } });
+    if (!row?.stripeSubscriptionId || planTierForStatus(row.status) !== 'premium') {
+      throw new ConflictException('Nenhuma assinatura para cancelar');
+    }
+    try {
+      await this.stripe.subscriptions.cancel(row.stripeSubscriptionId);
+    } catch (error) {
+      this.logger.error(`Reset do plano do usuário ${userId}: o Stripe falhou: ${(error as Error).message}`);
+      throw new BadGatewayException('Não foi possível cancelar a assinatura');
+    }
+  }
+
   /** O estado da Assinatura do usuário para a tela Plano (S5.1); lê só `subscriptions` e o `plan_tier` pelo `UsersService`. */
   async getSubscription(userId: string): Promise<SubscriptionView> {
     const planTier = await this.users.findPlanTier(userId);

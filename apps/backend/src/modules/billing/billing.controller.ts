@@ -40,6 +40,14 @@ export class BillingController {
     return this.billing.openPortal(user.sub);
   }
 
+  /** Ferramenta de desenvolvedor: cancela já a Assinatura do próprio usuário; o plano volta a Free pelo webhook. */
+  @Post('dev/reset-plan')
+  @UseGuards(JwtAuthGuard)
+  @HttpCode(HttpStatus.ACCEPTED)
+  resetPlan(@CurrentUser() user: JwtPayload): Promise<void> {
+    return this.billing.resetPlan(user.sub);
+  }
+
   /** Estado da Assinatura do próprio usuário (S5.1); aqui por causa de `premiumUntil` (S4.5). */
   @Get('subscription')
   @UseGuards(JwtAuthGuard)

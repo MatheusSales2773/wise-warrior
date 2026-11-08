@@ -72,7 +72,7 @@ function harness(billing: boolean) {
       const unreachable = () => { throw new Error('the Pacote listing must not call Stripe'); };
       const fake: StripeApi = {
         webhooks: { constructEvent: unreachable },
-        subscriptions: { retrieve: unreachable },
+        subscriptions: { retrieve: unreachable, cancel: unreachable },
         customers: { create: unreachable },
         billingPortal: { sessions: { create: unreachable } },
         checkout: { sessions: { create: unreachable, retrieve: unreachable } },

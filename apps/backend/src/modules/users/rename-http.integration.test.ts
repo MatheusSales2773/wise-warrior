@@ -1,5 +1,6 @@
 import { ExecutionContext, UnauthorizedException, ValidationPipe } from '@nestjs/common';
 import type { INestApplication } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { Test } from '@nestjs/testing';
 import type { AddressInfo } from 'node:net';
 import { DataSource } from 'typeorm';
@@ -58,6 +59,7 @@ describe('PATCH /users/me against MySQL', () => {
       dataSource.getRepository(UserCosmeticItem),
       dataSource.getRepository(CosmeticItem),
       { getCharacterSnapshot: async () => null, getProjection: () => ({ level: 1, levelStartXp: 0, nextLevelXp: 100 }) } as unknown as ProgressionService,
+      { get: (key: string) => (key === 'DEV_TOOLS_EMAILS' ? ' ana@EXAMPLE.com' : undefined) } as ConfigService,
     );
     const moduleRef = await Test.createTestingModule({
       controllers: [UsersController],
@@ -113,6 +115,12 @@ describe('PATCH /users/me against MySQL', () => {
     const profile = await response.json() as { id: string; email: string; displayName: string };
     expect(profile).toEqual(await (await getProfile(ana)).json());
     expect(profile).toEqual(expect.objectContaining({ id: ana, email: 'Ana@example.com', displayName: 'Ana, a Bruxa' }));
+  });
+
+  it('answers devTools true to a listed user and false to the others, on GET and PATCH', async () => {
+    expect((await (await getProfile(ana)).json() as { devTools: boolean }).devTools).toBe(true);
+    expect((await (await getProfile(bruno)).json() as { devTools: boolean }).devTools).toBe(false);
+    expect((await (await patch({ displayName: 'Ana 2' })).json() as { devTools: boolean }).devTools).toBe(true);
   });
 
   it('saves the name without the spaces around it', async () => {

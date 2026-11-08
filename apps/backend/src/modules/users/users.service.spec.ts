@@ -1,4 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import { ConfigService } from '@nestjs/config';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { ProgressionService } from '../progression/progression.service';
 import { CosmeticItem } from './entities/cosmetic-item.entity';
@@ -38,6 +39,7 @@ describe('UsersService', () => {
         },
         { provide: getRepositoryToken(CosmeticItem), useValue: mockCosmeticItems },
         { provide: ProgressionService, useValue: mockProgression },
+        { provide: ConfigService, useValue: { get: (key: string) => (key === 'DEV_TOOLS_EMAILS' ? ' Dev@Wise.app ,x@y.z' : undefined) } },
       ],
     }).compile();
     service = module.get(UsersService);
@@ -75,6 +77,7 @@ describe('UsersService', () => {
       levelStartXp: 1_414,
       nextLevelXp: 2_598,
       title: 'Aprendiz',
+      devTools: false,
       equipped: [
         { category: 'avatar', itemId: 'avatar-1', name: 'Capuz do Erudito' },
         { category: 'title', itemId: 'title-1', name: 'Aprendiz' },
@@ -109,10 +112,20 @@ describe('UsersService', () => {
       levelStartXp: 0,
       nextLevelXp: 1_414,
       title: null,
+      devTools: false,
       equipped: [],
     });
     expect(mockProgression.getCharacterSnapshot).toHaveBeenCalledWith('user-1');
     expect(mockProgression.getProjection).toHaveBeenCalledWith(0);
     expect(mockUserCosmetics.save).not.toHaveBeenCalled();
+  });
+
+  it.each([['dev@wise.app', true], ['hero@wise.app', false]])('answers devTools for %s from DEV_TOOLS_EMAILS (%s)', async (email, devTools) => {
+    mockUsers.findOne.mockResolvedValue({ id: 'user-1', email, displayName: 'Hero', planTier: 'free' });
+    mockProgression.getCharacterSnapshot.mockResolvedValue(null);
+    mockUserCosmetics.find.mockResolvedValue([]);
+    mockProgression.getProjection.mockReturnValue({ level: 1, levelStartXp: 0, nextLevelXp: 1_414 });
+
+    await expect(service.getProfile('user-1')).resolves.toEqual(expect.objectContaining({ devTools }));
   });
 });
