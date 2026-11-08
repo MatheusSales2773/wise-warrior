@@ -1,6 +1,7 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react-native';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { Dimensions, Platform } from 'react-native';
+import { Dimensions, Platform, StyleSheet } from 'react-native';
+import { theme } from '@/design-system';
 import { applyPackGranted } from '@/core/realtime/realtime-client';
 import { getCoinBalance, listShopItems, listShopMissions, purchaseShopItem, purchaseShopMission } from '@/features/market/api';
 import { MarketScreen } from '@/features/market/market-screen';
@@ -21,11 +22,12 @@ jest.mock('@/features/profile/api', () => ({ equipCosmeticItem: jest.fn() }));
 jest.mock('@/features/settings/billing', () => ({ ...jest.requireActual('@/features/settings/billing'), openStripePage: jest.fn() }));
 
 let mockParams: { secao?: string; checkout?: string } = {};
+const mockPush = jest.fn();
 const mockSetParams = jest.fn((next: { secao?: string }) => { mockParams = { ...mockParams, ...next }; });
 jest.mock('expo-router', () => ({
   ...jest.requireActual('expo-router'),
   useLocalSearchParams: () => mockParams,
-  useRouter: () => ({ setParams: mockSetParams, push: jest.fn() }),
+  useRouter: () => ({ setParams: mockSetParams, push: mockPush }),
 }));
 
 const mocked = {
@@ -197,6 +199,83 @@ describe('the Pacote card', () => {
     expect(card.queryByRole('button', { name: /Comprar/ })).toBeNull();
   });
 
+  // K1
+  it('lists the banner, the kicker, the name, the description, the 3 items with category and the price footer', async () => {
+    await renderMarket();
+
+    const card = within(await screen.findByTestId('market-pack-dragao'));
+    expect(card.getByText('Pagamento único')).toBeTruthy();
+    expect(card.getByTestId('market-pack-hero', { includeHiddenElements: true })).toBeTruthy();
+    expect(card.getByText('Pacote · 3 itens · seus para sempre')).toBeTruthy();
+    for (const category of ['Avatar', 'Arma', 'Acessório']) expect(card.getByText(category)).toBeTruthy();
+    expect(card.getByText('R$ 4,90')).toBeTruthy();
+    expect(card.getByText('Pagamento único no cartão')).toBeTruthy();
+    expect(card.queryByText('Liberado')).toBeNull();
+  });
+
+  // K3
+  it('turns an owned Pacote into the Adquirido card with Equipar no Personagem, which opens the Personagem', async () => {
+    mocked.packs.mockResolvedValue(available([{ ...dragon, owned: true }]));
+    await renderMarket();
+
+    const card = within(await screen.findByTestId('market-pack-dragao'));
+    expect(card.getByTestId('market-pack-dragao-owned')).toBeTruthy();
+    expect(card.getAllByText('Liberado')).toHaveLength(3);
+    expect(card.getByText('Pago · itens no Inventário')).toBeTruthy();
+    expect(StyleSheet.flatten(screen.getByTestId('market-pack-dragao').props.style).borderColor).toBe(theme.color.feedbackSuccess);
+    await fireEvent.press(card.getByRole('button', { name: 'Equipar no Personagem' }));
+    expect(mockPush).toHaveBeenCalledWith('/perfil');
+    expect(mocked.checkout).not.toHaveBeenCalled();
+  });
+
+  // K4
+  it('keeps the Prévia open in the side column on desktop, with the total and the buy button, and no link in the card', async () => {
+    await renderMarket();
+
+    const side = within(await screen.findByTestId('market-pack-side'));
+    expect(side.getByText('Total · pagamento único')).toBeTruthy();
+    expect(side.getAllByText('R$ 4,90').length).toBeGreaterThan(0);
+    expect(side.getByText(/página segura do Stripe/)).toBeTruthy();
+    for (const id of ['p1', 'p2', 'p3']) expect(side.getByTestId(`market-pack-preview-item-${id}`)).toBeTruthy();
+    expect(within(screen.getByTestId('market-pack-dragao')).queryByRole('button', { name: /Prévia no herói|Fechar prévia/ })).toBeNull();
+
+    await fireEvent.press(side.getByRole('button', { name: 'Comprar o Pacote do Dragão por R$ 4,90' }));
+    expect(mocked.checkout).toHaveBeenCalledWith('dragao', expect.anything());
+  });
+
+  it('shows Pago and Equipar no Personagem in the side column when owned', async () => {
+    mocked.packs.mockResolvedValue(available([{ ...dragon, owned: true }]));
+    await renderMarket();
+
+    const side = within(await screen.findByTestId('market-pack-side'));
+    expect(side.getByText('Pago')).toBeTruthy();
+    expect(side.queryByRole('button', { name: /Comprar/ })).toBeNull();
+    await fireEvent.press(side.getByRole('button', { name: 'Equipar no Personagem' }));
+    expect(mockPush).toHaveBeenCalledWith('/perfil');
+  });
+
+  // K5
+  it('has no side column on mobile and opens and closes the Prévia inside the card', async () => {
+    setViewport(390);
+    await renderMarket();
+
+    const card = within(await screen.findByTestId('market-pack-dragao'));
+    expect(screen.queryByTestId('market-pack-side')).toBeNull();
+    await fireEvent.press(card.getByRole('button', { name: 'Prévia no herói' }));
+    expect(card.getByTestId('market-pack-preview')).toBeTruthy();
+    await fireEvent.press(card.getByRole('button', { name: 'Fechar prévia' }));
+    expect(card.queryByTestId('market-pack-preview')).toBeNull();
+  });
+
+  // K6, K7
+  it('writes the section header with the real count and the note below the card', async () => {
+    await renderMarket();
+
+    expect(await screen.findByText('1 pacote · pagamento único em reais')).toBeTruthy();
+    expect(screen.getByText('◈ Pacotes à venda')).toBeTruthy();
+    expect(screen.getByText('Pacotes são pagos em dinheiro, não em Moedas. A bolsa e o Extrato não mudam.')).toBeTruthy();
+  });
+
   it('writes the price in reais from the cents', () => {
     expect(priceLabel(490)).toBe('R$ 4,90');
     expect(priceLabel(1290)).toBe('R$ 12,90');
@@ -204,6 +283,7 @@ describe('the Pacote card', () => {
   });
 
   it('previews the 3 items on the hero at once without persisting anything', async () => {
+    setViewport(390);
     await renderMarket();
     const card = within(await screen.findByTestId('market-pack-dragao'));
     expect(screen.queryByTestId('market-pack-preview')).toBeNull();
