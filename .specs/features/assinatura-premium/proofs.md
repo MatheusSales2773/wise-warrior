@@ -1,7 +1,7 @@
 # assinatura-premium proofs
 
-**HEAD**: cfca817
-**Tree**: dirty - develop/
+**HEAD**: 674075a
+**Tree**: clean
 **Shell**: /bin/sh
 **Result**: 17 pass, 0 fail
 
@@ -30,20 +30,20 @@
 `Run portal` - exit 0
 
 ```
-      ✓ opens the Portal for the Customer of the caller that returns to the Plano screen (674 ms)
-      ✓ answers 409 to a user that never opened a Checkout (836 ms)
-      ✓ answers 409 to a user whose row has no Subscription (959 ms)
-      ✓ answers 503 when billing is not configured (901 ms)
-      ✓ answers 502 and keeps the row when Stripe fails to create the Portal session (901 ms)
-      ✓ answers 401 without a token to the Portal (854 ms)
+      ✓ opens the Portal for the Customer of the caller that returns to the Plano screen (409 ms)
+      ✓ answers 409 to a user that never opened a Checkout (414 ms)
+      ✓ answers 409 to a user whose row has no Subscription (411 ms)
+      ✓ answers 503 when billing is not configured (400 ms)
+      ✓ answers 502 and keeps the row when Stripe fails to create the Portal session (577 ms)
+      ✓ answers 401 without a token to the Portal (468 ms)
     GET /billing/subscription
-      ✓ answers premiumUntil with the cancel_at of a premium user that cancelled in the Portal (777 ms)
-      ✓ answers 401 without a token to the subscription (816 ms)
+      ✓ answers premiumUntil with the cancel_at of a premium user that cancelled in the Portal (622 ms)
+      ✓ answers 401 without a token to the subscription (530 ms)
 
 Test Suites: 1 passed, 1 total
 Tests:       9 passed, 9 total
 Snapshots:   0 total
-Time:        8.177 s
+Time:        5.331 s, estimated 9 s
 Ran all test suites matching /billing-portal/i.
 ```
 
@@ -51,38 +51,38 @@ Ran all test suites matching /billing-portal/i.
 
 ```
     retries and out-of-order delivery
-      ✓ ends in the same state and emits user:planChanged once when the same event arrives twice (228 ms)
-      ✓ emits user:planChanged once when the same event arrives twice at the same time (250 ms)
-      ✓ ends in the state the API reports whatever the order of the events (219 ms)
-      ✓ ends canceled when a slow reread of an older event overlaps the faster reread of the cancellation (749 ms)
-      ✓ does not let a late event of an old, ended Subscription cancel the one the user subscribed to afterwards (155 ms)
+      ✓ ends in the same state and emits user:planChanged once when the same event arrives twice (199 ms)
+      ✓ emits user:planChanged once when the same event arrives twice at the same time (203 ms)
+      ✓ ends in the state the API reports whatever the order of the events (194 ms)
+      ✓ ends canceled when a slow reread of an older event overlaps the faster reread of the cancellation (712 ms)
+      ✓ does not let a late event of an old, ended Subscription cancel the one the user subscribed to afterwards (143 ms)
     failures
-      ✓ answers 500 and writes nothing when the Stripe API fails to reread the Subscription (179 ms)
-      ✓ undoes subscriptions, plan_tier and the equipment together, and emits nothing, when the last write fails (198 ms)
+      ✓ answers 500 and writes nothing when the Stripe API fails to reread the Subscription (164 ms)
+      ✓ undoes subscriptions, plan_tier and the equipment together, and emits nothing, when the last write fails (175 ms)
 
 Test Suites: 1 passed, 1 total
 Tests:       34 passed, 34 total
 Snapshots:   0 total
-Time:        10.489 s
+Time:        7.885 s, estimated 11 s
 Ran all test suites matching /billing-webhook/i.
 ```
 
 `Run unit` - exit 0
 
 ```
-    ✓ maps the Stripe status trialing to premium
-    ✓ maps the Stripe status past_due to premium (1 ms)
-    ✓ maps the Stripe status canceled to free
-    ✓ maps the Stripe status unpaid to free (1 ms)
-    ✓ maps the Stripe status incomplete to free
-    ✓ maps the Stripe status incomplete_expired to free
-    ✓ maps the Stripe status paused to free
-    ✓ gives free to a user with no Subscription (1 ms)
-    ✓ gives free to a status Stripe adds later
+    ✓ reads the Subscription of invoice.paid from the invoice parent
+    ✓ reads the Subscription of invoice.payment_failed from the invoice parent
+    ✓ accepts an expanded Customer and an expanded Subscription
+    ✓ has no target for an invoice that does not belong to a Subscription (1 ms)
+    ✓ reads the Customer and the Subscription of a subscription Checkout Session
+    ✓ carries the client_reference_id of a subscription Checkout Session as the user
+    ✓ has no Subscription to read for a subscription Checkout Session that carries none
+    ✓ has no target for a one-time payment Checkout Session (Pacote) (1 ms)
+    ✓ has no target when the event carries no Customer
 
 Test Suites: 3 passed, 3 total
 Tests:       38 passed, 38 total
 Snapshots:   0 total
-Time:        4.843 s, estimated 5 s
+Time:        4.254 s, estimated 5 s
 Ran all test suites matching /src\/modules\/billing/i.
 ```
