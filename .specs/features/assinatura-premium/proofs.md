@@ -1,9 +1,9 @@
 # assinatura-premium proofs
 
-**HEAD**: e715f5b
+**HEAD**: c171a2f
 **Tree**: dirty - develop/
 **Shell**: /bin/sh
-**Result**: 16 pass, 0 fail
+**Result**: 17 pass, 0 fail
 
 | Check | Proof | Result |
 | --- | --- | --- |
@@ -18,6 +18,7 @@
 | C9 | `run portal / ✓ answers premiumUntil with the cancel_at of a premium user that cancelled in the Portal` | pass |
 | C10 | `run unit / ✓ renews at the period end when nothing was cancelled` | pass |
 | C10 | `run unit / ✓ ends at cancel_at instead of renewing when the Subscription was cancelled` | pass |
+| C10 | `run unit / ✓ passes the status of the row through untranslated` | pass |
 | C10 | `run unit / ✓ has no dates and no status for a user with no Subscription row` | pass |
 | C10 | `run unit / ✓ reports billing available only when Stripe is configured` | pass |
 | C11 | `run portal / ✓ answers 401 without a token to the subscription` | pass |
@@ -29,20 +30,20 @@
 `Run portal` - exit 0
 
 ```
-      ✓ opens the Portal for the Customer of the caller that returns to the Plano screen (633 ms)
-      ✓ answers 409 to a user that never opened a Checkout (604 ms)
-      ✓ answers 409 to a user whose row has no Subscription (735 ms)
-      ✓ answers 503 when billing is not configured (853 ms)
-      ✓ answers 502 and keeps the row when Stripe fails to create the Portal session (936 ms)
-      ✓ answers 401 without a token to the Portal (770 ms)
+      ✓ opens the Portal for the Customer of the caller that returns to the Plano screen (429 ms)
+      ✓ answers 409 to a user that never opened a Checkout (460 ms)
+      ✓ answers 409 to a user whose row has no Subscription (537 ms)
+      ✓ answers 503 when billing is not configured (857 ms)
+      ✓ answers 502 and keeps the row when Stripe fails to create the Portal session (713 ms)
+      ✓ answers 401 without a token to the Portal (682 ms)
     GET /billing/subscription
-      ✓ answers premiumUntil with the cancel_at of a premium user that cancelled in the Portal (1539 ms)
-      ✓ answers 401 without a token to the subscription (716 ms)
+      ✓ answers premiumUntil with the cancel_at of a premium user that cancelled in the Portal (830 ms)
+      ✓ answers 401 without a token to the subscription (804 ms)
 
 Test Suites: 1 passed, 1 total
 Tests:       9 passed, 9 total
 Snapshots:   0 total
-Time:        9.15 s, estimated 23 s
+Time:        6.613 s, estimated 10 s
 Ran all test suites matching /billing-portal/i.
 ```
 
@@ -50,38 +51,38 @@ Ran all test suites matching /billing-portal/i.
 
 ```
     retries and out-of-order delivery
-      ✓ ends in the same state and emits user:planChanged once when the same event arrives twice (358 ms)
-      ✓ emits user:planChanged once when the same event arrives twice at the same time (285 ms)
-      ✓ ends in the state the API reports whatever the order of the events (285 ms)
-      ✓ ends canceled when a slow reread of an older event overlaps the faster reread of the cancellation (752 ms)
-      ✓ does not let a late event of an old, ended Subscription cancel the one the user subscribed to afterwards (225 ms)
+      ✓ ends in the same state and emits user:planChanged once when the same event arrives twice (237 ms)
+      ✓ emits user:planChanged once when the same event arrives twice at the same time (237 ms)
+      ✓ ends in the state the API reports whatever the order of the events (231 ms)
+      ✓ ends canceled when a slow reread of an older event overlaps the faster reread of the cancellation (737 ms)
+      ✓ does not let a late event of an old, ended Subscription cancel the one the user subscribed to afterwards (168 ms)
     failures
-      ✓ answers 500 and writes nothing when the Stripe API fails to reread the Subscription (261 ms)
-      ✓ undoes subscriptions, plan_tier and the equipment together, and emits nothing, when the last write fails (266 ms)
+      ✓ answers 500 and writes nothing when the Stripe API fails to reread the Subscription (169 ms)
+      ✓ undoes subscriptions, plan_tier and the equipment together, and emits nothing, when the last write fails (189 ms)
 
 Test Suites: 1 passed, 1 total
 Tests:       34 passed, 34 total
 Snapshots:   0 total
-Time:        13.034 s, estimated 31 s
+Time:        8.454 s, estimated 13 s
 Ran all test suites matching /billing-webhook/i.
 ```
 
 `Run unit` - exit 0
 
 ```
-    ✓ has no target for a one-time payment Checkout Session (Pacote) (1 ms)
-    ✓ has no target when the event carries no Customer
+    ✓ gives free to a status Stripe adds later (1 ms)
 
-PASS src/modules/billing/domain/subscription-view.spec.ts (5.681 s)
+PASS src/modules/billing/domain/subscription-view.spec.ts
   subscriptionView
-    ✓ renews at the period end when nothing was cancelled (6 ms)
-    ✓ ends at cancel_at instead of renewing when the Subscription was cancelled (1 ms)
-    ✓ has no dates and no status for a user with no Subscription row
+    ✓ renews at the period end when nothing was cancelled (5 ms)
+    ✓ ends at cancel_at instead of renewing when the Subscription was cancelled
+    ✓ passes the status of the row through untranslated
+    ✓ has no dates and no status for a user with no Subscription row (1 ms)
     ✓ reports billing available only when Stripe is configured (1 ms)
 
 Test Suites: 3 passed, 3 total
-Tests:       37 passed, 37 total
+Tests:       38 passed, 38 total
 Snapshots:   0 total
-Time:        6.465 s, estimated 8 s
+Time:        4.602 s, estimated 6 s
 Ran all test suites matching /src\/modules\/billing/i.
 ```

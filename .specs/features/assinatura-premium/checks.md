@@ -48,6 +48,7 @@ Proof: run portal | ✓ answers premiumUntil with the cancel_at of a premium use
 **C10** - The view of the row: `available` is the Stripe client being present; `renewsAt` = `current_period_end` only when there is no `cancel_at`, else `null`; `premiumUntil` = `cancel_at` or `null`; `status` is the row's or `null`; a user with no row gets `status`, `renewsAt` and `premiumUntil` all `null` (S5.1 backend, needed by S4.5)
 Proof: run unit | ✓ renews at the period end when nothing was cancelled
 Proof: run unit | ✓ ends at cancel_at instead of renewing when the Subscription was cancelled
+Proof: run unit | ✓ passes the status of the row through untranslated
 Proof: run unit | ✓ has no dates and no status for a user with no Subscription row
 Proof: run unit | ✓ reports billing available only when Stripe is configured
 
@@ -84,7 +85,7 @@ here only for `401` and the S4.5 shape; its other statuses and the screen belong
 ## Handoff
 
 - **Settled mid-build:** none
-- **Dispatched:** Verifier at e715f5b (diff 09c68b7..e715f5b), sent; screens sub-agent n/a (no capture)
-- **Boundary:** C1-C11 built; green at the feature commit
+- **Dispatched:** Verifier at e715f5b (diff 09c68b7..e715f5b), returned; screens sub-agent n/a (no capture)
+- **Boundary:** C1-C11 closed at c171a2f; proofs.md green (17 pass)
 - **Abandoned:** none
 - **Walked:** n/a - no screen in S4
