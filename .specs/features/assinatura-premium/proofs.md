@@ -1,9 +1,9 @@
 # assinatura-premium proofs
 
-**HEAD**: 60955c4
+**HEAD**: 13cb73d
 **Tree**: clean
 **Shell**: /bin/sh
-**Result**: 31 pass, 2 fail
+**Result**: 33 pass, 0 fail
 
 | Check | Proof | Result |
 | --- | --- | --- |
@@ -35,8 +35,8 @@
 | C15 | `run settings / ✓ P3: an active premium without renewsAt shows only "R$ 9,90/MÊS"` | pass |
 | C16 | `run settings / ✓ P2: shows at most 3 Itens premium and survives a failed Catálogo` | pass |
 | C16 | `run settings / ✓ P2: a failed Catálogo leaves the offer with its buttons and no item rows` | pass |
-| C16 | `run settings / ✓ P10: a active premium on a 390 px phone keeps "Gerenciar assinatura" and stacks the owned ite` | **no test ran** |
-| C16 | `run settings / ✓ P10: a past_due premium on a 390 px phone keeps "Atualizar cartão" and stacks the owned items` | **no test ran** |
+| C16 | `run settings / ✓ P10: a active premium on a 390 px phone keeps its button and stacks the owned items below` | pass |
+| C16 | `run settings / ✓ P10: a past_due premium on a 390 px phone keeps its button and stacks the owned items below` | pass |
 | C16 | `run settings / ✓ P2, P7: lays the offer beside the card and the messages above it (child order)` | pass |
 | Build | `npm run typecheck --workspace apps/frontend` | pass |
 | Build | `cd apps/frontend && npx eslint src/features/settings __tests__/settings-screen.test.tsx` | pass |
@@ -47,19 +47,19 @@
 
 ```
     on phones
-      ✓ shows the current name and the 2–60 rule, with Salvar off until the name changes (46 ms)
-      ✓ keeps Salvar off for the invalid name "" (38 ms)
-      ✓ keeps Salvar off for the invalid name "A" (40 ms)
-      ✓ keeps Salvar off for the invalid name "   " (37 ms)
-      ✓ keeps Salvar off for the invalid name "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" (53 ms)
-      ✓ saves the trimmed name, confirms it and updates the cached profile (42 ms)
-      ✓ says so when there is no connection and keeps the typed name to try again (57 ms)
-      ✓ shows a generic failure for a server error (59 ms)
+      ✓ shows the current name and the 2–60 rule, with Salvar off until the name changes (29 ms)
+      ✓ keeps Salvar off for the invalid name "" (28 ms)
+      ✓ keeps Salvar off for the invalid name "A" (28 ms)
+      ✓ keeps Salvar off for the invalid name "   " (34 ms)
+      ✓ keeps Salvar off for the invalid name "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" (40 ms)
+      ✓ saves the trimmed name, confirms it and updates the cached profile (30 ms)
+      ✓ says so when there is no connection and keeps the typed name to try again (29 ms)
+      ✓ shows a generic failure for a server error (27 ms)
 
 Test Suites: 1 passed, 1 total
 Tests:       76 passed, 76 total
 Snapshots:   0 total
-Time:        5.604 s, estimated 6 s
+Time:        5.871 s, estimated 6 s
 Ran all test suites matching /__tests__\/settings-screen.test.tsx/i.
 ```
 
@@ -67,18 +67,18 @@ Ran all test suites matching /__tests__\/settings-screen.test.tsx/i.
 
 ```
   openStripePage (S5.4)
-    ✓ leaves for Stripe in the same tab on the Web (5 ms)
-    ✓ hands the page to the system browser on the native app (2 ms)
+    ✓ leaves for Stripe in the same tab on the Web (3 ms)
+    ✓ hands the page to the system browser on the native app (1 ms)
   billingErrorMessage (S5.11)
     ✓ uses the server detail on 404 only when the caller lists it (a Pacote) (1 ms)
     ✓ uses the server detail on 409
     ✓ uses the server detail on 502
-    ✓ uses the server detail on 503 (1 ms)
+    ✓ uses the server detail on 503
     ✓ falls back to a generic line for other failures (1 ms)
 
 Test Suites: 1 passed, 1 total
 Tests:       9 passed, 9 total
 Snapshots:   0 total
-Time:        0.46 s, estimated 1 s
+Time:        0.294 s, estimated 1 s
 Ran all test suites matching /__tests__\/billing.test.ts/i.
 ```
