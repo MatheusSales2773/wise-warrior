@@ -1,4 +1,6 @@
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery } from '@tanstack/react-query';
+import { useLocalSearchParams } from 'expo-router';
+import { useEffect, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { FeedbackMessage, ProgressBar, WiseButton, WiseIcon, theme, type WiseIconName } from '@/design-system';
 import { equippedItems } from '@/features/character/catalog';
@@ -6,7 +8,9 @@ import { HeroGlow } from '@/features/character/character-art';
 import { LayeredHero } from '@/features/character/layered-hero';
 import type { UserProfile } from '@/features/dashboard/api';
 import { profileQueryOptions } from '@/features/dashboard/queries';
-import { planLabel } from './plan';
+import { openBillingSession, type SubscriptionView } from './api';
+import { billingErrorMessage, openStripePage, subscriptionQueryOptions } from './billing';
+import { dayMonth, planLabel } from './plan';
 
 function ProfileCard({ user }: { user: UserProfile }) {
   return <View style={styles.profileCard} testID="settings-profile">
@@ -47,11 +51,57 @@ export function InfoRow({ icon, title, value }: { icon: WiseIconName; title: str
   </View>;
 }
 
+const CONFIRM_WAIT_MS = 30_000;
+
+/** What the Plano says and which Stripe page its button opens, from `GET /billing/subscription` (S5.2-S5.9). */
+function planState(view: SubscriptionView): { text: string; action?: { label: string; kind: 'checkout' | 'portal' } } {
+  if (!view.available) return { text: planLabel(view.planTier) };
+  if (view.planTier !== 'premium') {
+    return { text: 'Premium · R$ 9,90/mês. Libera os Itens premium ✦ do Herói.', action: { label: 'Assinar premium', kind: 'checkout' } };
+  }
+  const manage = { label: 'Gerenciar assinatura', kind: 'portal' } as const;
+  if (view.status === 'past_due') return { text: 'Premium · pagamento pendente', action: { label: 'Atualizar cartão', kind: 'portal' } };
+  if (view.premiumUntil) return { text: `Premium até ${dayMonth(view.premiumUntil)}`, action: manage };
+  return { text: view.renewsAt ? `Premium · renova em ${dayMonth(view.renewsAt)}` : 'Premium', action: manage };
+}
+
 export function PlanContent() {
-  const profile = useQuery(profileQueryOptions());
-  if (!profile.data) return <AccountHeader />;
-  return <View style={settingsStyles.list}>
-    <InfoRow icon="diamond-outline" title="Plano atual" value={planLabel(profile.data.planTier)} />
+  const subscription = useQuery(subscriptionQueryOptions());
+  const { checkout } = useLocalSearchParams<{ checkout?: string }>();
+  const [late, setLate] = useState(false);
+  const open = useMutation({
+    mutationFn: openBillingSession,
+    onSuccess: (url) => openStripePage(url),
+  });
+  const confirming = checkout === 'success' && subscription.data?.planTier === 'free';
+  useEffect(() => {
+    if (!confirming) return undefined;
+    // Back from Checkout before the webhook: `user:planChanged` refetches; after 30 s the wait gets a calmer line.
+    const timer = setTimeout(() => setLate(true), CONFIRM_WAIT_MS);
+    return () => clearTimeout(timer);
+  }, [confirming]);
+
+  if (!subscription.data) {
+    if (subscription.isError) {
+      return <View style={settingsStyles.stateBlock} testID="settings-plan-error">
+        <FeedbackMessage message="Não foi possível carregar seu plano." title="Plano indisponível" variant="error" />
+        <WiseButton label="Tentar novamente" loading={subscription.isRefetching} onPress={() => void subscription.refetch()} variant="ghost" />
+      </View>;
+    }
+    return <View accessibilityLabel="Carregando seu plano" accessibilityState={{ busy: true }} aria-busy style={settingsStyles.stateBlock}>
+      <ProgressBar indeterminate accessibilityLabel="Carregando seu plano" />
+    </View>;
+  }
+  const { text, action } = planState(subscription.data);
+  return <View style={settingsStyles.stateBlock}>
+    <View style={settingsStyles.list}>
+      <InfoRow icon="diamond-outline" title="Plano atual" value={text} />
+    </View>
+    {confirming
+      ? <FeedbackMessage message={late ? 'Pagamento recebido. O plano atualiza em instantes.' : 'Confirmando sua assinatura…'} testID="settings-plan-confirming" variant="info" />
+      : null}
+    {open.isError ? <FeedbackMessage message={billingErrorMessage(open.error)} testID="settings-plan-failure" variant="error" /> : null}
+    {action ? <WiseButton label={action.label} loading={open.isPending} onPress={() => open.mutate(action.kind)} /> : null}
   </View>;
 }
 
