@@ -1,6 +1,6 @@
 # assinatura-premium proofs
 
-**HEAD**: 97a88ff
+**HEAD**: c24924f
 **Tree**: clean
 **Shell**: /bin/sh
 **Result**: 30 pass, 0 fail
@@ -43,40 +43,40 @@
 `Run packs` - exit 0
 
 ```
-    ✓ lists the Pacote do Dragão for sale with its price, its 3 items and owned false (144 ms)
-    ✓ orders the Pacotes for sale by name (104 ms)
-    ✓ marks owned only for the user who paid the Pacote (184 ms)
-    ✓ keeps a paid Pacote listed as owned after it leaves the shelf, and hides it from who did not pay (192 ms)
-    ✓ answers 401 without a token (2 ms)
-    ✓ returns the Pacote items in the Catálogo with the pack condition, locked until the Pacote is paid (97 ms)
-    ✓ keeps the Pacote items and the Itens premium out of the Loja Itens section, and refuses to put them on sale (96 ms)
+    ✓ lists the Pacote do Dragão for sale with its price, its 3 items and owned false (69 ms)
+    ✓ orders the Pacotes for sale by name (53 ms)
+    ✓ marks owned only for the user who paid the Pacote (81 ms)
+    ✓ keeps a paid Pacote listed as owned after it leaves the shelf, and hides it from who did not pay (94 ms)
+    ✓ answers 401 without a token (1 ms)
+    ✓ returns the Pacote items in the Catálogo with the pack condition, locked until the Pacote is paid (47 ms)
+    ✓ keeps the Pacote items and the Itens premium out of the Loja Itens section, and refuses to put them on sale (49 ms)
   GET /billing/packs without STRIPE_SECRET_KEY, over HTTP against MySQL
-    ✓ answers 200 with available false and no Pacote, even to a user who paid one (39 ms)
+    ✓ answers 200 with available false and no Pacote, even to a user who paid one (37 ms)
 
 Test Suites: 1 passed, 1 total
 Tests:       8 passed, 8 total
 Snapshots:   0 total
-Time:        5.535 s, estimated 6 s
+Time:        5.777 s, estimated 9 s
 Ran all test suites matching /billing-packs-http/i.
 ```
 
 `Run unit` - exit 0
 
 ```
-    ✓ shows a Raid Badge as 0 of 1 until it is in the Inventory, then 1 of 1 (1 ms)
-    ✓ has no progress for the {"level": 3, "type": "level"} condition
-    ✓ has no progress for the {"type": "purchase"} condition
+    ✓ unlocks level conditions at or below the character level
+    ✓ never unlocks raid conditions by level
+  isUnlockedBySessionCounts
+    ✓ unlocks each count condition against its own count
+    ✓ never unlocks level, raid or purchase conditions (1 ms)
+    ✓ does not unlock level conditions by session count nor session conditions by level
+  isStarterItem
+    ✓ marks only level-1 conditions as starter items
+    ✓ does not mark a premium level-1 item as a starter item
 
-PASS src/modules/billing/domain/packs.spec.ts
-  visiblePacks
-    ✓ lists the Pacotes for sale ordered by name, each with owned false when the user paid none (16 ms)
-    ✓ marks owned only the Pacote the user paid
-    ✓ keeps a paid Pacote that left the shelf, owned, and drops an unpaid one off the shelf
-
-Test Suites: 6 passed, 6 total
-Tests:       90 passed, 90 total
+Test Suites: 7 passed, 7 total
+Tests:       96 passed, 96 total
 Snapshots:   0 total
-Time:        5.204 s, estimated 6 s
+Time:        5.605 s
 Ran all test suites matching /src\/modules\/billing\/domain|src\/modules\/users\/domain/i.
 ```
 
@@ -84,59 +84,59 @@ Ran all test suites matching /src\/modules\/billing\/domain|src\/modules\/users\
 
 ```
 
-PASS src/modules/users/cosmetics-http.integration.test.ts (5.119 s)
+PASS src/modules/users/cosmetics-http.integration.test.ts (5.297 s)
   Cosmetics Catalog HTTP contract against MySQL
-    ✓ requires authentication (922 ms)
-    ✓ gives a new user the three starter items, equipped, and shows the rest of the Catalog locked (715 ms)
-    ✓ exposes forSale: true for the item on sale and false for a level item (706 ms)
-    ✓ derives the profile Título and equipment from the equipped Cosmetic Items (733 ms)
-    ✓ leaves an item with a malformed unlock condition out of the Catalog instead of failing it (689 ms)
-    ✓ unlocks every item up to the character level without duplicating it when the rule runs again (672 ms)
+    ✓ requires authentication (1183 ms)
+    ✓ gives a new user the three starter items, equipped, and shows the rest of the Catalog locked (697 ms)
+    ✓ exposes forSale: true for the item on sale and false for a level item (658 ms)
+    ✓ derives the profile Título and equipment from the equipped Cosmetic Items (760 ms)
+    ✓ leaves an item with a malformed unlock condition out of the Catalog instead of failing it (583 ms)
+    ✓ unlocks every item up to the character level without duplicating it when the rule runs again (650 ms)
 
 Test Suites: 1 passed, 1 total
 Tests:       6 passed, 6 total
 Snapshots:   0 total
-Time:        5.139 s, estimated 6 s
+Time:        5.315 s, estimated 9 s
 Ran all test suites matching /cosmetics-http/i.
 ```
 
 `Run frontend` - exit 0
 
 ```
-    ✓ draws the premium items with their own sprite, not the category default (1 ms)
-    ✓ draws the Herói layers of the premium Avatar and Arma, different from the initial ones
-    ✓ draws the Cajado Astral weapon layer on the Herói, apart from the Cajado layer (62 ms)
+    ✓ draws the premium items with their own sprite, not the category default
+    ✓ draws the Herói layers of the premium Avatar and Arma, different from the initial ones (1 ms)
+    ✓ draws the Cajado Astral weapon layer on the Herói, apart from the Cajado layer (41 ms)
   Pacote do Dragão items (#360)
-    ✓ captions an owned Pacote item "Do Pacote do Dragão" and lets a free plan wear it (1 ms)
+    ✓ captions an owned Pacote item "Do Pacote do Dragão" and lets a free plan wear it
     ✓ captions a Pacote item the user does not own "Do Pacote do Dragão" too, locked
-    ✓ orders and describes a locked Pacote item with the items for sale, ahead of the Raid items
+    ✓ orders and describes a locked Pacote item with the items for sale, ahead of the Raid items (1 ms)
     ✓ draws each Pacote item with its own recoloured sprite, not the category default
-    ✓ draws the Elmo, the Presa and the Amuleto on the Herói, each different from the slot without it and from its source art (159 ms)
+    ✓ draws the Elmo, the Presa and the Amuleto on the Herói, each different from the slot without it and from its source art (105 ms)
 
 Test Suites: 1 passed, 1 total
 Tests:       84 passed, 84 total
 Snapshots:   0 total
-Time:        1.01 s
+Time:        0.709 s, estimated 1 s
 Ran all test suites matching /__tests__\/character-catalog.test.tsx/i.
 ```
 
 `Run migration` - exit 0
 
 ```
-    ✓ adds the Arma category: the Espada to every existing Character, equipped once, and the Cajado and Besta À venda (1664 ms)
-    ✓ marks existing Study Sessions as Ciclo and reverts the kind column (1084 ms)
-    ✓ moves Madrugador and Cem Sessões to session counts and keeps the Badges already in the Inventário (1872 ms)
-    ✓ creates subscriptions with one row per user, Customer and Subscription, deletes it with the user, and drops it on revert (1612 ms)
-    ✓ creates packs and pack_payments with the Pacote do Dragão and its 3 items, one Pagamento per user, Pacote and session, and drops them on revert (1519 ms)
+    ✓ adds the Arma category: the Espada to every existing Character, equipped once, and the Cajado and Besta À venda (996 ms)
+    ✓ marks existing Study Sessions as Ciclo and reverts the kind column (4239 ms)
+    ✓ moves Madrugador and Cem Sessões to session counts and keeps the Badges already in the Inventário (4369 ms)
+    ✓ creates subscriptions with one row per user, Customer and Subscription, deletes it with the user, and drops it on revert (1111 ms)
+    ✓ creates packs and pack_payments with the Pacote do Dragão and its 3 items, one Pagamento per user, Pacote and session, and drops them on revert (1253 ms)
     Itens premium (#354)
-      ✓ seeds the three premium items unequipped for every existing Character and keeps what is equipped (1492 ms)
-      ✓ seeds the premium items idempotently and removes them on revert (1489 ms)
-      ✓ refuses to put a premium or Pacote item for sale at the database (1584 ms)
+      ✓ seeds the three premium items unequipped for every existing Character and keeps what is equipped (1397 ms)
+      ✓ seeds the premium items idempotently and removes them on revert (2776 ms)
+      ✓ refuses to put a premium or Pacote item for sale at the database (1093 ms)
 
 Test Suites: 1 passed, 1 total
 Tests:       21 passed, 21 total
 Snapshots:   0 total
-Time:        34.139 s, estimated 41 s
+Time:        33.652 s, estimated 63 s
 Ran all test suites matching /migration.integration/i.
 ```
 
@@ -146,13 +146,13 @@ Ran all test suites matching /migration.integration/i.
 > @wise/backend@0.1.0 test:auth:integration
 > jest --runInBand --testRegex '.*auth.integration.test.ts$'
 
-PASS src/modules/auth/auth.integration.test.ts (10.337 s)
+PASS src/modules/auth/auth.integration.test.ts (18.607 s)
 <claude-code-hint v="1" type="plugin" value="stripe@claude-plugins-official" />
-PASS src/modules/auth/universal-auth.integration.test.ts (5.247 s)
+PASS src/modules/auth/universal-auth.integration.test.ts (5.956 s)
 
 Test Suites: 2 passed, 2 total
 Tests:       14 passed, 14 total
 Snapshots:   0 total
-Time:        15.707 s, estimated 18 s
+Time:        24.646 s
 Ran all test suites.
 ```
