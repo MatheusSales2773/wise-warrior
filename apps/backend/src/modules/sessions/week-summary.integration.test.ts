@@ -2,7 +2,7 @@ import { DataSource } from 'typeorm';
 import type { ProgressionService } from '../progression/progression.service';
 import type { RaidsService } from '../raids/raids.service';
 import { User } from '../users/entities/user.entity';
-import { APPLICATION_MIGRATIONS, createIntegrationDatabase, type IntegrationDatabase } from '../../test/integration-database';
+import { APPLICATION_MIGRATIONS, createMigratedIntegrationDatabase, type IntegrationDatabase } from '../../test/integration-database';
 import { StudySession, type StudySessionState } from './entities/study-session.entity';
 import { SessionsService } from './sessions.service';
 
@@ -40,7 +40,7 @@ describe('Semana do Diário (SessionsService.weekSummary) against MySQL', () => 
 
   beforeEach(async () => {
     counter = 0;
-    database = await createIntegrationDatabase('wise_session_week_summary');
+    database = await createMigratedIntegrationDatabase('wise_session_week_summary');
     dataSource = new DataSource(database.options(APPLICATION_MIGRATIONS));
     await dataSource.initialize();
     await dataSource.runMigrations();

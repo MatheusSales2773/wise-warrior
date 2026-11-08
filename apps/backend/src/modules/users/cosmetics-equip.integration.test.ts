@@ -9,7 +9,7 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import type { JwtPayload } from '../auth/strategies/jwt.strategy';
 import { ProgressionService } from '../progression/progression.service';
 import { HttpExceptionFilter } from '../../shared/filters/http-exception.filter';
-import { APPLICATION_MIGRATIONS, createIntegrationDatabase, type IntegrationDatabase } from '../../test/integration-database';
+import { APPLICATION_MIGRATIONS, createMigratedIntegrationDatabase, type IntegrationDatabase } from '../../test/integration-database';
 import { CosmeticItem } from './entities/cosmetic-item.entity';
 import { User } from './entities/user.entity';
 import { UserCosmeticItem } from './entities/user-cosmetic-item.entity';
@@ -66,7 +66,7 @@ describe('Equipping Cosmetic Items against MySQL', () => {
   beforeEach(async () => {
     premiumForAll = 'true';
     stripeSecretKey = undefined;
-    database = await createIntegrationDatabase('wise_cosmetics_equip');
+    database = await createMigratedIntegrationDatabase('wise_cosmetics_equip');
     dataSource = new DataSource(database.options(APPLICATION_MIGRATIONS));
     await dataSource.initialize();
     await dataSource.runMigrations();

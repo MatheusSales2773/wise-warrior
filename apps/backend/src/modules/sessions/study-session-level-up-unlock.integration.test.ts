@@ -22,7 +22,7 @@ import { UserCosmeticItem } from '../users/entities/user-cosmetic-item.entity';
 import { UsersController } from '../users/users.controller';
 import { UsersService, type CatalogCosmeticItem } from '../users/users.service';
 import { HttpExceptionFilter } from '../../shared/filters/http-exception.filter';
-import { APPLICATION_MIGRATIONS, createIntegrationDatabase, type IntegrationDatabase } from '../../test/integration-database';
+import { APPLICATION_MIGRATIONS, createMigratedIntegrationDatabase, type IntegrationDatabase } from '../../test/integration-database';
 import { SessionsController } from './sessions.controller';
 import { SessionsService } from './sessions.service';
 import { StudySessionStartService } from './study-session-start.service';
@@ -77,7 +77,7 @@ describe('Cosmetic Item unlock on level-up through the Study Session API', () =>
     dataSource!.getRepository(Character).update({ userId }, { xpTotal, level });
 
   beforeEach(async () => {
-    database = await createIntegrationDatabase('wise_levelup_unlock');
+    database = await createMigratedIntegrationDatabase('wise_levelup_unlock');
     dataSource = new DataSource(database.options(APPLICATION_MIGRATIONS));
     await dataSource.initialize();
     await dataSource.runMigrations();

@@ -8,7 +8,7 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RateLimitGuard } from '../../shared/security/rate-limit';
 import type { JwtPayload } from '../auth/strategies/jwt.strategy';
 import { HttpExceptionFilter } from '../../shared/filters/http-exception.filter';
-import { APPLICATION_MIGRATIONS, createIntegrationDatabase, type IntegrationDatabase } from '../../test/integration-database';
+import { APPLICATION_MIGRATIONS, createMigratedIntegrationDatabase, type IntegrationDatabase } from '../../test/integration-database';
 import { Guild } from '../guilds/entities/guild.entity';
 import { GuildMembership } from '../guilds/entities/guild-membership.entity';
 import { GuildsController } from '../guilds/guilds.controller';
@@ -96,7 +96,7 @@ describe('Study Session de modo Guilda against MySQL', () => {
 
   beforeEach(async () => {
     completionNow = new Date();
-    database = await createIntegrationDatabase('wise_guild_session');
+    database = await createMigratedIntegrationDatabase('wise_guild_session');
     dataSource = new DataSource(database.options(APPLICATION_MIGRATIONS));
     await dataSource.initialize();
     await dataSource.runMigrations();

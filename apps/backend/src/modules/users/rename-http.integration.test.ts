@@ -12,7 +12,7 @@ import { GuildChatMessage } from '../guilds/entities/guild-chat-message.entity';
 import type { GuildsService } from '../guilds/guilds.service';
 import type { ProgressionService } from '../progression/progression.service';
 import { HttpExceptionFilter } from '../../shared/filters/http-exception.filter';
-import { APPLICATION_MIGRATIONS, createIntegrationDatabase, type IntegrationDatabase } from '../../test/integration-database';
+import { APPLICATION_MIGRATIONS, createMigratedIntegrationDatabase, type IntegrationDatabase } from '../../test/integration-database';
 import { CosmeticItem } from './entities/cosmetic-item.entity';
 import { User } from './entities/user.entity';
 import { UserCosmeticItem } from './entities/user-cosmetic-item.entity';
@@ -45,7 +45,7 @@ describe('PATCH /users/me against MySQL', () => {
   });
 
   beforeEach(async () => {
-    database = await createIntegrationDatabase('wise_rename_http');
+    database = await createMigratedIntegrationDatabase('wise_rename_http');
     dataSource = new DataSource(database.options(APPLICATION_MIGRATIONS));
     await dataSource.initialize();
     await dataSource.runMigrations();

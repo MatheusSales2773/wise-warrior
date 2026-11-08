@@ -1,7 +1,7 @@
 import { DataSource, type EntityManager } from 'typeorm';
 import type { RealtimeGateway } from '../realtime/realtime.gateway';
 import { User } from '../users/entities/user.entity';
-import { APPLICATION_MIGRATIONS, createIntegrationDatabase, type IntegrationDatabase } from '../../test/integration-database';
+import { APPLICATION_MIGRATIONS, createMigratedIntegrationDatabase, type IntegrationDatabase } from '../../test/integration-database';
 import { CoinBalance } from './entities/coin-balance.entity';
 import { CoinLedgerEntry } from './entities/coin-ledger-entry.entity';
 import type { CoinMovementResult, CoinOrigin } from './domain/coin-origin';
@@ -23,7 +23,7 @@ describe('EconomyService against MySQL', () => {
   const ledgerRows = () => dataSource!.query('SELECT * FROM coin_ledger_entries WHERE user_id = ?', [userId]) as Promise<unknown[]>;
 
   beforeEach(async () => {
-    database = await createIntegrationDatabase('wise_economy');
+    database = await createMigratedIntegrationDatabase('wise_economy');
     dataSource = new DataSource(database.options(APPLICATION_MIGRATIONS));
     await dataSource.initialize();
     await dataSource.runMigrations();
