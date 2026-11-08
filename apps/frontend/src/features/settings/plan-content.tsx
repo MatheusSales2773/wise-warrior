@@ -32,7 +32,7 @@ const CATEGORY_ORDER = ['avatar', 'weapon', 'title'];
 /** The 3 Itens premium ✦ of the Assinatura: premium and open from level 1, unlike "Mestre da Aurora" (level 15). */
 function premiumItems(catalog: readonly CatalogCosmeticItem[] | undefined): CatalogCosmeticItem[] {
   return (catalog ?? [])
-    .filter((item) => item.requiresPremium && item.unlockCondition.type === 'level' && item.unlockCondition.level <= 1)
+    .filter((item) => item.requiresPremium && item.unlockCondition.type === 'level' && item.unlockCondition.level <= 1 && CATEGORY_ORDER.includes(item.category))
     .sort((a, b) => CATEGORY_ORDER.indexOf(a.category) - CATEGORY_ORDER.indexOf(b.category))
     .slice(0, 3);
 }

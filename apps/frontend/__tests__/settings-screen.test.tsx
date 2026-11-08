@@ -634,7 +634,10 @@ describe('Plano (S5, #380)', () => {
     mockedSubscription.mockResolvedValue(free);
     mockedCatalog.mockResolvedValue([...catalog, item('x', 'badge', 'Quarto Item', 1)]);
     await openSettings('/configuracao/plano');
-    expect(await within(await screen.findByTestId('settings-plan-offer')).findAllByText('✦ PREMIUM')).toHaveLength(3);
+    const offer = within(await screen.findByTestId('settings-plan-offer'));
+    expect(await offer.findAllByText('✦ PREMIUM')).toHaveLength(3);
+    for (const name of ['Manto do Arquimago', 'Cajado Astral', 'Lenda do Foco']) expect(offer.getByText(name)).toBeTruthy();
+    expect(offer.queryByText('Quarto Item')).toBeNull();
   });
 
   it('P2: a failed Catálogo leaves the offer with its buttons and no item rows', async () => {
@@ -658,6 +661,8 @@ describe('Plano (S5, #380)', () => {
     expect(await screen.findByRole('button', { name: button })).toBeTruthy();
     expect(screen.getByTestId('settings-plan-items')).toBeTruthy();
     expect(screen.queryByTestId('settings-plan-offer')).toBeNull();
+    const order = (id: string) => JSON.stringify(screen.toJSON()).indexOf(`"testID":"${id}"`);
+    expect(order('settings-plan-card')).toBeLessThan(order('settings-plan-items'));
   });
 
   it('P2, P7: lays the offer beside the card and the messages above it (child order)', async () => {
