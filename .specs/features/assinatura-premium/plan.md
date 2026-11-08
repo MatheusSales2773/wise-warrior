@@ -208,7 +208,7 @@ Quem tem Assinatura abre o Portal do Stripe para cancelar, reativar ou trocar o 
    - `renewsAt` igual a `current_period_end` quando não há `cancel_at`, senão `null`;
    - `premiumUntil` igual a `cancel_at`, ou `null`.
 2. WHILE `available` for `false` the system SHALL mostrar "Free · premium em breve" na tela Plano, na lista e no menu da Configuração, sem botão.
-3. WHILE o usuário for `free` e `available` for `true`, the system SHALL mostrar "Premium · R$ 9,90/mês. Libera os Itens premium ✦ do Herói." e o botão "Assinar premium".
+3. WHILE o usuário for `free` e `available` for `true`, the system SHALL mostrar "Premium · R$ 9,90/mês. Libera os Itens premium ✦ do Herói." e o botão "Assinar premium" (texto substituído pela S10).
 4. WHEN a pessoa toca em "Assinar premium" THEN o sistema SHALL marcar o botão como ocupado, chamar `POST /billing/checkout` e abrir a `url`: na Web, na mesma aba; no app nativo, no navegador do sistema.
 5. WHEN a tela abre com `?checkout=success` e o `planTier` ainda é `free` THEN o sistema SHALL mostrar "Confirmando sua assinatura…" e reconsultar ao receber `user:planChanged`. Depois de 30 s sem mudança, SHALL mostrar "Pagamento recebido. O plano atualiza em instantes."
 6. WHEN a tela abre com `?checkout=cancel` THEN o sistema SHALL mostrar o estado `free` sem mensagem de erro.
@@ -287,6 +287,22 @@ Quem lê a documentação encontra a cobrança como ela está no código.
 5. The system SHALL documentar `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_PRICE_PREMIUM` e `APP_URL` em `apps/backend/.env.example`, e o boot SHALL recusar subir com `STRIPE_SECRET_KEY` definido e qualquer uma das outras três ausente, citando só o nome da variável.
 6. The system SHALL descrever no `README.md` como rodar a cobrança localmente com `stripe listen` encaminhando para `/api/v1/billing/webhook`.
 
+### S10: Redesenho da tela Plano conforme o Figma (P2)
+
+A tela `/configuracao/plano` segue o Figma "App v2 · 11 · Monetização" sem mudar a cobrança. Issue #380 (critérios P1 a P10); os textos de S5.2, S5.3, S5.7, S5.8 e S5.9 passam a ser os abaixo, e o comportamento de S5.4 a S5.6, S5.10 a S5.12 não muda. Só frontend: nenhuma rota, tabela, variável ou `imports` novos.
+
+**Acceptance Criteria**
+
+1. The system SHALL mostrar o cartão "Plano atual" com cabeçalho "◈ PLANO ATUAL" e "Cobrança pelo Stripe", um selo `diamond-outline`, o nome do plano em Cinzel, a situação em JetBrains Mono, a pill de estado quando houver e a ação (P1).
+2. WHILE `available` for `true` e o plano for `free`, the system SHALL mostrar "Free", "SEM ASSINATURA", "Você joga com tudo o que conquista no foco. O premium libera 3 Itens premium ✦ para o seu herói por R$ 9,90/mês." e "Assinar premium"; a oferta (herói com Manto do Arquimago e Cajado Astral, "Premium ✦", "R$ 9,90/mês", os 3 Itens premium do Catálogo com "✦ PREMIUM", outro "Assinar premium" e a nota do Stripe) ao lado no desktop (392 px) e abaixo no celular; e o cartão "Como funciona" (3 passos) abaixo do "Plano atual" só no desktop (P2).
+2. WHILE o plano for `premium` sem `premiumUntil` e sem `past_due`, the system SHALL mostrar "Premium ✦", "R$ 9,90/MÊS · RENOVA EM dd/mm", a pill "ATIVO", "Gerenciar assinatura" (secundário) e, abaixo, o cartão "Seus Itens premium ✦" com o herói equipado e os 3 itens "Liberado" (P3).
+3. WHILE `status` for `past_due`, the system SHALL mostrar a pill "PENDENTE", a situação "R$ 9,90/MÊS · PAGAMENTO PENDENTE" em `feedbackDanger`, a mensagem de erro dentro do cartão e "Atualizar cartão" (primário) (P4).
+4. WHILE houver `premiumUntil`, the system SHALL mostrar a pill "ATÉ dd/mm", "NÃO RENOVA", o aviso dos Itens premium ✦ desequipados e "Gerenciar assinatura" (P5).
+5. WHILE `available` for `false`, the system SHALL mostrar "Free", "PREMIUM EM BREVE" e o texto "A assinatura premium ainda não está disponível. Seus itens e moedas continuam iguais.", sem botão e sem oferta (P6).
+6. The system SHALL manter acima do cartão as mensagens de confirmação e de falha de abertura do Stripe, com os textos e regras de S5.5 e S5.11 (P7).
+7. WHILE o plano for `premium`, the system SHALL mostrar "PREMIUM ✦" em `accentPrimary` no item Plano do menu da Configuração; nos outros casos, o rótulo de hoje (P8).
+8. The system SHALL manter os testIDs e os rótulos de acessibilidade dos botões, e SHALL funcionar a 1440 px e a 390 px sem rolagem horizontal, com o alvo mínimo de toque dos botões (P9, P10).
+
 ## Out of scope
 
 | Excluded | Why |
@@ -327,6 +343,7 @@ Quem lê a documentação encontra a cobrança como ela está no código.
 | Checkout do Pacote (S7) | Sessão só com cartão (`allowed_payment_method_types: ['card']`); slug em `metadata.packSlug`; quem já pagou um Pacote fora de venda recebe `409`, não `404`; evento pago de Pacote que saiu de venda ainda concede os itens | Detalhes internos que seguem a ADR-015 (só cartão) e o S7.2/S7.3 sem decidir produto novo | n |
 | Larguras de tela | As mesmas da Configuração e da Loja (sidebar no desktop, navegação inferior no celular) | Sem captura; segue o design system (ADR-008) | n |
 | Detalhes da seção Pacotes (S8) | Texto de abertura da Loja cita os Pacotes só com `available: true`; a Prévia é o botão "Prévia no herói" do cartão, que abre o palco com o Herói e os 3 itens; o aviso "Itens do Pacote do Dragão no seu Inventário" aparece quando a posse vira `owned` com a Loja aberta; se `GET /billing/packs` falhar, a aba some e Missões e Itens seguem; `?secao=pacotes` sem cobrança abre Missões; a espera de `checkout=success` vale enquanto algum Pacote não for `owned`, o que supõe um Pacote à venda (a volta do Checkout não traz o slug) | Detalhes de tela que seguem S8.1, S8.3, S8.4, S8.7 e S8.10 sem decidir produto novo | n |
+| Detalhes do redesenho do Plano (S10) | Os 3 Itens premium da oferta são os do Catálogo com `requiresPremium` e Condição de nível 1 ou menos, o que deixa de fora o Título "Mestre da Aurora" (premium, nível 15); a oferta mostra sempre o herói com Manto do Arquimago e Cajado Astral; o cartão "Seus Itens premium ✦" aparece em todo estado premium (ativo, pendente e cancelado) e no celular vem abaixo do "Plano atual", pois o Figma só desenha o desktop; o nome "Plano" e a descrição "O plano da sua conta." saem do cartão da seção, como no Figma | Detalhes de tela que seguem P1 a P10 da #380 sem decidir produto novo | n |
 
 **Open questions:** one remains, listed below; nothing else is open.
 - `blocks go-live` — Conta Stripe em modo de teste:
@@ -339,10 +356,11 @@ Quem lê a documentação encontra a cobrança como ela está no código.
 
 ## Differences from the source
 
-None - the product matches the source. A única fonte é o design doc `.design/assinatura-premium.md`; os nomes dos itens mudaram em relação aos padrões dele por colisão com o Catálogo, a pedido do usuário.
+Plano (S10): o Figma só desenha o desktop com o plano Free ativo, o desktop Premium e o celular Free. O celular Premium, o desktop e o celular de `past_due`, cancelado e "em breve" seguem os componentes `Plano/Resumo` e `Monetização/Item` do mesmo Figma, empilhados, sem tela própria. Fora isso, o produto confere com a fonte. A fonte das demais fatias é o design doc `.design/assinatura-premium.md`; os nomes dos itens mudaram em relação aos padrões dele por colisão com o Catálogo, a pedido do usuário.
 
 ## Sources
 
+- Figma "App v2" · "11 · Monetização", https://www.figma.com/design/L2UVGCbN4EiSgyHybb2r3S/ nós `567:118306` (desktop Free), `567:118879` (desktop Premium), `567:122140` (celular Free), `565:117284` (Plano/Resumo), `566:119651` (Plano/Oferta premium), `563:117207` (Monetização/Item), `567:124387` (mensagens) - binding - tela Plano da S10 (#380; link recebido na issue)
 - Figma "Wise — App (Personagem + Guilda em pixel art)", página "Sprites (pixel art)" (node `18:26`), https://www.figma.com/design/L2UVGCbN4EiSgyHybb2r3S - binding - onde os 6 sprites novos são desenhados e de onde são exportados para `sprites.ts` (link recebido em 2026-11-08)
 - `.design/assinatura-premium.md` - binding - shape, Key decisions e estados por fatia (confirmado em 2026-11-08)
 - `docs/PRD.md` ADR-015 - binding - decisão de cobrança em modo de teste, revisando a ADR-007
