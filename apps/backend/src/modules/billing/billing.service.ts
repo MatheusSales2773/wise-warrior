@@ -1,4 +1,14 @@
-import { BadRequestException, Inject, Injectable, InternalServerErrorException, Logger } from '@nestjs/common';
+import {
+  BadGatewayException,
+  BadRequestException,
+  ConflictException,
+  Inject,
+  Injectable,
+  InternalServerErrorException,
+  Logger,
+  NotFoundException,
+  ServiceUnavailableException,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
 import type Stripe from 'stripe';
@@ -38,9 +48,12 @@ export class BillingService {
 
     const target = subscriptionEventTarget(event);
     if (!target) return;
-    const row = await this.subscriptions.findOne({ where: { stripeCustomerId: target.customerId } });
+    // Um Checkout traz o usuário no `client_reference_id`: a linha precisa ser dele e do Customer do evento (S3.6).
+    const row = await this.subscriptions.findOne({
+      where: { stripeCustomerId: target.customerId, ...(target.userId && { userId: target.userId }) },
+    });
     if (!row) {
-      this.logger.warn(`Evento ${event.id} ignorado: o Customer ${target.customerId} não tem Assinatura`);
+      this.logger.warn(`Evento ${event.id} ignorado: o Customer ${target.customerId} não tem Assinatura${target.userId ? ` do usuário ${target.userId}` : ''}`);
       return;
     }
     const { subscriptionId } = target;
@@ -52,6 +65,44 @@ export class BillingService {
     // Depois do commit: um rollback não deixa evento nenhum para trás.
     if (outcome.planChanged) this.realtime.emitToUser(outcome.userId, 'user:planChanged', { planTier: outcome.planTier });
     this.users.publishEquipmentChanges(outcome.userId, outcome.equipment);
+  }
+
+  /**
+   * Abre o Checkout do premium (S3). Trava o usuário antes de ler a linha, então chamadas simultâneas criam um só
+   * Customer. A linha nova só é gravada se o Customer e a sessão deram certo: uma falha do Stripe desfaz a transação.
+   */
+  async openCheckout(userId: string): Promise<{ url: string }> {
+    const stripe = this.stripe;
+    if (!stripe) throw new ServiceUnavailableException('Assinatura indisponível no momento');
+
+    return this.dataSource.transaction(async (manager) => {
+      const planTier = await this.users.lockPlanTier(manager, userId);
+      if (!planTier) throw new NotFoundException('Usuário não encontrado');
+      if (planTier === 'premium') throw new ConflictException('Você já tem o plano premium');
+
+      const rows = manager.getRepository(Subscription);
+      const row = await rows.findOne({ where: { userId } });
+      const returnUrl = `${this.config.get<string>('APP_URL')}/configuracao/plano`;
+      let customerId: string;
+      let session: Stripe.Checkout.Session;
+      try {
+        customerId = row?.stripeCustomerId ?? (await stripe.customers.create({ metadata: { userId } })).id;
+        session = await stripe.checkout.sessions.create({
+          mode: 'subscription',
+          customer: customerId,
+          line_items: [{ price: this.config.get<string>('STRIPE_PRICE_PREMIUM'), quantity: 1 }],
+          client_reference_id: userId,
+          success_url: `${returnUrl}?checkout=success`,
+          cancel_url: `${returnUrl}?checkout=cancel`,
+        });
+      } catch (error) {
+        this.logger.error(`Checkout do usuário ${userId}: o Stripe falhou: ${(error as Error).message}`);
+        throw new BadGatewayException('Não foi possível abrir o pagamento');
+      }
+      if (!row) await rows.insert({ userId, stripeCustomerId: customerId });
+      // O Checkout hospedado sempre devolve a URL.
+      return { url: session.url! };
+    });
   }
 
   private verify(rawBody: Buffer | undefined, signature: string | undefined): Stripe.Event {

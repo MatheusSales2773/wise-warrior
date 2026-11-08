@@ -17,4 +17,12 @@ export interface StripeApi {
   subscriptions: {
     retrieve(id: string): Promise<Stripe.Subscription>;
   };
+  customers: {
+    create(params: Stripe.CustomerCreateParams): Promise<Stripe.Customer>;
+  };
+  checkout: {
+    sessions: {
+      create(params: Stripe.Checkout.SessionCreateParams): Promise<Stripe.Checkout.Session>;
+    };
+  };
 }

@@ -24,6 +24,8 @@ const idOf = (value: Expandable): string | null => (typeof value === 'string' ? 
 export interface SubscriptionEventTarget {
   customerId: string;
   subscriptionId: string | null;
+  /** O `client_reference_id` de um Checkout de assinatura: o usuário que abriu a sessão (S3.6). */
+  userId?: string;
 }
 
 /**
@@ -47,7 +49,10 @@ export function subscriptionEventTarget(event: Stripe.Event): SubscriptionEventT
     case 'checkout.session.completed': {
       const session = event.data.object;
       const customerId = idOf(session.customer);
-      return session.mode === 'subscription' && customerId ? { customerId, subscriptionId: idOf(session.subscription) } : null;
+      if (session.mode !== 'subscription' || !customerId) return null;
+      const target: SubscriptionEventTarget = { customerId, subscriptionId: idOf(session.subscription) };
+      if (session.client_reference_id) target.userId = session.client_reference_id;
+      return target;
     }
     default:
       return null;

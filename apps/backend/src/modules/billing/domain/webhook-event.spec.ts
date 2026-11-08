@@ -56,6 +56,12 @@ describe('subscriptionEventTarget', () => {
       .toEqual({ customerId: 'cus_1', subscriptionId: 'sub_1' });
   });
 
+  it('carries the client_reference_id of a subscription Checkout Session as the user', () => {
+    expect(subscriptionEventTarget(event('checkout.session.completed', {
+      mode: 'subscription', customer: 'cus_1', subscription: 'sub_1', client_reference_id: 'user-1',
+    }))).toStrictEqual({ customerId: 'cus_1', subscriptionId: 'sub_1', userId: 'user-1' });
+  });
+
   it('has no Subscription to read for a subscription Checkout Session that carries none', () => {
     expect(subscriptionEventTarget(event('checkout.session.completed', { mode: 'subscription', customer: 'cus_1', subscription: null })))
       .toEqual({ customerId: 'cus_1', subscriptionId: null });
