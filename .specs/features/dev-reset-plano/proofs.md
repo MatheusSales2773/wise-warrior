@@ -1,9 +1,9 @@
 # dev-reset-plano proofs
 
-**HEAD**: e0700e9
+**HEAD**: eeac2e7
 **Tree**: clean
 **Shell**: /bin/sh
-**Result**: 46 pass, 0 fail
+**Result**: 49 pass, 0 fail
 
 | Check | Proof | Result |
 | --- | --- | --- |
@@ -27,13 +27,14 @@
 | C18 | `run api / ✓ answers 502, logs the user id and keeps the row when Stripe fails to cancel` | pass |
 | C19 | `run api / ✓ writes canceled and turns the plan free when the payload says active and the API says canceled` | pass |
 | C20 | `run api / ✓ puts the Título back to Aprendiz, empties a category with no Item inicial, restores the Item inici` | pass |
-| C21 | `run api / ✓ is emitted once, to the user, with the new plan and only after the commit` | pass |
+| C21 | `run api / ✓ is emitted once with free, after the commit, when the Subscription is deleted` | pass |
 | C22 | `run api / ✓ answers devTools true to a listed user and false to the others, on GET and PATCH` | pass |
 | C23 | `run unit / ✓ answers devTools for dev@wise.app from DEV_TOOLS_EMAILS (true)` | pass |
 | C24 | `run app / ✓ AC13: lists Desenvolvedor last in the desktop menu, before Sair da conta, and describes it` | pass |
 | C25 | `run app / ✓ AC13: lists Desenvolvedor in its own last group of the phone list` | pass |
 | C26 | `run app / ✓ AC14: keeps Desenvolvedor out of the menu and the list when devTools is false` | pass |
 | C26 | `run app / ✓ AC14: keeps Desenvolvedor out while the profile has not loaded` | pass |
+| C26 | `run app / ✓ AC14: keeps Desenvolvedor out of the phone list while the profile has not loaded` | pass |
 | C27 | `run app / ✓ AC15: takes an account without devTools from /configuracao/dev to /configuracao` | pass |
 | C28 | `run app / ✓ AC16: shows "Plano atual" as the Plano section does, and the button, while premium` | pass |
 | C29 | `run app / ✓ AC17: shows Free and no button while the plan is free` | pass |
@@ -41,14 +42,16 @@
 | C31 | `run app / ✓ AC19: Voltar closes the dialog and calls nothing` | pass |
 | C32 | `run app / ✓ AC20: confirming calls the route once, shows loading, then closes the dialog and says the plan com` | pass |
 | C33 | `run app / ✓ AC21: shows Free without reloading when user:planChanged arrives` | pass |
+| C33 | `run app / ✓ AC20, AC21: the cancel notice goes away once the plan is Free` | pass |
 | C34 | `run app / ✓ AC22: closes the dialog and shows the server detail of a 409` | pass |
 | C34 | `run app / ✓ AC22: closes the dialog and shows the server detail of a 502` | pass |
 | C34 | `run app / ✓ AC22: closes the dialog and shows the server detail of a 503` | pass |
 | C35 | `run app / ✓ AC22: shows the generic line for any other error` | pass |
 | C36 | `run app / ✓ AC23: shows the Plano loading indicator, then the Plano error with "Tentar novamente"` | pass |
 | C37 | `grep -qF 'DEV_TOOLS_EMAILS: ${DEV_TOOLS_EMAILS:-}' docker-compose.yml` | pass |
-| C38 | `grep -q '^DEV_TOOLS_EMAILS=' apps/backend/.env.example` | pass |
-| C39 | `npm run lint:openapi && grep -q '/billing/dev/reset-plan' docs/api/openapi.yaml && grep -q 'devTools' docs/api` | pass |
+| C38 | `grep -q '^DEV_TOOLS_EMAILS=' apps/backend/.env.example && grep -q 'Vazia libera ninguém' apps/backend/.env.exa` | pass |
+| C39 | `npm run lint:openapi && for c in 202 401 404 409 502 503; do awk '/^  \/billing\/dev\/reset-plan:/{f=1;next} /` | pass |
+| C40 | `TEST_DB_PORT=3327 npm run test:auth:integration --workspace apps/backend` | pass |
 | Build | `npx tsc --noEmit -p apps/backend/tsconfig.json` | pass |
 | Build | `npm run lint --workspace apps/backend` | pass |
 | Build | `npm run lint --workspace apps/frontend` | pass |
@@ -59,40 +62,40 @@
 `Run unit` - exit 0
 
 ```
+PASS src/shared/dev-tools/dev-tools.spec.ts
+  isDevToolsEmail
+    ✓ DEV_TOOLS_EMAILS=" Dev@Ex.com , b@ex.com" and e-mail "dev@ex.com" is true (1 ms)
+    ✓ DEV_TOOLS_EMAILS=" Dev@Ex.com , b@ex.com" and e-mail " B@EX.com " is true
+    ✓ DEV_TOOLS_EMAILS=" Dev@Ex.com , b@ex.com" and e-mail "devx@ex.com" is false
+    ✓ DEV_TOOLS_EMAILS="" and e-mail "dev@ex.com" is false
+    ✓ DEV_TOOLS_EMAILS="," and e-mail "dev@ex.com" is false
     ✓ DEV_TOOLS_EMAILS="," and e-mail "" is false
-    ✓ DEV_TOOLS_EMAILS=undefined and e-mail "dev@ex.com" is false (1 ms)
-
-PASS src/modules/users/users.service.spec.ts (5.13 s)
-  UsersService
-    ✓ derives the level boundaries from the XP projection and the Título from the equipped item (10 ms)
-    ✓ uses the zero-XP projection when the character is missing without writing (2 ms)
-    ✓ answers devTools for dev@wise.app from DEV_TOOLS_EMAILS (true) (1 ms)
-    ✓ answers devTools for hero@wise.app from DEV_TOOLS_EMAILS (false) (4 ms)
+    ✓ DEV_TOOLS_EMAILS=undefined and e-mail "dev@ex.com" is false
 
 Test Suites: 2 passed, 2 total
 Tests:       11 passed, 11 total
 Snapshots:   0 total
-Time:        5.519 s
+Time:        1.915 s
 Ran all test suites matching /src\/shared\/dev-tools|src\/modules\/users\/users.service.spec.ts/i.
 ```
 
 `Run api` - exit 0
 
 ```
-      ✓ answers 404 without calling Stripe to a user that is not listed, even with an active Subscription (3464 ms)
-      ✓ answers 404, not 503, to a user that is not listed when billing is not configured (5132 ms)
-      ✓ answers 404, not 409, to a user that is not listed and has no Subscription (2757 ms)
-      ✓ answers 401 without a token (3053 ms)
-      ✓ answers 503 to a listed user when billing is not configured (2460 ms)
-      ✓ answers 409 without calling Stripe to a listed user that has no row (2448 ms)
-      ✓ answers 409 without calling Stripe to a listed user that has a row with only the Customer (2413 ms)
-      ✓ answers 409 without calling Stripe to a listed user that has a canceled Subscription (2676 ms)
-      ✓ answers 502, logs the user id and keeps the row when Stripe fails to cancel (2626 ms)
+    retries and out-of-order delivery
+      ✓ ends in the same state and emits user:planChanged once when the same event arrives twice (883 ms)
+      ✓ emits user:planChanged once when the same event arrives twice at the same time (869 ms)
+      ✓ ends in the state the API reports whatever the order of the events (907 ms)
+      ✓ ends canceled when a slow reread of an older event overlaps the faster reread of the cancellation (2063 ms)
+      ✓ does not let a late event of an old, ended Subscription cancel the one the user subscribed to afterwards (2271 ms)
+    failures
+      ✓ answers 500 and writes nothing when the Stripe API fails to reread the Subscription (1200 ms)
+      ✓ undoes subscriptions, plan_tier and the equipment together, and emits nothing, when the last write fails (1098 ms)
 
 Test Suites: 3 passed, 3 total
-Tests:       61 passed, 61 total
+Tests:       62 passed, 62 total
 Snapshots:   0 total
-Time:        53.535 s
+Time:        44.414 s, estimated 64 s
 Ran all test suites matching /billing-dev-reset|rename-http|billing-webhook/i.
 ```
 
@@ -100,19 +103,19 @@ Ran all test suites matching /billing-dev-reset|rename-http|billing-webhook/i.
 
 ```
     on phones
-      ✓ shows the current name and the 2–60 rule, with Salvar off until the name changes (24 ms)
-      ✓ keeps Salvar off for the invalid name "" (22 ms)
-      ✓ keeps Salvar off for the invalid name "A" (22 ms)
-      ✓ keeps Salvar off for the invalid name "   " (22 ms)
-      ✓ keeps Salvar off for the invalid name "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" (21 ms)
-      ✓ saves the trimmed name, confirms it and updates the cached profile (25 ms)
-      ✓ says so when there is no connection and keeps the typed name to try again (24 ms)
-      ✓ shows a generic failure for a server error (21 ms)
+      ✓ shows the current name and the 2–60 rule, with Salvar off until the name changes (30 ms)
+      ✓ keeps Salvar off for the invalid name "" (27 ms)
+      ✓ keeps Salvar off for the invalid name "A" (28 ms)
+      ✓ keeps Salvar off for the invalid name "   " (26 ms)
+      ✓ keeps Salvar off for the invalid name "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" (26 ms)
+      ✓ saves the trimmed name, confirms it and updates the cached profile (30 ms)
+      ✓ says so when there is no connection and keeps the typed name to try again (28 ms)
+      ✓ shows a generic failure for a server error (27 ms)
 
 Test Suites: 1 passed, 1 total
-Tests:       78 passed, 78 total
+Tests:       80 passed, 80 total
 Snapshots:   0 total
-Time:        4.863 s, estimated 5 s
+Time:        3.34 s
 Ran all test suites matching /__tests__\/settings-screen.test.tsx/i.
 ```
 
@@ -122,13 +125,13 @@ Ran all test suites matching /__tests__\/settings-screen.test.tsx/i.
 (no output)
 ```
 
-`grep -q '^DEV_TOOLS_EMAILS=' apps/backend/.env.example` - exit 0
+`grep -q '^DEV_TOOLS_EMAILS=' apps/backend/.env.example && grep -q 'Vazia libera ninguém' apps/backend/.env.exa` - exit 0
 
 ```
 (no output)
 ```
 
-`npm run lint:openapi && grep -q '/billing/dev/reset-plan' docs/api/openapi.yaml && grep -q 'devTools' docs/api` - exit 0
+`npm run lint:openapi && for c in 202 401 404 409 502 503; do awk '/^  \/billing\/dev\/reset-plan:/{f=1;next} /` - exit 0
 
 ```
 
@@ -142,8 +145,25 @@ Ran all test suites matching /__tests__\/settings-screen.test.tsx/i.
     ╚═══════════════════════════════════════════════════════╝
 
 validating docs/api/openapi.yaml...
-docs/api/openapi.yaml: validated in 48ms
+docs/api/openapi.yaml: validated in 55ms
 
 Woohoo! Your API description is valid. 🎉
 You have 1 warning.
+```
+
+`TEST_DB_PORT=3327 npm run test:auth:integration --workspace apps/backend` - exit 0
+
+```
+> @wise/backend@0.1.0 test:auth:integration
+> jest --runInBand --testRegex '.*auth.integration.test.ts$'
+
+PASS src/modules/auth/auth.integration.test.ts (11.154 s)
+<claude-code-hint v="1" type="plugin" value="stripe@claude-plugins-official" />
+PASS src/modules/auth/universal-auth.integration.test.ts
+
+Test Suites: 2 passed, 2 total
+Tests:       14 passed, 14 total
+Snapshots:   0 total
+Time:        15.929 s, estimated 23 s
+Ran all test suites.
 ```

@@ -128,4 +128,11 @@ describe('UsersService', () => {
 
     await expect(service.getProfile('user-1')).resolves.toEqual(expect.objectContaining({ devTools }));
   });
+
+  it('answers devTools false when no ConfigService is provided', async () => {
+    const bare = new UsersService(mockUsers as never, mockUserCosmetics as never, mockCosmeticItems as never, mockProgression as never);
+    mockUsers.findOne.mockResolvedValue({ id: 'user-1', email: 'dev@wise.app', displayName: 'Hero', planTier: 'free' });
+
+    await expect(bare.isDevToolsUser('user-1')).resolves.toBe(false);
+  });
 });

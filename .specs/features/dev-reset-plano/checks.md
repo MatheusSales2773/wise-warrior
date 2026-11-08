@@ -80,8 +80,9 @@ Proof: run api | ✓ is emitted once with free, after the commit, when the Subsc
 **C22** - `GET /users/me` e `PATCH /users/me` respondem `devTools` true ao liberado e false aos demais, nos dois verbos (AC 10, 11, 12)
 Proof: run api | ✓ answers devTools true to a listed user and false to the others, on GET and PATCH
 
-**C23** - O perfil deriva `devTools` de `DEV_TOOLS_EMAILS` (AC 10, 11)
+**C23** - O perfil deriva `devTools` de `DEV_TOOLS_EMAILS` e sem `ConfigService` é false (AC 10, 11)
 Proof: run unit | ✓ answers devTools for dev@wise.app from DEV_TOOLS_EMAILS (true)
+Proof: run unit | ✓ answers devTools false when no ConfigService is provided
 
 ### S3 - Seção Desenvolvedor em Configuração
 
