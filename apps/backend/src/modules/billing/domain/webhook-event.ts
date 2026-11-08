@@ -58,3 +58,8 @@ export function subscriptionEventTarget(event: Stripe.Event): SubscriptionEventT
       return null;
   }
 }
+
+/** O id da sessão de um Pacote pago (S7): o `checkout.session.completed` de pagamento único. `null` para o resto. */
+export function packSessionId(event: Stripe.Event): string | null {
+  return event.type === 'checkout.session.completed' && event.data.object.mode === 'payment' ? event.data.object.id : null;
+}

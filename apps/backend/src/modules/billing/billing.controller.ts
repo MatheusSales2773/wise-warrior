@@ -1,4 +1,4 @@
-import { Controller, Get, Headers, HttpCode, HttpStatus, Post, Req, UseGuards, type RawBodyRequest } from '@nestjs/common';
+import { Controller, Get, Headers, Param, HttpCode, HttpStatus, Post, Req, UseGuards, type RawBodyRequest } from '@nestjs/common';
 import type { Request } from 'express';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -22,6 +22,14 @@ export class BillingController {
   @HttpCode(HttpStatus.CREATED)
   checkout(@CurrentUser() user: JwtPayload): Promise<{ url: string }> {
     return this.billing.openCheckout(user.sub);
+  }
+
+  /** Abre o Checkout de um Pacote para o próprio usuário (S7). */
+  @Post('packs/:slug/checkout')
+  @UseGuards(JwtAuthGuard)
+  @HttpCode(HttpStatus.CREATED)
+  packCheckout(@CurrentUser() user: JwtPayload, @Param('slug') slug: string): Promise<{ url: string }> {
+    return this.billing.openPackCheckout(user.sub, slug);
   }
 
   /** Abre o Portal do cliente do Stripe para o próprio usuário (S4). */

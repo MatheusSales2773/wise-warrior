@@ -1,109 +1,107 @@
-# Assinatura premium - S6 checks (Pacote do Dragão listado)
+# Assinatura premium - S7 checks (Pagar o Pacote)
 
-Build: `npm run build --workspace apps/backend`; `npm run lint --workspace apps/backend`; `npm run typecheck --workspace apps/frontend`; `npm run lint --workspace apps/frontend`; `npm run lint:openapi`
-Run unit: `npm test --workspace apps/backend -- src/modules/billing/domain src/modules/users/domain --verbose`
-Run packs: `npm run test:integration --workspace apps/backend -- --testPathPattern billing-packs-http --verbose`
-Run catalog: `npm run test:integration --workspace apps/backend -- --testPathPattern cosmetics-http --verbose`
-Run migration: `npm run test:integration --workspace apps/backend -- --testPathPattern migration.integration --verbose`
-Run frontend: `npm test --workspace apps/frontend -- __tests__/character-catalog.test.tsx --verbose`
+Build: `npm run build --workspace apps/backend`; `npm run lint --workspace apps/backend`; `npm run lint:openapi`
+Run unit: `npm test --workspace apps/backend -- src/modules/billing/domain/webhook-event.spec.ts --verbose`
+Run pack: `npm run test:integration --workspace apps/backend -- --testPathPattern billing-pack-payment --verbose`
+Run webhook: `npm run test:integration --workspace apps/backend -- --testPathPattern billing-webhook --verbose`
 Plan: `.specs/features/assinatura-premium/plan.md`
 
-Issue #360 (`S6`). This file covers only S6; S1 and S2 were closed in their own runs and S3-S5, S7-S9 are other
-issues. S6 creates door 2 (`packs`, `pack_payments`) and the Pacote half of door 3 (`pack:<slug>` and the seed of the
-Pacote do Dragão with its 3 items). S7 writes `pack_payments`; here the tests insert a Pagamento directly. Tests run
-against a MySQL 8.0 (`TEST_DB_*`) with a fake Stripe client, never against Stripe.
+Issue #361 (`S7`). Replaces the S6 checks (closed in #360). S7 writes `pack_payments` (door 2, created in S6) and adds
+no table, no env var and no module `imports`, so `test:auth:integration` is not owed. Tests run against MySQL 8.0
+(`TEST_DB_*`) with a fake Stripe client and a webhook signed with a test secret; nothing reaches the network.
+Sprites: none (no screen; S8 is the frontend).
 
-14 checks below · 2 one-way doors touched (2, 3) · 0 open questions
+17 checks below · 0 new one-way doors · 0 open questions
 
 ## Checks
 
-### S6 - Pacote do Dragão listado
+### S7 - Pagar o Pacote
 
-**C1** - With billing available, `GET /billing/packs` answers `200` with `available: true` and the Pacote do Dragão: `slug` `dragao`, `name` "Pacote do Dragão", the settled `description`, `priceCents: 490`, `currency: "brl"`, the 3 items `{ id, name, category }` (Elmo de Escamas avatar, Presa do Dragão weapon, Amuleto de Brasa accessory) and `owned: false` for a user who paid nothing (S6.1)
-Proof: run packs | ✓ lists the Pacote do Dragão for sale with its price, its 3 items and owned false
+**C1** - `POST /billing/packs/dragao/checkout` for a user without the Pacote creates the Customer, stores it and answers `201` `{ url }`; the session is `mode: 'payment'`, card only (`allowed_payment_method_types: ['card']`, ADR-015) with `price_data` `brl` 490 named "Pacote do Dragão", `client_reference_id` = user id, metadata `packSlug: 'dragao'`, and `success_url`/`cancel_url` = `APP_URL` + `/mercado?secao=pacotes&checkout=success` / `&checkout=cancel` (S7.1)
+Proof: run pack | ✓ creates the Customer and answers 201 with the url of a one-time session for the Pacote price
 
-**C2** - The Pacotes for sale come ordered by `name`: "Pacote Alfa", "Pacote do Dragão", "Pacote Zeta" (S6.1)
-Proof: run unit | ✓ lists the Pacotes for sale ordered by name, each with owned false when the user paid none
-Proof: run packs | ✓ orders the Pacotes for sale by name
+**C2** - The amount comes from `packs.price_cents` (1290 in the table → `unit_amount: 1290`) (S7.1)
+Proof: run pack | ✓ reads the amount from packs, not from a constant
 
-**C3** - `owned` is per user: `true` for the user with a Pagamento of the Pacote, `false` for another user (S6.1)
-Proof: run unit | ✓ marks owned only the Pacote the user paid
-Proof: run packs | ✓ marks owned only for the user who paid the Pacote
+**C3** - A user with a stored Customer gets it reused (no `customers.create`), and two calls at once, with or without a Customer, leave one Customer and one `subscriptions` row (S7.1, concurrency)
+Proof: run pack | ✓ reuses the stored Customer and keeps one row, for a buyer with a Customer already and for two calls at once
+Proof: run pack | ✓ creates one Customer for two first calls at the same time
 
-**C4** - A Pacote with `for_sale = false` stays listed with `owned: true` for the user who paid it, and is absent for a user who did not (`packs: []`) (S6.2)
-Proof: run unit | ✓ keeps a paid Pacote that left the shelf, owned, and drops an unpaid one off the shelf
-Proof: run packs | ✓ keeps a paid Pacote listed as owned after it leaves the shelf, and hides it from who did not pay
+**C4** - A user with a Pagamento of the Pacote gets `409` "Você já tem este Pacote" and Stripe is not called (S7.2)
+Proof: run pack | ✓ answers 409 "Você já tem este Pacote" without calling Stripe when the user already paid it
+Proof: run pack | ✓ answers 409, not 404, to a user who paid a Pacote that left the shelf
 
-**C5** - Without `STRIPE_SECRET_KEY`, `GET /billing/packs` answers `200` `{ "available": false, "packs": [] }`, even to a user who paid a Pacote (S6.3)
-Proof: run packs | ✓ answers 200 with available false and no Pacote, even to a user who paid one
+**C5** - An unknown slug, and a Pacote with `for_sale = false` the user did not pay, answer `404` "Pacote não encontrado" and Stripe is not called (S7.3)
+Proof: run pack | ✓ answers 404 "Pacote não encontrado" for an unknown slug and for a Pacote off sale the user did not pay
 
-**C6** - `GET /billing/packs` without a token answers `401` (Surface)
-Proof: run packs | ✓ answers 401 without a token
+**C6** - Without `STRIPE_SECRET_KEY` the route answers `503` "Pagamento indisponível no momento" (S7.4)
+Proof: run pack | ✓ answers 503 "Pagamento indisponível no momento" when billing is not configured
 
-**C7** - `pack:dragao` parses to `{ type: 'pack', slug: 'dragao' }`; `pack:`, `pack:Dragão` and `pack:a b` are malformed; a Pacote condition is never unlocked by level, by Study Sessions or as an Item inicial (S6.4)
-Proof: run unit | ✓ reads a Pacote condition with its slug
-Proof: run unit | ✓ reads the malformed condition "pack:" as no condition
-Proof: run unit | ✓ reads the malformed condition "pack:Dragão" as no condition
-Proof: run unit | ✓ never unlocks a Pacote item by level, sessions or as an Item inicial
+**C7** - When Stripe fails the route answers `502` "Não foi possível abrir o pagamento" and leaves no `subscriptions` row (S7.4)
+Proof: run pack | ✓ answers 502 "Não foi possível abrir o pagamento" and leaves no row when Stripe fails
 
-**C8** - `GET /users/me/cosmetics` returns the 3 Pacote items with `unlockCondition` `{ "type": "pack", "slug": "dragao" }`, `requiresPremium: false`, `forSale: false`, locked for a new user and unlocked once in the Inventário; the full Catálogo of a new user and of a level-12 Character lists them locked (S6.4)
-Proof: run packs | ✓ returns the Pacote items in the Catálogo with the pack condition, locked until the Pacote is paid
-Proof: run catalog | ✓ gives a new user the three starter items, equipped, and shows the rest of the Catalog locked
-Proof: run catalog | ✓ unlocks every item up to the character level without duplicating it when the rule runs again
+**C8** - The route answers `401` without a token (Surface)
+Proof: run pack | ✓ answers 401 without a token
 
-**C9** - The frontend captions an owned Pacote item "Do Pacote do Dragão" and lets a `free` plan wear it; a Pacote item the user does not own is captioned "Do Pacote do Dragão" too, locked (S6.4, settled mid-build)
-Proof: run frontend | ✓ captions an owned Pacote item "Do Pacote do Dragão" and lets a free plan wear it
-Proof: run frontend | ✓ captions a Pacote item the user does not own "Do Pacote do Dragão" too, locked
+**C9** - A `checkout.session.completed` of a one-time payment is told apart from a subscription Checkout and from other events (S7.5)
+Proof: run unit | ✓ reads the session id of a completed one-time payment Checkout (Pacote)
+Proof: run unit | ✓ has no Pacote session for a subscription Checkout or any other event type
 
-**C10** - A locked Pacote item orders with the items for sale (`lockedByPurchase`), ahead of the Raid items, and the category hint reads "Os itens desta categoria são comprados na Loja." (settled mid-build)
-Proof: run frontend | ✓ orders and describes a locked Pacote item with the items for sale, ahead of the Raid items
+**C10** - For a paid session the webhook re-reads the session from the API, stores the Pagamento with the API's `amount_total` 490 and `currency` `brl` (not the payload's 1), puts the 3 items unequipped in the Inventário and emits `user:packGranted` `{ slug: 'dragao', cosmeticItemIds: [3 ids] }` to that user, only once the Pagamento is committed (seen from another connection) (S7.5)
+Proof: run pack | ✓ stores the Pagamento with the amount and currency of the session read from the API, gives the 3 items unequipped and emits user:packGranted after the commit
 
-**C11** - `GET /shop/items` lists none of the 3 Pacote items nor the 4 Itens premium, and the database refuses `for_sale = 1` on each of them (`CHK_cosmetic_items_for_sale`) (S6.5)
-Proof: run packs | ✓ keeps the Pacote items and the Itens premium out of the Loja Itens section, and refuses to put them on sale
+**C11** - A session the API says is not paid answers `200` and writes and emits nothing, whatever the payload says (S7.6)
+Proof: run pack | ✓ answers 200 and writes nothing when the session read from the API is not paid, whatever the payload says
+Proof: run pack | ✓ answers 200 and writes nothing for no_payment_required read from the API
+Proof: run pack | ✓ answers 200 and writes nothing for a session that is not a one-time payment read from the API
 
-**C12** - The migration creates `packs` (slug unique, `price_cents > 0`) and `pack_payments` (one per user and Pacote, one per Checkout session, deleted with the user), seeds the Pacote do Dragão at 490 `brl` for sale and its 3 items with `pack:dragao`, not premium, not for sale; reverting drops both tables and the 3 items; the whole chain still applies and reverts (doors 2, 3)
-Proof: run migration | ✓ creates packs and pack_payments with the Pacote do Dragão and its 3 items, one Pagamento per user, Pacote and session, and drops them on revert
-Proof: run migration | ✓ applies every migration in order and reverts them all down to an empty schema
+**C12** - The same event delivered again, one after another and at once (4 deliveries), leaves one Pagamento, 3 inventory rows and one `user:packGranted` (S7.7)
+Proof: run pack | ✓ keeps one Pagamento, no duplicate item and no second event when the same event arrives again, one after another or at once
 
-**C13** - The 3 Pacote items are drawn with the approved Figma art (Sprite/Avatar/Elmo de Escamas, Sprite/Arma/Presa do Dragão, Sprite/Acessório/Amuleto de Brasa and their Sprite/Item icons): each differs from its category default in the drawer, the Presa layer sits on the Figma pixels, and on the Herói each layer differs from the empty slot and from the nearest existing art (Armadura do Lobo, Espada, Selo dos Madrugadores)
-Proof: run frontend | ✓ draws each Pacote item with its own sprite, not the category default
-Proof: run frontend | ✓ places the Presa do Dragão layer exactly where the Figma sprite draws it
-Proof: run frontend | ✓ draws the Elmo, the Presa and the Amuleto on the Herói, each different from the slot without it and from the nearest existing art
+**C13** - A second paid session of the same Pacote for the same user answers `200`, keeps the first Pagamento and logs the second session id (S7.8)
+Proof: run pack | ✓ keeps one Pagamento and logs the id of the session of a second paid checkout of the same Pacote
 
-**C14** - Adding `Pack` and `PackPayment` to `BillingModule`'s `TypeOrmModule.forFeature` leaves the real `AppModule` bootable (ADR-001)
-Proof: npm run test:auth:integration --workspace apps/backend
+**C14** - A `free` user equips an item of a Pacote they paid (billing configured, so the premium release is off); a user who turns `free` after `premium` keeps the Pacote item equipped (S7.9)
+Proof: run pack | ✓ lets a free user equip an item of a Pacote they paid, with billing configured
+Proof: run webhook | ✓ keeps the Pacote item equipped and emits no equipment change when only a Pacote item was equipped
+
+**C15** - When Stripe fails to return the session the webhook answers `500` and writes and emits nothing, so Stripe retries (dependency failure)
+Proof: run pack | ✓ answers 500 and writes nothing when Stripe fails to return the session, so Stripe retries
+
+**C16** - A paid session of a user who no longer exists answers `200`, writes nothing and logs the session id (observability, S7.5)
+Proof: run pack | ✓ answers 200, writes nothing and logs the session when the payer no longer exists
+
+**C17** - A Pacote that left the shelf after the session was opened still gives its 3 items on payment (the user paid) (S7.5)
+Proof: run pack | ✓ still gives the items of a Pacote that left the shelf after the session was opened
 
 ## Coverage
 
-The other routes of the plan's Surface belong to other slices: `/api/v1/billing/webhook` (S2), `/api/v1/billing/subscription` (S5), `/api/v1/billing/checkout` (S3), `/api/v1/billing/portal` (S4) and `/api/v1/billing/packs/:slug/checkout` (S7). Door 6 (contracts) is S9; S6 adds only what it changes:
-`GET /billing/packs` and the `pack` `UnlockCondition` in `docs/api/openapi.yaml` (checked by `npm run lint:openapi` in Build).
+Other routes of the Surface belong to other slices (`/api/v1/billing/subscription` S5, `/api/v1/billing/checkout` S3, `/api/v1/billing/portal` S4, `/api/v1/billing/packs` S6, `/api/v1/billing/webhook` S2); S9 documents the contracts. This slice owns `/api/v1/billing/packs/:slug/checkout`. Startup config: S7 adds no bootstrap setting and no module `imports`.
 
 | Set (size) | Member -> proof | Unproven |
 | --- | --- | --- |
-| `GET /api/v1/billing/packs` statuses (2) | 200 C1 C5 · 401 C6 | - |
-| Pacote fields (7) | `slug` C1 · `name` C1 · `description` C1 · `priceCents` C1 · `currency` C1 · `items` C1 · `owned` C1 C3 C4 | - |
-| design doc Pack states (6) | for sale, not owned C1 · paid C3 · off sale, paid C4 · off sale, not paid C4 · billing off C5 · item of Pacote on sale refused C11 | - |
-| Pacote items (3) | Elmo de Escamas C1 C8 C12 C13 · Presa do Dragão C1 C8 C12 C13 · Amuleto de Brasa C1 C8 C12 C13 | - |
-| items kept out of the Loja Itens section (7) | Elmo de Escamas C11 · Presa do Dragão C11 · Amuleto de Brasa C11 · Manto do Arquimago C11 · Cajado Astral C11 · Lenda do Foco C11 · Mestre da Aurora C11 | - |
-| frontend Pacote item states (2) | owned C9 · not owned C9 C10 | - |
-| doors touched (2) | 2 `packs`/`pack_payments` C12 · 3 `pack:<slug>` and the Pacote seed C7 C12 | - |
+| `POST /api/v1/billing/packs/:slug/checkout` statuses (6) | 201 C1 · 404 C5 · 409 C4 · 502 C7 · 503 C6 · 401 C8 | - |
+| session fields, S7.1 (7) | `mode` C1 · amount/currency C1 C2 · `client_reference_id` C1 · metadata slug C1 · `success_url` C1 · `cancel_url` C1 · Customer C1 C3 | - |
+| webhook outcomes for a Pacote session (7) | paid C10 · not paid C11 · replay C12 · second session C13 · Stripe read fails C15 · payer gone C16 · Pacote off sale C17 | - |
+| Pagamento fields written (3) | `amount_cents` C10 · `currency` C10 · session id C10 | - |
+| Pacote items (3) | Elmo de Escamas C10 · Presa do Dragão C10 · Amuleto de Brasa C10 (inventory rows, `equipped = false`) | - |
 
 ## Swept
 
-- validation: C7 (malformed `pack:` conditions); C11 (for-sale CHECK at the database)
-- failure modes: C5 (billing not configured)
-- idempotency: n/a - S6 only reads; the Pagamento write is S7
-- authorization: C6; C3 (`owned` read only from the caller's own Pagamentos)
-- concurrency: n/a - no write in S6
-- data lifecycle: C4 (paid Pacote kept after it leaves the shelf), C12 (Pagamento deleted with the user)
-- dependency failure: C5; the listing never calls Stripe (the fake throws on any call in C1-C4)
-- state transitions: C4 (for sale to off sale)
-- observability: n/a - a read with no side effect
+- validation: C5 (slug), C11 (payload vs API)
+- failure modes: C7, C15
+- idempotency: C12, C13
+- authorization: C8; the user comes from the token and the Pagamento from the session's `client_reference_id` read from the API (C10)
+- concurrency: C3, C12 (user row lock)
+- data lifecycle: existing - `pack_payments` deleted with the user (S6 migration check)
+- dependency failure: C7, C15
+- state transitions: C4 (owned), C5 (off sale), C14 (free ⇄ premium)
+- observability: C13, C16 (session id in the log)
 
 ## Handoff
 
-- **Settled mid-build:** the 3 Pacote sprites were approved in Figma (user: "os sprites foram aprovados no figma sim"), so they replace the recolour fallback; `packs.description` = "Elmo, presa e amuleto forjados no fogo de um dragão. Ficam com você para sempre, em qualquer plano." (user: recommended option); a Pacote item without ownership reads "Do Pacote do Dragão", orders with the items for sale and the hint says "comprados na Loja" (user: "Mesmo rótulo"). Both recorded in the plan's Assumptions.
-- **Dispatched:** Verifier at dd29d75 (diff 78c19f6..dd29d75), sent; screens sub-agent n/a (no capture)
-- **Boundary:** C1-C14 closed; the Verifier's C2 finding closed by 6bba4c4; proofs.md green (30 pass)
+- **Settled mid-build:** none
+- **Dispatched:** Verifier at c7b0412, returned
+- **Boundary:** C1-C17 closed; the Verifier's F1-F6 closed in the next commit
 - **Abandoned:** none
-- **Walked:** n/a - S6 changes no screen a capture draws; the drawer captions are proven by C9 and C10
+- **Walked:** n/a - no screen

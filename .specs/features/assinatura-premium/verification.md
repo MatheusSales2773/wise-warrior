@@ -1,36 +1,47 @@
-# Assinatura premium - S6 verification
+# Assinatura premium verification (S7, #361)
 
 **Verdict**: FAIL
-**Proofs**: `proofs.md` at dd29d75
+**Proofs**: `proofs.md` at c7b0412
 **Verifier**: independent sub-agent (author != verifier)
 
 ## Checks
 
 | Check | Test | Holds |
 | --- | --- | --- |
-| C1 | `billing-packs-http.integration.test.ts` `lists the Pacote do Dragão for sale with its price, its 3 items and owned false` | yes - exact `toEqual` on the whole body: `available`, slug, name, settled description, 490, `brl`, the 3 `{ id, name, category }` in avatar/weapon/accessory order, `owned: false`; the fake Stripe throws on any call |
-| C2 | `packs.spec.ts` `lists the Pacotes for sale ordered by name, each with owned false when the user paid none` + `billing-packs-http.integration.test.ts` `orders the Pacotes for sale by name` | no - the unit ids (`a`/`d`/`z`) sort like the names and the HTTP slugs (`alfa`/`dragao`/`zeta`) sort like the names, so a sort by slug at the service or query layer stays green on both |
-| C3 | `packs.spec.ts` `marks owned only the Pacote the user paid` + `billing-packs-http.integration.test.ts` `marks owned only for the user who paid the Pacote` | yes - two users over HTTP, `true` for the payer and `false` for the other |
-| C4 | `packs.spec.ts` `keeps a paid Pacote that left the shelf, owned, and drops an unpaid one off the shelf` + `billing-packs-http.integration.test.ts` `keeps a paid Pacote listed as owned after it leaves the shelf, and hides it from who did not pay` | yes - `for_sale = 0` in the database; payer sees `[{ dragao, owned: true }]`, the other user gets exactly `{ available: true, packs: [] }` |
-| C5 | `billing-packs-http.integration.test.ts` `answers 200 with available false and no Pacote, even to a user who paid one` | yes - real `AppModule` with every billing key deleted, a paying user, exact `{ available: false, packs: [] }` |
-| C6 | `billing-packs-http.integration.test.ts` `answers 401 without a token` | yes |
-| C7 | `unlock-condition.spec.ts` `reads a Pacote condition with its slug`, `reads the malformed condition %p as no condition` (`pack:`, `pack:Dragão`, `pack:a b`), `never unlocks a Pacote item by level, sessions or as an Item inicial` | yes - exact parse; `isUnlockedAtLevel(99)`, sessions 1000/1000 and `isStarterItem(_, false)` all `false` |
-| C8 | `billing-packs-http.integration.test.ts` `returns the Pacote items in the Catálogo with the pack condition, locked until the Pacote is paid` + `cosmetics-http.integration.test.ts` `gives a new user the three starter items, ...` and `unlocks every item up to the character level ...` | yes - condition, `requiresPremium: false`, `forSale: false`, `unlocked` false then true per item; the full Catálogo lists the 3 locked for a new user and for the level-12 veteran |
-| C9 | `character-catalog.test.tsx` `captions an owned Pacote item "Do Pacote do Dragão" and lets a free plan wear it` + `captions a Pacote item the user does not own "Do Pacote do Dragão" too, locked` | yes - `optionsFor(..., 'free')` gives `owned` with the caption for all 3; unowned gives `locked` and the same caption |
-| C10 | `character-catalog.test.tsx` `orders and describes a locked Pacote item with the items for sale, ahead of the Raid items` | yes - `lockedByPurchase`, the exact hint, and the Raid item put first in the input comes second (a stable sort with equal rank would fail it) |
-| C11 | `billing-packs-http.integration.test.ts` `keeps the Pacote items and the Itens premium out of the Loja Itens section, and refuses to put them on sale` | yes - non-empty shelf, none of the 7 ids; each `UPDATE ... price = 100, for_sale = 1` refused by `CHK_cosmetic_items_for_sale` (price in range, so the refusal comes from the condition) |
-| C12 | `migration.integration.test.ts` `creates packs and pack_payments with the Pacote do Dragão and its 3 items, ...` + `applies every migration in order and reverts them all down to an empty schema` | yes - seed row and 3 items exact; `UQ_packs_slug`, `CHK_packs_price_cents` (0), both unique keys on `pack_payments`, cascade on user delete, both tables and the `pack:%` items gone on revert |
-| C13 | `character-catalog.test.tsx` `draws each Pacote item with its own sprite, not the category default` + `places the Presa do Dragão layer exactly where the Figma sprite draws it` + `draws the Elmo, the Presa and the Amuleto on the Herói, ...` | yes - sprite differs from the category fallback and exists; the Presa layer equals the Figma rows; Herói pixel strings differ from the bare slot and from Armadura do Lobo, Espada and Selo dos Madrugadores (row updated by the author when the Figma art replaced the recolour; the Verifier judged the recolour version) |
-| C14 | `auth.integration.test.ts` (`npm run test:auth:integration --workspace apps/backend`) | yes - boots the real `AppModule`; `billing-packs-http` also boots it with `Pack`/`PackPayment` registered |
+| C1 | `billing-pack-payment.integration.test.ts` `creates the Customer and answers 201 with the url of a one-time session for the Pacote price` | yes - `toHaveBeenCalledWith` on the whole session (mode, price_data, client_reference_id, metadata, both URLs) and the stored row |
+| C2 | `billing-pack-payment.integration.test.ts` `reads the amount from packs, not from a constant` | yes - 1290 in the table gives `unit_amount: 1290` |
+| C3 | `billing-pack-payment.integration.test.ts` `reuses the stored Customer and keeps one row, ...` and `creates one Customer for two first calls at the same time` | yes - both the stored and the first-call case, `create` once, one row |
+| C4 | `billing-pack-payment.integration.test.ts` `answers 409 "Você já tem este Pacote" without calling Stripe when the user already paid it` | yes |
+| C5 | `billing-pack-payment.integration.test.ts` `answers 404 "Pacote não encontrado" for an unknown slug and for a Pacote off sale the user did not pay` | yes |
+| C6 | `billing-pack-payment.integration.test.ts` `answers 503 "Pagamento indisponível no momento" when billing is not configured` | yes |
+| C7 | `billing-pack-payment.integration.test.ts` `answers 502 "Não foi possível abrir o pagamento" and leaves no row when Stripe fails` | yes |
+| C8 | `billing-pack-payment.integration.test.ts` `answers 401 without a token` | yes |
+| C9 | `webhook-event.spec.ts` `reads the session id of a completed one-time payment Checkout (Pacote)` and `has no Pacote session for a subscription Checkout or any other event type` | yes |
+| C10 | `billing-pack-payment.integration.test.ts` `stores the Pagamento with the amount and currency of the session read from the API, ... emits user:packGranted after the commit` | no - amount, currency, 3 unequipped rows and the payload are asserted (payload says 1, API 490), but "after the commit" is not: the test passes if the emit moves inside the transaction (see F2) |
+| C11 | `billing-pack-payment.integration.test.ts` `answers 200 and writes nothing when the session read from the API is not paid, whatever the payload says` | no - only `unpaid`; `no_payment_required` and a non-`payment` mode are not exercised (behaves right in my probe, see F3) |
+| C12 | `billing-pack-payment.integration.test.ts` `keeps one Pagamento, no duplicate item and no second event when the same event arrives again, ...` | yes - 1 sequential repeat plus 2 concurrent, Pagamento, inventory and emit counted |
+| C13 | `billing-pack-payment.integration.test.ts` `keeps one Pagamento and logs the id of the session of a second paid checkout of the same Pacote` | yes |
+| C14 | `billing-pack-payment.integration.test.ts` `lets a free user equip an item of a Pacote they paid, ...` and `billing-webhook.integration.test.ts` `keeps the Pacote item equipped and emits no equipment change when only a Pacote item was equipped` | yes |
+| C15 | `billing-pack-payment.integration.test.ts` `answers 500 and writes nothing when Stripe fails to return the session, so Stripe retries` | yes |
+| C16 | `billing-pack-payment.integration.test.ts` `answers 200, writes nothing and logs the session when the payer no longer exists` (added after the Verifier round, for F1) | yes |
+| C17 | `billing-pack-payment.integration.test.ts` `still gives the items of a Pacote that left the shelf after the session was opened` (added after the Verifier round, for F5) | yes |
+
+## Own examples (throwaway test with MySQL, deleted)
+
+- Paid session whose `client_reference_id` is a user that does not exist: `200`, no Pagamento, no inventory, **no log at all** (F1).
+- `payment_status: 'no_payment_required'`: `200`, nothing written. Holds.
+- Session metadata slug `nope` (disagrees with any Pacote): `200`, nothing written, a warn naming the session. Holds.
+- Pacote set `for_sale = false` after the checkout was opened, then the paid event arrives: Pagamento written and `user:packGranted` emitted. Holds (the buyer paid); no test names it (F5).
+- Probing from a second connection inside `emitToUser`: the Pagamento is already committed at emit time. Holds in the code, unproven by the test (F2).
+- Owner of a Pacote that went off sale calls the checkout: `409`, not `404`. Holds, no test (F5).
 
 ## Findings
 
 | Finding | Evidence | Fix | Closed |
 | --- | --- | --- | --- |
-| C2 does not tell the name order from the slug order: a sort by `slug` added at the service or query layer leaves both proofs green | `billing-packs-http.integration.test.ts` `orders the Pacotes for sale by name`: slugs `alfa`/`dragao`/`zeta` sort exactly like `Pacote Alfa`/`Pacote do Dragão`/`Pacote Zeta`; `packs.spec.ts` ids `a`/`d`/`z` sort exactly like the names. A throwaway at HEAD with slug `aaa` named "Pacote Zeta" and slug `zzz` named "Pacote Ábaco" came back in name order, so the code is right today; the proof would not catch a regression | in the HTTP test give the extra Pacotes slugs that sort against their names (e.g. `zeta` for "Pacote Alfa", `alfa` for "Pacote Zeta") | 6bba4c4 - slugs `zz-alfa`/`aa-zeta` and ids `z`/`a` now sort against the names; C2 proves it |
-
-Probed with throwaway tests at HEAD, deleted afterwards (not committed):
-
-- HTTP: a for-sale Pacote whose slug sorts before its name, and an off-sale Pacote with no items paid by one user. The payer got `zzz` (owned, `items: []`), `dragao`, `aaa`; the other user got `dragao`, `aaa`. Passed.
-- Unit: `parseUnlockCondition` refuses `pack:dragao\n`, ` pack:dragao`, `pack:dragao:x`, `PACK:dragao`, `pack:DRAGAO` and `pack :dragao`, accepts `pack:dragao-2`, and still reads `raid:pack:dragao` as a Raid. `visiblePacks` returns `[]` for an empty shelf and for an off-sale Pacote paid by nobody. Passed. (`pack:-` parses as slug `-`. The plan does not define the slug grammar, so this is not a finding.)
-- Rules the diff touched that no check names: `billing-webhook.integration.test.ts` with the new `Pack`/`PackPayment` repository providers passes (32/32) at HEAD. The other backend readers of `parseUnlockCondition` (`for-sale.ts`, `isUnlockedAtLevel`, `isUnlockedBySessionCounts`, `isStarterItem`, `milestoneProgress`) treat `pack` as not purchasable, not unlocked and not starter. On the frontend, every branch over `UnlockCondition` (`ownedCaption`, `describeUnlockCondition`, `cosmeticItemState`) handles `pack`, and typecheck enforces it.
+| F1: a paid session of a deleted user is dropped silently, so money was taken and nothing says so | `billing.service.ts` `grantPack`: `if (!(await this.users.lockForUpdate(userId, manager))) return null;` has no log, unlike the unknown-Pacote and second-payment branches; probe returned `200` with 0 warn calls | `logger.warn` with event id, session id and user id in that branch (and in the non-`paid` early return if wanted), plus a test that a missing user answers `200`, writes nothing and warns with the session id | 46355b6 - C16 |
+| F2: C10 says "emits after the commit" and the test does not hold it | the test asserts rows and `emitted` after the response; moving `emitToUser` inside the transaction callback keeps it green | in the test, make the `realtime.emitToUser` fake read `pack_payments` and the inventory through a second connection at emit time and assert the 3 items and the Pagamento are visible | 46355b6 - C10 |
+| F3: C11 covers one not-paid value out of the three the criterion implies | the test sets only `payment_status: 'unpaid'`; `no_payment_required` and `mode !== 'payment'` from the API have no case (the not-paid guard is only half exercised) | add `no_payment_required` and a `mode: 'subscription'` re-read to the C11 test | 46355b6 - C11 |
+| F4: the Pacote session does not restrict payment methods, but the plan limits payment to card (out of scope: "PIX e boleto - Só cartão"). A delayed method completes the session as `unpaid`, and `checkout.session.async_payment_succeeded` is not a handled event, so the buyer pays and never gets the items | `openPackCheckout` builds the session with no `payment_method_types`; `HANDLED_EVENT_TYPES` lacks the async events; the `unpaid` branch returns silently | pass `payment_method_types: ['card']` in the Pacote session and assert it in C1 (or handle `async_payment_succeeded` and `async_payment_failed`) | 46355b6 - C1 |
+| F5: two rules the diff added have no test: a paid event for a Pacote that went off sale still grants, and an owner of an off-sale Pacote gets `409`, not `404` | `grantPack` ignores `forSale`; `openPackCheckout` checks the payment before `forSale`; probes pass, nothing fails if the order is swapped | add one test each (the order of the two checks in `openPackCheckout` is a wrong-by-one place) | 46355b6 - C4, C17 |
+| F6: `checks.md` header says "14 checks below" and lists 15 (C1..C15) | `checks.md` line "14 checks below · 0 new one-way doors" | fix the count to 15 | 46355b6 - header |

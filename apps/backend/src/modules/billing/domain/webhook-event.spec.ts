@@ -1,5 +1,5 @@
 import type Stripe from 'stripe';
-import { HANDLED_EVENT_TYPES, isHandledEventType, subscriptionEventTarget } from './webhook-event';
+import { HANDLED_EVENT_TYPES, isHandledEventType, packSessionId, subscriptionEventTarget } from './webhook-event';
 
 const event = (type: string, object: Record<string, unknown>) => ({ id: 'evt_1', type, data: { object } }) as unknown as Stripe.Event;
 
@@ -73,5 +73,16 @@ describe('subscriptionEventTarget', () => {
 
   it('has no target when the event carries no Customer', () => {
     expect(subscriptionEventTarget(event('customer.subscription.updated', { id: 'sub_1', customer: null }))).toBeNull();
+  });
+});
+
+describe('packSessionId', () => {
+  it('reads the session id of a completed one-time payment Checkout (Pacote)', () => {
+    expect(packSessionId(event('checkout.session.completed', { id: 'cs_1', mode: 'payment' }))).toBe('cs_1');
+  });
+
+  it('has no Pacote session for a subscription Checkout or any other event type', () => {
+    expect(packSessionId(event('checkout.session.completed', { id: 'cs_1', mode: 'subscription' }))).toBeNull();
+    expect(packSessionId(event('invoice.paid', { id: 'in_1', mode: 'payment' }))).toBeNull();
   });
 });
