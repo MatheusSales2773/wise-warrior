@@ -21,6 +21,9 @@ const POSITIVE_INTEGER_KEYS = [
   'RATE_LIMIT_MISSION_CHOICE_TTL_SECONDS',
 ] as const;
 
+/** Com a cobrança ligada (ADR-015) estas três são obrigatórias. */
+const STRIPE_COMPANION_KEYS = ['STRIPE_WEBHOOK_SECRET', 'STRIPE_PRICE_PREMIUM', 'APP_URL'] as const;
+
 function isPlaceholder(value: string): boolean {
   const normalized = value.toLowerCase();
   return PLACEHOLDER_MARKERS.some((marker) => normalized.includes(marker));
@@ -40,6 +43,12 @@ export function validateEnvironment(config: Record<string, unknown>): Record<str
     const value = readString(config, key);
     if (value !== undefined && !/^[1-9]\d*$/.test(value)) {
       problems.push(`${key} deve ser um inteiro positivo`);
+    }
+  }
+
+  if (readString(config, 'STRIPE_SECRET_KEY') !== undefined) {
+    for (const key of STRIPE_COMPANION_KEYS) {
+      if (readString(config, key) === undefined) problems.push(`${key} é obrigatório com STRIPE_SECRET_KEY definido`);
     }
   }
 

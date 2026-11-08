@@ -47,6 +47,23 @@ describe('validateEnvironment', () => {
     }
   });
 
+  it('refuses to boot with Stripe configured and a companion variable missing, naming only the variable', () => {
+    const stripe = { STRIPE_SECRET_KEY: 'sk_test_do-not-leak', STRIPE_WEBHOOK_SECRET: 'whsec_x', STRIPE_PRICE_PREMIUM: 'price_x', APP_URL: 'http://localhost:8081' };
+    expect(() => validateEnvironment({ ...stripe })).not.toThrow();
+    expect(() => validateEnvironment({})).not.toThrow();
+    for (const key of ['STRIPE_WEBHOOK_SECRET', 'STRIPE_PRICE_PREMIUM', 'APP_URL']) {
+      expect(() => validateEnvironment({ ...stripe, [key]: ' ' })).toThrow(`${key} é obrigatório`);
+    }
+    expect(() => validateEnvironment({ STRIPE_SECRET_KEY: 'sk_test_do-not-leak' })).toThrow(
+      /STRIPE_WEBHOOK_SECRET[\s\S]*STRIPE_PRICE_PREMIUM[\s\S]*APP_URL/,
+    );
+    try {
+      validateEnvironment({ STRIPE_SECRET_KEY: 'sk_test_do-not-leak' });
+    } catch (error) {
+      expect((error as Error).message).not.toContain('sk_test_do-not-leak');
+    }
+  });
+
   it('rejects rate limit settings that are not positive integers in any environment', () => {
     expect(() => validateEnvironment({ NODE_ENV: 'development', RATE_LIMIT_CREDENTIALS_LIMIT: '0' })).toThrow(
       'RATE_LIMIT_CREDENTIALS_LIMIT deve ser um inteiro positivo',

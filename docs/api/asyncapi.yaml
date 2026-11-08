@@ -71,6 +71,10 @@ channels:
         $ref: "#/components/messages/coinsChanged"
       studySessionChanged:
         $ref: "#/components/messages/studySessionChanged"
+      planChanged:
+        $ref: "#/components/messages/planChanged"
+      packGranted:
+        $ref: "#/components/messages/packGranted"
 operations:
   receiveRaidProgress:
     action: receive
@@ -234,6 +238,25 @@ operations:
       saldo e o Extrato.
     messages:
       - $ref: "#/channels/userRoom/messages/coinsChanged"
+  receivePlanChanged:
+    action: receive
+    channel:
+      $ref: "#/channels/userRoom"
+    summary: O plano do usuário mudou
+    description: >
+      Emitido para todos os dispositivos do usuário depois do commit do webhook do Stripe, uma única vez por
+      mudança de `plan_tier` (ADR-015). O app reconsulta `GET /billing/subscription` e o perfil.
+    messages:
+      - $ref: "#/channels/userRoom/messages/planChanged"
+  receivePackGranted:
+    action: receive
+    channel:
+      $ref: "#/channels/userRoom"
+    summary: Um Pacote pago chegou ao Inventário
+    description: >
+      Emitido depois do commit do Pagamento, uma única vez por Pacote. O app reconsulta Pacotes, perfil e Catálogo.
+    messages:
+      - $ref: "#/channels/userRoom/messages/packGranted"
   receiveStudySessionChanged:
     action: receive
     channel:
@@ -374,6 +397,18 @@ components:
       contentType: application/json
       payload:
         $ref: "#/components/schemas/StudySessionChanged"
+    planChanged:
+      name: user:planChanged
+      title: Plano alterado
+      contentType: application/json
+      payload:
+        $ref: "#/components/schemas/PlanChanged"
+    packGranted:
+      name: user:packGranted
+      title: Pacote concedido
+      contentType: application/json
+      payload:
+        $ref: "#/components/schemas/PackGranted"
   schemas:
     ChatMessage:
       type: object
@@ -500,6 +535,19 @@ components:
               type: integer
               minimum: 0
               description: Só em `RATE_LIMITED`; quanto esperar antes de enviar de novo
+    PlanChanged:
+      type: object
+      required: [planTier]
+      properties:
+        planTier: { type: string, enum: [free, premium] }
+    PackGranted:
+      type: object
+      required: [slug, cosmeticItemIds]
+      properties:
+        slug: { type: string, example: dragao }
+        cosmeticItemIds:
+          type: array
+          items: { type: string, format: uuid }
     CoinsChanged:
       type: object
       required: [balance, delta, origin]

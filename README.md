@@ -288,6 +288,21 @@ npm run dev:frontend                     # inicia o Metro em http://localhost:80
 `http://localhost:3000/api/v1`. Pelo terminal do Metro você abre a plataforma
 desejada.
 
+### Cobrança local (Stripe, modo de teste)
+
+A cobrança (ADR-015) só liga com `STRIPE_SECRET_KEY`; sem ela o app roda normalmente e a tela Plano mostra "premium em breve".
+Use só chaves do modo de teste, do painel do Stripe (produto mensal com Price e Portal do cliente configurados). Com a
+[Stripe CLI](https://docs.stripe.com/stripe-cli) instalada e `stripe login` feito:
+
+```bash
+stripe listen --forward-to localhost:3000/api/v1/billing/webhook   # imprime o segredo whsec_...
+```
+
+Preencha em `apps/backend/.env`: `STRIPE_SECRET_KEY` (`sk_test_...`), `STRIPE_WEBHOOK_SECRET` (o `whsec_...` impresso
+acima), `STRIPE_PRICE_PREMIUM` (`price_...`) e `APP_URL` (`http://localhost:8081`). Com a chave definida, as outras três
+são obrigatórias: o boot recusa subir sem elas. No Checkout, use o cartão de teste `4242 4242 4242 4242`. Os testes do
+repositório não chamam o Stripe.
+
 ### Frontend: Web, iOS e Android
 
 Requisitos por plataforma:

@@ -23,7 +23,7 @@ Quando duas fontes discordam, vale a primeira desta lista:
 | Feature "Companheiro" | Adiada para Fase 2 | ADR-004 (Aceito) |
 | Provedor de nuvem / hosting | Oracle Cloud Always Free, mantendo MySQL + NestJS | ADR-006 (Aceito) |
 | Redis Adapter | Adiado — reforçado pelo limite de recursos do Oracle Always Free | ADR-003 (Aceito) |
-| Modelo freemium | Flags de entitlement (`plan_tier`) entram já na Fase 1; gateway de pagamento continua fora | ADR-007 (Aceito) |
+| Modelo freemium | Flags de entitlement (`plan_tier`) entram já na Fase 1; Assinatura premium e Pacotes pagos com Stripe, em modo de teste | ADR-007 (revisado pela ADR-015) |
 
 ### Registro de decisão revisada em 03/09/2026
 
@@ -170,9 +170,9 @@ O usuário pediu que as informações se propaguem "no mesmo ambiente" por um si
 | **Should** | Perfil com itens cosméticos e equipagem | `users` | Importante |
 | **Should** | Notificações em tempo real (level-up, raid concluída, convite) | `notifications` | Importante |
 | **Should** | Flags de entitlement (`plan_tier`) nos recursos marcados como premium no Pitch | `users`/`shared` | ADR-007 — sem gateway de pagamento, só a checagem de flag |
+| **Should** | Cobrança/assinatura premium e Pacotes (gateway de pagamento Stripe, modo de teste) | `billing` | ADR-015 — revisa a ADR-007 |
 | **Could** | i18n multi-idioma (além de pt-BR) | frontend `shared` | Só pt-BR é necessário no MVP; o frontend não tem biblioteca de i18n instalada |
 | **Won't (nesta fase)** | Companheiro/mascote RPG com XP próprio | `progression` (sub-feature) | ADR-004 — adiado para Fase 2 |
-| **Won't (nesta fase)** | Cobrança/assinatura premium (gateway de pagamento) | — | ADR-007 — fora do horizonte técnico da Fase 1 |
 | **Won't (nesta fase)** | Parcerias educacionais / integrações externas | — | Modelo de negócio, não requisito técnico do MVP |
 
 ### 6.1 Sequenciamento da Fase 1 após a M4
@@ -297,7 +297,7 @@ Situação conferida no código da branch `develop` em 27/10/2026. Os estados s�
 | `objectives`: Crônicas com Objetivos, Marcos e Diário | Entregue | 3 Objetivos diários e 3 semanais pagos em Moedas, no horário de São Paulo (ADR-014). |
 | `realtime`: gateway Socket.IO | Entregue | Rooms `user:{id}` e `guild:{id}`, atualizadas ao entrar ou sair da Guild sem reconectar. |
 | Companheiro (mascote RPG) | Adiado | ADR-004. A issue #15 foi fechada sem implementação. A coluna `characters.companion_id` existe e não é usada. |
-| Gateway de pagamento | Adiado | ADR-007. |
+| `billing`: Assinatura premium e Pacotes com Stripe | Entregue em modo de teste | Checkout e Portal hospedados pelo Stripe; o webhook concede o plano e os Pacotes (ADR-015). Cobrança real é configuração, não código. |
 | Redis Adapter | Adiado | ADR-003. O backend roda em uma réplica com o `IoAdapter` padrão do Socket.IO. |
 | i18n além de pt-BR | Não iniciado | Prioridade Could; nenhuma biblioteca de i18n instalada. |
 | Frontend universal (ADR-008) | Entregue | Expo + Expo Router + React Native Web; registros de validação dos marcos M1, M2, M4 e M5 em `docs/validation/`. Mercado, Crônicas e Configuração já têm telas e não aparecem mais como "Em breve". |
@@ -337,7 +337,7 @@ Situação conferida no código da branch `develop` em 27/10/2026. Os estados s�
 **Consequência:** o Documento de Visão (seção 4.4) e o Documento de Arquitetura (tabela de tecnologias) precisam ser atualizados para substituir as menções a AWS/EC2/ELB/ECS/CloudFront por Oracle Cloud Always Free.
 
 ### ADR-007: Flags de entitlement (freemium) entram na Fase 1, sem gateway de pagamento
-**Status:** Aceito. **Contexto:** Pitch descreve tiers grátis/premium sem nenhuma contrapartida técnica nos outros documentos. **Decisão:** adicionar `plan_tier` ao perfil do usuário e checagem de feature flag nos recursos marcados como premium no Pitch (cosméticos exclusivos, raids avançados, perfil destacado) — todos liberados por padrão no MVP, mas já passando pela checagem de flag em vez de código hardcoded. **Consequência:** nenhuma migração de dados será necessária quando um gateway de pagamento real for integrado pós-MVP; nenhum código de cobrança (Stripe, PIX, etc.) entra na Fase 1.
+**Status:** Aceito; revisado pela ADR-015. **Contexto:** Pitch descreve tiers grátis/premium sem nenhuma contrapartida técnica nos outros documentos. **Decisão:** adicionar `plan_tier` ao perfil do usuário e checagem de feature flag nos recursos marcados como premium no Pitch (cosméticos exclusivos, raids avançados, perfil destacado) — todos liberados por padrão no MVP, mas já passando pela checagem de flag em vez de código hardcoded. **Consequência:** nenhuma migração de dados será necessária quando um gateway de pagamento real for integrado pós-MVP; nenhum código de cobrança (Stripe, PIX, etc.) entra na Fase 1.
 
 ### ADR-008: Frontend universal com Expo para Web, iOS e Android
 **Status:** Revisado e aceito em 03/09/2026; substitui integralmente a versão “Web responsivo mobile-first, sem app nativo”. **Contexto:** o frontend Web responsivo já existe, mas o objetivo passou a exigir as mesmas capacidades em Web, iOS e Android. Não há versão pública a manter durante a migração, e o projeto acadêmico pode validar aplicativos localmente sem publicação nas lojas. **Decisão:** transformar `apps/frontend` numa única aplicação Expo com Expo Router e React Native Web. A UI usa primitivas React Native, `StyleSheet`, tokens TypeScript e componentes próprios; diferenças legítimas ficam em adaptadores ou arquivos específicos por plataforma. REST permanece canônico, TanStack Query gerencia somente estado remoto e Socket.IO invalida consultas. Web mantém refresh token em cookie protegido; iOS/Android usam credencial rotativa em armazenamento seguro. A compatibilidade segue a matriz oficial do Expo SDK fixado.

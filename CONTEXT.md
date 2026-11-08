@@ -31,7 +31,7 @@ Os Cosmetic Items que um usuário já desbloqueou.
 _Avoid_: Coleção, bolsa
 
 **Condição de desbloqueio**:
-A regra que dá um Cosmetic Item a um usuário, por exemplo alcançar um nível, concluir uma Raid, somar um número de Study Sessions, terminar Study Sessions antes das 7h ou fazer a Compra do item.
+A regra que dá um Cosmetic Item a um usuário, por exemplo alcançar um nível, concluir uma Raid, somar um número de Study Sessions, terminar Study Sessions antes das 7h, fazer a Compra do item ou pagar o Pacote que o contém (`pack:<slug>`, como `pack:dragao`).
 _Avoid_: requisito, critério
 
 **Desbloqueio**:
@@ -59,11 +59,23 @@ O Cosmetic Item da categoria Título que está equipado no Character. Não exist
 _Avoid_: rank, cargo, título livre
 
 **Item inicial**:
-Um Cosmetic Item cuja Condição de desbloqueio é o nível 1, de modo que todo Character já começa com ele no Inventário e equipado.
+Um Cosmetic Item cuja Condição de desbloqueio é o nível 1 e que não é premium, de modo que todo Character já começa com ele no Inventário e equipado. Item premium com Condição `level:1` entra no Inventário desequipado e nunca é Item inicial.
 _Avoid_: item padrão, item grátis
 
+**Assinatura**:
+O plano premium mensal (R$ 9,90), contratado no Checkout do Stripe e gerido no Portal do cliente. Enquanto o status for `active`, `trialing` ou `past_due`, o `plan_tier` é `premium`; ao terminar, volta a `free` e os Itens premium equipados são desequipados. Cancelar mantém o premium até o fim do período pago.
+_Avoid_: plano pago, mensalidade
+
+**Pacote**:
+Um conjunto de Cosmetic Items vendido por dinheiro, em pagamento único (o "Pacote do Dragão", R$ 4,90). Os itens têm a Condição de desbloqueio `pack:<slug>`, não são premium nem À venda por Moedas, e ficam com quem pagou para sempre, em qualquer plano.
+_Avoid_: bundle, kit
+
+**Pagamento**:
+O registro de que um usuário pagou um Pacote no Checkout do Stripe. Cada usuário tem no máximo um Pagamento por Pacote, e é ele que dá os itens ao Inventário. Não é a Compra, que troca Moedas.
+_Avoid_: pedido, transação
+
 **Item premium** (✦):
-Um Cosmetic Item marcado como exclusivo do plano premium. No MVP o selo ✦ é exibido, mas a política de entitlement libera o item para todos.
+Um Cosmetic Item marcado como exclusivo do plano premium. Só o plano `premium` o equipa. Com a cobrança desligada (sem `STRIPE_SECRET_KEY`), a política de entitlement ainda libera o item para todos (`COSMETICS_PREMIUM_FOR_ALL`); com a cobrança ligada, essa flag é ignorada.
 _Avoid_: item pago, item VIP
 
 **Prévia**:
@@ -167,7 +179,7 @@ O modelo temático de uma Raid, com nome, descrição, imagem e a Recompensa de 
 _Avoid_: quest, modelo de raid, template
 
 **Loja**:
-O único lugar onde o usuário gasta Moedas, com duas seções: Missões e os Cosmetic Items À venda. A Missão comprada pertence a quem comprou e não é consumida ao ser usada. O Líder escolhe, entre as Missões dos membros atuais, a Missão da próxima Raid, e pode repetir uma Missão. A escolha trava quando a Raid começa; se o dono sai da Guild antes disso, a escolha é anulada e vale o rodízio. Se o dono sai durante a Raid, a Raid continua. O dono não ganha nada quando sua Missão é usada.
+O lugar onde o usuário gasta Moedas, com duas seções: Missões e os Cosmetic Items À venda. Quando a cobrança está disponível, vende também Pacotes por dinheiro, numa terceira seção; o Pacote não custa Moedas. A Missão comprada pertence a quem comprou e não é consumida ao ser usada. O Líder escolhe, entre as Missões dos membros atuais, a Missão da próxima Raid, e pode repetir uma Missão. A escolha trava quando a Raid começa; se o dono sai da Guild antes disso, a escolha é anulada e vale o rodízio. Se o dono sai durante a Raid, a Raid continua. O dono não ganha nada quando sua Missão é usada.
 _Avoid_: Catálogo (que é todo o conjunto de Cosmetic Items, à venda ou não), mercado
 
 **Participante**:

@@ -404,6 +404,136 @@ paths:
               schema: { $ref: "#/components/schemas/InsufficientCoinsProblem" }
         "429": { $ref: "#/components/responses/TooManyRequests" }
 
+  /billing/subscription:
+    get:
+      summary: Estado da Assinatura do usuário
+      description: >
+        `available` é true só com `STRIPE_SECRET_KEY` definido (ADR-015). `status` é o do Stripe, sem tradução, ou null.
+        `renewsAt` é o fim do período quando não há cancelamento, senão null; `premiumUntil` é o `cancel_at`, ou null.
+      operationId: getBillingSubscription
+      tags: [Billing]
+      responses:
+        "200":
+          description: Estado da Assinatura
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BillingSubscription" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /billing/checkout:
+    post:
+      summary: Abrir o Checkout do Stripe para assinar o premium
+      description: >
+        Reutiliza ou cria o Customer do usuário e devolve a `url` do Checkout hospedado. Usuário que já é `premium`
+        recebe 409 sem chamar o Stripe; sem `STRIPE_SECRET_KEY`, 503; falha do Stripe, 502 e nenhuma linha nova.
+      operationId: openBillingCheckout
+      tags: [Billing]
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { type: object, additionalProperties: false }
+      responses:
+        "201": { $ref: "#/components/responses/BillingUrl" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "502": { $ref: "#/components/responses/BadGateway" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+
+  /billing/portal:
+    post:
+      summary: Abrir o Portal do cliente do Stripe
+      description: >
+        Para cancelar, reativar ou trocar o cartão da Assinatura; o retorno é `APP_URL` + `/configuracao/plano`.
+        Usuário sem Assinatura recebe 409; sem `STRIPE_SECRET_KEY`, 503; falha do Stripe, 502.
+      operationId: openBillingPortal
+      tags: [Billing]
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { type: object, additionalProperties: false }
+      responses:
+        "201": { $ref: "#/components/responses/BillingUrl" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "502": { $ref: "#/components/responses/BadGateway" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+
+  /billing/packs:
+    get:
+      summary: Loja, seção Pacotes
+      description: >
+        Os Pacotes à venda, ordenados por `name`, com `owned` para o usuário. Pacote fora de venda só aparece, com
+        `owned: true`, para quem já o pagou. Sem `STRIPE_SECRET_KEY`: `{ available: false, packs: [] }`.
+      operationId: listBillingPacks
+      tags: [Billing]
+      responses:
+        "200":
+          description: Pacotes
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BillingPacks" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /billing/packs/{slug}/checkout:
+    post:
+      summary: Abrir o Checkout do Stripe para pagar um Pacote
+      description: >
+        Pagamento único no valor de `packs`. Pacote que o usuário já pagou responde 409 sem chamar o Stripe; slug
+        inexistente ou Pacote fora de venda, 404; sem `STRIPE_SECRET_KEY`, 503; falha do Stripe, 502.
+      operationId: openBillingPackCheckout
+      tags: [Billing]
+      parameters:
+        - { name: slug, in: path, required: true, schema: { type: string, example: dragao } }
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { type: object, additionalProperties: false }
+      responses:
+        "201": { $ref: "#/components/responses/BillingUrl" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "502": { $ref: "#/components/responses/BadGateway" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+
+  /billing/webhook:
+    post:
+      summary: Webhook do Stripe
+      description: >
+        Rota pública: quem autentica é o cabeçalho `Stripe-Signature`, verificado sobre o corpo bruto. Sem assinatura
+        válida, 400 sem ler nem gravar nada. Evento de tipo não tratado, ou de Customer desconhecido, responde 200 sem
+        gravar. Falha ao reler a API do Stripe responde 500 para o Stripe reenviar.
+      operationId: receiveBillingWebhook
+      tags: [Billing]
+      security: []
+      parameters:
+        - { name: Stripe-Signature, in: header, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        description: Evento do Stripe, no corpo bruto enviado por ele.
+        content:
+          application/json:
+            schema: { type: object }
+      responses:
+        "200":
+          description: Evento recebido
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [received]
+                properties:
+                  received: { type: boolean, const: true }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "500":
+          description: Falha ao reler o Stripe; nada foi gravado
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+
   /users/me/sessions:
     get:
       summary: Lista dispositivos com sessão ativa (ADR-009)
@@ -1446,6 +1576,43 @@ components:
           properties:
             type: { type: string, const: early-sessions }
             count: { type: integer, minimum: 1 }
+        - type: object
+          required: [type, slug]
+          description: Item de Pacote (ADR-015), desbloqueado pelo Pagamento do Pacote.
+          properties:
+            type: { type: string, const: pack }
+            slug: { type: string }
+
+    BillingSubscription:
+      type: object
+      required: [available, planTier, status, renewsAt, premiumUntil]
+      properties:
+        available: { type: boolean, description: "true só com STRIPE_SECRET_KEY definido." }
+        planTier: { type: string, enum: [free, premium] }
+        status: { type: [string, "null"], description: "Status da Assinatura no Stripe, sem tradução." }
+        renewsAt: { type: [string, "null"], format: date-time }
+        premiumUntil: { type: [string, "null"], format: date-time, description: "`cancel_at`: o premium acaba nesta data." }
+
+    BillingPacks:
+      type: object
+      required: [available, packs]
+      properties:
+        available: { type: boolean }
+        packs:
+          type: array
+          items:
+            type: object
+            required: [slug, name, description, priceCents, currency, items, owned]
+            properties:
+              slug: { type: string }
+              name: { type: string }
+              description: { type: string }
+              priceCents: { type: integer, minimum: 1 }
+              currency: { type: string, example: brl }
+              items:
+                type: array
+                items: { $ref: "#/components/schemas/CatalogCosmeticItem" }
+              owned: { type: boolean }
 
     ShopItem:
       type: object
@@ -2200,6 +2367,25 @@ components:
             missing: { type: integer, minimum: 1 }
 
   responses:
+    BillingUrl:
+      description: Sessão aberta no Stripe
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [url]
+            properties:
+              url: { type: string, format: uri, description: "Página hospedada do Stripe para onde o app redireciona." }
+    BadGateway:
+      description: O Stripe falhou ao abrir a sessão ("Não foi possível abrir o pagamento")
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/Problem" }
+    ServiceUnavailable:
+      description: Cobrança indisponível, sem `STRIPE_SECRET_KEY`
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/Problem" }
     TooManyRequests:
       description: >
         Limite de requisições excedido (#13). Login e cadastro: 10 por minuto por IP e por rota;
