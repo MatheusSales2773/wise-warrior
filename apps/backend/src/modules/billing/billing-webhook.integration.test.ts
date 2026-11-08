@@ -329,13 +329,14 @@ describe('Stripe webhook against MySQL', () => {
       expect(await planTier()).toBe('premium');
     });
 
-    it('writes nothing when the client_reference_id user does not own the Customer of the Checkout', async () => {
+    it.each([false, true])('writes nothing when the client_reference_id user does not own the Customer of the Checkout (own row: %s)', async (ownRow) => {
       await seedFreeUser();
       const other = '00000000-0000-4000-8000-0000000000b2';
       await dataSource!.getRepository(User).insert({
         id: other, email: 'other@example.com', passwordHash: 'hash', displayName: 'Outro', planTier: 'free',
       });
-      const before = await row();
+      if (ownRow) await dataSource!.getRepository(Subscription).insert({ userId: other, stripeCustomerId: 'cus_other', status: null });
+      const before = await dataSource!.getRepository(Subscription).find({ order: { userId: 'ASC' } });
       retrieve.mockResolvedValue(stripeSubscription({ status: 'active' }));
 
       const response = await signed(eventBody('checkout.session.completed', {
@@ -345,8 +346,7 @@ describe('Stripe webhook against MySQL', () => {
 
       expect(response.status).toBe(200);
       expect(retrieve).not.toHaveBeenCalled();
-      expect(await row()).toEqual(before);
-      expect(await dataSource!.getRepository(Subscription).count()).toBe(1);
+      expect(await dataSource!.getRepository(Subscription).find({ order: { userId: 'ASC' } })).toEqual(before);
       expect(await planTier()).toBe('free');
       expect((await dataSource!.getRepository(User).findOneByOrFail({ id: other })).planTier).toBe('free');
       expect(emitted).toEqual([]);

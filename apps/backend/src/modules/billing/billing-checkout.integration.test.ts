@@ -261,4 +261,15 @@ describe('POST /billing/checkout against MySQL', () => {
     expect(createCustomer).not.toHaveBeenCalled();
     expect(createSession).not.toHaveBeenCalled();
   });
+
+  it('answers 401 to a token whose user no longer exists', async () => {
+    await start(stripeApi);
+
+    const response = await checkout();
+
+    expect(response.status).toBe(401);
+    expect(createCustomer).not.toHaveBeenCalled();
+    expect(createSession).not.toHaveBeenCalled();
+    expect(await rows()).toEqual([]);
+  });
 });

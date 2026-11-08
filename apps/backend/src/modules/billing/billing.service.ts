@@ -6,8 +6,8 @@ import {
   Injectable,
   InternalServerErrorException,
   Logger,
-  NotFoundException,
   ServiceUnavailableException,
+  UnauthorizedException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
@@ -77,7 +77,8 @@ export class BillingService {
 
     return this.dataSource.transaction(async (manager) => {
       const planTier = await this.users.lockPlanTier(manager, userId);
-      if (!planTier) throw new NotFoundException('Usuário não encontrado');
+      // Token válido de um usuário que não existe mais: a Surface só prevê 401 para quem não é um usuário.
+      if (!planTier) throw new UnauthorizedException();
       if (planTier === 'premium') throw new ConflictException('Você já tem o plano premium');
 
       const rows = manager.getRepository(Subscription);

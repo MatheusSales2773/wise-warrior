@@ -10,7 +10,7 @@ S3 adds `POST /api/v1/billing/checkout` and makes the subscription `checkout.ses
 user in `client_reference_id`. Tests run against a MySQL 8.0 (`TEST_DB_*`) with a fake Stripe client, never against
 Stripe. The route's OpenAPI entry belongs to S9.
 
-12 checks below · 0 one-way doors added (1 and 4 already exist; 7 is read: `STRIPE_PRICE_PREMIUM`, `APP_URL`) · 0 open questions
+13 checks below · 0 one-way doors added (1 and 4 already exist; 7 is read: `STRIPE_PRICE_PREMIUM`, `APP_URL`) · 0 open questions
 
 ## Checks
 
@@ -51,8 +51,12 @@ Proof: run billing | ✓ answers 401 without a token
 Proof: run billing | ✓ stores the Subscription of a completed Checkout on the row of the client_reference_id user
 Proof: run unit | ✓ carries the client_reference_id of a subscription Checkout Session as the user
 
-**C12** - A completed Checkout whose `client_reference_id` names a user that does not own the event's Customer writes nothing and never calls Stripe (S3.6)
-Proof: run billing | ✓ writes nothing when the client_reference_id user does not own the Customer of the Checkout
+**C12** - A completed Checkout whose `client_reference_id` names a user that does not own the event's Customer writes nothing and never calls Stripe, whether that user has no row or a row with another Customer (S3.6)
+Proof: run billing | ✓ writes nothing when the client_reference_id user does not own the Customer of the Checkout (own row: false)
+Proof: run billing | ✓ writes nothing when the client_reference_id user does not own the Customer of the Checkout (own row: true)
+
+**C13** - A valid token whose user no longer exists answers `401` (the Surface lists no `404`), and neither Stripe nor `subscriptions` is touched (Surface; appended after the Verifier)
+Proof: run billing | ✓ answers 401 to a token whose user no longer exists
 
 ## Coverage
 
@@ -62,18 +66,18 @@ it finds the row, C11-C12), `/api/v1/billing/subscription` to S5, `/api/v1/billi
 
 | Set (size) | Member -> proof | Unproven |
 | --- | --- | --- |
-| `POST /api/v1/billing/checkout` statuses (5) | 201 C1 · 401 C10 · 409 C6 · 502 C8, C9 · 503 C7 | - |
-| caller states (4) | free without row C1 · free with row C3 · premium C6 · no token C10 | - |
+| `POST /api/v1/billing/checkout` statuses (5) | 201 C1 · 401 C10, C13 · 409 C6 · 502 C8, C9 · 503 C7 | - |
+| caller states (5) | free without row C1 · free with row C3 · premium C6 · no token C10 · user gone C13 | - |
 | Stripe failures (2) | Customer C8 · session C9 | - |
 | session fields (6) | mode C2 · Price C2 · Customer C2 · `client_reference_id` C2 · `success_url` C2 · `cancel_url` C2 | - |
-| `client_reference_id` on the webhook (2) | owns the Customer C11 · does not C12 | - |
+| `client_reference_id` on the webhook (3) | owns the Customer C11 · no row C12 · row with another Customer C12 | - |
 
 ## Swept
 
 - validation: C6 (premium refused), C12 (`client_reference_id` must own the Customer)
 - failure modes: C8, C9
 - idempotency: C4 (sequential calls reuse the Customer)
-- authorization: C10 (JWT guard); the user id comes from the token, never from the body
+- authorization: C10 (JWT guard), C13 (user gone); the user id comes from the token, never from the body
 - concurrency: C5 (the user row is locked before the `subscriptions` row is read)
 - data lifecycle: C9 (an existing row survives a failed session)
 - dependency failure: C7 (no Stripe), C8, C9
@@ -83,7 +87,7 @@ it finds the row, C11-C12), `/api/v1/billing/subscription` to S5, `/api/v1/billi
 ## Handoff
 
 - **Settled mid-build:** none
-- **Dispatched:** none
+- **Dispatched:** Verifier at d3fa7ed (diff 9301cb9..d3fa7ed), sent; screens sub-agent n/a (no capture)
 - **Boundary:** none yet
 - **Abandoned:** none
 - **Walked:** n/a - no screen in S3
