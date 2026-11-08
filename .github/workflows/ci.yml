@@ -44,20 +44,23 @@ jobs:
       TEST_DB_PORT: 3306
       TEST_DB_ADMIN_USERNAME: root
       TEST_DB_ADMIN_PASSWORD: root
-    services:
-      mysql:
-        image: mysql:8.0
-        env:
-          MYSQL_ROOT_PASSWORD: root
-        ports:
-          - 3306:3306
-        options: >-
-          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -proot"
-          --health-interval=10s
-          --health-timeout=5s
-          --health-retries=10
-          --health-start-period=20s
     steps:
+      # A step instead of a service container: services cannot pass server options.
+      # The test databases are thrown away, so keep them in memory and skip the
+      # durability work (binlog, per-commit flush, doublewrite). Each integration
+      # suite runs every migration, and that DDL is what the job waits on.
+      # Started before npm ci so MySQL initialises while dependencies install.
+      - name: Start MySQL
+        run: |
+          docker run --detach --name mysql \
+            --tmpfs /var/lib/mysql:rw \
+            --env MYSQL_ROOT_PASSWORD=root \
+            --publish 3306:3306 \
+            mysql:8.0 \
+            --skip-log-bin \
+            --innodb-flush-log-at-trx-commit=0 \
+            --innodb-doublewrite=0
+
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -78,6 +81,19 @@ jobs:
           node --version
           npm --version
           npm ls --depth=0 --workspaces --include-workspace-root
+
+      # The entrypoint's temporary init server does not listen on TCP, so a TCP login
+      # with the root password only succeeds once the real server is up.
+      - name: Wait for MySQL
+        run: |
+          for _ in {1..60}; do
+            if docker exec mysql mysql --protocol=TCP -h127.0.0.1 -uroot -proot -e 'SELECT 1' >/dev/null 2>&1; then
+              exit 0
+            fi
+            sleep 2
+          done
+          docker logs mysql
+          exit 1
 
       - name: Verify backend quality gate
         run: npm run ci:backend
@@ -134,9 +150,10 @@ jobs:
       - name: Lint OpenAPI contract
         run: npm run lint:openapi
 
+  # Runs alongside the other jobs: it builds its own images and uses nothing they
+  # produce. CI OK still requires every job, so a failure anywhere blocks the merge.
   e2e:
     name: Web E2E (Docker Compose + Playwright)
-    needs: [backend, frontend, openapi]
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
