@@ -4,6 +4,7 @@ import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import type { JwtPayload } from '../auth/strategies/jwt.strategy';
 import { BillingService, type PackList } from './billing.service';
+import type { SubscriptionView } from './domain/subscription-view';
 
 @Controller('billing')
 export class BillingController {
@@ -13,6 +14,29 @@ export class BillingController {
   @UseGuards(JwtAuthGuard)
   listPacks(@CurrentUser() user: JwtPayload): Promise<PackList> {
     return this.billing.listPacks(user.sub);
+  }
+
+  /** Abre o Checkout do premium para o próprio usuário (S3); o usuário vem do token, nunca do corpo. */
+  @Post('checkout')
+  @UseGuards(JwtAuthGuard)
+  @HttpCode(HttpStatus.CREATED)
+  checkout(@CurrentUser() user: JwtPayload): Promise<{ url: string }> {
+    return this.billing.openCheckout(user.sub);
+  }
+
+  /** Abre o Portal do cliente do Stripe para o próprio usuário (S4). */
+  @Post('portal')
+  @UseGuards(JwtAuthGuard)
+  @HttpCode(HttpStatus.CREATED)
+  portal(@CurrentUser() user: JwtPayload): Promise<{ url: string }> {
+    return this.billing.openPortal(user.sub);
+  }
+
+  /** Estado da Assinatura do próprio usuário (S5.1); aqui por causa de `premiumUntil` (S4.5). */
+  @Get('subscription')
+  @UseGuards(JwtAuthGuard)
+  subscription(@CurrentUser() user: JwtPayload): Promise<SubscriptionView> {
+    return this.billing.getSubscription(user.sub);
   }
 
   /** Rota pública: quem autentica é a assinatura do Stripe sobre o corpo bruto (`rawBody` no bootstrap). */

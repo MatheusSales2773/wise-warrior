@@ -3,7 +3,7 @@
   "promote_threshold": 2,
   "window_days": 45,
   "quarantine_threshold": 2,
-  "next_id": 4,
+  "next_id": 6,
   "lessons": [
     {
       "id": "L-001",
@@ -43,6 +43,42 @@
     },
     {
       "id": "L-003",
+      "key": "weak_test::when a lookup filters on two keys prove each key with a case where only the other one matches",
+      "text": "When a lookup filters on two keys, prove each key with a case where only the other one matches",
+      "signal": "weak_test",
+      "scope": "billing",
+      "status": "candidate",
+      "features": [
+        "assinatura-premium-s3"
+      ],
+      "recurrence": 1,
+      "harmful": 0,
+      "evidence": [
+        "C12 billing-webhook.integration.test.ts (billing)"
+      ],
+      "created": "2026-11-08T16:24:09Z",
+      "last_seen": "2026-11-08T16:24:09Z"
+    },
+    {
+      "id": "L-004",
+      "key": "weak_test::test a pass through field with a value other than the one every fixture shares so a hard coded constant cannot pass",
+      "text": "Test a pass-through field with a value other than the one every fixture shares, so a hard-coded constant cannot pass",
+      "signal": "weak_test",
+      "scope": "billing",
+      "status": "candidate",
+      "features": [
+        "assinatura-premium-s4"
+      ],
+      "recurrence": 1,
+      "harmful": 0,
+      "evidence": [
+        "C10 subscription-view.spec.ts (billing)"
+      ],
+      "created": "2026-11-08T16:58:41Z",
+      "last_seen": "2026-11-08T16:58:41Z"
+    },
+    {
+      "id": "L-005",
       "key": "weak_test::in an order test give the rows a second key slug id that sorts against the one the claim orders by",
       "text": "In an order test, give the rows a second key (slug, id) that sorts against the one the claim orders by",
       "signal": "weak_test",
@@ -56,8 +92,8 @@
       "evidence": [
         "C2 billing-packs-http.integration.test.ts (billing)"
       ],
-      "created": "2026-11-08T17:17:38Z",
-      "last_seen": "2026-11-08T17:17:38Z"
+      "created": "2026-11-08T17:21:44Z",
+      "last_seen": "2026-11-08T17:21:44Z"
     }
   ]
 }

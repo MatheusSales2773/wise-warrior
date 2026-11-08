@@ -130,11 +130,22 @@ export class UsersService {
 
   /** Serializes work for a user inside the caller's transaction, including the first insert. */
   async lockForUpdate(userId: string, manager: EntityManager): Promise<boolean> {
+    return (await this.lockPlanTier(manager, userId)) !== null;
+  }
+
+  /** `lockForUpdate` que devolve o `plan_tier` lido sob a trava; `null` quando o usuário não existe. */
+  async lockPlanTier(manager: EntityManager, userId: string): Promise<PlanTier | null> {
     const user = await manager.getRepository(User).findOne({
       where: { id: userId },
       lock: { mode: 'pessimistic_write' },
     });
-    return user !== null;
+    return user?.planTier ?? null;
+  }
+
+  /** O `plan_tier` do usuário; `null` quando ele não existe. */
+  async findPlanTier(userId: string): Promise<PlanTier | null> {
+    const user = await this.users.findOne({ where: { id: userId }, select: { planTier: true } });
+    return user?.planTier ?? null;
   }
 
   /**

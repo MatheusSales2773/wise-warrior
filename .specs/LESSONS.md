@@ -26,11 +26,23 @@ Seen once or not yet corroborated. Tracked, not trusted.
 - evidence: C11 character-catalog.test.tsx (frontend)
 - last seen: 2026-11-08T14:37:25Z
 
-### L-003 - In an order test, give the rows a second key (slug, id) that sorts against the one the claim orders by
+### L-003 - When a lookup filters on two keys, prove each key with a case where only the other one matches
+- signal: `weak_test` · recurrence: 1 feature(s) · scope: `billing` · harmful: 0
+- features: assinatura-premium-s3
+- evidence: C12 billing-webhook.integration.test.ts (billing)
+- last seen: 2026-11-08T16:24:09Z
+
+### L-004 - Test a pass-through field with a value other than the one every fixture shares, so a hard-coded constant cannot pass
+- signal: `weak_test` · recurrence: 1 feature(s) · scope: `billing` · harmful: 0
+- features: assinatura-premium-s4
+- evidence: C10 subscription-view.spec.ts (billing)
+- last seen: 2026-11-08T16:58:41Z
+
+### L-005 - In an order test, give the rows a second key (slug, id) that sorts against the one the claim orders by
 - signal: `weak_test` · recurrence: 1 feature(s) · scope: `billing` · harmful: 0
 - features: assinatura-premium-s6
 - evidence: C2 billing-packs-http.integration.test.ts (billing)
-- last seen: 2026-11-08T17:17:38Z
+- last seen: 2026-11-08T17:21:44Z
 
 ## Quarantined (failed when applied - ignore)
 

@@ -70,7 +70,13 @@ function harness(billing: boolean) {
     let builder = Test.createTestingModule({ imports: [AppModule] });
     if (billing) {
       const unreachable = () => { throw new Error('the Pacote listing must not call Stripe'); };
-      const fake: StripeApi = { webhooks: { constructEvent: unreachable }, subscriptions: { retrieve: unreachable } };
+      const fake: StripeApi = {
+        webhooks: { constructEvent: unreachable },
+        subscriptions: { retrieve: unreachable },
+        customers: { create: unreachable },
+        billingPortal: { sessions: { create: unreachable } },
+        checkout: { sessions: { create: unreachable } },
+      };
       builder = builder.overrideProvider(STRIPE_API).useValue(fake);
     }
     const moduleRef = await builder.compile();

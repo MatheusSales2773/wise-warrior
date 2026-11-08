@@ -8,7 +8,7 @@ import Stripe from 'stripe';
 import { DataSource } from 'typeorm';
 import { APP_CREATE_OPTIONS } from '../../app.setup';
 import { HttpExceptionFilter } from '../../shared/filters/http-exception.filter';
-import { APPLICATION_MIGRATIONS, createIntegrationDatabase, type IntegrationDatabase } from '../../test/integration-database';
+import { APPLICATION_MIGRATIONS, createMigratedIntegrationDatabase, type IntegrationDatabase } from '../../test/integration-database';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
 import type { ProgressionService } from '../progression/progression.service';
 import { CosmeticItem } from '../users/entities/cosmetic-item.entity';
@@ -137,7 +137,7 @@ describe('Stripe webhook against MySQL', () => {
     emitted.length = 0;
     realtime.emitToUser.mockClear();
     retrieve.mockReset();
-    database = await createIntegrationDatabase('wise_billing_webhook');
+    database = await createMigratedIntegrationDatabase('wise_billing_webhook');
     dataSource = new DataSource(database.options(APPLICATION_MIGRATIONS));
     await dataSource.initialize();
     await dataSource.runMigrations();
@@ -150,7 +150,13 @@ describe('Stripe webhook against MySQL', () => {
       undefined,
       realtime as unknown as RealtimeGateway,
     );
-    const stripeApi: StripeApi = { webhooks: signer.webhooks, subscriptions: { retrieve } };
+    const stripeApi: StripeApi = {
+      webhooks: signer.webhooks,
+      subscriptions: { retrieve },
+      customers: { create: jest.fn() },
+      checkout: { sessions: { create: jest.fn() } },
+      billingPortal: { sessions: { create: jest.fn() } },
+    };
     const config = { get: (key: string) => (key === 'STRIPE_WEBHOOK_SECRET' ? WEBHOOK_SECRET : undefined) } as ConfigService;
 
     const moduleRef = await Test.createTestingModule({
@@ -311,6 +317,44 @@ describe('Stripe webhook against MySQL', () => {
       expect(checkout.status).toBe(200);
       expect(await planTier()).toBe('premium');
       expect((await row()).stripeSubscriptionId).toBe(SUBSCRIPTION);
+    });
+
+    it('stores the Subscription of a completed Checkout on the row of the client_reference_id user', async () => {
+      await seedFreeUser();
+      retrieve.mockResolvedValue(stripeSubscription({ status: 'active' }));
+
+      const response = await signed(eventBody('checkout.session.completed', {
+        object: 'checkout.session', mode: 'subscription', customer: CUSTOMER, subscription: SUBSCRIPTION,
+        client_reference_id: user,
+      }));
+
+      expect(response.status).toBe(200);
+      expect(retrieve).toHaveBeenCalledWith(SUBSCRIPTION);
+      expect(await row()).toMatchObject({ stripeCustomerId: CUSTOMER, stripeSubscriptionId: SUBSCRIPTION, status: 'active' });
+      expect(await planTier()).toBe('premium');
+    });
+
+    it.each([false, true])('writes nothing when the client_reference_id user does not own the Customer of the Checkout (own row: %s)', async (ownRow) => {
+      await seedFreeUser();
+      const other = '00000000-0000-4000-8000-0000000000b2';
+      await dataSource!.getRepository(User).insert({
+        id: other, email: 'other@example.com', passwordHash: 'hash', displayName: 'Outro', planTier: 'free',
+      });
+      if (ownRow) await dataSource!.getRepository(Subscription).insert({ userId: other, stripeCustomerId: 'cus_other', status: null });
+      const before = await dataSource!.getRepository(Subscription).find({ order: { userId: 'ASC' } });
+      retrieve.mockResolvedValue(stripeSubscription({ status: 'active' }));
+
+      const response = await signed(eventBody('checkout.session.completed', {
+        object: 'checkout.session', mode: 'subscription', customer: CUSTOMER, subscription: SUBSCRIPTION,
+        client_reference_id: other,
+      }));
+
+      expect(response.status).toBe(200);
+      expect(retrieve).not.toHaveBeenCalled();
+      expect(await dataSource!.getRepository(Subscription).find({ order: { userId: 'ASC' } })).toEqual(before);
+      expect(await planTier()).toBe('free');
+      expect((await dataSource!.getRepository(User).findOneByOrFail({ id: other })).planTier).toBe('free');
+      expect(emitted).toEqual([]);
     });
   });
 

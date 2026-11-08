@@ -8,6 +8,7 @@ import { guildKeys } from '@/features/guild/queries';
 import type { CoinOrigin } from '@/features/market/api';
 import { marketKeys } from '@/features/market/queries';
 import { profileKeys } from '@/features/profile/queries';
+import { billingKeys } from '@/features/settings/billing';
 import { activeStudySessionQueryKey, invalidateStudySessionResult } from '@/features/study-session/queries';
 import { holdOwnStudySessionEcho, isConfirmedStudySessionEcho } from '@/features/study-session/pending-command';
 import type { StudySessionSnapshot } from '@/features/study-session/api';
@@ -120,6 +121,12 @@ export function applyLevelUp(queryClient: QueryClient): void {
 export function applyEquipmentChanged(queryClient: QueryClient): void {
   void queryClient.invalidateQueries({ queryKey: dashboardKeys.profile() });
   void queryClient.invalidateQueries({ queryKey: profileKeys.cosmeticsCatalog() });
+}
+
+/** S5.12: the plan changed (Checkout, Portal or the end of the Assinatura), so the Plano and the profile refetch. */
+export function applyPlanChanged(queryClient: QueryClient): void {
+  void queryClient.invalidateQueries({ queryKey: billingKeys.subscription() });
+  void queryClient.invalidateQueries({ queryKey: dashboardKeys.profile() });
 }
 
 /**
@@ -252,6 +259,7 @@ export function createRealtimeClient({
   const onXpUpdated = () => applyXpUpdated(queryClient);
   const onLevelUp = () => applyLevelUp(queryClient);
   const onEquipmentChanged = () => applyEquipmentChanged(queryClient);
+  const onPlanChanged = () => applyPlanChanged(queryClient);
   const onCoinsChanged = (event: CoinsChangedEvent) => applyCoinsChanged(queryClient, event);
   const onStudySessionChanged = (event: StudySessionChangedEvent) => applyStudySessionChanged(queryClient, event);
   const handleConnectionLoss = () => {
@@ -288,6 +296,7 @@ export function createRealtimeClient({
   socket.on('progress:xpUpdated', onXpUpdated);
   socket.on('notification:levelup', onLevelUp);
   socket.on('character:equipmentChanged', onEquipmentChanged);
+  socket.on('user:planChanged', onPlanChanged);
   socket.on('coins:changed', onCoinsChanged);
   socket.on('studySession:changed', onStudySessionChanged);
   socket.on('connect', onConnect);
@@ -334,6 +343,7 @@ export function createRealtimeClient({
       socket.off('progress:xpUpdated', onXpUpdated);
       socket.off('notification:levelup', onLevelUp);
       socket.off('character:equipmentChanged', onEquipmentChanged);
+      socket.off('user:planChanged', onPlanChanged);
       socket.off('coins:changed', onCoinsChanged);
       socket.off('studySession:changed', onStudySessionChanged);
       socket.off('connect', onConnect);

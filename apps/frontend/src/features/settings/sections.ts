@@ -2,7 +2,6 @@ import type { Href } from 'expo-router';
 import type { ComponentType } from 'react';
 import type { WiseIconName } from '@/design-system';
 import type { UserProfile } from '@/features/dashboard/api';
-import { planLabel } from './plan';
 import { AccessibilityContent } from './accessibility-content';
 import { DevicesContent } from './devices-content';
 import { FocusContent } from './focus-content';
@@ -58,7 +57,7 @@ export const settingsSections: readonly SettingsSection[] = [
   },
   {
     id: 'plano', label: 'Plano', description: 'O plano da sua conta.', href: '/configuracao/plano', icon: 'diamond-outline',
-    group: 'Plano', row: { title: 'Plano atual', icon: 'diamond-outline', value: (user) => planLabel(user.planTier) },
+    group: 'Plano', row: { title: 'Plano atual', icon: 'diamond-outline' },
     Content: PlanContent,
   },
 ];
