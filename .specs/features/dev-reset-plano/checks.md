@@ -6,7 +6,7 @@ Run api: `TEST_DB_PORT=3327 npm run test:integration --workspace apps/backend --
 Run app: `npm test --workspace apps/frontend -- __tests__/settings-screen.test.tsx --verbose`
 Plan: `.specs/features/dev-reset-plano/plan.md`
 
-39 checks in 4 slices · 3 one-way doors · 0 open, 0 block
+40 checks in 4 slices · 3 one-way doors · 0 open, 0 block
 
 ## Checks
 
@@ -72,12 +72,12 @@ Proof: run api | ✓ writes canceled and turns the plan free when the payload sa
 **C20** - Ao virar free, os Itens premium ✦ saem do equipamento e o Pacote fica (AC 9)
 Proof: run api | ✓ puts the Título back to Aprendiz, empties a category with no Item inicial, restores the Item inicial of Arma and keeps a Pacote item
 
-**C21** - `user:planChanged` é emitido uma vez, ao usuário, depois do commit (AC 9)
-Proof: run api | ✓ is emitted once, to the user, with the new plan and only after the commit
+**C21** - Ao cancelar, `user:planChanged` é emitido uma vez com `free`, depois do commit (AC 9)
+Proof: run api | ✓ is emitted once with free, after the commit, when the Subscription is deleted
 
 ### S2 - devTools no perfil
 
-**C22** - `GET /users/me` e `PATCH /users/me` respondem `devTools` true ao liberado e false aos demais (AC 10, 11, 12)
+**C22** - `GET /users/me` e `PATCH /users/me` respondem `devTools` true ao liberado e false aos demais, nos dois verbos (AC 10, 11, 12)
 Proof: run api | ✓ answers devTools true to a listed user and false to the others, on GET and PATCH
 
 **C23** - O perfil deriva `devTools` de `DEV_TOOLS_EMAILS` (AC 10, 11)
@@ -94,6 +94,7 @@ Proof: run app | ✓ AC13: lists Desenvolvedor in its own last group of the phon
 **C26** - Sem `devTools`, ou com o perfil carregando, a seção não aparece (AC 14)
 Proof: run app | ✓ AC14: keeps Desenvolvedor out of the menu and the list when devTools is false
 Proof: run app | ✓ AC14: keeps Desenvolvedor out while the profile has not loaded
+Proof: run app | ✓ AC14: keeps Desenvolvedor out of the phone list while the profile has not loaded
 
 **C27** - Sem `devTools`, `/configuracao/dev` leva a `/configuracao` (AC 15)
 Proof: run app | ✓ AC15: takes an account without devTools from /configuracao/dev to /configuracao
@@ -115,6 +116,7 @@ Proof: run app | ✓ AC20: confirming calls the route once, shows loading, then 
 
 **C33** - `user:planChanged` troca a seção para Free sem recarregar (AC 21)
 Proof: run app | ✓ AC21: shows Free without reloading when user:planChanged arrives
+Proof: run app | ✓ AC20, AC21: the cancel notice goes away once the plan is Free
 
 **C34** - 409, 502 e 503 mostram o `detail` do servidor e fecham o diálogo (AC 22)
 Proof: run app | ✓ AC22: closes the dialog and shows the server detail of a 409
@@ -133,10 +135,13 @@ Proof: run app | ✓ AC23: shows the Plano loading indicator, then the Plano err
 Proof: `grep -qF 'DEV_TOOLS_EMAILS: ${DEV_TOOLS_EMAILS:-}' docker-compose.yml`
 
 **C38** - `.env.example` documenta `DEV_TOOLS_EMAILS` (AC 25)
-Proof: `grep -q '^DEV_TOOLS_EMAILS=' apps/backend/.env.example`
+Proof: `grep -q '^DEV_TOOLS_EMAILS=' apps/backend/.env.example && grep -q 'Vazia libera ninguém' apps/backend/.env.example && grep -q 'Só para staging' apps/backend/.env.example`
 
 **C39** - O OpenAPI descreve a rota com 202, 401, 404, 409, 502 e 503 e `devTools` no perfil, e o lint passa (AC 26)
-Proof: `npm run lint:openapi && grep -q '/billing/dev/reset-plan' docs/api/openapi.yaml && grep -q 'devTools' docs/api/openapi.yaml`
+Proof: `npm run lint:openapi && for c in 202 401 404 409 502 503; do awk '/^  \/billing\/dev\/reset-plan:/{f=1;next} /^  \//{f=0} f' docs/api/openapi.yaml | grep -q "\"$c\":" || exit 1; done && awk '/^    UserProfile:/{f=1;next} /^    [A-Z]/{f=0} f' docs/api/openapi.yaml | grep -c 'devTools' | grep -qv '^0$'`
+
+**C40** - O `AppModule` real continua subindo com a rota e o `UsersService` novos: a suíte de auth, que o sobe, fica verde (AC 2, 10)
+Proof: `TEST_DB_PORT=3327 npm run test:auth:integration --workspace apps/backend`
 
 ## Coverage
 
