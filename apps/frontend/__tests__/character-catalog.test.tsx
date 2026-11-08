@@ -276,7 +276,15 @@ describe('Pacote do Dragão items (#360)', () => {
     expect(optionsFor([raid, locked], 'badge', 'free').map((option) => option.item.name)).toEqual(['Amuleto de Brasa', 'Selo']);
   });
 
-  it('draws each Pacote item with its own recoloured sprite, not the category default', () => {
+  it('places the Presa do Dragão layer exactly where the Figma sprite draws it', () => {
+    expect(weaponLayers['Presa do Dragão']?.rows).toEqual([
+      '................', '................', '................', '..............a.', '.............aba', '.............aba',
+      '............aba.', '............aba.', '............aba.', '............aba.', '...........accca', '............ada.',
+      '............ada.', '.............d..', '.............d..', ...Array<string>(9).fill('................'),
+    ]);
+  });
+
+  it('draws each Pacote item with its own sprite, not the category default', () => {
     for (const [category, name] of PACK) {
       const own = cosmeticSprite({ category, name });
       expect(own).not.toBe(cosmeticSprite({ category, name: 'Item sem arte' }));
@@ -284,7 +292,7 @@ describe('Pacote do Dragão items (#360)', () => {
     }
   });
 
-  it('draws the Elmo, the Presa and the Amuleto on the Herói, each different from the slot without it and from its source art', async () => {
+  it('draws the Elmo, the Presa and the Amuleto on the Herói, each different from the slot without it and from the nearest existing art', async () => {
     const heroes: HeroLayers[] = [
       { avatar: null, weapon: null, accessory: null },
       { avatar: { name: 'Elmo de Escamas' }, weapon: null, accessory: null },

@@ -65,9 +65,10 @@ Proof: run packs | ✓ keeps the Pacote items and the Itens premium out of the L
 Proof: run migration | ✓ creates packs and pack_payments with the Pacote do Dragão and its 3 items, one Pagamento per user, Pacote and session, and drops them on revert
 Proof: run migration | ✓ applies every migration in order and reverts them all down to an empty schema
 
-**C13** - The 3 Pacote items are drawn with their own sprites, recoloured from existing art (fallback of the plan): each differs from its category default in the drawer, and on the Herói each layer differs from the empty slot and from the art it was recoloured from (Armadura do Lobo, Espada, Selo dos Madrugadores)
-Proof: run frontend | ✓ draws each Pacote item with its own recoloured sprite, not the category default
-Proof: run frontend | ✓ draws the Elmo, the Presa and the Amuleto on the Herói, each different from the slot without it and from its source art
+**C13** - The 3 Pacote items are drawn with the approved Figma art (Sprite/Avatar/Elmo de Escamas, Sprite/Arma/Presa do Dragão, Sprite/Acessório/Amuleto de Brasa and their Sprite/Item icons): each differs from its category default in the drawer, the Presa layer sits on the Figma pixels, and on the Herói each layer differs from the empty slot and from the nearest existing art (Armadura do Lobo, Espada, Selo dos Madrugadores)
+Proof: run frontend | ✓ draws each Pacote item with its own sprite, not the category default
+Proof: run frontend | ✓ places the Presa do Dragão layer exactly where the Figma sprite draws it
+Proof: run frontend | ✓ draws the Elmo, the Presa and the Amuleto on the Herói, each different from the slot without it and from the nearest existing art
 
 **C14** - Adding `Pack` and `PackPayment` to `BillingModule`'s `TypeOrmModule.forFeature` leaves the real `AppModule` bootable (ADR-001)
 Proof: npm run test:auth:integration --workspace apps/backend
@@ -101,7 +102,7 @@ The other routes of the plan's Surface belong to other slices: `/api/v1/billing/
 
 ## Handoff
 
-- **Settled mid-build:** `packs.description` = "Elmo, presa e amuleto forjados no fogo de um dragão. Ficam com você para sempre, em qualquer plano." (user: recommended option); a Pacote item without ownership reads "Do Pacote do Dragão", orders with the items for sale and the hint says "comprados na Loja" (user: "Mesmo rótulo"). Both recorded in the plan's Assumptions.
+- **Settled mid-build:** the 3 Pacote sprites were approved in Figma (user: "os sprites foram aprovados no figma sim"), so they replace the recolour fallback; `packs.description` = "Elmo, presa e amuleto forjados no fogo de um dragão. Ficam com você para sempre, em qualquer plano." (user: recommended option); a Pacote item without ownership reads "Do Pacote do Dragão", orders with the items for sale and the hint says "comprados na Loja" (user: "Mesmo rótulo"). Both recorded in the plan's Assumptions.
 - **Dispatched:** Verifier at dd29d75 (diff 78c19f6..dd29d75), sent; screens sub-agent n/a (no capture)
 - **Boundary:** C1-C14 closed; the Verifier's C2 finding closed by 6bba4c4; proofs.md green (30 pass)
 - **Abandoned:** none

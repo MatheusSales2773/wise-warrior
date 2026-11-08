@@ -230,14 +230,36 @@ export const avatarLayers: Readonly<Record<string, PixelSpriteData>> = {
       '...aaaa..aaaa...',
     ],
   }),
-  /** Pacote do Dragão (#360): the Armadura do Lobo recoloured in green scales with ember trim, until the Figma art is approved. */
-  'Elmo de Escamas': robeLayer(
-    { cloth: ['#0a0a12', '#3f7a4a', '#6fb07a', '#25502e'], trim: ['#e8803a', '#f0c97a', '#2a2820', '#f3ead4'] },
-    (rows) => {
-      rows[0] = '.....a.aa.a.....';
-      rows[10] = '..ahhhhiihhhha..';
-    },
-  ),
+  /** Pacote do Dragão (#360): a red-scaled dragon helm with gold horns and an ember gorget; on the Figma sprites page as Sprite/Avatar/Elmo de Escamas. */
+  'Elmo de Escamas': {
+    palette: ['#0a0a12', '#9a2f2a', '#d4553a', '#5a1a18', '#f0c97a', '#ffe3a0', '#3a1410', '#f3ead4'],
+    rows: [
+      '....a.aaaa.a....',
+      '....aabbbbaa....',
+      '....abcbbbba....',
+      '...abcbbbbbba...',
+      '...abdaaaadba...',
+      '...ada....ada...',
+      '...ad......da...',
+      '...ad......da...',
+      '....ad....da....',
+      '...abeaaaaeba...',
+      '..abbbeffebbba..',
+      '.abdbdbeedbdbda.',
+      '.adcdbdeebdbdba.',
+      '.a.agggggggga.a.',
+      '.a.aghhhhhhga.a.',
+      '..aaghhffhhgaa..',
+      '..abaggggggaba..',
+      '..adbdbeedbdba..',
+      '..abcbdeebdbda..',
+      '..adcdbeedbdda..',
+      '.adbdbdeebdbdda.',
+      '.adddddeeddddda.',
+      '..aaaggaaggaaa..',
+      '...aaaa..aaaa...',
+    ],
+  },
   /** Wolf pelt armour with pointed ears on the hood and red-trimmed pauldrons; on the Figma sprites page as Sprite/Avatar/Armadura do Lobo. */
   'Armadura do Lobo': robeLayer(
     { cloth: ['#0a0a12', '#7a7466', '#b3a98e', '#4a463c'], trim: ['#c44545', '#e87070', '#2a2820', '#f3ead4'] },
@@ -260,14 +282,15 @@ export const accessoryLayers: Readonly<Record<string, PixelSpriteData>> = {
       ...Array<string>(10).fill('................'),
     ],
   },
-  /** Pacote do Dragão (#360): the Selo dos Madrugadores layer recoloured as an ember, until the Figma art is approved. */
+  /** Pacote do Dragão (#360): an ember on a gold chain over the chest; on the Figma sprites page as Sprite/Acessório/Amuleto de Brasa. */
   'Amuleto de Brasa': {
-    palette: ['#0a0a12', '#e8803a', '#f0c97a'],
+    palette: ['#d4a85a', '#0a0a12', '#ff9a4a'],
     rows: [
-      ...Array<string>(11).fill('................'),
-      '.........aba....',
-      '.........bcb....',
-      '.........aba....',
+      ...Array<string>(10).fill('................'),
+      '......a..a......',
+      '.......bb.......',
+      '......bccb......',
+      '.......bb.......',
       ...Array<string>(10).fill('................'),
     ],
   },
@@ -302,11 +325,11 @@ export const weaponLayers: Readonly<Record<string, PixelSpriteData>> = {
       [10, 11, 'accca'], [11, 12, 'ada'], [12, 12, 'ada'], [13, 13, 'd'], [14, 13, 'd'],
     ]),
   },
-  /** Pacote do Dragão (#360): the Espada recoloured as an ivory fang with a crimson grip, until the Figma art is approved. */
+  /** Pacote do Dragão (#360): a curved ivory fang with a crimson grip; on the Figma sprites page as Sprite/Arma/Presa do Dragão. */
   'Presa do Dragão': {
     palette: ['#0a0a12', '#f3ead4', '#c44545', '#7d2a2a'],
     rows: layerAt([
-      [3, 12, '.a.'], [4, 12, 'aba'], [5, 12, 'aba'], [6, 12, 'aba'], [7, 12, 'aba'], [8, 12, 'aba'], [9, 12, 'aba'],
+      [3, 14, 'a'], [4, 13, 'aba'], [5, 13, 'aba'], [6, 12, 'aba'], [7, 12, 'aba'], [8, 12, 'aba'], [9, 12, 'aba'],
       [10, 11, 'accca'], [11, 12, 'ada'], [12, 12, 'ada'], [13, 13, 'd'], [14, 13, 'd'],
     ]),
   },
@@ -463,18 +486,18 @@ export const itemSprites = {
     palette: ['#0a0a12', '#3d364c', '#c9cfdc', '#7a2a3a', '#f0c97a', '#d8d0bc', '#4a2e1e'],
     rows: ['...aa...', '..abba..', '.acbbca.', 'abdeedba', 'abdffdba', 'aggeegga', 'acdffdca', 'aaaaaaaa'],
   },
-  /** Pacote do Dragão (#360), recoloured from the Armadura do Lobo, the Espada and the Medalhão do Lobo until the Figma sprites are approved. */
+  /** Pacote do Dragão (#360), from the Figma sprites page (Sprite/Item/…). */
   elmoDeEscamas: {
-    palette: ['#0a0a12', '#3f7a4a', '#6fb07a', '#e8803a'],
-    rows: ['a.aaaa.a', 'abaccaba', 'abbbbbba', 'abdbbdba', 'abbbbbba', 'abcbbcba', 'abbbbbba', '.aaaaaa.'],
+    palette: ['#f0c97a', '#0a0a12', '#9a2f2a', '#d4553a'],
+    rows: ['a......a', 'ab.bb.ba', '.bccccb.', 'bcdcdccb', 'bccccccb', 'bcbbbbcb', '.bccccb.', '..bbbb..'],
   },
   presaDoDragao: {
     palette: ['#0a0a12', '#f3ead4', '#c44545', '#7d2a2a'],
-    rows: ['......aa', '.....aba', '....aba.', 'a..aba..', 'acaba...', '.acca...', '.adca...', 'aa.aa...'],
+    rows: ['......aa', '.....aba', '....aba.', '...aba..', 'acaba...', '.ada....', 'ada.....', '.a......'],
   },
   amuletoDeBrasa: {
-    palette: ['#0a0a12', '#e8803a', '#f0c97a', '#c44545', '#7a4a2a'],
-    rows: ['a.aaaa.a', 'abaccaba', 'abbbbbba', 'abcbbcba', 'abbddbba', '.abbbba.', '..abba..', '...aa...'],
+    palette: ['#d4a85a', '#0a0a12', '#c44545', '#ff9a4a'],
+    rows: ['a......a', '.a....a.', '..a..a..', '...bb...', '..bccb..', '.bcddcb.', '..bccb..', '...bb...'],
   },
   marcadorDoGrimorio: {
     palette: ['#0a0a12', '#5b3fa0', '#d4a85a', '#8a5bc4'],
