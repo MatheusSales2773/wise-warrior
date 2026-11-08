@@ -4,6 +4,7 @@ import type { ActiveRaid } from '@/features/guild/api';
 import { dashboardKeys } from '@/features/dashboard/queries';
 import { guildKeys } from '@/features/guild/queries';
 import { profileKeys } from '@/features/profile/queries';
+import { packKeys } from '@/features/market/packs';
 import { marketKeys } from '@/features/market/queries';
 import type { StudySessionSnapshot } from '@/features/study-session/api';
 import { activeStudySessionQueryKey, focusCycleQueryKey } from '@/features/study-session/queries';
@@ -371,6 +372,33 @@ describe('character:equipmentChanged', () => {
     client.dispose();
 
     expect(socket.count('character:equipmentChanged')).toBe(0);
+  });
+});
+
+describe('user:packGranted', () => {
+  const invalidated = (queryClient: QueryClient, key: readonly unknown[]) => queryClient.getQueryState(key)?.isInvalidated;
+
+  it('refreshes the Pacotes, the profile and the cosmetics catalog when a Pacote is granted', () => {
+    const { socket, queryClient } = setup();
+    [packKeys.all, dashboardKeys.profile(), profileKeys.cosmeticsCatalog(), dashboardKeys.metrics(), marketKeys.balance()]
+      .forEach((key) => queryClient.setQueryData(key, {}));
+
+    socket.emit('user:packGranted', { slug: 'dragao', cosmeticItemIds: ['p1', 'p2', 'p3'] });
+
+    expect(invalidated(queryClient, packKeys.all)).toBe(true);
+    expect(invalidated(queryClient, dashboardKeys.profile())).toBe(true);
+    expect(invalidated(queryClient, profileKeys.cosmeticsCatalog())).toBe(true);
+    expect(invalidated(queryClient, dashboardKeys.metrics())).toBe(false);
+    expect(invalidated(queryClient, marketKeys.balance())).toBe(false);
+  });
+
+  it('listens to user:packGranted once and stops on dispose', () => {
+    const { socket, client } = setup();
+    expect(socket.count('user:packGranted')).toBe(1);
+
+    client.dispose();
+
+    expect(socket.count('user:packGranted')).toBe(0);
   });
 });
 
