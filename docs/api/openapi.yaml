@@ -376,6 +376,23 @@ paths:
                 items: { $ref: "#/components/schemas/ShopItem" }
         "401": { $ref: "#/components/responses/Unauthorized" }
 
+  /billing/packs:
+    get:
+      summary: Loja, seção Pacotes
+      description: >
+        Os Pacotes vendidos por dinheiro (ADR-015), ordenados por `name`: os À venda e os fora de venda que o usuário
+        já pagou, com `owned`. Os itens de um Pacote são os Cosmetic Items com Condição `pack:<slug>`. Sem
+        `STRIPE_SECRET_KEY`, a cobrança está indisponível e a resposta é `{ "available": false, "packs": [] }`.
+      operationId: listBillingPacks
+      tags: [Shop]
+      responses:
+        "200":
+          description: Pacotes da Loja
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PackList" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
   /shop/items/{itemId}/purchase:
     post:
       summary: Comprar um Cosmetic Item À venda
@@ -1446,6 +1463,39 @@ components:
           properties:
             type: { type: string, const: early-sessions }
             count: { type: integer, minimum: 1 }
+        - type: object
+          required: [type, slug]
+          description: Item de Pacote (ADR-015), concedido só pelo Pagamento do Pacote.
+          properties:
+            type: { type: string, const: pack }
+            slug: { type: string, description: "Slug do Pacote, como `dragao`." }
+
+    PackList:
+      type: object
+      required: [available, packs]
+      properties:
+        available: { type: boolean, description: "false quando a cobrança não está configurada; `packs` vem vazio." }
+        packs:
+          type: array
+          items:
+            type: object
+            required: [slug, name, description, priceCents, currency, items, owned]
+            properties:
+              slug: { type: string, example: dragao }
+              name: { type: string, example: Pacote do Dragão }
+              description: { type: string }
+              priceCents: { type: integer, minimum: 1, example: 490 }
+              currency: { type: string, example: brl }
+              items:
+                type: array
+                items:
+                  type: object
+                  required: [id, name, category]
+                  properties:
+                    id: { type: string, format: uuid }
+                    name: { type: string }
+                    category: { type: string, enum: [avatar, badge, title, accessory, weapon] }
+              owned: { type: boolean, description: "O usuário já pagou este Pacote." }
 
     ShopItem:
       type: object

@@ -80,6 +80,13 @@ export interface CatalogCosmeticItem {
   unlockCondition: UnlockCondition;
 }
 
+/** Um item de Pacote, como a Loja o mostra. */
+export interface PackItem {
+  id: string;
+  name: string;
+  category: CosmeticCategory;
+}
+
 /** A categoria que mudou de equipagem e o item agora equipado nela (`null`: ficou vazia). */
 export interface EquipmentChange {
   category: CosmeticCategory;
@@ -296,6 +303,22 @@ export class UsersService {
       forSale: item.forSale,
       unlockCondition: condition,
     }));
+  }
+
+  /**
+   * Os itens de cada Pacote (Condição `pack:<slug>`), por slug, na ordem das categorias da Aparência do Herói. Um slug
+   * sem itens fica fora do mapa.
+   */
+  async listPackItems(slugs: readonly string[]): Promise<Map<string, PackItem[]>> {
+    const catalog = await this.readCatalog(this.cosmeticItems);
+    const rank = (category: CosmeticCategory) => [...APPEARANCE_CATEGORIES, 'title', 'badge'].indexOf(category);
+    const bySlug = new Map<string, PackItem[]>();
+    for (const { item, condition } of catalog) {
+      if (condition.type !== 'pack' || !slugs.includes(condition.slug)) continue;
+      bySlug.set(condition.slug, [...(bySlug.get(condition.slug) ?? []), { id: item.id, name: item.name, category: item.category }]);
+    }
+    for (const items of bySlug.values()) items.sort((left, right) => rank(left.category) - rank(right.category));
+    return bySlug;
   }
 
   /**

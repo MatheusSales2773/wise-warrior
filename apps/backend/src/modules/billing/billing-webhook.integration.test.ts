@@ -18,6 +18,8 @@ import { UsersService } from '../users/users.service';
 import { SWORD_ID as ESPADA } from '../../migrations/1788460440000-add-weapon-category';
 import { BillingController } from './billing.controller';
 import { BillingService } from './billing.service';
+import { Pack } from './entities/pack.entity';
+import { PackPayment } from './entities/pack-payment.entity';
 import { Subscription } from './entities/subscription.entity';
 import { STRIPE_API, type StripeApi } from './stripe.client';
 
@@ -160,6 +162,8 @@ describe('Stripe webhook against MySQL', () => {
         { provide: UsersService, useValue: users },
         { provide: RealtimeGateway, useValue: realtime },
         { provide: getRepositoryToken(Subscription), useValue: dataSource.getRepository(Subscription) },
+        { provide: getRepositoryToken(Pack), useValue: dataSource.getRepository(Pack) },
+        { provide: getRepositoryToken(PackPayment), useValue: dataSource.getRepository(PackPayment) },
         { provide: getDataSourceToken(), useValue: dataSource },
       ],
     }).compile();

@@ -4,11 +4,30 @@ import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
 import type Stripe from 'stripe';
 import { DataSource, EntityManager, Repository } from 'typeorm';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
-import { UsersService } from '../users/users.service';
+import { UsersService, type PackItem } from '../users/users.service';
 import { planTierForStatus } from './domain/plan-tier';
+import { visiblePacks } from './domain/packs';
 import { isHandledEventType, subscriptionEventTarget } from './domain/webhook-event';
+import { Pack } from './entities/pack.entity';
+import { PackPayment } from './entities/pack-payment.entity';
 import { Subscription } from './entities/subscription.entity';
 import { STRIPE_API, type StripeApi } from './stripe.client';
+
+/** Um Pacote como a Loja o mostra: preço em centavos, os itens dele e se o usuário já o pagou. */
+export interface PackView {
+  slug: string;
+  name: string;
+  description: string;
+  priceCents: number;
+  currency: string;
+  items: PackItem[];
+  owned: boolean;
+}
+
+export interface PackList {
+  available: boolean;
+  packs: PackView[];
+}
 
 const fromUnixSeconds = (seconds: number | null | undefined): Date | null =>
   typeof seconds === 'number' ? new Date(seconds * 1000) : null;
@@ -19,12 +38,37 @@ export class BillingService {
 
   constructor(
     @InjectRepository(Subscription) private readonly subscriptions: Repository<Subscription>,
+    @InjectRepository(Pack) private readonly packs: Repository<Pack>,
+    @InjectRepository(PackPayment) private readonly packPayments: Repository<PackPayment>,
     @InjectDataSource() private readonly dataSource: DataSource,
     @Inject(STRIPE_API) private readonly stripe: StripeApi | null,
     private readonly config: ConfigService,
     private readonly users: UsersService,
     private readonly realtime: RealtimeGateway,
   ) {}
+
+  /**
+   * Os Pacotes da Loja para o usuário (S6): os À venda e os fora de venda que ele pagou, por nome. Sem cobrança
+   * configurada, nenhum, para a Loja esconder a seção.
+   */
+  async listPacks(userId: string): Promise<PackList> {
+    if (!this.stripe) return { available: false, packs: [] };
+    const [packs, payments] = await Promise.all([this.packs.find(), this.packPayments.find({ where: { userId } })]);
+    const shown = visiblePacks(packs, new Set(payments.map((payment) => payment.packId)));
+    const items = await this.users.listPackItems(shown.map((pack) => pack.slug));
+    return {
+      available: true,
+      packs: shown.map((pack) => ({
+        slug: pack.slug,
+        name: pack.name,
+        description: pack.description,
+        priceCents: pack.priceCents,
+        currency: pack.currency,
+        items: items.get(pack.slug) ?? [],
+        owned: pack.owned,
+      })),
+    };
+  }
 
   /**
    * Webhook do Stripe (ADR-015). Verifica a assinatura sobre o corpo bruto antes de ler ou gravar qualquer coisa (400);

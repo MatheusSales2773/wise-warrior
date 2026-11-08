@@ -45,6 +45,7 @@ import {
   SeedPremiumCosmeticItems1788460740000,
 } from './1788460740000-seed-premium-cosmetic-items';
 import { CreateSubscriptions1788460800000 } from './1788460800000-create-subscriptions';
+import { CreatePacks1788460860000, PACOTE_DO_DRAGAO_ID } from './1788460860000-create-packs';
 import { saoPauloWeekAt } from '../shared/time/sao-paulo-calendar';
 
 const ITEMS_FOR_SALE = [
@@ -1730,6 +1731,58 @@ describe('TypeORM migrations against an empty MySQL schema', () => {
       'SELECT table_name FROM information_schema.tables WHERE table_schema = ? AND table_name = ?',
       [database!.name, 'subscriptions'],
     )).toEqual([]);
+  });
+
+  it('creates packs and pack_payments with the Pacote do Dragão and its 3 items, one Pagamento per user, Pacote and session, and drops them on revert', async () => {
+    database = await createIntegrationDatabase('wise_migrations_test');
+    dataSource = new DataSource(database!.options(migrationsThrough(CreatePacks1788460860000)));
+    await dataSource.initialize();
+    await dataSource.runMigrations();
+    const db = database!.identifier;
+
+    expect(await rows(database!.admin, `SELECT slug, name, price_cents, currency, for_sale FROM ${db}.packs`))
+      .toEqual([{ slug: 'dragao', name: 'Pacote do Dragão', price_cents: 490, currency: 'brl', for_sale: 1 }]);
+    expect(await rows(
+      database!.admin,
+      `SELECT category, name, requires_premium, for_sale FROM ${db}.cosmetic_items WHERE unlock_condition = 'pack:dragao' ORDER BY name`,
+    )).toEqual([
+      { category: 'accessory', name: 'Amuleto de Brasa', requires_premium: 0, for_sale: 0 },
+      { category: 'avatar', name: 'Elmo de Escamas', requires_premium: 0, for_sale: 0 },
+      { category: 'weapon', name: 'Presa do Dragão', requires_premium: 0, for_sale: 0 },
+    ]);
+    const pack = (id: string, slug: string, price: number) => database!.admin.query(
+      `INSERT INTO ${db}.packs (id, slug, name, description, price_cents, currency, for_sale) VALUES (?, ?, 'P', 'D', ?, 'brl', 1)`,
+      [id, slug, price],
+    );
+    await expect(pack('pack-2', 'dragao', 490)).rejects.toThrow(/UQ_packs_slug/);
+    await expect(pack('pack-3', 'gratis', 0)).rejects.toThrow(/CHK_packs_price_cents/);
+
+    for (const id of ['pay-user-1', 'pay-user-2']) {
+      await database!.admin.query(
+        `INSERT INTO ${db}.users (id, email, password_hash, display_name, plan_tier) VALUES (?, ?, 'hash', 'Aluno', 'free')`,
+        [id, `${id}@example.com`],
+      );
+    }
+    const pay = (id: string, userId: string, session: string) => database!.admin.query(
+      `INSERT INTO ${db}.pack_payments (id, user_id, pack_id, stripe_checkout_session_id, amount_cents, currency, paid_at)
+       VALUES (?, ?, ?, ?, 490, 'brl', NOW())`,
+      [id, userId, PACOTE_DO_DRAGAO_ID, session],
+    );
+    await pay('payment-1', 'pay-user-1', 'cs_1');
+    await expect(pay('payment-2', 'pay-user-1', 'cs_2')).rejects.toThrow(/UQ_pack_payments_user_id_pack_id/);
+    await expect(pay('payment-3', 'pay-user-2', 'cs_1')).rejects.toThrow(/UQ_pack_payments_stripe_checkout_session_id/);
+    await pay('payment-4', 'pay-user-2', 'cs_4');
+
+    await database!.admin.query(`DELETE FROM ${db}.users WHERE id = 'pay-user-1'`);
+    expect(await rows(database!.admin, `SELECT id FROM ${db}.pack_payments`)).toEqual([{ id: 'payment-4' }]);
+
+    await revertThrough(dataSource, CreatePacks1788460860000);
+    expect(await rows(
+      database!.admin,
+      'SELECT table_name FROM information_schema.tables WHERE table_schema = ? AND table_name IN (?, ?)',
+      [database!.name, 'packs', 'pack_payments'],
+    )).toEqual([]);
+    expect(await rows(database!.admin, `SELECT id FROM ${db}.cosmetic_items WHERE unlock_condition LIKE 'pack:%'`)).toEqual([]);
   });
 
   describe('Itens premium (#354)', () => {
