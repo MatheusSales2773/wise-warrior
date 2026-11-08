@@ -88,6 +88,6 @@ it finds the row, C11-C12), `/api/v1/billing/subscription` to S5, `/api/v1/billi
 
 - **Settled mid-build:** none
 - **Dispatched:** Verifier at d3fa7ed (diff 9301cb9..d3fa7ed), sent; screens sub-agent n/a (no capture)
-- **Boundary:** none yet
+- **Boundary:** C1-C13 closed at 71a6c52; proofs.md green (18 pass)
 - **Abandoned:** none
 - **Walked:** n/a - no screen in S3
