@@ -37,6 +37,12 @@ describe('openStripePage (S5.4)', () => {
 describe('billingErrorMessage (S5.11)', () => {
   const axiosError = (status: number, data: unknown) => ({ isAxiosError: true, response: { status, data } });
 
+  it('uses the server detail on 404 only when the caller lists it (a Pacote)', () => {
+    const error = axiosError(404, { detail: 'Pacote não encontrado' });
+    expect(billingErrorMessage(error, [404, 409, 502, 503])).toBe('Pacote não encontrado');
+    expect(billingErrorMessage(error)).toBe('Não foi possível abrir o pagamento. Tente de novo.');
+  });
+
   it.each([409, 502, 503])('uses the server detail on %i', (status) => {
     expect(billingErrorMessage(axiosError(status, { detail: 'Assinatura indisponível no momento' }))).toBe('Assinatura indisponível no momento');
   });

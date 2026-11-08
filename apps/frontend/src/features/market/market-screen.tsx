@@ -1,6 +1,6 @@
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery } from '@tanstack/react-query';
 import { Link, useLocalSearchParams, useRouter } from 'expo-router';
-import { useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Image, Platform, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { FeedbackMessage, ProgressBar, WiseButton, WiseIcon, WiseText, isDesktopLayout, theme } from '@/design-system';
 import { DEFAULT_HERO_ID, cosmeticSprite, equipmentCategoryById } from '@/features/character/catalog';
@@ -10,15 +10,20 @@ import { heroSprites, itemSprites } from '@/features/character/sprites';
 import { raidSceneArt } from '@/features/guild/raid-scene-art';
 import { RaidScene } from '@/features/guild/raid-scene';
 import type { CosmeticCategory } from '@/features/profile/api';
+import { billingErrorMessage, openStripePage } from '@/features/settings/billing';
 import type { ShopItem, StoreMission } from './api';
 import { CoinAmount, CoinMark } from './coin';
 import { RAID_WIN_COINS, coinsLabel, formatCoins, missingHint, orderShopItems, presentCategories } from './formatters';
+import { openPackCheckout, type BillingPack } from './packs-api';
+import { packsQueryOptions, priceLabel } from './packs';
 import { LedgerLines, PurchaseDialog, usePurchase, type Purchase } from './purchase';
 import { coinBalanceQueryOptions, shopItemsQueryOptions, shopMissionsQueryOptions } from './queries';
 
-/* Mercado: a bolsa de Moedas e a Loja, com as seções Missões e Itens (ADR-012). */
+/* Mercado: a bolsa de Moedas e a Loja, com as seções Missões e Itens (ADR-012) e, com a cobrança ligada, Pacotes (ADR-015). */
 
-type Section = 'missoes' | 'itens';
+type Section = 'missoes' | 'itens' | 'pacotes';
+
+const CONFIRM_WAIT_MS = 30_000;
 
 const DESKTOP_GUTTER = 48;
 const MOBILE_GUTTER = 16;
@@ -30,23 +35,28 @@ export function MarketScreen() {
   const { width } = useWindowDimensions();
   const desktop = isDesktopLayout(Platform.OS, width);
   const router = useRouter();
-  const params = useLocalSearchParams<{ secao?: string }>();
-  const section: Section = params.secao === 'itens' ? 'itens' : 'missoes';
+  const params = useLocalSearchParams<{ secao?: string; checkout?: string }>();
+  const packs = useQuery(packsQueryOptions());
+  const packsOn = packs.data?.available === true;
+  // While the packs load, `?secao=pacotes` (the return from Checkout) waits on its own section instead of flashing Missões.
+  const section: Section = params.secao === 'itens' ? 'itens' : params.secao === 'pacotes' && (packsOn || packs.isPending) ? 'pacotes' : 'missoes';
   const balance = useQuery(coinBalanceQueryOptions());
   const missions = useQuery(shopMissionsQueryOptions());
   const items = useQuery(shopItemsQueryOptions());
   const purchase = usePurchase();
+  const granted = usePackGrantNotice(packs.data?.packs);
 
   const content = <>
-    <Header balance={balance.data} balanceFailed={balance.isError && balance.data === undefined} desktop={desktop} />
+    <Header balance={balance.data} balanceFailed={balance.isError && balance.data === undefined} desktop={desktop} packs={packsOn} showPurse={section !== 'pacotes'} />
     <Tabs
-      counts={{ missoes: missions.data?.length, itens: items.data?.length }}
+      counts={{ missoes: missions.data?.length, itens: items.data?.length, pacotes: packs.data?.packs.length }}
+      packs={packsOn}
       onChange={(next) => router.setParams({ secao: next })}
       section={section}
     />
-    {section === 'missoes'
-      ? <MissionsSection desktop={desktop} purchase={purchase} query={missions} width={width} />
-      : <ItemsSection desktop={desktop} purchase={purchase} query={items} />}
+    {section === 'missoes' ? <MissionsSection desktop={desktop} purchase={purchase} query={missions} width={width} /> : null}
+    {section === 'itens' ? <ItemsSection desktop={desktop} purchase={purchase} query={items} /> : null}
+    {section === 'pacotes' ? <PacksSection checkout={params.checkout} desktop={desktop} granted={granted} query={packs} /> : null}
   </>;
 
   return <View style={styles.root} testID="market">
@@ -57,21 +67,24 @@ export function MarketScreen() {
   </View>;
 }
 
-function Header({ balance, balanceFailed, desktop }: { balance: number | undefined; balanceFailed: boolean; desktop: boolean }) {
+const LEDE = 'Troque as Moedas do seu foco por Missões para a sua Guilda e por itens para o seu herói.';
+const LEDE_WITH_PACKS = `${LEDE} Os Pacotes vendem conjuntos de itens por dinheiro.`;
+
+function Header({ balance, balanceFailed, desktop, packs, showPurse }: { balance: number | undefined; balanceFailed: boolean; desktop: boolean; packs: boolean; showPurse: boolean }) {
   const figure = balance === undefined ? (balanceFailed ? '?' : '…') : formatCoins(balance);
   const label = balance === undefined ? (balanceFailed ? 'Saldo indisponível' : 'Carregando o saldo') : `${coinsLabel(balance)} na bolsa`;
   if (!desktop) {
     return <View style={styles.headerCompact}>
       <Text accessibilityRole="header" aria-level={1} style={styles.titleCompact}>Mercado</Text>
-      <PurseChip figure={figure} label={label} />
+      {showPurse ? <PurseChip figure={figure} label={label} /> : null}
     </View>;
   }
   return <View style={styles.header}>
     <View style={styles.headerCopy}>
       <Text accessibilityRole="header" aria-level={1} style={styles.title}>Mercado</Text>
-      <Text style={styles.lede}>Troque as Moedas do seu foco por Missões para a sua Guilda e por itens para o seu herói.</Text>
+      <Text style={styles.lede} testID="market-lede">{packs ? LEDE_WITH_PACKS : LEDE}</Text>
     </View>
-    <View style={styles.purse}>
+    {showPurse ? <View style={styles.purse}>
       <View accessibilityLabel={label} accessible role="status" style={styles.purseFigures} testID="market-purse">
         <CoinMark scale={4} />
         <View>
@@ -81,7 +94,7 @@ function Header({ balance, balanceFailed, desktop }: { balance: number | undefin
       </View>
       <View style={styles.purseRule} />
       <StatementLink />
-    </View>
+    </View> : null}
   </View>;
 }
 
@@ -105,15 +118,16 @@ function PurseChip({ figure, label }: { figure: string; label: string }) {
   </Link>;
 }
 
-function Tabs({ counts, onChange, section }: { counts: Record<Section, number | undefined>; onChange: (section: Section) => void; section: Section }) {
+function Tabs({ counts, onChange, packs, section }: { counts: Record<Section, number | undefined>; onChange: (section: Section) => void; packs: boolean; section: Section }) {
+  const ids: Section[] = packs ? ['missoes', 'itens', 'pacotes'] : ['missoes', 'itens'];
   return <View accessibilityRole="tablist" style={styles.tabs}>
-    {(['missoes', 'itens'] as const).map((id) => <Tab active={section === id} count={counts[id]} id={id} key={id} onPress={() => onChange(id)} />)}
+    {ids.map((id) => <Tab active={section === id} count={counts[id]} id={id} key={id} onPress={() => onChange(id)} />)}
   </View>;
 }
 
 function Tab({ active, count, id, onPress }: { active: boolean; count: number | undefined; id: Section; onPress: () => void }) {
   const { focusProps, focusStyle } = useFocusRing();
-  const label = id === 'missoes' ? 'Missões' : 'Itens';
+  const label = id === 'missoes' ? 'Missões' : id === 'itens' ? 'Itens' : 'Pacotes';
   return <Pressable
     {...focusProps}
     accessibilityLabel={count === undefined ? label : `${label}, ${count}`}
@@ -369,6 +383,109 @@ function PreviewLedger({ price }: { price: number }) {
   return balance === undefined ? null : <LedgerLines balance={balance} price={price} />;
 }
 
+/* ---------- Pacotes ---------- */
+
+/**
+ * S8.7: the name of a Pacote that turned `owned` while the Loja was open, on any tab, so the notice is waiting when Pacotes opens.
+ * shortcut: a grant that lands while the Loja is closed shows only "Adquirido"; upgrade if the notice must survive a reload.
+ */
+function usePackGrantNotice(packs: BillingPack[] | undefined): string | null {
+  const [granted, setGranted] = useState<string | null>(null);
+  const seen = useRef(new Map<string, boolean>());
+  useEffect(() => {
+    for (const pack of packs ?? []) {
+      if (seen.current.get(pack.slug) === false && pack.owned) setGranted(pack.name);
+      seen.current.set(pack.slug, pack.owned);
+    }
+  }, [packs]);
+  return granted;
+}
+
+/** What Pacotes shows after Checkout: waiting for the webhook (S8.6) and the grant notice (S8.7). */
+function PacksSection({ checkout, desktop, granted, query }: { checkout: string | undefined; desktop: boolean; granted: string | null; query: { data: { packs: BillingPack[] } | undefined; isPending: boolean; isError: boolean; isRefetching: boolean; refetch: () => unknown } }) {
+  const packs = query.data?.packs;
+  const [late, setLate] = useState(false);
+  const confirming = checkout === 'success' && (packs?.some((pack) => !pack.owned) ?? false);
+
+  useEffect(() => {
+    if (!confirming) return undefined;
+    // Back from Checkout before the webhook: `user:packGranted` refetches; after 30 s the wait gets a calmer line.
+    const timer = setTimeout(() => setLate(true), CONFIRM_WAIT_MS);
+    return () => clearTimeout(timer);
+  }, [confirming]);
+
+  const status = <ListStatus
+    empty={<WiseText color="textSecondary" variant="body">Nenhum Pacote à venda agora.</WiseText>}
+    noun="os Pacotes"
+    query={{ data: packs, isPending: query.isPending, isError: query.isError, isRefetching: query.isRefetching, refetch: query.refetch }}
+    testID="market-packs"
+  />;
+  return <View style={styles.section} testID="market-packs">
+    {confirming
+      ? <FeedbackMessage message={late ? 'Pagamento recebido. Os itens chegam em instantes.' : 'Confirmando seu pagamento…'} testID="market-pack-confirming" variant="info" />
+      : null}
+    {granted ? <FeedbackMessage message={`Itens do ${granted} no seu Inventário`} testID="market-pack-granted" variant="success" /> : null}
+    {status ?? null}
+    {packs && packs.length > 0 ? <View style={styles.contracts}>{packs.map((pack) => <PackCard desktop={desktop} key={pack.slug} pack={pack} />)}</View> : null}
+  </View>;
+}
+
+function PackCard({ desktop, pack }: { desktop: boolean; pack: BillingPack }) {
+  const [previewing, setPreviewing] = useState(false);
+  const open = useMutation({
+    mutationFn: openPackCheckout,
+    onSuccess: (url) => openStripePage(url),
+  });
+  const price = priceLabel(pack.priceCents);
+  const { focusProps, focusStyle } = useFocusRing();
+  return <View accessibilityLabel={`${pack.name}. ${price}. ${pack.owned ? 'Adquirido.' : 'Disponível para comprar.'}`} role="article" style={[styles.pack, desktop && styles.packDesktop, pack.owned && styles.contractOwned]} testID={`market-pack-${pack.slug}`}>
+    <View style={[styles.packBody, desktop && styles.packBodyDesktop]}>
+      <Text accessibilityRole="header" aria-level={2} style={styles.contractTitle}>{pack.name}</Text>
+      <Text style={styles.contractCopy}>{pack.description}</Text>
+      <View style={styles.packItems}>
+        {pack.items.map((item) => <View key={item.id} style={styles.packItem}>
+          <View style={styles.lootTile}><PixelSprite scale={3} sprite={itemSprites[cosmeticSprite(item)]} /></View>
+          <Text style={styles.lootName}>{item.name}</Text>
+        </View>)}
+      </View>
+      {previewing ? <PackPreview pack={pack} /> : null}
+    </View>
+    <View style={desktop ? styles.contractSide : styles.packFoot}>
+      <Text style={styles.packPrice}>{price}</Text>
+      {pack.owned
+        ? <View style={styles.ownedRow} testID={`market-pack-${pack.slug}-owned`}><WiseIcon color="feedbackSuccess" name="checkmark" size="small" /><Text style={styles.ownedText}>Adquirido</Text></View>
+        : <WiseButton label={`Comprar por ${price}`} loading={open.isPending} onPress={() => open.mutate(pack.slug)} testID={`market-pack-${pack.slug}-buy`} />}
+      <Pressable
+        {...focusProps}
+        accessibilityRole="button"
+        accessibilityState={{ expanded: previewing }}
+        hitSlop={8}
+        onPress={() => setPreviewing((on) => !on)}
+        style={StyleSheet.flatten([styles.statementLink, focusStyle])}
+        testID={`market-pack-${pack.slug}-preview-toggle`}
+      >
+        <Text style={styles.linkText}>{previewing ? 'Fechar prévia' : 'Prévia no herói'}</Text>
+      </Pressable>
+      {open.isError ? <FeedbackMessage message={billingErrorMessage(open.error, [404, 409, 502, 503])} testID="market-pack-failure" variant="error" /> : null}
+    </View>
+  </View>;
+}
+
+/** S8.4: the hero with the 3 items at once, as the Itens preview shows one. Nothing is equipped or saved. */
+function PackPreview({ pack }: { pack: BillingPack }) {
+  return <View accessibilityLabel={`Prévia de ${pack.name}`} role="region" style={styles.stage} testID="market-pack-preview">
+    <Text style={styles.stageBadge}>Prévia no seu herói</Text>
+    <View style={styles.stageFigures}>
+      <PixelSprite scale={7} sprite={heroSprites[DEFAULT_HERO_ID]} />
+      <View style={styles.packStageItems}>
+        {pack.items.map((item) => <View key={item.id} testID={`market-pack-preview-item-${item.id}`}>
+          <PixelSprite scale={5} sprite={itemSprites[cosmeticSprite(item)]} />
+        </View>)}
+      </View>
+    </View>
+  </View>;
+}
+
 const cinzel = 'Cinzel-SemiBold';
 
 const styles = StyleSheet.create({
@@ -490,6 +607,15 @@ const styles = StyleSheet.create({
   },
   stageFigures: { flexDirection: 'row', alignItems: 'flex-end', gap: 22 },
   stageItem: { marginBottom: 60 },
+  pack: { overflow: 'hidden', borderRadius: theme.radius.card, borderWidth: theme.border.standard, borderColor: theme.color.borderSubtle, backgroundColor: theme.color.surfaceCard },
+  packDesktop: { flexDirection: 'row' },
+  packBodyDesktop: { flex: 1, minWidth: 0 },
+  packFoot: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: 12, paddingHorizontal: 14, paddingBottom: 16 },
+  packBody: { gap: 10, paddingVertical: 20, paddingHorizontal: 24 },
+  packItems: { flexDirection: 'row', flexWrap: 'wrap', columnGap: 18, rowGap: 8, paddingTop: 4 },
+  packItem: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  packPrice: { fontFamily: 'JetBrainsMono-SemiBold', fontSize: 22, lineHeight: 28, color: theme.color.accentHighlight },
+  packStageItems: { gap: 4, marginBottom: 0 },
   previewCopy: { gap: 4 },
   previewTitle: { fontFamily: cinzel, fontSize: 22, lineHeight: 28, color: theme.color.textPrimary },
   previewText: { fontFamily: 'Inter-Regular', fontSize: 14, lineHeight: 21, color: theme.color.textSecondary },

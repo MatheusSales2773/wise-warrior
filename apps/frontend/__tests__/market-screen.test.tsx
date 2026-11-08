@@ -16,6 +16,7 @@ jest.mock('@/features/market/api', () => ({
   purchaseShopMission: jest.fn(),
   purchaseShopItem: jest.fn(),
 }));
+jest.mock('@/features/market/packs-api', () => ({ listPacks: jest.fn(() => Promise.resolve({ available: false, packs: [] })), openPackCheckout: jest.fn() }));
 jest.mock('@/features/profile/api', () => ({ equipCosmeticItem: jest.fn() }));
 
 let mockParams: { secao?: string } = {};

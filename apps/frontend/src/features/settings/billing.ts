@@ -20,9 +20,9 @@ export async function openStripePage(url: string): Promise<void> {
   else await Linking.openURL(url);
 }
 
-/** S5.11: the server's own words for 409, 502 and 503; anything else gets a generic line. */
-export function billingErrorMessage(error: unknown): string {
-  if (isAxiosError(error) && [409, 502, 503].includes(error.response?.status ?? 0)) {
+/** S5.11: the server's own words for 409, 502 and 503 (and 404 for a Pacote, S8.9); anything else gets a generic line. */
+export function billingErrorMessage(error: unknown, statuses: readonly number[] = [409, 502, 503]): string {
+  if (isAxiosError(error) && statuses.includes(error.response?.status ?? 0)) {
     const detail = (error.response?.data as { detail?: unknown } | undefined)?.detail;
     if (typeof detail === 'string' && detail) return detail;
   }

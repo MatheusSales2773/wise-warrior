@@ -326,6 +326,7 @@ Quem lê a documentação encontra a cobrança como ela está no código.
 | Stripe nos testes | Os testes de integração trocam o cliente Stripe por um falso, e o webhook é assinado com um segredo de teste. Nenhum teste chama a rede | CI e e2e não podem depender do Stripe (ADR-015) | n |
 | Checkout do Pacote (S7) | Sessão só com cartão (`allowed_payment_method_types: ['card']`); slug em `metadata.packSlug`; quem já pagou um Pacote fora de venda recebe `409`, não `404`; evento pago de Pacote que saiu de venda ainda concede os itens | Detalhes internos que seguem a ADR-015 (só cartão) e o S7.2/S7.3 sem decidir produto novo | n |
 | Larguras de tela | As mesmas da Configuração e da Loja (sidebar no desktop, navegação inferior no celular) | Sem captura; segue o design system (ADR-008) | n |
+| Detalhes da seção Pacotes (S8) | Texto de abertura da Loja cita os Pacotes só com `available: true`; a Prévia é o botão "Prévia no herói" do cartão, que abre o palco com o Herói e os 3 itens; o aviso "Itens do Pacote do Dragão no seu Inventário" aparece quando a posse vira `owned` com a Loja aberta; se `GET /billing/packs` falhar, a aba some e Missões e Itens seguem; `?secao=pacotes` sem cobrança abre Missões; a espera de `checkout=success` vale enquanto algum Pacote não for `owned`, o que supõe um Pacote à venda (a volta do Checkout não traz o slug) | Detalhes de tela que seguem S8.1, S8.3, S8.4, S8.7 e S8.10 sem decidir produto novo | n |
 
 **Open questions:** one remains, listed below; nothing else is open.
 - `blocks go-live` — Conta Stripe em modo de teste:
