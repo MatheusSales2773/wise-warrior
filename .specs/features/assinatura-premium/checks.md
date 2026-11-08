@@ -129,7 +129,7 @@ Other routes of the Surface belong to other slices (`/api/v1/billing/subscriptio
 ## Handoff
 
 - **Settled mid-build:** none
-- **Dispatched:** Verifier at 696d7c9 (no screens sub-agent: no capture binds this slice)
-- **Boundary:** C1-C21 closed at 696d7c9
+- **Dispatched:** Verifier at 696d7c9 (no screens sub-agent: no capture binds this slice), returned FAIL with 4 findings, closed at c6e9a9d
+- **Boundary:** C1-C21 closed at c6e9a9d
 - **Abandoned:** none
-- **Walked:** none yet
+- **Walked:** not walked in a running app: it needs the backend with MySQL and a Stripe test account, which the open question `blocks go-live` still holds. The screen is exercised by 27 component tests at 1440 px and 390 px.
