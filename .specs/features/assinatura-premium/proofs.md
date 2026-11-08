@@ -1,6 +1,6 @@
 # assinatura-premium proofs
 
-**HEAD**: 71a6c52
+**HEAD**: 312e90d
 **Tree**: clean
 **Shell**: /bin/sh
 **Result**: 18 pass, 0 fail
@@ -32,19 +32,19 @@
 
 ```
     retries and out-of-order delivery
-      ✓ ends in the same state and emits user:planChanged once when the same event arrives twice (3347 ms)
-      ✓ emits user:planChanged once when the same event arrives twice at the same time (2386 ms)
-      ✓ ends in the state the API reports whatever the order of the events (5612 ms)
-      ✓ ends canceled when a slow reread of an older event overlaps the faster reread of the cancellation (6254 ms)
-      ✓ does not let a late event of an old, ended Subscription cancel the one the user subscribed to afterwards (1749 ms)
+      ✓ ends in the same state and emits user:planChanged once when the same event arrives twice (4693 ms)
+      ✓ emits user:planChanged once when the same event arrives twice at the same time (2211 ms)
+      ✓ ends in the state the API reports whatever the order of the events (1753 ms)
+      ✓ ends canceled when a slow reread of an older event overlaps the faster reread of the cancellation (2103 ms)
+      ✓ does not let a late event of an old, ended Subscription cancel the one the user subscribed to afterwards (1332 ms)
     failures
-      ✓ answers 500 and writes nothing when the Stripe API fails to reread the Subscription (1195 ms)
-      ✓ undoes subscriptions, plan_tier and the equipment together, and emits nothing, when the last write fails (1204 ms)
+      ✓ answers 500 and writes nothing when the Stripe API fails to reread the Subscription (1713 ms)
+      ✓ undoes subscriptions, plan_tier and the equipment together, and emits nothing, when the last write fails (1455 ms)
 
 Test Suites: 2 passed, 2 total
 Tests:       46 passed, 46 total
 Snapshots:   0 total
-Time:        95.902 s
+Time:        163.387 s
 Ran all test suites matching /billing-/i.
 ```
 
@@ -53,7 +53,7 @@ Ran all test suites matching /billing-/i.
 ```
     ✓ reads the Subscription of invoice.paid from the invoice parent
     ✓ reads the Subscription of invoice.payment_failed from the invoice parent
-    ✓ accepts an expanded Customer and an expanded Subscription
+    ✓ accepts an expanded Customer and an expanded Subscription (1 ms)
     ✓ has no target for an invoice that does not belong to a Subscription
     ✓ reads the Customer and the Subscription of a subscription Checkout Session
     ✓ carries the client_reference_id of a subscription Checkout Session as the user
@@ -64,6 +64,6 @@ Ran all test suites matching /billing-/i.
 Test Suites: 2 passed, 2 total
 Tests:       33 passed, 33 total
 Snapshots:   0 total
-Time:        1.746 s, estimated 2 s
+Time:        3.763 s
 Ran all test suites matching /src\/modules\/billing/i.
 ```
