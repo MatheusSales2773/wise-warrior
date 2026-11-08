@@ -56,6 +56,11 @@ services:
       COINS_PER_FOCUS_MINUTES_DIVISOR: ${COINS_PER_FOCUS_MINUTES_DIVISOR:-}
       RAID_WIN_COINS: ${RAID_WIN_COINS:-}
       RAID_FURY_REGEN_PERCENT: ${RAID_FURY_REGEN_PERCENT:-}
+      # Optional (ADR-015): empty keeps billing unavailable and the rest of the app working.
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
+      STRIPE_PRICE_PREMIUM: ${STRIPE_PRICE_PREMIUM:-}
+      APP_URL: ${APP_URL:-}
       PORT: 3000
     ports:
       - "${BACKEND_PORT:?BACKEND_PORT is required}:3000"
