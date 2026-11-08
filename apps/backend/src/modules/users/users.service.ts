@@ -11,7 +11,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { EntityManager, In, Repository } from 'typeorm';
-import { User } from './entities/user.entity';
+import { PlanTier, User } from './entities/user.entity';
 import { ProgressionService } from '../progression/progression.service';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
 import { CosmeticCategory, CosmeticItem } from './entities/cosmetic-item.entity';
@@ -78,6 +78,18 @@ export interface CatalogCosmeticItem {
   /** Item de Compra à venda; false para os demais e para os Fora de venda. */
   forSale: boolean;
   unlockCondition: UnlockCondition;
+}
+
+/** A categoria que mudou de equipagem e o item agora equipado nela (`null`: ficou vazia). */
+export interface EquipmentChange {
+  category: CosmeticCategory;
+  cosmeticItemId: string | null;
+}
+
+/** O que `applyPlanTier` fez: se o plano mudou e a equipagem que mudou junto. */
+export interface PlanTierChange {
+  changed: boolean;
+  equipment: EquipmentChange[];
 }
 
 /** Um Marco (ADR-014): um Badge do Catálogo com o progresso até a sua Condição de desbloqueio. */
@@ -355,6 +367,48 @@ export class UsersService {
       throw new NotFoundException('Usuário não encontrado');
     }
     return this.getProfile(userId);
+  }
+
+  /**
+   * Grava o `plan_tier` do usuário na transação de quem chama (o Billing, ADR-015), que já travou a linha do usuário
+   * (`lockForUpdate`). Repetir o mesmo plano não muda nada. Quando o plano vira `free`, desequipa cada Item premium
+   * equipado e equipa em seu lugar o Item inicial da categoria, se o usuário tiver um; Itens de Pacote continuam
+   * equipados. Devolve a equipagem que mudou, para o chamador emitir depois do commit.
+   */
+  async applyPlanTier(manager: EntityManager, userId: string, planTier: PlanTier): Promise<PlanTierChange> {
+    const user = await manager.getRepository(User).findOne({ where: { id: userId } });
+    if (!user || user.planTier === planTier) return { changed: false, equipment: [] };
+    await manager.getRepository(User).update({ id: userId }, { planTier });
+    return { changed: true, equipment: planTier === 'free' ? await this.releasePremiumItems(manager, userId) : [] };
+  }
+
+  private async releasePremiumItems(manager: EntityManager, userId: string): Promise<EquipmentChange[]> {
+    const inventory = manager.getRepository(UserCosmeticItem);
+    const rows = await inventory.find({ where: { userId }, relations: ['cosmeticItem'] });
+    const categories = [...new Set(rows.filter((row) => row.equipped && row.cosmeticItem.requiresPremium).map((row) => row.cosmeticItem.category))];
+    const changes: EquipmentChange[] = [];
+    for (const category of categories) {
+      await inventory.update(
+        rows.filter((row) => row.equipped && row.cosmeticItem.requiresPremium && row.cosmeticItem.category === category).map((row) => row.id),
+        { equipped: false },
+      );
+      // Item inicial da categoria (nível 1 e não premium). Mais de um: o de menor id, para o resultado ser estável.
+      const starter = rows
+        .filter((row) => row.cosmeticItem.category === category)
+        .filter((row) => {
+          const condition = parseUnlockCondition(row.cosmeticItem.unlockCondition);
+          return condition !== null && isStarterItem(condition, row.cosmeticItem.requiresPremium);
+        })
+        .sort((a, b) => a.cosmeticItemId.localeCompare(b.cosmeticItemId))[0];
+      if (starter) await inventory.update({ id: starter.id }, { equipped: true });
+      changes.push({ category, cosmeticItemId: starter?.cosmeticItemId ?? null });
+    }
+    return changes;
+  }
+
+  /** Depois do commit de quem mudou o plano: os dispositivos do usuário refletem a equipagem nova (#22, ADR-009). */
+  publishEquipmentChanges(userId: string, changes: EquipmentChange[]): void {
+    for (const { category, cosmeticItemId } of changes) this.publishEquipmentChanged(userId, category, cosmeticItemId);
   }
 
   /**

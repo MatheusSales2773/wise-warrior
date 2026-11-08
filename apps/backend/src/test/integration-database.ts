@@ -36,6 +36,7 @@ import { AddStudySessionPauseCount1788460680000 } from '../migrations/1788460680
 import { SessionCountBadgeConditions1788460560000 } from '../migrations/1788460560000-session-count-badge-conditions';
 import { SeedPremiumCosmeticItems1788460740000 } from '../migrations/1788460740000-seed-premium-cosmetic-items';
 import { AddObjectiveCoinOrigin1788460620000 } from '../migrations/1788460620000-add-objective-coin-origin';
+import { CreateSubscriptions1788460800000 } from '../migrations/1788460800000-create-subscriptions';
 
 export type MigrationClass = new () => MigrationInterface;
 
@@ -74,6 +75,7 @@ export const APPLICATION_MIGRATIONS: MigrationClass[] = [
   AddObjectiveCoinOrigin1788460620000,
   AddStudySessionPauseCount1788460680000,
   SeedPremiumCosmeticItems1788460740000,
+  CreateSubscriptions1788460800000,
 ];
 
 function positionOf(migration: MigrationClass): number {

@@ -159,8 +159,12 @@ O Stripe muda a Assinatura e o `plan_tier` segue, sem ninguém tocar no banco.
 7. WHEN o `plan_tier` vira `free` THEN o sistema SHALL, na mesma transação, desequipar cada Item premium equipado e equipar o Item inicial daquela categoria quando o usuário tiver um. Depois do commit, SHALL emitir `character:equipmentChanged` por categoria afetada.
    - "Lenda do Foco" equipado: o Título volta a "Aprendiz". "Cajado Astral" equipado: a categoria fica no Item inicial de Arma, se houver; senão, vazia. "Elmo de Escamas" (Pacote) equipado: continua equipado.
 8. IF o mesmo evento chegar duas vezes, ou dois eventos chegarem fora de ordem THEN o sistema SHALL terminar com o mesmo estado e não emitir uma segunda `user:planChanged` para um plano que não mudou.
+   - Releitura na API em vez de ordem de entrega: o estado final é o que a API devolve, qualquer que seja a ordem.
+   - Evento atrasado de uma Assinatura antiga e já encerrada (outro `stripe_subscription_id` que o da linha, com plano `free`) não grava nada: não derruba a Assinatura que a pessoa fez depois.
+   - Dois eventos ao mesmo tempo: o `BillingService` trava o usuário (`UsersService.lockForUpdate`) antes de ler qualquer coisa na transação, inclusive a releitura na API do Stripe. Os eventos se serializam, o último a gravar é o último a reler, e só o primeiro vê o plano mudar e emite.
 9. IF a API do Stripe falhar ao reler THEN o sistema SHALL responder `500` sem gravar nada, para o Stripe reenviar.
 10. IF a gravação falhar depois de o plano mudar THEN o sistema SHALL desfazer `subscriptions`, `plan_tier` e a equipagem juntos, sem emitir evento nenhum.
+   - Implementação: `UsersService.applyPlanTier(manager, userId, planTier)` grava `plan_tier` e a equipagem na transação do `BillingService`, que emite só depois do commit.
 
 ### S3: Assinar pelo Checkout (P1)
 
