@@ -11,6 +11,7 @@ import { useSignOut } from '@/features/auth/use-sign-out';
 import { SectionHeader, useFocusRing } from '@/features/character/character-parts';
 import { profileQueryOptions } from '@/features/dashboard/queries';
 import { activeSettingsSection, menuHref, settingsSection, settingsSections, type SettingsSectionId } from './sections';
+import { usePlanLabel } from './billing';
 import { useActiveDevicesLabel } from './devices-content';
 import { useDefaultFocusLabel } from './focus-content';
 import { RenameContent } from './rename-form';
@@ -130,7 +131,7 @@ function SignOutButton() {
 function SettingsList() {
   const profile = useQuery(profileQueryOptions());
   const user = profile.data;
-  const meta = useSectionMeta();
+  const meta = { ...useSectionMeta(), plano: usePlanLabel() };
   return <ScrollView contentContainerStyle={styles.mobileScreen} testID="settings-list">
     <Text accessibilityRole="header" aria-level={1} style={styles.mobileTitle}>Configuração</Text>
     <AccountHeader />
@@ -172,9 +173,8 @@ function MenuSignOut() {
 }
 
 function SettingsMenu({ active }: { active: SettingsSectionId }) {
-  const profile = useQuery(profileQueryOptions());
-  const tier = profile.data?.planTier;
   const sectionMeta = useSectionMeta();
+  const plan = usePlanLabel();
   return <View accessibilityLabel="Seções da configuração" role="navigation" style={styles.menu}>
     {settingsSections.map((section) => <MenuItem
       active={section.id === active}
@@ -182,7 +182,7 @@ function SettingsMenu({ active }: { active: SettingsSectionId }) {
       icon={section.icon}
       key={section.id}
       label={section.label}
-      meta={section.id === 'plano' && tier ? tier.toUpperCase() : sectionMeta[section.id]}
+      meta={section.id === 'plano' ? plan : sectionMeta[section.id]}
     />)}
     <View style={styles.menuDivider} />
     <MenuSignOut />

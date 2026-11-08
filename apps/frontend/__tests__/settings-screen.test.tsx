@@ -10,7 +10,9 @@ import { ApiError } from '@/core/api/api-error';
 import { queryClient as appQueryClient } from '@/core/query/query-runtime';
 import { getMyProfile, type UserProfile } from '@/features/dashboard/api';
 import { listMyDeviceSessions, revokeMyDeviceSession, revokeOtherMyDeviceSessions, type DeviceSession } from '@/features/profile/api';
-import { updateMyDisplayName } from '@/features/settings/api';
+import { getSubscription, openBillingSession, updateMyDisplayName, type SubscriptionView } from '@/features/settings/api';
+import { openStripePage } from '@/features/settings/billing';
+import { applyPlanChanged } from '@/core/realtime/realtime-client';
 import { resetViewport, setViewport } from '../test-utils/viewport';
 import { mockAuthState, updateMockAuthState } from '../test-utils/auth-context';
 
@@ -27,7 +29,8 @@ jest.mock('@/features/dashboard/api', () => ({
 jest.mock('@/core/preferences/preferences-storage', () => ({
   preferencesStorage: { read: jest.fn(async () => null), write: jest.fn(async () => undefined) },
 }));
-jest.mock('@/features/settings/api', () => ({ updateMyDisplayName: jest.fn() }));
+jest.mock('@/features/settings/api', () => ({ updateMyDisplayName: jest.fn(), getSubscription: jest.fn(), openBillingSession: jest.fn() }));
+jest.mock('@/features/settings/billing', () => ({ ...jest.requireActual('@/features/settings/billing'), openStripePage: jest.fn() }));
 
 jest.mock('@/features/profile/api', () => ({
   listMyDeviceSessions: jest.fn(),
@@ -47,6 +50,10 @@ const profile: UserProfile = {
   level: 3, levelStartXp: 0, nextLevelXp: 1_000, xpTotal: 400, title: null, equipped: [],
 };
 
+const unavailable: SubscriptionView = { available: false, planTier: 'free', status: null, renewsAt: null, premiumUntil: null };
+const mockedSubscription = getSubscription as jest.MockedFunction<typeof getSubscription>;
+const mockedOpenSession = openBillingSession as jest.MockedFunction<typeof openBillingSession>;
+const mockedOpenPage = openStripePage as jest.MockedFunction<typeof openStripePage>;
 const mockedProfile = getMyProfile as jest.MockedFunction<typeof getMyProfile>;
 const mockedRename = updateMyDisplayName as jest.MockedFunction<typeof updateMyDisplayName>;
 const mockedDevices = listMyDeviceSessions as jest.MockedFunction<typeof listMyDeviceSessions>;
@@ -67,8 +74,12 @@ const settingsRoutes = {
  * The web renders the real Configuração routes under the app shell. The root Stack measures the DOM on web,
  * which the test renderer lacks, so the web cases mount the shell over a Slot, as the app layout does.
  */
+let lastClient: QueryClient | undefined;
+const clientOf = () => lastClient!;
+
 async function openSettings(initialUrl: string) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
+  lastClient = client;
   const router = Platform.OS === 'web'
     ? renderRouter({
       _layout: () => <QueryClientProvider client={client}><AppShell><Slot /></AppShell></QueryClientProvider>,
@@ -85,6 +96,9 @@ async function openSettings(initialUrl: string) {
 
 beforeEach(() => {
   mockedProfile.mockResolvedValue(profile);
+  mockedSubscription.mockReset().mockResolvedValue(unavailable);
+  mockedOpenSession.mockReset();
+  mockedOpenPage.mockReset().mockResolvedValue(undefined);
   mockedRename.mockReset();
   mockedDevices.mockReset().mockResolvedValue(devices);
   mockedRevoke.mockReset().mockResolvedValue(undefined);
@@ -245,25 +259,17 @@ describe('Configuração on desktop', () => {
     expect(menu.getByRole('link', { name: 'Plano' }).props.href).toBe('/configuracao/plano');
     expect(menu.getByRole('link', { name: 'Plano' }).props.accessibilityState.selected).toBe(true);
     expect(menu.getByRole('link', { name: 'Conta e segurança' }).props.accessibilityState.selected).toBe(false);
-    expect(await menu.findByText('FREE')).toBeTruthy();
+    expect(await menu.findByText('Free · premium em breve')).toBeTruthy();
   });
 
-  it('shows the current plan in Plano without any upgrade action', async () => {
+  it('offers a retry in Plano when the plan cannot be loaded', async () => {
+    mockedSubscription.mockRejectedValue(new Error('offline'));
     await openSettings('/configuracao/plano');
 
-    expect(screen.getByRole('header', { name: 'Plano' })).toBeTruthy();
-    expect(await screen.findByText('Free · premium em breve')).toBeTruthy();
-    expect(screen.queryByRole('button', { name: /premium|upgrade|assinar/i })).toBeNull();
-  });
-
-  it('offers a retry in Plano when the account cannot be loaded', async () => {
-    mockedProfile.mockRejectedValue(new Error('offline'));
-    await openSettings('/configuracao/plano');
-
-    expect(await screen.findByText('Não foi possível carregar sua conta.')).toBeTruthy();
-    mockedProfile.mockResolvedValue(profile);
+    expect(await screen.findByText('Não foi possível carregar seu plano.')).toBeTruthy();
+    mockedSubscription.mockResolvedValue(unavailable);
     await fireEvent.press(screen.getByRole('button', { name: 'Tentar novamente' }));
-    expect(await screen.findByText('Free · premium em breve')).toBeTruthy();
+    expect((await screen.findAllByText('Free · premium em breve')).length).toBeGreaterThan(0);
   });
 
   it.each([
@@ -405,6 +411,119 @@ describe('Configuração on desktop', () => {
   });
 });
 
+describe('Plano (S5)', () => {
+  const free: SubscriptionView = { ...unavailable, available: true };
+  const premium: SubscriptionView = { available: true, planTier: 'premium', status: 'active', renewsAt: '2026-12-08T15:00:00.000Z', premiumUntil: null };
+  const httpError = (status: number, detail: string) => Object.assign(new Error(detail), {
+    isAxiosError: true, response: { status, data: { detail } },
+  });
+
+  beforeEach(async () => {
+    await setViewport('web', 1440);
+  });
+
+  it('S5.2: keeps "Free · premium em breve" without a button while billing is off', async () => {
+    await openSettings('/configuracao/plano');
+
+    await waitFor(() => expect(screen.getAllByText('Free · premium em breve')).toHaveLength(2));
+    expect(screen.queryByRole('button', { name: /assinar|gerenciar|atualizar/i })).toBeNull();
+  });
+
+  it('S5.3, S5.4, S5.13: offers premium and opens the Checkout url, busy while it loads', async () => {
+    mockedSubscription.mockResolvedValue(free);
+    let resolve!: (url: string) => void;
+    mockedOpenSession.mockReturnValue(new Promise((done) => { resolve = done; }));
+    await openSettings('/configuracao/plano');
+
+    expect(await screen.findByText('Premium · R$ 9,90/mês. Libera os Itens premium ✦ do Herói.')).toBeTruthy();
+    const menu = within(screen.getByLabelText('Seções da configuração'));
+    expect(await menu.findByText('Free')).toBeTruthy();
+    expect(screen.queryByText(/premium em breve/)).toBeNull();
+
+    await fireEvent.press(screen.getByRole('button', { name: 'Assinar premium' }));
+    expect(mockedOpenSession).toHaveBeenCalledWith('checkout', expect.anything());
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Assinar premium' }).props.accessibilityState.busy).toBe(true));
+    await act(async () => resolve('https://checkout.stripe.test/s'));
+    await waitFor(() => expect(mockedOpenPage).toHaveBeenCalledWith('https://checkout.stripe.test/s'));
+  });
+
+  it.each([
+    [409, 'Você já tem o plano premium'],
+    [502, 'Não foi possível abrir o pagamento'],
+    [503, 'Assinatura indisponível no momento'],
+  ])('S5.11: shows the server message on %i and frees the button', async (status, detail) => {
+    mockedSubscription.mockResolvedValue(free);
+    mockedOpenSession.mockRejectedValue(httpError(status, detail));
+    await openSettings('/configuracao/plano');
+
+    await fireEvent.press(await screen.findByRole('button', { name: 'Assinar premium' }));
+    expect(await screen.findByText(detail)).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Assinar premium' }).props.accessibilityState.busy).toBeFalsy();
+    expect(screen.getByText('Premium · R$ 9,90/mês. Libera os Itens premium ✦ do Herói.')).toBeTruthy();
+    expect(mockedOpenPage).not.toHaveBeenCalled();
+  });
+
+  it('S5.7, S5.10: shows the renewal and opens the Portal from "Gerenciar assinatura"', async () => {
+    mockedSubscription.mockResolvedValue(premium);
+    mockedOpenSession.mockResolvedValue('https://billing.stripe.test/p');
+    await openSettings('/configuracao/plano');
+
+    expect(await screen.findByText('Premium · renova em 08/12')).toBeTruthy();
+    await fireEvent.press(screen.getByRole('button', { name: 'Gerenciar assinatura' }));
+    expect(mockedOpenSession).toHaveBeenCalledWith('portal', expect.anything());
+    await waitFor(() => expect(mockedOpenPage).toHaveBeenCalledWith('https://billing.stripe.test/p'));
+  });
+
+  it('S5.8: shows "Premium até dd/mm" when the Assinatura is set to end', async () => {
+    mockedSubscription.mockResolvedValue({ ...premium, renewsAt: null, premiumUntil: '2026-12-08T15:00:00.000Z' });
+    await openSettings('/configuracao/plano');
+
+    expect(await screen.findByText('Premium até 08/12')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Gerenciar assinatura' })).toBeTruthy();
+  });
+
+  it('S5.9, S5.10: shows the pending payment and opens the Portal from "Atualizar cartão"', async () => {
+    mockedSubscription.mockResolvedValue({ ...premium, status: 'past_due' });
+    mockedOpenSession.mockResolvedValue('https://billing.stripe.test/p');
+    await openSettings('/configuracao/plano');
+
+    expect(await screen.findByText('Premium · pagamento pendente')).toBeTruthy();
+    await fireEvent.press(screen.getByRole('button', { name: 'Atualizar cartão' }));
+    expect(mockedOpenSession).toHaveBeenCalledWith('portal', expect.anything());
+  });
+
+  it('S5.6: back with ?checkout=cancel shows the free state with no error', async () => {
+    mockedSubscription.mockResolvedValue(free);
+    await openSettings('/configuracao/plano?checkout=cancel');
+
+    expect(await screen.findByRole('button', { name: 'Assinar premium' })).toBeTruthy();
+    expect(screen.queryByTestId('settings-plan-confirming')).toBeNull();
+    expect(screen.queryByTestId('settings-plan-failure')).toBeNull();
+  });
+
+  it('S5.5, S5.12: waits for user:planChanged after ?checkout=success, then shows premium without reloading', async () => {
+    jest.useFakeTimers({ doNotFake: ['nextTick', 'setImmediate', 'queueMicrotask'] });
+    try {
+      mockedSubscription.mockResolvedValue(free);
+      await openSettings('/configuracao/plano?checkout=success');
+
+      expect(await screen.findByText('Confirmando sua assinatura…')).toBeTruthy();
+      await act(async () => { jest.advanceTimersByTime(30_000); });
+      expect(await screen.findByText('Pagamento recebido. O plano atualiza em instantes.')).toBeTruthy();
+
+      mockedSubscription.mockResolvedValue(premium);
+      mockedProfile.mockResolvedValue({ ...profile, planTier: 'premium' });
+      const profileCalls = mockedProfile.mock.calls.length;
+      await act(async () => applyPlanChanged(Platform.OS === 'web' ? clientOf() : appQueryClient));
+      expect(await screen.findByText('Premium · renova em 08/12')).toBeTruthy();
+      expect(screen.queryByTestId('settings-plan-confirming')).toBeNull();
+      await waitFor(() => expect(mockedProfile.mock.calls.length).toBeGreaterThan(profileCalls));
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+});
+
 describe('Configuração on phones', () => {
   beforeEach(async () => {
     await setViewport('android', 390);
@@ -426,7 +545,7 @@ describe('Configuração on phones', () => {
     }
     expect(screen.getByRole('link', { name: 'Nome do guerreiro: Knightshade' })).toBeTruthy();
     expect(screen.getByLabelText('E-mail: knightshade@wise.app')).toBeTruthy();
-    expect(screen.getByRole('link', { name: 'Plano atual: Free · premium em breve' })).toBeTruthy();
+    expect(await screen.findByRole('link', { name: 'Plano atual: Free · premium em breve' })).toBeTruthy();
     expect(screen.getByText('PLANO FREE')).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Sair da conta' })).toBeTruthy();
     expect(screen.getByText('Wise Warrior · versão 0.1.0')).toBeTruthy();
