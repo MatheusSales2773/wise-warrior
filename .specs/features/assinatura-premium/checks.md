@@ -2,8 +2,8 @@
 
 Build: `npm run build --workspace apps/backend`; `npm run lint --workspace apps/backend`
 Run unit: `npm test --workspace apps/backend -- src/modules/billing src/main.spec.ts --verbose`
-Run webhook: `npm run test:integration --workspace apps/backend -- billing-webhook --verbose`
-Run migration: `npm run test:integration --workspace apps/backend -- migration.integration --verbose`
+Run webhook: `npm run test:integration --workspace apps/backend -- --testPathPattern billing-webhook --verbose`
+Run migration: `npm run test:integration --workspace apps/backend -- --testPathPattern migration.integration --verbose`
 Plan: `.specs/features/assinatura-premium/plan.md`
 
 Issue #355 (`S2`). This file covers only S2; S1, S3-S9 are other issues and get their own checks. S2 creates the
