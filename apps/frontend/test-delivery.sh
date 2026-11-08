@@ -44,7 +44,9 @@ if grep -Eiq 'v[i]te' apps/frontend/Dockerfile docker-compose.yml .github/workfl
   exit 1
 fi
 
-docker build \
+# DELIVERY_BUILD_FLAGS adds build options, such as the CI layer cache; word splitting is intended.
+# shellcheck disable=SC2086
+docker build ${DELIVERY_BUILD_FLAGS:-} \
   --file apps/frontend/Dockerfile \
   --build-arg "EXPO_PUBLIC_API_URL=${public_api_url}" \
   --tag "${image_tag}" \

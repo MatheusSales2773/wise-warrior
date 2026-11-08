@@ -1,0 +1,17 @@
+# CI only, layered over docker-compose.e2e.yml through E2E_COMPOSE_OVERRIDE: keeps the
+# image layers in the GitHub Actions cache so npm ci and the builds rerun only on change.
+# ignore-error: a failed cache write must not fail the E2E run.
+# Quoted block items: in a [flow list] each comma would start a new item.
+services:
+  backend:
+    build:
+      cache_from:
+        - "type=gha,scope=e2e-backend"
+      cache_to:
+        - "type=gha,mode=max,scope=e2e-backend,ignore-error=true"
+  frontend:
+    build:
+      cache_from:
+        - "type=gha,scope=e2e-frontend"
+      cache_to:
+        - "type=gha,mode=max,scope=e2e-frontend,ignore-error=true"
