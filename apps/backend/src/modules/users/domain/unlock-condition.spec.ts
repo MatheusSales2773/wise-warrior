@@ -58,8 +58,12 @@ describe('isUnlockedBySessionCounts', () => {
 
 describe('isStarterItem', () => {
   it('marks only level-1 conditions as starter items', () => {
-    expect(isStarterItem({ type: 'level', level: 1 })).toBe(true);
-    expect(isStarterItem({ type: 'level', level: 3 })).toBe(false);
-    expect(isStarterItem({ type: 'raid', slug: '*' })).toBe(false);
+    expect(isStarterItem({ type: 'level', level: 1 }, false)).toBe(true);
+    expect(isStarterItem({ type: 'level', level: 3 }, false)).toBe(false);
+    expect(isStarterItem({ type: 'raid', slug: '*' }, false)).toBe(false);
+  });
+
+  it('does not mark a premium level-1 item as a starter item', () => {
+    expect(isStarterItem({ type: 'level', level: 1 }, true)).toBe(false);
   });
 });

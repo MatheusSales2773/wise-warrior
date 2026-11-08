@@ -1,0 +1,45 @@
+{
+  "schema": 1,
+  "promote_threshold": 2,
+  "window_days": 45,
+  "quarantine_threshold": 2,
+  "next_id": 3,
+  "lessons": [
+    {
+      "id": "L-001",
+      "key": "weak_test::assert the exact reason string a domain rule returns not just that it is not null",
+      "text": "Assert the exact reason string a domain rule returns, not just that it is not null",
+      "signal": "weak_test",
+      "scope": "users",
+      "status": "candidate",
+      "features": [
+        "assinatura-premium-s1"
+      ],
+      "recurrence": 1,
+      "harmful": 0,
+      "evidence": [
+        "C8 for-sale.spec.ts (users)"
+      ],
+      "created": "2026-11-08T14:37:25Z",
+      "last_seen": "2026-11-08T14:37:25Z"
+    },
+    {
+      "id": "L-002",
+      "key": "weak_test::prove a sprite layer through the component that renders it not only through the lookup table",
+      "text": "Prove a sprite layer through the component that renders it, not only through the lookup table",
+      "signal": "weak_test",
+      "scope": "frontend",
+      "status": "candidate",
+      "features": [
+        "assinatura-premium-s1"
+      ],
+      "recurrence": 1,
+      "harmful": 0,
+      "evidence": [
+        "C11 character-catalog.test.tsx (frontend)"
+      ],
+      "created": "2026-11-08T14:37:25Z",
+      "last_seen": "2026-11-08T14:37:25Z"
+    }
+  ]
+}

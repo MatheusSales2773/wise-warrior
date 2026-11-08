@@ -7,7 +7,7 @@ import { DataSource } from 'typeorm';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import type { JwtPayload } from '../auth/strategies/jwt.strategy';
 import { HttpExceptionFilter } from '../../shared/filters/http-exception.filter';
-import { APPLICATION_MIGRATIONS, createIntegrationDatabase, type IntegrationDatabase } from '../../test/integration-database';
+import { APPLICATION_MIGRATIONS, createMigratedIntegrationDatabase, type IntegrationDatabase } from '../../test/integration-database';
 import { Guild } from '../guilds/entities/guild.entity';
 import { GuildMembership } from '../guilds/entities/guild-membership.entity';
 import { GuildsController } from '../guilds/guilds.controller';
@@ -60,7 +60,7 @@ describe('Raid da semana against MySQL', () => {
 
   beforeEach(async () => {
     now = new Date('2026-10-07T15:00:00Z');
-    database = await createIntegrationDatabase('wise_raids_http');
+    database = await createMigratedIntegrationDatabase('wise_raids_http');
     dataSource = new DataSource(database.options(APPLICATION_MIGRATIONS));
     await dataSource.initialize();
     await dataSource.runMigrations();

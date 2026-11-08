@@ -11,7 +11,7 @@
     "test": "jest",
     "test:watch": "jest --watch",
     "test:cov": "jest --coverage",
-    "test:integration": "jest --runInBand --testRegex '.*integration.test.ts$'",
+    "test:integration": "jest --maxWorkers=3 --globalSetup '<rootDir>/test/integration-global-setup.ts' --globalTeardown '<rootDir>/test/integration-global-teardown.ts' --testRegex '.*integration.test.ts$'",
     "test:auth:integration": "jest --runInBand --testRegex '.*auth.integration.test.ts$'",
     "typeorm": "typeorm-ts-node-commonjs -d src/config/data-source.ts",
     "migration:generate": "npm run typeorm -- migration:generate",

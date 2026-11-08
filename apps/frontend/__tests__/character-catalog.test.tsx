@@ -3,9 +3,9 @@ import { cosmeticSprite, equipmentCategoryById, equippedItems, optionsFor } from
 import { formatCompactXp } from '@/features/character/formatters';
 import type { CatalogCosmeticItem } from '@/features/profile/api';
 import { cosmeticItemState, describeDevice, describeNextUnlock, describeUnlockCondition } from '@/features/profile/formatters';
-import { avatarLayerFor } from '@/features/character/layered-hero';
+import { LayeredHero, avatarLayerFor } from '@/features/character/layered-hero';
 import { PixelSprite } from '@/features/character/PixelSprite';
-import { accessoryLayers, avatarLayers, heroBody, heroSprites, itemSprites, companionSprites, initialAvatarLayer, type PixelSpriteData } from '@/features/character/sprites';
+import { accessoryLayers, avatarLayers, heroBody, heroSprites, itemSprites, companionSprites, initialAvatarLayer, weaponLayers, type PixelSpriteData } from '@/features/character/sprites';
 
 describe('character catalog', () => {
   const item = (name: string, category: CatalogCosmeticItem['category'], unlockCondition: CatalogCosmeticItem['unlockCondition'], state: Partial<Pick<CatalogCosmeticItem, 'unlocked' | 'equipped' | 'requiresPremium' | 'forSale'>> = {}): CatalogCosmeticItem => ({
@@ -185,5 +185,65 @@ describe('pixel sprites', () => {
 
   it('rejects fractional scales that would blur pixels', async () => {
     await expect(render(<PixelSprite scale={2.5} sprite={itemSprites.estudanteCrepuscular} />)).rejects.toThrow(/integer/);
+  });
+});
+
+describe('premium items (#354)', () => {
+  const premium = (name: string, category: CatalogCosmeticItem['category'], state: Partial<Pick<CatalogCosmeticItem, 'equipped'>> = {}): CatalogCosmeticItem => ({
+    id: `item-${name}`, category, name, unlockCondition: { type: 'level', level: 1 }, requiresPremium: true, unlocked: true, equipped: false, forSale: false, ...state,
+  });
+  const initial = (name: string, category: CatalogCosmeticItem['category']): CatalogCosmeticItem => ({
+    id: `item-${name}`, category, name, unlockCondition: { type: 'level', level: 1 }, requiresPremium: false, unlocked: true, equipped: false, forSale: false,
+  });
+
+  it('captions a premium level-1 item "Plano premium" and never "inicial"', () => {
+    const catalog = [
+      initial('Capuz do Erudito', 'avatar'), premium('Manto do Arquimago', 'avatar'),
+      initial('Espada', 'weapon'), premium('Cajado Astral', 'weapon'),
+      initial('Aprendiz', 'title'), premium('Lenda do Foco', 'title'),
+    ];
+
+    for (const [category, premiumName, initialName, initialCaption] of [
+      ['avatar', 'Manto do Arquimago', 'Capuz do Erudito', 'Avatar inicial'],
+      ['weapon', 'Cajado Astral', 'Espada', 'Arma inicial'],
+      ['title', 'Lenda do Foco', 'Aprendiz', 'Título inicial'],
+    ] as const) {
+      const options = optionsFor(catalog, category, 'free');
+      expect(options.find((option) => option.item.name === premiumName)).toMatchObject({ availability: { kind: 'premium' }, caption: 'Plano premium' });
+      expect(options.find((option) => option.item.name === initialName)?.caption).toBe(initialCaption);
+    }
+    // Wearing one (the policy flag releases it with no billing) or owning the plan never reads "inicial" either.
+    const worn = [premium('Manto do Arquimago', 'avatar', { equipped: true })];
+    expect(optionsFor(worn, 'avatar', 'free')[0]?.caption).toBe('Plano premium');
+    expect(optionsFor(worn, 'avatar', 'premium')[0]?.caption).toBe('Plano premium');
+  });
+
+  it('draws the premium items with their own sprite, not the category default', () => {
+    for (const [category, name] of [['avatar', 'Manto do Arquimago'], ['weapon', 'Cajado Astral'], ['title', 'Lenda do Foco']] as const) {
+      const own = cosmeticSprite({ category, name });
+      expect(own).not.toBe(cosmeticSprite({ category, name: 'Item sem arte' }));
+      expect(itemSprites[own]).toBeDefined();
+    }
+    const sprites = ['Manto do Arquimago', 'Cajado Astral', 'Lenda do Foco'].map((name) => cosmeticSprite({ category: 'title', name }));
+    expect(new Set(sprites).size).toBe(3);
+  });
+
+  it('draws the Herói layers of the premium Avatar and Arma, different from the initial ones', () => {
+    expect(avatarLayerFor({ avatar: { name: 'Manto do Arquimago' } })).toBe(avatarLayers['Manto do Arquimago']);
+    expect(avatarLayerFor({ avatar: { name: 'Manto do Arquimago' } })).not.toEqual(avatarLayerFor({ avatar: { name: 'Capuz do Erudito' } }));
+    expect(weaponLayers['Cajado Astral']).toBeDefined();
+    expect(weaponLayers['Cajado Astral']).not.toEqual(weaponLayers.Cajado);
+    expect(weaponLayers['Cajado Astral']).not.toEqual(weaponLayers.Espada);
+  });
+
+  it('draws the Cajado Astral weapon layer on the Herói, apart from the Cajado layer', async () => {
+    const hero = (weapon: string) => <LayeredHero equipped={{ avatar: null, weapon: { name: weapon }, accessory: null }} scale={4} testID="hero" />;
+    const view = await render(hero('Cajado Astral'));
+    expect(screen.getByTestId('character-hero-layer-weapon', { includeHiddenElements: true })).toBeTruthy();
+    const astral = JSON.stringify(screen.toJSON());
+    view.unmount();
+    await render(hero('Cajado'));
+    const plain = JSON.stringify(screen.toJSON());
+    expect(astral).not.toBe(plain);
   });
 });

@@ -193,6 +193,43 @@ export const avatarLayers: Readonly<Record<string, PixelSpriteData>> = {
   /** The green robe of the Figma sprites page, worn by the traveler. */
   'Túnica do Viajante': avatarLayerFrom(druida),
   'Manto Estelar': avatarLayerFrom(heroSprites.arcanista),
+  /**
+   * The premium sorcerer's coat (✦), after the mages of The Witcher 3: a dark cowl edged in silver, a high collar with silver
+   * pauldrons and a gold clasp, an open coat lined in crimson over a linen tunic, a leather corset with a crimson sash and
+   * a silver-embroidered hem. On the Figma sprites page as Sprite/Avatar/Manto do Arquimago.
+   */
+  'Manto do Arquimago': avatarLayerFrom({
+    palette: [
+      '#0a0a12', '#3d364c', '#655b7e', '#272132', '#e8b48a', '#07070c', '#b97d5b',
+      '#c9cfdc', '#f3f5fa', '#4a2e1e', '#7a2a3a', '#b04a5a', '#d8d0bc', '#f0c97a',
+    ],
+    rows: [
+      '......aaaa......',
+      '.....abbbba.....',
+      '....abcbbbda....',
+      '...abcbbbbbda...',
+      '...abhaaaahba...',
+      '..abha....ahba..',
+      '..abd......dba..',
+      '..abd......dba..',
+      '...abd....dba...',
+      '..ahhaa..aahha..',
+      '.ahhhbknnkbhhha.',
+      '.abcbbkmmkbbbda.',
+      '.abcbhkmmkhbbda.',
+      '.a.ajjjnnjjja.a.',
+      '.a.akjjjjjjja.a.',
+      '..aakbkmmkbbaa..',
+      '..abkbkmmkbbba..',
+      '..abkckmmkcbba..',
+      '..akbbkmmkbbda..',
+      '..albbkmmkbbda..',
+      '.akbbbkmmkbbdda.',
+      '.ahhihkmmkhihha.',
+      '..aaajjaajjaaa..',
+      '...aaaa..aaaa...',
+    ],
+  }),
   /** Wolf pelt armour with pointed ears on the hood and red-trimmed pauldrons; on the Figma sprites page as Sprite/Avatar/Armadura do Lobo. */
   'Armadura do Lobo': robeLayer(
     { cloth: ['#0a0a12', '#7a7466', '#b3a98e', '#4a463c'], trim: ['#c44545', '#e87070', '#2a2820', '#f3ead4'] },
@@ -246,6 +283,15 @@ export const weaponLayers: Readonly<Record<string, PixelSpriteData>> = {
       [10, 11, 'accca'], [11, 12, 'ada'], [12, 12, 'ada'], [13, 13, 'd'], [14, 13, 'd'],
     ]),
   },
+  /** Item premium ✦ of the Assinatura (#354): the Cajado with a violet shaft and a five-point gold crown, until the Figma art is approved. */
+  'Cajado Astral': {
+    palette: ['#0a0a12', '#5b3fa0', '#f0c97a', '#fff6dc'],
+    rows: layerAt([
+      [0, 11, 'a.a.a'], [1, 11, 'acdca'], [2, 12, 'aca'], [3, 12, 'aba'],
+      ...[4, 5, 6, 7, 8, 9, 10, 11, 12, 15, 16, 17, 18, 19, 20].map((y) => [y, 12, 'aba'] as const),
+      [13, 13, 'b'], [14, 13, 'b'], [21, 13, 'a'],
+    ]),
+  },
   Cajado: {
     palette: ['#0a0a12', '#8a5a2b', '#6fd0ff', '#e0f6ff'],
     rows: layerAt([
@@ -288,6 +334,15 @@ export const itemSprites = {
   moedaDaGuilda: {
     palette: ['#3a2a10', '#f0c97a', '#b8863a', '#fff6dc'],
     rows: ['..aaaa..', '.abbbca.', 'abbdbbca', 'abdbbbca', 'abbbbbca', 'abbbbcca', '.acccca.', '..aaaa..'],
+  },
+  /** The Cajado Astral and Lenda do Foco (#354), recoloured from existing art until the Figma sprites are approved. */
+  cajadoAstral: {
+    palette: ['#0a0a12', '#5b3fa0', '#f0c97a', '#fff6dc'],
+    rows: ['.a.aa.a.', '..acda..', '...aa...', '...bb...', '...bb...', '...bb...', '...bb...', '...aa...'],
+  },
+  lendaDoFoco: {
+    palette: ['#0a0a12', '#f0c97a', '#5b3fa0', '#fff6dc'],
+    rows: ['.aaaaaa.', 'abbbbbba', '.abccba.', '.abddba.', '.abccba.', '.abbbba.', 'abbbbbba', '.aaaaaa.'],
   },
   mestreDaAurora: {
     palette: ['#0a0a12', '#f0c97a', '#c44545'],
@@ -376,6 +431,10 @@ export const itemSprites = {
   mantoEstelar: {
     palette: ['#0a0a12', '#2a1f5e', '#f0c97a', '#5b3fa0'],
     rows: ['..aaaa..', '.abccba.', 'abbbbbba', 'abdbbdba', 'abdbbdba', 'abdbbdba', 'addbbdda', 'aaaaaaaa'],
+  },
+  mantoDoArquimago: {
+    palette: ['#0a0a12', '#3d364c', '#c9cfdc', '#7a2a3a', '#f0c97a', '#d8d0bc', '#4a2e1e'],
+    rows: ['...aa...', '..abba..', '.acbbca.', 'abdeedba', 'abdffdba', 'aggeegga', 'acdffdca', 'aaaaaaaa'],
   },
   marcadorDoGrimorio: {
     palette: ['#0a0a12', '#5b3fa0', '#d4a85a', '#8a5bc4'],

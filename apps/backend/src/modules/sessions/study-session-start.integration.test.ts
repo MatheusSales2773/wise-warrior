@@ -12,7 +12,7 @@ import { StudySession } from './entities/study-session.entity';
 import { StudySessionStartService } from './study-session-start.service';
 import { StudySessionEventsService } from './study-session-events.service';
 import { StudySessionTransitionService } from './study-session-transition.service';
-import { APPLICATION_MIGRATIONS, createIntegrationDatabase, type IntegrationDatabase } from '../../test/integration-database';
+import { APPLICATION_MIGRATIONS, createMigratedIntegrationDatabase, type IntegrationDatabase } from '../../test/integration-database';
 
 async function expectConflictType(promise: Promise<unknown>, type: string): Promise<void> {
   try {
@@ -58,7 +58,7 @@ describe('canonical Study Session start against MySQL', () => {
     .map(([, , payload]) => payload);
 
   beforeEach(async () => {
-    database = await createIntegrationDatabase('wise_study_start');
+    database = await createMigratedIntegrationDatabase('wise_study_start');
     dataSource = new DataSource(database.options(APPLICATION_MIGRATIONS));
     await dataSource.initialize();
     await dataSource.runMigrations();
