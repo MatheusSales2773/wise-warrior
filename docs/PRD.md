@@ -399,6 +399,16 @@ Situação conferida no código da branch `develop` em 27/10/2026. Os estados s�
 8. **Sem Capítulos:** a trilha de Capítulos da proposta sai do escopo.
 **Consequência:** a curva de nível da ADR-011 não muda; a economia da ADR-012 ganha uma fonte de Moedas, com origem própria no Extrato. Crônicas sai de "Em breve" com Objetivos, Marcos e Diário juntos. Glossário em `CONTEXT.md`.
 
+### ADR-015: Assinatura premium e Pacotes pagos com Stripe, em modo de teste
+**Status:** Aceito em 08/11/2026; revisa a ADR-007. **Contexto:** o professor da disciplina pediu monetização funcionando na apresentação de 13/11/2026. A ADR-007 deixou o `plan_tier` pronto, mas proibia código de cobrança na Fase 1. **Decisão:**
+1. **Dois modelos:** uma Assinatura mensal (R$ 9,90) que deixa o `plan_tier` em `premium` e Pacotes de Cosmetic Items em pagamento único (o "Pacote do Dragão", R$ 4,90), com Checkout e Portal do cliente hospedados pelo Stripe. Só cartão, em BRL.
+2. **Modo de teste:** chaves, segredo do webhook, Price da Assinatura e a origem do frontend vêm do ambiente. Ir para cobrança real é configuração e ativação da conta Stripe, sem código novo. Sem `STRIPE_SECRET_KEY`, a cobrança fica indisponível e o resto do app funciona.
+3. **O webhook é o único caminho que concede algo:** ele verifica a assinatura do Stripe, relê o objeto na API e deriva o estado. Premium se, e somente se, o status da assinatura for `active`, `trialing` ou `past_due`.
+4. **Voltar para `free` desequipa os Itens premium ✦** na mesma transação; a categoria volta ao Item inicial dela quando ele existir.
+5. **Item premium nunca é Item inicial**, mesmo com Condição `level:1`. Item de Pacote tem a Condição `pack:<slug>`, nunca é premium nem À venda por Moedas, e fica com quem pagou para sempre.
+6. **Fora:** cobrança real, compra in-app no iOS e Android, PIX e boleto, impostos e reembolso.
+**Consequência:** novo módulo `billing`, dono de `subscriptions`, `packs` e `pack_payments`, que muda `plan_tier` e Inventário só pelo `UsersService` (ADR-001). Com a cobrança configurada, `COSMETICS_PREMIUM_FOR_ALL` é ignorado. A issue #7 continua aberta para validar preço e empacotamento. Design em `.design/assinatura-premium.md`; glossário em `CONTEXT.md`.
+
 ### 8.1 Diagrama de arquitetura (módulos presentes em `develop`)
 
 ```mermaid
