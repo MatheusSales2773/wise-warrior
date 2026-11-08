@@ -35,8 +35,52 @@ env:
   EXPO_PUBLIC_API_URL: https://api.ci.invalid/v1
 
 jobs:
+  # Skips an app's jobs on a pull request whose changes all sit inside the other
+  # app. Anything shared (root files, workflows, scripts, docs/api) runs both, and
+  # the frontend also runs for backend migrations, which its tests read. Pushes to
+  # main and develop run everything.
+  changes:
+    name: Detect changed apps
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      backend: ${{ steps.filter.outputs.backend }}
+      frontend: ${{ steps.filter.outputs.frontend }}
+    steps:
+      - name: Check out repository
+        if: ${{ github.event_name == 'pull_request' }}
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+          # The pull request merge commit and its first parent, the base branch.
+          fetch-depth: 2
+
+      - name: Classify changed files
+        id: filter
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          if [[ "${EVENT_NAME}" != "pull_request" ]]; then
+            echo "backend=true" >> "${GITHUB_OUTPUT}"
+            echo "frontend=true" >> "${GITHUB_OUTPUT}"
+            exit 0
+          fi
+          # Mirrors the paths-ignore of the triggers above.
+          changed="$(git diff --name-only HEAD^1 HEAD \
+            | grep -vE '^[^/]+\.md$|^docs/[^/]+$|^docs/(agents|plans|validation)/' || true)"
+          printf 'Changed files:\n%s\n' "${changed}"
+          backend=false
+          frontend=false
+          if grep -qv '^apps/frontend/' <<<"${changed}"; then backend=true; fi
+          if grep -qv '^apps/backend/' <<<"${changed}" \
+            || grep -q '^apps/backend/src/migrations/' <<<"${changed}"; then frontend=true; fi
+          echo "backend=${backend}" | tee -a "${GITHUB_OUTPUT}"
+          echo "frontend=${frontend}" | tee -a "${GITHUB_OUTPUT}"
+
   backend:
     name: Backend (build, lint, unit, integration)
+    needs: changes
+    if: ${{ needs.changes.outputs.backend == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
@@ -47,8 +91,8 @@ jobs:
     steps:
       # A step instead of a service container: services cannot pass server options.
       # The test databases are thrown away, so keep them in memory and skip the
-      # durability work (binlog, per-commit flush, doublewrite). Each integration
-      # suite runs every migration, and that DDL is what the job waits on.
+      # durability work (binlog, per-commit flush, doublewrite). The integration
+      # run migrates one template database and clones it for every test.
       # Started before npm ci so MySQL initialises while dependencies install.
       - name: Start MySQL
         run: |
@@ -99,7 +143,9 @@ jobs:
         run: npm run ci:backend
 
   frontend:
-    name: Frontend (typecheck, lint, unit, Expo, delivery)
+    name: Frontend (typecheck, lint, Expo, delivery)
+    needs: changes
+    if: ${{ needs.changes.outputs.frontend == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -124,8 +170,48 @@ jobs:
           npm --version
           docker --version
 
-      - name: Verify frontend quality gate
-        run: npm run ci:frontend
+      # verify:m2 without the unit tests, which run sharded in frontend-unit.
+      - name: Typecheck
+        run: npm run typecheck --workspace apps/frontend
+
+      - name: Lint
+        run: npm run lint --workspace apps/frontend
+
+      - name: Export the web build
+        run: npm run build --workspace apps/frontend
+
+      - name: Verify the web delivery container
+        run: npm run test:delivery --workspace apps/frontend
+
+  # The unit tests stay --runInBand: on one machine, parallel workers time out the
+  # heavy screen tests. Each shard is a machine of its own instead.
+  frontend-unit:
+    name: Frontend unit (${{ matrix.shard }}/3)
+    needs: changes
+    if: ${{ needs.changes.outputs.frontend == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      matrix:
+        shard: [1, 2, 3]
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run unit tests
+        run: npm test --workspace apps/frontend -- --shard=${{ matrix.shard }}/3
 
   openapi:
     name: OpenAPI contract lint
@@ -154,6 +240,8 @@ jobs:
   # produce. CI OK still requires every job, so a failure anywhere blocks the merge.
   e2e:
     name: Web E2E (Docker Compose + Playwright)
+    needs: changes
+    if: ${{ needs.changes.outputs.backend == 'true' || needs.changes.outputs.frontend == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -208,17 +296,19 @@ jobs:
   ci-ok:
     name: CI OK
     if: ${{ always() }}
-    needs: [backend, frontend, openapi, e2e]
+    needs: [changes, backend, frontend, frontend-unit, openapi, e2e]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Fail unless every required job succeeded
+      # "skipped" is a job the changes job left out. If changes itself fails, its
+      # own "failure" is in the list, so a skip can never hide a broken filter.
+      - name: Fail unless every required job succeeded or was skipped
         env:
           RESULTS: ${{ join(needs.*.result, ' ') }}
         run: |
           echo "Job results: ${RESULTS}"
           for result in ${RESULTS}; do
-            if [[ "${result}" != "success" ]]; then
+            if [[ "${result}" != "success" && "${result}" != "skipped" ]]; then
               echo "::error::At least one required job did not succeed."
               exit 1
             fi
