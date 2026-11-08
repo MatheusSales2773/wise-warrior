@@ -1,6 +1,6 @@
 # dev-reset-plano proofs
 
-**HEAD**: 6464e05
+**HEAD**: abecb93
 **Tree**: clean
 **Shell**: /bin/sh
 **Result**: 50 pass, 0 fail
@@ -67,16 +67,16 @@
 
 PASS src/modules/users/users.service.spec.ts
   UsersService
-    ✓ derives the level boundaries from the XP projection and the Título from the equipped item (8 ms)
+    ✓ derives the level boundaries from the XP projection and the Título from the equipped item (13 ms)
     ✓ uses the zero-XP projection when the character is missing without writing (2 ms)
-    ✓ answers devTools for dev@wise.app from DEV_TOOLS_EMAILS (true) (1 ms)
+    ✓ answers devTools for dev@wise.app from DEV_TOOLS_EMAILS (true) (5 ms)
     ✓ answers devTools for hero@wise.app from DEV_TOOLS_EMAILS (false) (1 ms)
-    ✓ answers devTools false when no ConfigService is provided (2 ms)
+    ✓ answers devTools false when no ConfigService is provided (3 ms)
 
 Test Suites: 2 passed, 2 total
 Tests:       12 passed, 12 total
 Snapshots:   0 total
-Time:        2.201 s
+Time:        4.584 s
 Ran all test suites matching /src\/shared\/dev-tools|src\/modules\/users\/users.service.spec.ts/i.
 ```
 
@@ -84,19 +84,19 @@ Ran all test suites matching /src\/shared\/dev-tools|src\/modules\/users\/users.
 
 ```
     retries and out-of-order delivery
-      ✓ ends in the same state and emits user:planChanged once when the same event arrives twice (830 ms)
-      ✓ emits user:planChanged once when the same event arrives twice at the same time (817 ms)
-      ✓ ends in the state the API reports whatever the order of the events (813 ms)
-      ✓ ends canceled when a slow reread of an older event overlaps the faster reread of the cancellation (1586 ms)
-      ✓ does not let a late event of an old, ended Subscription cancel the one the user subscribed to afterwards (1097 ms)
+      ✓ ends in the same state and emits user:planChanged once when the same event arrives twice (1408 ms)
+      ✓ emits user:planChanged once when the same event arrives twice at the same time (1592 ms)
+      ✓ ends in the state the API reports whatever the order of the events (1292 ms)
+      ✓ ends canceled when a slow reread of an older event overlaps the faster reread of the cancellation (1638 ms)
+      ✓ does not let a late event of an old, ended Subscription cancel the one the user subscribed to afterwards (848 ms)
     failures
-      ✓ answers 500 and writes nothing when the Stripe API fails to reread the Subscription (3143 ms)
-      ✓ undoes subscriptions, plan_tier and the equipment together, and emits nothing, when the last write fails (2927 ms)
+      ✓ answers 500 and writes nothing when the Stripe API fails to reread the Subscription (808 ms)
+      ✓ undoes subscriptions, plan_tier and the equipment together, and emits nothing, when the last write fails (639 ms)
 
 Test Suites: 3 passed, 3 total
 Tests:       62 passed, 62 total
 Snapshots:   0 total
-Time:        39.982 s, estimated 45 s
+Time:        58.866 s
 Ran all test suites matching /billing-dev-reset|rename-http|billing-webhook/i.
 ```
 
@@ -104,19 +104,19 @@ Ran all test suites matching /billing-dev-reset|rename-http|billing-webhook/i.
 
 ```
     on phones
-      ✓ shows the current name and the 2–60 rule, with Salvar off until the name changes (43 ms)
-      ✓ keeps Salvar off for the invalid name "" (42 ms)
-      ✓ keeps Salvar off for the invalid name "A" (42 ms)
-      ✓ keeps Salvar off for the invalid name "   " (42 ms)
-      ✓ keeps Salvar off for the invalid name "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" (41 ms)
-      ✓ saves the trimmed name, confirms it and updates the cached profile (38 ms)
-      ✓ says so when there is no connection and keeps the typed name to try again (28 ms)
-      ✓ shows a generic failure for a server error (25 ms)
+      ✓ shows the current name and the 2–60 rule, with Salvar off until the name changes (42 ms)
+      ✓ keeps Salvar off for the invalid name "" (44 ms)
+      ✓ keeps Salvar off for the invalid name "A" (45 ms)
+      ✓ keeps Salvar off for the invalid name "   " (49 ms)
+      ✓ keeps Salvar off for the invalid name "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" (50 ms)
+      ✓ saves the trimmed name, confirms it and updates the cached profile (52 ms)
+      ✓ says so when there is no connection and keeps the typed name to try again (31 ms)
+      ✓ shows a generic failure for a server error (28 ms)
 
 Test Suites: 1 passed, 1 total
 Tests:       80 passed, 80 total
 Snapshots:   0 total
-Time:        5.891 s
+Time:        3.831 s, estimated 6 s
 Ran all test suites matching /__tests__\/settings-screen.test.tsx/i.
 ```
 
@@ -146,7 +146,7 @@ Ran all test suites matching /__tests__\/settings-screen.test.tsx/i.
     ╚═══════════════════════════════════════════════════════╝
 
 validating docs/api/openapi.yaml...
-docs/api/openapi.yaml: validated in 48ms
+docs/api/openapi.yaml: validated in 67ms
 
 Woohoo! Your API description is valid. 🎉
 You have 1 warning.
@@ -158,13 +158,13 @@ You have 1 warning.
 > @wise/backend@0.1.0 test:auth:integration
 > jest --runInBand --testRegex '.*auth.integration.test.ts$'
 
-PASS src/modules/auth/auth.integration.test.ts (13.413 s)
+PASS src/modules/auth/auth.integration.test.ts (11.41 s)
 <claude-code-hint v="1" type="plugin" value="stripe@claude-plugins-official" />
-PASS src/modules/auth/universal-auth.integration.test.ts (8.171 s)
+PASS src/modules/auth/universal-auth.integration.test.ts (6.592 s)
 
 Test Suites: 2 passed, 2 total
 Tests:       14 passed, 14 total
 Snapshots:   0 total
-Time:        21.711 s
+Time:        18.12 s, estimated 22 s
 Ran all test suites.
 ```
