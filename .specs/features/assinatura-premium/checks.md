@@ -114,4 +114,4 @@ This slice consumes `GET /api/v1/billing/subscription` (S5, merged), `POST /api/
 - **Dispatched:** Verifier at efc3130 (no screens sub-agent: the Figma frames are links, no capture file binds a picture)
 - **Boundary:** C1-C13 closed at efc3130; Verifier findings closed at the next commit
 - **Abandoned:** none
-- **Walked:** not walked in a running app: it needs the backend with MySQL and a Stripe test account, which the open question `blocks go-live` still holds. The screen is exercised by 24 component tests at 1440 px and 390 px.
+- **Walked:** the Plano was opened in Chromium at 1440 px and 390 px against Expo web and a mock API (no backend, no Stripe), for the states Free, Premium ativo, Pagamento pendente and Em breve; the captures are in `captures/plano-*.png`. They are not compared against the Figma frames by a screens sub-agent. No horizontal scroll at either width. The "Reconectando" banner in them comes from the mock having no Socket.IO.
