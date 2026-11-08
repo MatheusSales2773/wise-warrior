@@ -1,6 +1,6 @@
 # assinatura-premium proofs
 
-**HEAD**: 832f15d
+**HEAD**: 18592fd
 **Tree**: clean
 **Shell**: /bin/sh
 **Result**: 36 pass, 0 fail
@@ -49,20 +49,20 @@
 `Run packs` - exit 0
 
 ```
-    ✓ shows the server message on 502 and frees the button (67 ms)
-    ✓ shows the server message on 503 and frees the button (107 ms)
-    ✓ shows a generic line on any other failure and frees the button (105 ms)
+    ✓ shows the server message on 502 and frees the button (66 ms)
+    ✓ shows the server message on 503 and frees the button (65 ms)
+    ✓ shows a generic line on any other failure and frees the button (67 ms)
   coming back from the Checkout
     ✓ waits for the payment after checkout=success, then says the items arrive shortly (18 ms)
-    ✓ shows no waiting message with checkout=success when the Pacote is already owned (52 ms)
-    ✓ shows Adquirido and the Inventário notice when user:packGranted arrives (19 ms)
-    ✓ keeps the Inventário notice for a grant that arrives while another tab is open (66 ms)
-    ✓ shows the Pacotes with no message after checkout=cancel (11 ms)
+    ✓ shows no waiting message with checkout=success when the Pacote is already owned (10 ms)
+    ✓ shows Adquirido and the Inventário notice when user:packGranted arrives (105 ms)
+    ✓ keeps the Inventário notice for a grant that arrives while another tab is open (15 ms)
+    ✓ shows the Pacotes with no message after checkout=cancel (7 ms)
 
 Test Suites: 1 passed, 1 total
 Tests:       27 passed, 27 total
 Snapshots:   0 total
-Time:        2.023 s, estimated 3 s
+Time:        1.586 s, estimated 2 s
 Ran all test suites matching /__tests__\/market-packs.test.tsx/i.
 ```
 
@@ -70,19 +70,19 @@ Ran all test suites matching /__tests__\/market-packs.test.tsx/i.
 
 ```
   openStripePage (S5.4)
-    ✓ leaves for Stripe in the same tab on the Web (2 ms)
-    ✓ hands the page to the system browser on the native app (2 ms)
+    ✓ leaves for Stripe in the same tab on the Web (3 ms)
+    ✓ hands the page to the system browser on the native app (1 ms)
   billingErrorMessage (S5.11)
-    ✓ uses the server detail on 404 only when the caller lists it (a Pacote)
-    ✓ uses the server detail on 409 (1 ms)
+    ✓ uses the server detail on 404 only when the caller lists it (a Pacote) (1 ms)
+    ✓ uses the server detail on 409
     ✓ uses the server detail on 502
     ✓ uses the server detail on 503
-    ✓ falls back to a generic line for other failures
+    ✓ falls back to a generic line for other failures (1 ms)
 
 Test Suites: 1 passed, 1 total
 Tests:       9 passed, 9 total
 Snapshots:   0 total
-Time:        0.249 s, estimated 1 s
+Time:        0.246 s, estimated 1 s
 Ran all test suites matching /__tests__\/billing.test.ts/i.
 ```
 
@@ -90,38 +90,38 @@ Ran all test suites matching /__tests__\/billing.test.ts/i.
 
 ```
     ✓ also refreshes the Raid when the guild session that ended elsewhere had counted for it
-    ✓ does not cancel a read already in flight, which may be bringing the canonical result (4 ms)
+    ✓ does not cancel a read already in flight, which may be bringing the canonical result (5 ms)
     ✓ registers the listener once and removes it on dispose
     ✓ refetches the active session after a reconnection, where events may have been missed
     ✓ keeps the pure invalidation rule usable outside the socket
   chat channel on the same socket
-    ✓ answers a command with the gateway ack once connected, and refuses while disconnected
+    ✓ answers a command with the gateway ack once connected, and refuses while disconnected (1 ms)
     ✓ fails a command in flight as soon as the connection drops
     ✓ lets screens listen to room events and stop listening
 
 Test Suites: 1 passed, 1 total
 Tests:       43 passed, 43 total
 Snapshots:   0 total
-Time:        0.252 s, estimated 1 s
+Time:        0.251 s, estimated 1 s
 Ran all test suites matching /__tests__\/realtime-client.test.ts/i.
 ```
 
 `Run market` - exit 0
 
 ```
-    ✓ keeps the balance and explains a purchase the server refused (417 ms)
+    ✓ keeps the balance and explains a purchase the server refused (423 ms)
     ✓ switches to Itens through the URL and previews the first item to buy (58 ms)
-    ✓ buys an item, refreshes the Inventário and equips it on request (125 ms)
+    ✓ buys an item, refreshes the Inventário and equips it on request (164 ms)
     ✓ filters the items by category and shows what is missing for the selected one (30 ms)
-    ✓ says so when nothing is for sale (54 ms)
-    ✓ offers a retry when the Loja cannot load (399 ms)
+    ✓ says so when nothing is for sale (4 ms)
+    ✓ offers a retry when the Loja cannot load (347 ms)
   Mercado on a phone
-    ✓ shows the purse as a chip that opens the Extrato (423 ms)
+    ✓ shows the purse as a chip that opens the Extrato (432 ms)
     ✓ opens the sheet from a tile and explains a price the balance does not cover (65 ms)
 
 Test Suites: 1 passed, 1 total
 Tests:       11 passed, 11 total
 Snapshots:   0 total
-Time:        3.686 s, estimated 4 s
+Time:        3.648 s, estimated 4 s
 Ran all test suites matching /__tests__\/market-screen.test.tsx/i.
 ```
