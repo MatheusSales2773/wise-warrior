@@ -1,6 +1,6 @@
 # Seção Desenvolvedor: voltar ao plano Free
 
-**Approved**: <pendente>
+**Approved**: 2026-11-08 - user: "aprovado"
 
 > Build this with **tlc-implement**. Every criterion becomes a check with a proof; nothing under
 > the open questions is settled while building.
