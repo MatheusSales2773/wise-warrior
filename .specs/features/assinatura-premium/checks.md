@@ -1,7 +1,7 @@
 # Assinatura premium - S2 checks (Webhook sincroniza a Assinatura e o plano)
 
 Build: `npm run build --workspace apps/backend`; `npm run lint --workspace apps/backend`
-Run unit: `npm test --workspace apps/backend -- src/modules/billing src/main.spec.ts --verbose`
+Run unit: `npm test --workspace apps/backend -- src/modules/billing src/main.spec.ts src/app.module.spec.ts --verbose`
 Run webhook: `npm run test:integration --workspace apps/backend -- --testPathPattern billing-webhook --verbose`
 Run migration: `npm run test:integration --workspace apps/backend -- --testPathPattern migration.integration --verbose`
 Plan: `.specs/features/assinatura-premium/plan.md`
