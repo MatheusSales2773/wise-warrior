@@ -17,6 +17,10 @@ describe('subscriptionView', () => {
     });
   });
 
+  it('passes the status of the row through untranslated', () => {
+    expect(subscriptionView(true, 'premium', { ...row, status: 'past_due' }).status).toBe('past_due');
+  });
+
   it('has no dates and no status for a user with no Subscription row', () => {
     expect(subscriptionView(true, 'free', null)).toEqual({
       available: true, planTier: 'free', status: null, renewsAt: null, premiumUntil: null,
