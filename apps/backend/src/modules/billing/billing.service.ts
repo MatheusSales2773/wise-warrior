@@ -16,6 +16,7 @@ import { DataSource, EntityManager, Repository } from 'typeorm';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
 import { UsersService } from '../users/users.service';
 import { planTierForStatus } from './domain/plan-tier';
+import { subscriptionView, type SubscriptionView } from './domain/subscription-view';
 import { isHandledEventType, subscriptionEventTarget } from './domain/webhook-event';
 import { Subscription } from './entities/subscription.entity';
 import { STRIPE_API, type StripeApi } from './stripe.client';
@@ -104,6 +105,35 @@ export class BillingService {
       // O Checkout hospedado sempre devolve a URL.
       return { url: session.url! };
     });
+  }
+
+  /**
+   * Abre o Portal do cliente do Stripe (S4) para o Customer do próprio usuário. Só quem já tem Assinatura: um Customer
+   * sem Assinatura (Checkout aberto, ou só Pacote) não tem o que gerenciar. Nada é gravado.
+   */
+  async openPortal(userId: string): Promise<{ url: string }> {
+    if (!this.stripe) throw new ServiceUnavailableException('Assinatura indisponível no momento');
+
+    const row = await this.subscriptions.findOne({ where: { userId } });
+    if (!row?.stripeSubscriptionId) throw new ConflictException('Nenhuma assinatura para gerenciar');
+    try {
+      const session = await this.stripe.billingPortal.sessions.create({
+        customer: row.stripeCustomerId,
+        return_url: `${this.config.get<string>('APP_URL')}/configuracao/plano`,
+      });
+      return { url: session.url };
+    } catch (error) {
+      this.logger.error(`Portal do usuário ${userId}: o Stripe falhou: ${(error as Error).message}`);
+      throw new BadGatewayException('Não foi possível abrir o pagamento');
+    }
+  }
+
+  /** O estado da Assinatura do usuário para a tela Plano (S5.1); lê só `subscriptions` e o `plan_tier` pelo `UsersService`. */
+  async getSubscription(userId: string): Promise<SubscriptionView> {
+    const planTier = await this.users.findPlanTier(userId);
+    // Token válido de um usuário que não existe mais.
+    if (!planTier) throw new UnauthorizedException();
+    return subscriptionView(this.stripe !== null, planTier, await this.subscriptions.findOne({ where: { userId } }));
   }
 
   private verify(rawBody: Buffer | undefined, signature: string | undefined): Stripe.Event {
