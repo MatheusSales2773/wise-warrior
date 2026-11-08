@@ -3,12 +3,18 @@ import type { Request } from 'express';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import type { JwtPayload } from '../auth/strategies/jwt.strategy';
-import { BillingService } from './billing.service';
+import { BillingService, type PackList } from './billing.service';
 import type { SubscriptionView } from './domain/subscription-view';
 
 @Controller('billing')
 export class BillingController {
   constructor(private readonly billing: BillingService) {}
+
+  @Get('packs')
+  @UseGuards(JwtAuthGuard)
+  listPacks(@CurrentUser() user: JwtPayload): Promise<PackList> {
+    return this.billing.listPacks(user.sub);
+  }
 
   /** Abre o Checkout do premium para o próprio usuário (S3); o usuário vem do token, nunca do corpo. */
   @Post('checkout')

@@ -315,12 +315,14 @@ Quem lê a documentação encontra a cobrança como ela está no código.
 | Preço e meio de pagamento | R$ 9,90/mês, só cartão, BRL | Padrão apresentado e não contestado | y |
 | Itens premium visíveis na demo | 3 itens novos (Avatar, Arma, Título), Condição `level:1` | user: "vamos criar novos itens premium. Vamos deixar a partir do nível 1." | y |
 | Nomes dos itens novos | Premium: "Manto do Arquimago", "Cajado Astral", "Lenda do Foco". Pacote: "Elmo de Escamas", "Presa do Dragão", "Amuleto de Brasa" | Escolhido pelo usuário (lista nova) | y |
-| Arte dos 6 itens | Sprites novos desenhados por Claude no Figma, na página "Sprites (pixel art)", revisados pelo usuário antes de exportar. "Manto do Arquimago" aprovado e exportado em 2026-11-08, no estilo dos magos de The Witcher 3 (capuz escuro com borda de prata, gola alta, forro carmesim, corpete de couro, fecho de ouro); os outros 5 aguardam revisão | Escolhido pelo usuário ("Eu (Claude) desenho no Figma"); Manto: user "Aprovado!" | y |
+| Arte dos 6 itens | Sprites novos desenhados por Claude no Figma, na página "Sprites (pixel art)", revisados pelo usuário antes de exportar. "Manto do Arquimago" aprovado e exportado em 2026-11-08, no estilo dos magos de The Witcher 3 (capuz escuro com borda de prata, gola alta, forro carmesim, corpete de couro, fecho de ouro); os 3 do Pacote do Dragão foram aprovados e exportados na S6 (#360) | Escolhido pelo usuário ("Eu (Claude) desenho no Figma"); Manto: user "Aprovado!" | y |
 | Fallback da arte | Sem sprites aprovados até 11/11, o build usa recoloração dos sprites existentes e troca a arte depois | user: "Aprovado" (resposta ao pedido de aprovação com fallback) | y |
 | Pacote: onde, preço, posse | Seção "Pacotes" na Loja; R$ 4,90; posse permanente, qualquer plano equipa; sem desconto para premium | user: "Aprovado" | y |
 | Entra na demo de sexta | Sim, depois da Assinatura; sai da demo se a Assinatura não fechar até 11/11 | user: "Aprovado" | y |
 | Textos e espera das telas Plano e Pacotes | Textos de S5 e S8, espera de 30 s, sem deep link, Prévia dos 3 itens, `?secao=pacotes` | Escolhido pelo usuário ("Aceito todos") | y |
 | Ordem dos Pacotes em `GET /billing/packs` | Por `name` | Só existe um Pacote; qualquer ordem estável serve | n |
+| Descrição do Pacote do Dragão (`packs.description`) | "Elmo, presa e amuleto forjados no fogo de um dragão. Ficam com você para sempre, em qualquer plano." | user, ao implementar S6 (#360): escolheu a opção recomendada | y |
+| Item de Pacote sem posse na gaveta de equipamento | Mesma legenda "Do Pacote do Dragão", bloqueado; ordena e se descreve com os itens À venda ("comprados na Loja") | user, ao implementar S6 (#360): "Mesmo rótulo" | y |
 | Stripe nos testes | Os testes de integração trocam o cliente Stripe por um falso, e o webhook é assinado com um segredo de teste. Nenhum teste chama a rede | CI e e2e não podem depender do Stripe (ADR-015) | n |
 | Larguras de tela | As mesmas da Configuração e da Loja (sidebar no desktop, navegação inferior no celular) | Sem captura; segue o design system (ADR-008) | n |
 

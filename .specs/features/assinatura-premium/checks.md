@@ -1,91 +1,109 @@
-# Assinatura premium - S4 checks (Gerenciar pelo Portal)
+# Assinatura premium - S6 checks (Pacote do Dragão listado)
 
-Build: `npm run build --workspace apps/backend`; `npm run lint --workspace apps/backend`
-Run unit: `npm test --workspace apps/backend -- src/modules/billing --verbose`
-Run portal: `TEST_DB_PORT=3329 npm run test:integration --workspace apps/backend -- --testPathPattern billing-portal --verbose`
-Run webhook: `TEST_DB_PORT=3329 npm run test:integration --workspace apps/backend -- --testPathPattern billing-webhook --verbose`
+Build: `npm run build --workspace apps/backend`; `npm run lint --workspace apps/backend`; `npm run typecheck --workspace apps/frontend`; `npm run lint --workspace apps/frontend`; `npm run lint:openapi`
+Run unit: `npm test --workspace apps/backend -- src/modules/billing/domain src/modules/users/domain --verbose`
+Run packs: `npm run test:integration --workspace apps/backend -- --testPathPattern billing-packs-http --verbose`
+Run catalog: `npm run test:integration --workspace apps/backend -- --testPathPattern cosmetics-http --verbose`
+Run migration: `npm run test:integration --workspace apps/backend -- --testPathPattern migration.integration --verbose`
+Run frontend: `npm test --workspace apps/frontend -- __tests__/character-catalog.test.tsx --verbose`
 Plan: `.specs/features/assinatura-premium/plan.md`
 
-Issue #357 (`S4`). This file covers only S4; the S3 checks, proofs and verification are in git history at 09c68b7.
-S4 adds `POST /api/v1/billing/portal`. S4.5 also names `GET /api/v1/billing/subscription` (`premiumUntil`), a route the
-plan files under S5.1 (#358): its backend half (the route and the pure view of the row) is built here because S4.5
-cannot be observed without it; the Plano screen stays in S5. Tests run against a MySQL 8.0 (`TEST_DB_*`) with a fake
-Stripe client, never against Stripe. The routes' OpenAPI entries belong to S9.
+Issue #360 (`S6`). This file covers only S6; S1 and S2 were closed in their own runs and S3-S5, S7-S9 are other
+issues. S6 creates door 2 (`packs`, `pack_payments`) and the Pacote half of door 3 (`pack:<slug>` and the seed of the
+Pacote do Dragão with its 3 items). S7 writes `pack_payments`; here the tests insert a Pagamento directly. Tests run
+against a MySQL 8.0 (`TEST_DB_*`) with a fake Stripe client, never against Stripe.
 
-11 checks below · 0 one-way doors added (the Portal session needs no new stored data; the door 6 route `GET /billing/subscription` is already in the Surface) · 0 open questions
+14 checks below · 2 one-way doors touched (2, 3) · 0 open questions
 
 ## Checks
 
-### S4 - Gerenciar pelo Portal
+### S6 - Pacote do Dragão listado
 
-**C1** - A user whose row has a `stripe_subscription_id` gets `201` `{ url }` with the Portal session URL (S4.1)
-Proof: run portal | ✓ answers 201 with the Portal url for a user with a Subscription
+**C1** - With billing available, `GET /billing/packs` answers `200` with `available: true` and the Pacote do Dragão: `slug` `dragao`, `name` "Pacote do Dragão", the settled `description`, `priceCents: 490`, `currency: "brl"`, the 3 items `{ id, name, category }` (Elmo de Escamas avatar, Presa do Dragão weapon, Amuleto de Brasa accessory) and `owned: false` for a user who paid nothing (S6.1)
+Proof: run packs | ✓ lists the Pacote do Dragão for sale with its price, its 3 items and owned false
 
-**C2** - The Portal session is created for the caller's own Customer (never another user's row) with `return_url` = `APP_URL` + `/configuracao/plano` (S4.1)
-Proof: run portal | ✓ opens the Portal for the Customer of the caller that returns to the Plano screen
+**C2** - The Pacotes for sale come ordered by `name`: "Pacote Alfa", "Pacote do Dragão", "Pacote Zeta" (S6.1)
+Proof: run unit | ✓ lists the Pacotes for sale ordered by name, each with owned false when the user paid none
+Proof: run packs | ✓ orders the Pacotes for sale by name
 
-**C3** - A user with no `subscriptions` row gets `409` "Nenhuma assinatura para gerenciar" and Stripe is not called (S4.2: never opened a Checkout)
-Proof: run portal | ✓ answers 409 to a user that never opened a Checkout
+**C3** - `owned` is per user: `true` for the user with a Pagamento of the Pacote, `false` for another user (S6.1)
+Proof: run unit | ✓ marks owned only the Pacote the user paid
+Proof: run packs | ✓ marks owned only for the user who paid the Pacote
 
-**C4** - A user whose row has a Customer but no `stripe_subscription_id` gets the same `409` and Stripe is not called (S4.2: checkout opened or only a Pack bought)
-Proof: run portal | ✓ answers 409 to a user whose row has no Subscription
+**C4** - A Pacote with `for_sale = false` stays listed with `owned: true` for the user who paid it, and is absent for a user who did not (`packs: []`) (S6.2)
+Proof: run unit | ✓ keeps a paid Pacote that left the shelf, owned, and drops an unpaid one off the shelf
+Proof: run packs | ✓ keeps a paid Pacote listed as owned after it leaves the shelf, and hides it from who did not pay
 
-**C5** - With no `STRIPE_SECRET_KEY` (no Stripe client) the answer is `503` "Assinatura indisponível no momento", even for a user with a Subscription (S4.3)
-Proof: run portal | ✓ answers 503 when billing is not configured
+**C5** - Without `STRIPE_SECRET_KEY`, `GET /billing/packs` answers `200` `{ "available": false, "packs": [] }`, even to a user who paid a Pacote (S6.3)
+Proof: run packs | ✓ answers 200 with available false and no Pacote, even to a user who paid one
 
-**C6** - When Stripe fails to create the Portal session the answer is `502` "Não foi possível abrir o pagamento" and the row is unchanged (S4.4)
-Proof: run portal | ✓ answers 502 and keeps the row when Stripe fails to create the Portal session
+**C6** - `GET /billing/packs` without a token answers `401` (Surface)
+Proof: run packs | ✓ answers 401 without a token
 
-**C7** - Without a token `POST /billing/portal` answers `401` and Stripe is not called (Surface)
-Proof: run portal | ✓ answers 401 without a token to the Portal
+**C7** - `pack:dragao` parses to `{ type: 'pack', slug: 'dragao' }`; `pack:`, `pack:Dragão` and `pack:a b` are malformed; a Pacote condition is never unlocked by level, by Study Sessions or as an Item inicial (S6.4)
+Proof: run unit | ✓ reads a Pacote condition with its slug
+Proof: run unit | ✓ reads the malformed condition "pack:" as no condition
+Proof: run unit | ✓ reads the malformed condition "pack:Dragão" as no condition
+Proof: run unit | ✓ never unlocks a Pacote item by level, sessions or as an Item inicial
 
-**C8** - A subscription event whose API Subscription is `active` with `cancel_at` set keeps `plan_tier = premium`, stores `cancel_at`, equips nothing and emits no `user:planChanged` (S4.5, webhook half; built in S2)
-Proof: run webhook | ✓ keeps premium for an active Subscription that ends in the future (cancel_at set)
+**C8** - `GET /users/me/cosmetics` returns the 3 Pacote items with `unlockCondition` `{ "type": "pack", "slug": "dragao" }`, `requiresPremium: false`, `forSale: false`, locked for a new user and unlocked once in the Inventário; the full Catálogo of a new user and of a level-12 Character lists them locked (S6.4)
+Proof: run packs | ✓ returns the Pacote items in the Catálogo with the pack condition, locked until the Pacote is paid
+Proof: run catalog | ✓ gives a new user the three starter items, equipped, and shows the rest of the Catalog locked
+Proof: run catalog | ✓ unlocks every item up to the character level without duplicating it when the rule runs again
 
-**C9** - `GET /billing/subscription` of a `premium` user whose row has `cancel_at` answers `200` with `planTier: "premium"`, `premiumUntil` = `cancel_at` as ISO and `renewsAt: null` (S4.5)
-Proof: run portal | ✓ answers premiumUntil with the cancel_at of a premium user that cancelled in the Portal
+**C9** - The frontend captions an owned Pacote item "Do Pacote do Dragão" and lets a `free` plan wear it; a Pacote item the user does not own is captioned "Do Pacote do Dragão" too, locked (S6.4, settled mid-build)
+Proof: run frontend | ✓ captions an owned Pacote item "Do Pacote do Dragão" and lets a free plan wear it
+Proof: run frontend | ✓ captions a Pacote item the user does not own "Do Pacote do Dragão" too, locked
 
-**C10** - The view of the row: `available` is the Stripe client being present; `renewsAt` = `current_period_end` only when there is no `cancel_at`, else `null`; `premiumUntil` = `cancel_at` or `null`; `status` is the row's or `null`; a user with no row gets `status`, `renewsAt` and `premiumUntil` all `null` (S5.1 backend, needed by S4.5)
-Proof: run unit | ✓ renews at the period end when nothing was cancelled
-Proof: run unit | ✓ ends at cancel_at instead of renewing when the Subscription was cancelled
-Proof: run unit | ✓ passes the status of the row through untranslated
-Proof: run unit | ✓ has no dates and no status for a user with no Subscription row
-Proof: run unit | ✓ reports billing available only when Stripe is configured
+**C10** - A locked Pacote item orders with the items for sale (`lockedByPurchase`), ahead of the Raid items, and the category hint reads "Os itens desta categoria são comprados na Loja." (settled mid-build)
+Proof: run frontend | ✓ orders and describes a locked Pacote item with the items for sale, ahead of the Raid items
 
-**C11** - Without a token `GET /billing/subscription` answers `401` (Surface)
-Proof: run portal | ✓ answers 401 without a token to the subscription
+**C11** - `GET /shop/items` lists none of the 3 Pacote items nor the 4 Itens premium, and the database refuses `for_sale = 1` on each of them (`CHK_cosmetic_items_for_sale`) (S6.5)
+Proof: run packs | ✓ keeps the Pacote items and the Itens premium out of the Loja Itens section, and refuses to put them on sale
+
+**C12** - The migration creates `packs` (slug unique, `price_cents > 0`) and `pack_payments` (one per user and Pacote, one per Checkout session, deleted with the user), seeds the Pacote do Dragão at 490 `brl` for sale and its 3 items with `pack:dragao`, not premium, not for sale; reverting drops both tables and the 3 items; the whole chain still applies and reverts (doors 2, 3)
+Proof: run migration | ✓ creates packs and pack_payments with the Pacote do Dragão and its 3 items, one Pagamento per user, Pacote and session, and drops them on revert
+Proof: run migration | ✓ applies every migration in order and reverts them all down to an empty schema
+
+**C13** - The 3 Pacote items are drawn with the approved Figma art (Sprite/Avatar/Elmo de Escamas, Sprite/Arma/Presa do Dragão, Sprite/Acessório/Amuleto de Brasa and their Sprite/Item icons): each differs from its category default in the drawer, the Presa layer sits on the Figma pixels, and on the Herói each layer differs from the empty slot and from the nearest existing art (Armadura do Lobo, Espada, Selo dos Madrugadores)
+Proof: run frontend | ✓ draws each Pacote item with its own sprite, not the category default
+Proof: run frontend | ✓ places the Presa do Dragão layer exactly where the Figma sprite draws it
+Proof: run frontend | ✓ draws the Elmo, the Presa and the Amuleto on the Herói, each different from the slot without it and from the nearest existing art
+
+**C14** - Adding `Pack` and `PackPayment` to `BillingModule`'s `TypeOrmModule.forFeature` leaves the real `AppModule` bootable (ADR-001)
+Proof: npm run test:auth:integration --workspace apps/backend
 
 ## Coverage
 
-The other routes of the plan's Surface belong to other issues: `/api/v1/billing/checkout` to S3 (done), `/api/v1/billing/webhook`
-to S2, `/api/v1/billing/packs` and `/api/v1/billing/packs/:slug/checkout` to S6-S7. `GET /billing/subscription` is proven
-here only for `401` and the S4.5 shape; its other statuses and the screen belong to S5.
+The other routes of the plan's Surface belong to other slices: `/api/v1/billing/webhook` (S2), `/api/v1/billing/subscription` (S5), `/api/v1/billing/checkout` (S3), `/api/v1/billing/portal` (S4) and `/api/v1/billing/packs/:slug/checkout` (S7). Door 6 (contracts) is S9; S6 adds only what it changes:
+`GET /billing/packs` and the `pack` `UnlockCondition` in `docs/api/openapi.yaml` (checked by `npm run lint:openapi` in Build).
 
 | Set (size) | Member -> proof | Unproven |
 | --- | --- | --- |
-| `POST /api/v1/billing/portal` statuses (5) | 201 C1 · 401 C7 · 409 C3, C4 · 502 C6 · 503 C5 | - |
-| `GET /api/v1/billing/subscription` statuses (2) | 200 C9 · 401 C11 | - |
-| caller states of the Portal (4) | Subscription C1 · no row C3 · row without Subscription C4 · no token C7 | - |
-| Portal session fields (2) | `customer` C2 · `return_url` C2 | - |
-| Stripe failure (1) | session C6 | - |
-| subscription view fields (5) | `available` C10 · `planTier` C9 · `status` C10 · `renewsAt` C10 · `premiumUntil` C9, C10 | - |
+| `GET /api/v1/billing/packs` statuses (2) | 200 C1 C5 · 401 C6 | - |
+| Pacote fields (7) | `slug` C1 · `name` C1 · `description` C1 · `priceCents` C1 · `currency` C1 · `items` C1 · `owned` C1 C3 C4 | - |
+| design doc Pack states (6) | for sale, not owned C1 · paid C3 · off sale, paid C4 · off sale, not paid C4 · billing off C5 · item of Pacote on sale refused C11 | - |
+| Pacote items (3) | Elmo de Escamas C1 C8 C12 C13 · Presa do Dragão C1 C8 C12 C13 · Amuleto de Brasa C1 C8 C12 C13 | - |
+| items kept out of the Loja Itens section (7) | Elmo de Escamas C11 · Presa do Dragão C11 · Amuleto de Brasa C11 · Manto do Arquimago C11 · Cajado Astral C11 · Lenda do Foco C11 · Mestre da Aurora C11 | - |
+| frontend Pacote item states (2) | owned C9 · not owned C9 C10 | - |
+| doors touched (2) | 2 `packs`/`pack_payments` C12 · 3 `pack:<slug>` and the Pacote seed C7 C12 | - |
 
 ## Swept
 
-- validation: C3, C4 (no Subscription to manage); the body of the request is never read
-- failure modes: C6 (the row survives a failed session)
-- idempotency: n/a - opening a Portal session writes nothing, so a repeat is a new session with the same effect
-- authorization: C7, C11 (JWT guard); C2 (the Customer comes from the token's user, never from the body or another row)
-- concurrency: n/a - the route only reads the row and asks Stripe for a session; nothing is written
-- data lifecycle: C6 (row unchanged), C8 (`cancel_at` stored by the webhook is what `premiumUntil` reads, C9)
-- dependency failure: C5 (no Stripe), C6
-- state transitions: C8 (Premium -> PremiumAteFim keeps premium), C9 (PremiumAteFim exposes `premiumUntil`)
-- observability: C6 (the Stripe error is logged with the user id)
+- validation: C7 (malformed `pack:` conditions); C11 (for-sale CHECK at the database)
+- failure modes: C5 (billing not configured)
+- idempotency: n/a - S6 only reads; the Pagamento write is S7
+- authorization: C6; C3 (`owned` read only from the caller's own Pagamentos)
+- concurrency: n/a - no write in S6
+- data lifecycle: C4 (paid Pacote kept after it leaves the shelf), C12 (Pagamento deleted with the user)
+- dependency failure: C5; the listing never calls Stripe (the fake throws on any call in C1-C4)
+- state transitions: C4 (for sale to off sale)
+- observability: n/a - a read with no side effect
 
 ## Handoff
 
-- **Settled mid-build:** none
-- **Dispatched:** Verifier at e715f5b (diff 09c68b7..e715f5b), returned; screens sub-agent n/a (no capture)
-- **Boundary:** C1-C11 closed at c171a2f; proofs.md green (17 pass)
+- **Settled mid-build:** the 3 Pacote sprites were approved in Figma (user: "os sprites foram aprovados no figma sim"), so they replace the recolour fallback; `packs.description` = "Elmo, presa e amuleto forjados no fogo de um dragão. Ficam com você para sempre, em qualquer plano." (user: recommended option); a Pacote item without ownership reads "Do Pacote do Dragão", orders with the items for sale and the hint says "comprados na Loja" (user: "Mesmo rótulo"). Both recorded in the plan's Assumptions.
+- **Dispatched:** Verifier at dd29d75 (diff 78c19f6..dd29d75), sent; screens sub-agent n/a (no capture)
+- **Boundary:** C1-C14 closed; the Verifier's C2 finding closed by 6bba4c4; proofs.md green (30 pass)
 - **Abandoned:** none
-- **Walked:** n/a - no screen in S4
+- **Walked:** n/a - S6 changes no screen a capture draws; the drawer captions are proven by C9 and C10

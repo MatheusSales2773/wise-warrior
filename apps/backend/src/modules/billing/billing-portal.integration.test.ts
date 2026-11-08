@@ -19,6 +19,8 @@ import { UserCosmeticItem } from '../users/entities/user-cosmetic-item.entity';
 import { UsersService } from '../users/users.service';
 import { BillingController } from './billing.controller';
 import { BillingService } from './billing.service';
+import { Pack } from './entities/pack.entity';
+import { PackPayment } from './entities/pack-payment.entity';
 import { Subscription } from './entities/subscription.entity';
 import { STRIPE_API, type StripeApi } from './stripe.client';
 
@@ -65,6 +67,8 @@ describe('POST /billing/portal and GET /billing/subscription against MySQL', () 
         { provide: UsersService, useValue: users },
         { provide: RealtimeGateway, useValue: { emitToUser: jest.fn() } },
         { provide: getRepositoryToken(Subscription), useValue: dataSource!.getRepository(Subscription) },
+        { provide: getRepositoryToken(Pack), useValue: dataSource!.getRepository(Pack) },
+        { provide: getRepositoryToken(PackPayment), useValue: dataSource!.getRepository(PackPayment) },
         { provide: getDataSourceToken(), useValue: dataSource },
       ],
     })

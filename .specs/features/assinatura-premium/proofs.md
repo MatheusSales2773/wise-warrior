@@ -1,88 +1,159 @@
 # assinatura-premium proofs
 
-**HEAD**: 674075a
+**HEAD**: 60dd52b
 **Tree**: clean
 **Shell**: /bin/sh
-**Result**: 17 pass, 0 fail
+**Result**: 31 pass, 0 fail
 
 | Check | Proof | Result |
 | --- | --- | --- |
-| C1 | `run portal / ✓ answers 201 with the Portal url for a user with a Subscription` | pass |
-| C2 | `run portal / ✓ opens the Portal for the Customer of the caller that returns to the Plano screen` | pass |
-| C3 | `run portal / ✓ answers 409 to a user that never opened a Checkout` | pass |
-| C4 | `run portal / ✓ answers 409 to a user whose row has no Subscription` | pass |
-| C5 | `run portal / ✓ answers 503 when billing is not configured` | pass |
-| C6 | `run portal / ✓ answers 502 and keeps the row when Stripe fails to create the Portal session` | pass |
-| C7 | `run portal / ✓ answers 401 without a token to the Portal` | pass |
-| C8 | `run webhook / ✓ keeps premium for an active Subscription that ends in the future (cancel_at set)` | pass |
-| C9 | `run portal / ✓ answers premiumUntil with the cancel_at of a premium user that cancelled in the Portal` | pass |
-| C10 | `run unit / ✓ renews at the period end when nothing was cancelled` | pass |
-| C10 | `run unit / ✓ ends at cancel_at instead of renewing when the Subscription was cancelled` | pass |
-| C10 | `run unit / ✓ passes the status of the row through untranslated` | pass |
-| C10 | `run unit / ✓ has no dates and no status for a user with no Subscription row` | pass |
-| C10 | `run unit / ✓ reports billing available only when Stripe is configured` | pass |
-| C11 | `run portal / ✓ answers 401 without a token to the subscription` | pass |
+| C1 | `run packs / ✓ lists the Pacote do Dragão for sale with its price, its 3 items and owned false` | pass |
+| C2 | `run unit / ✓ lists the Pacotes for sale ordered by name, each with owned false when the user paid none` | pass |
+| C2 | `run packs / ✓ orders the Pacotes for sale by name` | pass |
+| C3 | `run unit / ✓ marks owned only the Pacote the user paid` | pass |
+| C3 | `run packs / ✓ marks owned only for the user who paid the Pacote` | pass |
+| C4 | `run unit / ✓ keeps a paid Pacote that left the shelf, owned, and drops an unpaid one off the shelf` | pass |
+| C4 | `run packs / ✓ keeps a paid Pacote listed as owned after it leaves the shelf, and hides it from who did not pay` | pass |
+| C5 | `run packs / ✓ answers 200 with available false and no Pacote, even to a user who paid one` | pass |
+| C6 | `run packs / ✓ answers 401 without a token` | pass |
+| C7 | `run unit / ✓ reads a Pacote condition with its slug` | pass |
+| C7 | `run unit / ✓ reads the malformed condition "pack:" as no condition` | pass |
+| C7 | `run unit / ✓ reads the malformed condition "pack:Dragão" as no condition` | pass |
+| C7 | `run unit / ✓ never unlocks a Pacote item by level, sessions or as an Item inicial` | pass |
+| C8 | `run packs / ✓ returns the Pacote items in the Catálogo with the pack condition, locked until the Pacote is pai` | pass |
+| C8 | `run catalog / ✓ gives a new user the three starter items, equipped, and shows the rest of the Catalog locked` | pass |
+| C8 | `run catalog / ✓ unlocks every item up to the character level without duplicating it when the rule runs again` | pass |
+| C9 | `run frontend / ✓ captions an owned Pacote item "Do Pacote do Dragão" and lets a free plan wear it` | pass |
+| C9 | `run frontend / ✓ captions a Pacote item the user does not own "Do Pacote do Dragão" too, locked` | pass |
+| C10 | `run frontend / ✓ orders and describes a locked Pacote item with the items for sale, ahead of the Raid items` | pass |
+| C11 | `run packs / ✓ keeps the Pacote items and the Itens premium out of the Loja Itens section, and refuses to put t` | pass |
+| C12 | `run migration / ✓ creates packs and pack_payments with the Pacote do Dragão and its 3 items, one Pagamento per` | pass |
+| C12 | `run migration / ✓ applies every migration in order and reverts them all down to an empty schema` | pass |
+| C13 | `run frontend / ✓ draws each Pacote item with its own sprite, not the category default` | pass |
+| C13 | `run frontend / ✓ places the Presa do Dragão layer exactly where the Figma sprite draws it` | pass |
+| C13 | `run frontend / ✓ draws the Elmo, the Presa and the Amuleto on the Herói, each different from the slot without ` | pass |
+| C14 | `npm run test:auth:integration --workspace apps/backend` | pass |
 | Build | `npm run build --workspace apps/backend` | pass |
 | Build | `npm run lint --workspace apps/backend` | pass |
+| Build | `npm run typecheck --workspace apps/frontend` | pass |
+| Build | `npm run lint --workspace apps/frontend` | pass |
+| Build | `npm run lint:openapi` | pass |
 
 ## Output
 
-`Run portal` - exit 0
+`Run packs` - exit 0
 
 ```
-      ✓ opens the Portal for the Customer of the caller that returns to the Plano screen (409 ms)
-      ✓ answers 409 to a user that never opened a Checkout (414 ms)
-      ✓ answers 409 to a user whose row has no Subscription (411 ms)
-      ✓ answers 503 when billing is not configured (400 ms)
-      ✓ answers 502 and keeps the row when Stripe fails to create the Portal session (577 ms)
-      ✓ answers 401 without a token to the Portal (468 ms)
-    GET /billing/subscription
-      ✓ answers premiumUntil with the cancel_at of a premium user that cancelled in the Portal (622 ms)
-      ✓ answers 401 without a token to the subscription (530 ms)
+    ✓ lists the Pacote do Dragão for sale with its price, its 3 items and owned false (60 ms)
+    ✓ orders the Pacotes for sale by name (50 ms)
+    ✓ marks owned only for the user who paid the Pacote (68 ms)
+    ✓ keeps a paid Pacote listed as owned after it leaves the shelf, and hides it from who did not pay (70 ms)
+    ✓ answers 401 without a token
+    ✓ returns the Pacote items in the Catálogo with the pack condition, locked until the Pacote is paid (34 ms)
+    ✓ keeps the Pacote items and the Itens premium out of the Loja Itens section, and refuses to put them on sale (34 ms)
+  GET /billing/packs without STRIPE_SECRET_KEY, over HTTP against MySQL
+    ✓ answers 200 with available false and no Pacote, even to a user who paid one (39 ms)
 
 Test Suites: 1 passed, 1 total
-Tests:       9 passed, 9 total
+Tests:       8 passed, 8 total
 Snapshots:   0 total
-Time:        5.331 s, estimated 9 s
-Ran all test suites matching /billing-portal/i.
-```
-
-`Run webhook` - exit 0
-
-```
-    retries and out-of-order delivery
-      ✓ ends in the same state and emits user:planChanged once when the same event arrives twice (199 ms)
-      ✓ emits user:planChanged once when the same event arrives twice at the same time (203 ms)
-      ✓ ends in the state the API reports whatever the order of the events (194 ms)
-      ✓ ends canceled when a slow reread of an older event overlaps the faster reread of the cancellation (712 ms)
-      ✓ does not let a late event of an old, ended Subscription cancel the one the user subscribed to afterwards (143 ms)
-    failures
-      ✓ answers 500 and writes nothing when the Stripe API fails to reread the Subscription (164 ms)
-      ✓ undoes subscriptions, plan_tier and the equipment together, and emits nothing, when the last write fails (175 ms)
-
-Test Suites: 1 passed, 1 total
-Tests:       34 passed, 34 total
-Snapshots:   0 total
-Time:        7.885 s, estimated 11 s
-Ran all test suites matching /billing-webhook/i.
+Time:        5.526 s, estimated 7 s
+Ran all test suites matching /billing-packs-http/i.
 ```
 
 `Run unit` - exit 0
 
 ```
-    ✓ reads the Subscription of invoice.paid from the invoice parent
-    ✓ reads the Subscription of invoice.payment_failed from the invoice parent
-    ✓ accepts an expanded Customer and an expanded Subscription
-    ✓ has no target for an invoice that does not belong to a Subscription (1 ms)
-    ✓ reads the Customer and the Subscription of a subscription Checkout Session
-    ✓ carries the client_reference_id of a subscription Checkout Session as the user
-    ✓ has no Subscription to read for a subscription Checkout Session that carries none
-    ✓ has no target for a one-time payment Checkout Session (Pacote) (1 ms)
-    ✓ has no target when the event carries no Customer
+  isStarterItem
+    ✓ marks only level-1 conditions as starter items
+    ✓ does not mark a premium level-1 item as a starter item
 
-Test Suites: 3 passed, 3 total
-Tests:       38 passed, 38 total
+PASS src/modules/billing/domain/packs.spec.ts
+  visiblePacks
+    ✓ lists the Pacotes for sale ordered by name, each with owned false when the user paid none (5 ms)
+    ✓ marks owned only the Pacote the user paid
+    ✓ keeps a paid Pacote that left the shelf, owned, and drops an unpaid one off the shelf (1 ms)
+
+Test Suites: 7 passed, 7 total
+Tests:       96 passed, 96 total
 Snapshots:   0 total
-Time:        4.254 s, estimated 5 s
-Ran all test suites matching /src\/modules\/billing/i.
+Time:        2.927 s, estimated 3 s
+Ran all test suites matching /src\/modules\/billing\/domain|src\/modules\/users\/domain/i.
+```
+
+`Run catalog` - exit 0
+
+```
+
+PASS src/modules/users/cosmetics-http.integration.test.ts (5.329 s)
+  Cosmetics Catalog HTTP contract against MySQL
+    ✓ requires authentication (875 ms)
+    ✓ gives a new user the three starter items, equipped, and shows the rest of the Catalog locked (835 ms)
+    ✓ exposes forSale: true for the item on sale and false for a level item (820 ms)
+    ✓ derives the profile Título and equipment from the equipped Cosmetic Items (736 ms)
+    ✓ leaves an item with a malformed unlock condition out of the Catalog instead of failing it (844 ms)
+    ✓ unlocks every item up to the character level without duplicating it when the rule runs again (907 ms)
+
+Test Suites: 1 passed, 1 total
+Tests:       6 passed, 6 total
+Snapshots:   0 total
+Time:        5.35 s
+Ran all test suites matching /cosmetics-http/i.
+```
+
+`Run frontend` - exit 0
+
+```
+    ✓ draws the Herói layers of the premium Avatar and Arma, different from the initial ones (1 ms)
+    ✓ draws the Cajado Astral weapon layer on the Herói, apart from the Cajado layer (38 ms)
+  Pacote do Dragão items (#360)
+    ✓ captions an owned Pacote item "Do Pacote do Dragão" and lets a free plan wear it
+    ✓ captions a Pacote item the user does not own "Do Pacote do Dragão" too, locked
+    ✓ orders and describes a locked Pacote item with the items for sale, ahead of the Raid items
+    ✓ places the Presa do Dragão layer exactly where the Figma sprite draws it
+    ✓ draws each Pacote item with its own sprite, not the category default
+    ✓ draws the Elmo, the Presa and the Amuleto on the Herói, each different from the slot without it and from the nearest existing art (99 ms)
+
+Test Suites: 1 passed, 1 total
+Tests:       85 passed, 85 total
+Snapshots:   0 total
+Time:        0.659 s, estimated 1 s
+Ran all test suites matching /__tests__\/character-catalog.test.tsx/i.
+```
+
+`Run migration` - exit 0
+
+```
+    ✓ adds the Arma category: the Espada to every existing Character, equipped once, and the Cajado and Besta À venda (1008 ms)
+    ✓ marks existing Study Sessions as Ciclo and reverts the kind column (1031 ms)
+    ✓ moves Madrugador and Cem Sessões to session counts and keeps the Badges already in the Inventário (1022 ms)
+    ✓ creates subscriptions with one row per user, Customer and Subscription, deletes it with the user, and drops it on revert (1074 ms)
+    ✓ creates packs and pack_payments with the Pacote do Dragão and its 3 items, one Pagamento per user, Pacote and session, and drops them on revert (1174 ms)
+    Itens premium (#354)
+      ✓ seeds the three premium items unequipped for every existing Character and keeps what is equipped (1406 ms)
+      ✓ seeds the premium items idempotently and removes them on revert (1019 ms)
+      ✓ refuses to put a premium or Pacote item for sale at the database (1088 ms)
+
+Test Suites: 1 passed, 1 total
+Tests:       21 passed, 21 total
+Snapshots:   0 total
+Time:        23.46 s, estimated 33 s
+Ran all test suites matching /migration.integration/i.
+```
+
+`npm run test:auth:integration --workspace apps/backend` - exit 0
+
+```
+> @wise/backend@0.1.0 test:auth:integration
+> jest --runInBand --testRegex '.*auth.integration.test.ts$'
+
+PASS src/modules/auth/auth.integration.test.ts (7.409 s)
+<claude-code-hint v="1" type="plugin" value="stripe@claude-plugins-official" />
+PASS src/modules/auth/universal-auth.integration.test.ts (7.23 s)
+
+Test Suites: 2 passed, 2 total
+Tests:       14 passed, 14 total
+Snapshots:   0 total
+Time:        14.723 s
+Ran all test suites.
 ```

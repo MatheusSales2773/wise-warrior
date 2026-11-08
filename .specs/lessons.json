@@ -3,7 +3,7 @@
   "promote_threshold": 2,
   "window_days": 45,
   "quarantine_threshold": 2,
-  "next_id": 5,
+  "next_id": 6,
   "lessons": [
     {
       "id": "L-001",
@@ -76,6 +76,24 @@
       ],
       "created": "2026-11-08T16:58:41Z",
       "last_seen": "2026-11-08T16:58:41Z"
+    },
+    {
+      "id": "L-005",
+      "key": "weak_test::in an order test give the rows a second key slug id that sorts against the one the claim orders by",
+      "text": "In an order test, give the rows a second key (slug, id) that sorts against the one the claim orders by",
+      "signal": "weak_test",
+      "scope": "billing",
+      "status": "candidate",
+      "features": [
+        "assinatura-premium-s6"
+      ],
+      "recurrence": 1,
+      "harmful": 0,
+      "evidence": [
+        "C2 billing-packs-http.integration.test.ts (billing)"
+      ],
+      "created": "2026-11-08T17:21:44Z",
+      "last_seen": "2026-11-08T17:21:44Z"
     }
   ]
 }

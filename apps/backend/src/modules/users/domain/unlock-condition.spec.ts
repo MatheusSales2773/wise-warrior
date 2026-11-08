@@ -15,7 +15,18 @@ describe('parseUnlockCondition', () => {
     expect(parseUnlockCondition('early-sessions:5')).toEqual({ type: 'early-sessions', count: 5 });
   });
 
-  it.each(['sessions:0', 'sessions:', 'sessions:1.5', 'early-sessions:-1', 'early-sessions:', 'early-sessions:x', 'level:0', 'level:-1', 'level:1.5', 'level:', 'raid:', 'achievement:x', ''])(
+  it('reads a Pacote condition with its slug', () => {
+    expect(parseUnlockCondition('pack:dragao')).toEqual({ type: 'pack', slug: 'dragao' });
+  });
+
+  it('never unlocks a Pacote item by level, sessions or as an Item inicial', () => {
+    const pack = parseUnlockCondition('pack:dragao')!;
+    expect(isUnlockedAtLevel(pack, 99)).toBe(false);
+    expect(isUnlockedBySessionCounts(pack, { sessions: 1000, earlySessions: 1000 })).toBe(false);
+    expect(isStarterItem(pack, false)).toBe(false);
+  });
+
+  it.each(['pack:', 'pack:Dragão', 'pack:a b', 'sessions:0', 'sessions:', 'sessions:1.5', 'early-sessions:-1', 'early-sessions:', 'early-sessions:x', 'level:0', 'level:-1', 'level:1.5', 'level:', 'raid:', 'achievement:x', ''])(
     'reads the malformed condition %p as no condition',
     (raw) => {
       expect(parseUnlockCondition(raw)).toBeNull();

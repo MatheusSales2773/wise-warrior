@@ -8,7 +8,9 @@ export type UnlockCondition =
   /** Badge por hábito de estudo: `count` Study Sessions não descartadas. */
   | { type: 'sessions'; count: number }
   /** Badge por hábito de estudo: `count` Study Sessions terminadas antes das 7h de São Paulo. */
-  | { type: 'early-sessions'; count: number };
+  | { type: 'early-sessions'; count: number }
+  /** Item de Pacote (ADR-015): só o Pagamento do Pacote `slug` o concede. */
+  | { type: 'pack'; slug: string };
 
 /** Quantas Study Sessions do usuário cumprem cada Condição de desbloqueio por contagem. */
 export interface SessionCounts {
@@ -18,7 +20,7 @@ export interface SessionCounts {
   earlySessions: number;
 }
 
-/** Lê a forma persistida (`level:5`, `raid:<slug>`, `purchase`, `sessions:100`, `early-sessions:5`). Devolve `null` para um valor fora desse formato. */
+/** Lê a forma persistida (`level:5`, `raid:<slug>`, `purchase`, `sessions:100`, `early-sessions:5`, `pack:<slug>`). Devolve `null` para um valor fora desse formato. */
 export function parseUnlockCondition(raw: string): UnlockCondition | null {
   const level = /^level:([1-9]\d*)$/.exec(raw);
   if (level) return { type: 'level', level: Number(level[1]) };
@@ -27,6 +29,8 @@ export function parseUnlockCondition(raw: string): UnlockCondition | null {
   if (sessions) return { type: 'sessions', count: Number(sessions[1]) };
   const earlySessions = /^early-sessions:([1-9]\d*)$/.exec(raw);
   if (earlySessions) return { type: 'early-sessions', count: Number(earlySessions[1]) };
+  const pack = /^pack:([a-z0-9-]+)$/.exec(raw)?.[1];
+  if (pack) return { type: 'pack', slug: pack };
   const slug = /^raid:(.+)$/.exec(raw)?.[1];
   if (slug) return { type: 'raid', slug };
   return null;

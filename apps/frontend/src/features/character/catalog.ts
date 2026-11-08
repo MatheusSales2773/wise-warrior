@@ -1,6 +1,6 @@
 import type { EquippedCosmeticItem, UserProfile } from '@/features/dashboard/api';
 import type { CatalogCosmeticItem } from '@/features/profile/api';
-import { describeUnlockCondition, orderCategoryItems } from '@/features/profile/formatters';
+import { describePackItem, describeUnlockCondition, orderCategoryItems } from '@/features/profile/formatters';
 import type { HeroSpriteName, ItemSpriteName } from './sprites';
 
 /*
@@ -60,6 +60,9 @@ const spriteByName: Record<string, ItemSpriteName> = {
   'Marcador do Grimório': 'marcadorDoGrimorio',
   'Lanterna do Silêncio': 'lanternaDoSilencio',
   'Brasão da Forja': 'brasaoDaForja',
+  'Elmo de Escamas': 'elmoDeEscamas',
+  'Presa do Dragão': 'presaDoDragao',
+  'Amuleto de Brasa': 'amuletoDeBrasa',
 };
 
 const spriteByCategory: Record<EquipmentCategory, ItemSpriteName> = {
@@ -99,6 +102,7 @@ function ownedCaption(item: CatalogCosmeticItem): string {
   const { unlockCondition } = item;
   if (unlockCondition.type === 'raid') return 'Conquistado em Raid';
   if (unlockCondition.type === 'purchase') return 'Comprado na Loja';
+  if (unlockCondition.type === 'pack') return describePackItem(unlockCondition.slug);
   if (unlockCondition.type === 'sessions' || unlockCondition.type === 'early-sessions') return 'Conquistado estudando';
   // A premium level-1 item is in everyone's Inventário but is not an Item inicial (ADR-015).
   if (item.requiresPremium && unlockCondition.level <= 1) return 'Plano premium';
