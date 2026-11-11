@@ -39,7 +39,7 @@
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
     "helmet": "^8.3.0",
-    "mysql2": "^3.11.3",
+    "mysql2": "^3.24.6",
     "passport": "^0.7.0",
     "passport-jwt": "^4.0.1",
     "reflect-metadata": "^0.2.2",
