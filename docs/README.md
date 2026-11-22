@@ -11,7 +11,7 @@
 | Otton Simão | UC23101332 | - |
 | Raul Moreira | UC23102081 | - |
 
-**Vídeo de apresentação (YouTube, não listado):** TODO
+**Vídeo de apresentação (YouTube, não listado):** https://youtu.be/WZKWlqQ1UQ8
 
 ## Documentos da entrega final
 
