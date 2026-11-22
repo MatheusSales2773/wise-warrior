@@ -24,7 +24,8 @@ describe('validateEnvironment', () => {
     ['a short access secret', { JWT_ACCESS_SECRET: 'short-secret' }, `ao menos ${MIN_SECRET_LENGTH} caracteres`],
     ['the .env.example access secret', { JWT_ACCESS_SECRET: `change-me-access-${strongSecret}` }, 'JWT_ACCESS_SECRET não pode ser um valor de exemplo'],
     ['a missing database password', { DB_PASSWORD: '  ' }, 'DB_PASSWORD é obrigatório'],
-    ['the .env.example database password', { DB_PASSWORD: 'change-me' }, 'DB_PASSWORD não pode ser um valor de exemplo'],
+    ['the old .env.example database password', { DB_PASSWORD: 'change-me' }, 'DB_PASSWORD não pode ser um valor de exemplo'],
+    ['the .env.example database password', { DB_PASSWORD: 'wise-dev-password' }, 'DB_PASSWORD não pode ser um valor de exemplo'],
     ['a missing CORS origin', { CORS_ORIGIN: undefined }, 'CORS_ORIGIN é obrigatório'],
   ])('refuses to boot production with %s', (_case, override, message) => {
     expect(() => validateEnvironment({ ...production, ...override })).toThrow(message);

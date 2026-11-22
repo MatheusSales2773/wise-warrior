@@ -66,11 +66,12 @@ Na tela de entrada, clique em **Crie seu personagem** para cadastrar um usuário
   `EXPO_PUBLIC_API_URL` aponta para o lugar errado. Depois de mudar o `.env`,
   pare com `Ctrl+C` e rode `npm run web` de novo.
 - **Erro de CORS no console do navegador**: o `CORS_ORIGIN` do `.env` da API
-  precisa ser exatamente `http://localhost:8081`. Reinicie a API depois de
+  precisa conter o endereço aberto no navegador. O padrão já libera
+  `http://localhost:8081` e `http://localhost:8082`. Reinicie a API depois de
   mudar.
-- **Porta 8081 ocupada**: o comando pergunta se pode usar outra porta. Se
-  usar, inclua o novo endereço em `CORS_ORIGIN` na API (separado por vírgula),
-  por exemplo `http://localhost:8081,http://localhost:8082`.
+- **Porta 8081 ocupada**: o comando pergunta se pode usar outra porta. Se ele
+  usar a 8082, não precisa mexer em nada. Para qualquer outra porta, inclua o
+  novo endereço em `CORS_ORIGIN` na API (separado por vírgula).
 
 ## Sobre a aplicação
 
