@@ -52,9 +52,10 @@ npm install
 cp .env.example .env
 ```
 
-Depois, abra o `.env` e troque `DB_PASSWORD=change-me` pela senha usada no
-passo 1 (`DB_PASSWORD=wise-dev-password`). O restante já funciona como está
-para rodar localmente.
+O `.env.example` já vem com `DB_PASSWORD=wise-dev-password`, a mesma senha do
+comando do passo 1. Se você copiou e colou aquele comando sem alterar nada, não
+precisa mexer no `.env`: ele já funciona como está para rodar localmente. Só
+troque o `DB_PASSWORD` se tiver usado outra senha no `docker run`.
 
 | Variável | Obrigatória | Exemplo | Descrição |
 |---|---|---|---|

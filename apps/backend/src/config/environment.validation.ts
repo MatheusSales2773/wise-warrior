@@ -6,7 +6,7 @@
 export const MIN_SECRET_LENGTH = 32;
 
 /** Trechos dos valores de exemplo de `.env.example` e dos fallbacks antigos. */
-const PLACEHOLDER_MARKERS = ['change-me', 'changeme'];
+const PLACEHOLDER_MARKERS = ['change-me', 'changeme', 'wise-dev-password'];
 
 const POSITIVE_INTEGER_KEYS = [
   'RATE_LIMIT_CREDENTIALS_LIMIT',
