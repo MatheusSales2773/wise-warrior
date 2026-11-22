@@ -152,3 +152,6 @@ apps/frontend/.env*.local
 **/.DS_Store
 
 temp
+
+# Pacote da entrega final (scripts/empacotar.sh)
+/wise-warrior.zip

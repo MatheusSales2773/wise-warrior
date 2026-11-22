@@ -1,9 +1,12 @@
-import { readFileSync, readdirSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { FACE_ROWS, GRID_HEIGHT, GRID_WIDTH, HAND_ROWS, SKIN_KEYS, avatarLayers, heroBody } from '@/features/character/sprites';
 
 /** The Avatars seeded in the Catalog by the backend migrations: each one needs a layer of its own (#261). */
-const MIGRATIONS = join(__dirname, '../../backend/src/migrations');
+// The backend folder is backend/ in the monorepo and api/ beside web/ and app/ in the delivered zip.
+const MIGRATIONS = ['backend', 'api']
+  .map((folder) => join(__dirname, '../..', folder, 'src/migrations'))
+  .find((path) => existsSync(path))!;
 const CATALOG_AVATARS = [
   ...new Set([
     ...readdirSync(MIGRATIONS)

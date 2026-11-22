@@ -1,9 +1,12 @@
 import { execFileSync } from 'node:child_process';
 import { cpSync, mkdtempSync, readFileSync, rmSync, symlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import appConfig from '../app.json';
 import packageManifest from '../package.json';
+
+// Resolved from expo itself: hoisted to the workspace root in the monorepo, local in the delivered app/ folder.
+const NODE_MODULES = dirname(dirname(require.resolve('expo/package.json')));
 
 describe('Android local development contract', () => {
   it('exposes a stable Android application id', () => {
@@ -34,10 +37,10 @@ describe('Android local development contract', () => {
       cpSync(join(__dirname, '../app.json'), join(projectDirectory, 'app.json'));
       cpSync(join(__dirname, '../package.json'), join(projectDirectory, 'package.json'));
       cpSync(join(__dirname, '../assets'), join(projectDirectory, 'assets'), { recursive: true });
-      symlinkSync(join(__dirname, '../../../node_modules'), join(projectDirectory, 'node_modules'));
+      symlinkSync(NODE_MODULES, join(projectDirectory, 'node_modules'));
 
       execFileSync(
-        join(__dirname, '../../../node_modules/.bin/expo'),
+        join(NODE_MODULES, '.bin/expo'),
         ['prebuild', '--platform', 'android', '--clean', '--no-install'],
         {
           cwd: projectDirectory,
