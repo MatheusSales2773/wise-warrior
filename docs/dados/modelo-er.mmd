@@ -1,0 +1,262 @@
+erDiagram
+    study_sessions ||--o| active_study_sessions : "study_session_id"
+    users ||--o| active_study_sessions : "user_id"
+    users ||--o| characters : "user_id"
+    users ||--o| coin_balances : "user_id"
+    users ||--o{ coin_ledger_entries : "user_id"
+    guilds ||--o{ guild_chat_messages : "guild_id"
+    raid_contributions |o--o| guild_chat_messages : "contribution_id"
+    users ||--o{ guild_chat_messages : "user_id"
+    guilds ||--o{ guild_memberships : "guild_id"
+    users ||--o| guild_memberships : "user_id"
+    guilds ||--o| guild_mission_choices : "guild_id"
+    missions ||--o{ guild_mission_choices : "mission_id"
+    users |o--o{ guild_mission_choices : "owner_user_id"
+    users ||--o{ guilds : "created_by"
+    cosmetic_items ||--o{ mission_reward_items : "cosmetic_item_id"
+    missions ||--o{ mission_reward_items : "mission_id"
+    packs ||--o{ pack_payments : "pack_id"
+    users ||--o{ pack_payments : "user_id"
+    raids ||--o{ raid_contributions : "raid_id"
+    study_sessions |o--o| raid_contributions : "study_session_id"
+    users ||--o{ raid_contributions : "user_id"
+    raids ||--o{ raid_participations : "raid_id"
+    users ||--o{ raid_participations : "user_id"
+    guilds ||--o{ raids : "guild_id"
+    missions ||--o{ raids : "mission_id"
+    sessions ||--o{ session_refresh_token_history : "session_id"
+    users ||--o{ sessions : "user_id"
+    users ||--o{ study_session_command_keys : "user_id"
+    users ||--o{ study_session_start_receipts : "user_id"
+    study_sessions ||--o{ study_session_transition_receipts : "study_session_id"
+    users ||--o{ study_session_transition_receipts : "user_id"
+    raids |o--o{ study_sessions : "raid_id"
+    users ||--o{ study_sessions : "user_id"
+    users ||--o| subscriptions : "user_id"
+    cosmetic_items ||--o{ user_cosmetic_items : "cosmetic_item_id"
+    users ||--o{ user_cosmetic_items : "user_id"
+    missions ||--o{ user_missions : "mission_id"
+    users ||--o{ user_missions : "user_id"
+    active_study_sessions {
+        varchar user_id PK,FK
+        varchar study_session_id FK,UK
+    }
+    characters {
+        varchar id PK
+        varchar user_id FK,UK
+        int level
+        bigint xp_total
+        varchar companion_id
+    }
+    coin_balances {
+        varchar user_id PK,FK
+        int balance
+        datetime updated_at
+    }
+    coin_ledger_entries {
+        varchar id PK
+        varchar user_id FK
+        int amount
+        int balance_after
+        enum origin_type
+        varchar origin_ref
+        datetime created_at
+    }
+    cosmetic_items {
+        varchar id PK
+        varchar category
+        varchar name
+        varchar unlock_condition
+        tinyint requires_premium
+        int price
+        tinyint for_sale
+    }
+    guild_chat_messages {
+        varchar id PK
+        varchar guild_id FK
+        varchar user_id FK
+        text body
+        datetime sent_at
+        bigint seq UK
+        varchar kind
+        varchar contribution_id FK,UK
+        int xp
+    }
+    guild_memberships {
+        varchar id PK
+        varchar guild_id FK
+        varchar user_id FK,UK
+        varchar role
+        datetime joined_at
+    }
+    guild_mission_choices {
+        varchar guild_id PK,FK
+        varchar mission_id FK
+        varchar owner_user_id FK
+        datetime chosen_at
+    }
+    guilds {
+        varchar id PK
+        varchar name UK
+        int level
+        varchar created_by FK
+        datetime created_at
+    }
+    mission_reward_items {
+        varchar mission_id PK,FK
+        varchar cosmetic_item_id PK,FK
+    }
+    missions {
+        varchar id PK
+        varchar slug UK
+        varchar name
+        varchar description
+        varchar image_url
+        int rotation_order UK
+        int price
+    }
+    pack_payments {
+        varchar id PK
+        varchar user_id FK
+        varchar pack_id FK
+        varchar stripe_checkout_session_id UK
+        int amount_cents
+        char currency
+        datetime paid_at
+    }
+    packs {
+        varchar id PK
+        varchar slug UK
+        varchar name
+        varchar description
+        int price_cents
+        char currency
+        tinyint for_sale
+        datetime created_at
+    }
+    raid_contributions {
+        varchar id PK
+        varchar raid_id FK
+        varchar user_id FK
+        varchar study_session_id FK,UK
+        int xp_contributed
+        datetime created_at
+    }
+    raid_participations {
+        varchar id PK
+        varchar raid_id FK
+        varchar user_id FK
+        datetime created_at
+    }
+    raids {
+        varchar id PK
+        varchar guild_id FK
+        varchar mission_id FK
+        int goal_xp
+        int progress_xp
+        datetime starts_at
+        datetime ends_at
+        varchar status
+        datetime goal_reached_at
+        int regenerated_xp
+        varchar fury_through
+        datetime opened_at
+        varchar mission_owner_user_id
+    }
+    session_refresh_token_history {
+        varchar session_id PK,FK
+        varchar token_hash PK
+        datetime consumed_at
+        datetime retain_until
+    }
+    sessions {
+        varchar id PK
+        varchar user_id FK
+        varchar refresh_token_hash
+        varchar device_label
+        varchar user_agent
+        datetime created_at
+        datetime last_used_at
+        datetime revoked_at
+    }
+    study_session_command_keys {
+        varchar user_id PK,FK
+        varchar idempotency_key PK
+        varchar command_kind
+        datetime created_at
+    }
+    study_session_start_receipts {
+        varchar user_id PK,FK
+        varchar idempotency_key PK
+        int planned_duration_seconds
+        varchar subject
+        varchar initiating_session_id
+        json response_json
+    }
+    study_session_transition_receipts {
+        varchar user_id PK,FK
+        varchar study_session_id FK
+        varchar idempotency_key PK
+        varchar action
+        int expected_version
+        json response_json
+        datetime created_at
+    }
+    study_sessions {
+        varchar id PK
+        varchar user_id FK
+        varchar subject
+        varchar mode
+        varchar raid_id FK
+        datetime started_at
+        datetime ended_at
+        datetime last_heartbeat_at
+        int duration_valid_seconds
+        int xp_awarded
+        varchar discarded_reason
+        int planned_duration_seconds
+        varchar state
+        datetime run_deadline_at
+        datetime paused_at
+        int paused_total_seconds
+        bigint paused_total_milliseconds
+        int version
+        varchar terminal_reason
+        varchar initiating_session_id
+        varchar active_user_id UK
+        varchar capped_reason
+        varchar kind
+        int pause_count
+    }
+    subscriptions {
+        varchar id PK
+        varchar user_id FK,UK
+        varchar stripe_customer_id UK
+        varchar stripe_subscription_id UK
+        varchar status
+        datetime current_period_end
+        datetime cancel_at
+        datetime created_at
+        datetime updated_at
+    }
+    user_cosmetic_items {
+        varchar id PK
+        varchar user_id FK
+        varchar cosmetic_item_id FK
+        tinyint equipped
+        datetime unlocked_at
+    }
+    user_missions {
+        varchar id PK
+        varchar user_id FK
+        varchar mission_id FK
+        datetime acquired_at
+    }
+    users {
+        varchar id PK
+        varchar email UK
+        varchar password_hash
+        varchar display_name
+        varchar plan_tier
+        datetime created_at
+    }
