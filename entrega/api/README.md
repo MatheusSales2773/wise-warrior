@@ -60,7 +60,7 @@ troque o `DB_PASSWORD` se tiver usado outra senha no `docker run`.
 | Variável | Obrigatória | Exemplo | Descrição |
 |---|---|---|---|
 | `PORT` | não | `3000` | porta HTTP da API (padrão `3000`) |
-| `CORS_ORIGIN` | sim | `http://localhost:8081` | origem da aplicação web; várias separadas por vírgula |
+| `CORS_ORIGIN` | sim | `http://localhost:8081,http://localhost:8082` | origens da aplicação web, separadas por vírgula; o `.env.example` já libera as portas 8081 e 8082 |
 | `DB_HOST` | sim | `localhost` | host do MySQL |
 | `DB_PORT` | sim | `3306` | porta do MySQL |
 | `DB_USERNAME` | sim | `wise` | usuário do MySQL |
@@ -138,8 +138,9 @@ npm start
   está em uso. Troque o `-p 3306:3306` por `-p 3307:3306` e use
   `DB_PORT=3307`; para a API, mude `PORT` no `.env` e ajuste o endereço nas
   aplicações web e mobile.
-- **A aplicação web dá erro de CORS**: `CORS_ORIGIN` precisa ser exatamente o
-  endereço aberto no navegador, como `http://localhost:8081`.
+- **A aplicação web dá erro de CORS**: `CORS_ORIGIN` precisa conter exatamente o
+  endereço aberto no navegador. O padrão já aceita `http://localhost:8081` e
+  `http://localhost:8082`; para outra porta, acrescente-a separada por vírgula.
 
 ## Cobrança com Stripe (opcional)
 
