@@ -1,6 +1,9 @@
-// Gera docs/DADOS.pdf a partir de docs/dados/DADOS.md, com o Chromium do Playwright.
+// Gera os PDFs de docs/ a partir das fontes em Markdown, com o Chromium do Playwright.
 // Uso: node scripts/docs-pdf.mjs   (precisa de internet para carregar marked e mermaid do CDN)
+// Uma fonte pode trazer o próprio <style>, inclusive @page com fundo e rodapé; os caminhos
+// img/... são relativos à pasta da fonte e entram no PDF embutidos.
 import { readFileSync } from 'node:fs';
+import { dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
 
@@ -8,7 +11,14 @@ const docs = fileURLToPath(new URL('../docs/', import.meta.url));
 const jobs = [
   // A3 deitado para o diagrama ER, que tem 26 tabelas, caber legível numa página.
   ['dados/DADOS.md', 'DADOS.pdf', 'A3 landscape'],
+  ['academico/visao.md', 'Documento de Visão - Grupo 2.pdf', 'A4'],
+  ['academico/arquitetura.md', 'Documento de Arquitetura de Software.pdf', 'A4'],
+  ['academico/interface.md', 'Documentação de Interface e Prototipação.pdf', 'A4'],
 ];
+
+const mime = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg' };
+const inlineImages = (text, folder) => text.replace(/img\/[\w.-]+\.(png|jpe?g)/g, (path, ext) =>
+  `data:${mime[ext]};base64,${readFileSync(docs + folder + '/' + path).toString('base64')}`);
 
 const css = `
   body { font: 11pt/1.45 -apple-system, "Segoe UI", Roboto, Arial, sans-serif; color: #1d1b2e; margin: 0; }
@@ -28,7 +38,7 @@ const css = `
 const browser = await chromium.launch();
 try {
   for (const [source, target, size] of jobs) {
-    const markdown = readFileSync(docs + source, 'utf8');
+    const markdown = inlineImages(readFileSync(docs + source, 'utf8'), dirname(source));
     const page = await browser.newPage();
     await page.setContent(`<!doctype html><meta charset="utf-8"><style>@page { size: ${size}; margin: 18mm 15mm; }${css}</style><main></main>
       <script src="https://cdn.jsdelivr.net/npm/marked@15.0.12/marked.min.js"></script>
