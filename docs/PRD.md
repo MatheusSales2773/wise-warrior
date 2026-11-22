@@ -14,7 +14,7 @@ Quando duas fontes discordam, vale a primeira desta lista:
 2. Os ADRs deste PRD. Entre dois ADRs, vale o mais recente, e uma emenda vale sobre o texto original do ADR que ela altera.
 3. Os contratos em `docs/api/openapi.yaml` e `docs/api/asyncapi.yaml`, e o glossário em `CONTEXT.md`.
 4. O restante deste PRD e os planos em `docs/plans/`, que registram o que foi planejado na data de cada um.
-5. Os documentos acadêmicos em `docs/`. O Documento de Visão, o Documento de Arquitetura e a Documentação de Interface foram atualizados para a versão 2.0 em 27/10/2026, com base no código, exceto pelas partes de infraestrutura e hospedagem, que seguem como na versão 1.0 até o time decidir a divergência registrada na issue #5. O Pitch e os Casos de Uso UC01 a UC04 continuam como foram entregues. As versões 1.0 estão no histórico do Git. Onde qualquer um deles diverge deste PRD, vale o PRD.
+5. Os documentos acadêmicos em `docs/`. O Documento de Visão, o Documento de Arquitetura e a Documentação de Interface estão na versão 2.1, de 22/11/2026, gerados a partir dos fontes em `docs/academico/` pelo `scripts/docs-pdf.mjs`; a infraestrutura segue o ADR-006 (produção na VM Oracle) e cita a homologação na AWS. Os Casos de Uso UC01 a UC04 estão na versão 2.0, de 22/11/2026, reescritos conforme o código. O Pitch continua como foi entregue. As versões anteriores estão no histórico do Git. Onde qualquer um deles diverge deste PRD, vale o PRD.
 
 ### Registro de decisões fechadas em 21/08/2026
 | Ponto aberto | Decisão | ADR |
@@ -274,7 +274,7 @@ de Moedas e a Loja (ADR-012), o Herói em camadas (ADR-013), o Foco livre
 
 ### 7.5 Checklist de implementação da Fase 1
 
-Situação conferida no código da branch `develop` em 27/10/2026. Os estados são:
+Situação conferida no código da branch `develop` em 27/10/2026 e atualizada em 22/11/2026. Os estados são:
 
 - **Entregue:** o código existe, tem testes automatizados e cobre o que o PRD e os ADRs pedem.
 - **Parcial:** parte do comportamento existe; a coluna Situação diz o que falta.
@@ -297,17 +297,17 @@ Situação conferida no código da branch `develop` em 27/10/2026. Os estados s�
 | `objectives`: Crônicas com Objetivos, Marcos e Diário | Entregue | 3 Objetivos diários e 3 semanais pagos em Moedas, no horário de São Paulo (ADR-014). |
 | `realtime`: gateway Socket.IO | Entregue | Rooms `user:{id}` e `guild:{id}`, atualizadas ao entrar ou sair da Guild sem reconectar. |
 | Companheiro (mascote RPG) | Adiado | ADR-004. A issue #15 foi fechada sem implementação. A coluna `characters.companion_id` existe e não é usada. |
-| Gateway de pagamento | Parcial | ADR-015. Stripe em modo de teste: Checkout e Portal da Assinatura premium e webhook que sincroniza o `plan_tier` (`/billing/*`). Faltam a tela Plano e os Pacotes. |
+| Gateway de pagamento | Entregue | ADR-015. Stripe em modo de teste: Checkout e Portal da Assinatura premium, webhook que sincroniza o `plan_tier`, Pacote do Dragão pago pelo Checkout (`/billing/*`), tela Plano, seção Pacotes na Loja e seção Desenvolvedor para voltar ao plano Free nas contas de teste. |
 | Redis Adapter | Adiado | ADR-003. O backend roda em uma réplica com o `IoAdapter` padrão do Socket.IO. |
 | i18n além de pt-BR | Não iniciado | Prioridade Could; nenhuma biblioteca de i18n instalada. |
 | Frontend universal (ADR-008) | Entregue | Expo + Expo Router + React Native Web; registros de validação dos marcos M1, M2, M4 e M5 em `docs/validation/`. Mercado, Crônicas e Configuração já têm telas e não aparecem mais como "Em breve". |
 | Validação de responsividade e acessibilidade das telas T01 a T06 | Não iniciado | Issue #23 aberta. As validações por marco em `docs/validation/` não substituem essa revisão. |
-| Contrato REST (`docs/api/openapi.yaml`) | Entregue | As 53 rotas dos controllers estão no contrato, e `npm run lint:openapi` passa. |
+| Contrato REST (`docs/api/openapi.yaml`) | Entregue | As 60 rotas dos controllers estão no contrato, e `npm run lint:openapi` passa. |
 | Contrato de eventos (`docs/api/asyncapi.yaml`) | Entregue | Cobre todos os eventos que o backend emite, incluindo `member:online`, e os comandos do Mural (`chat:join`, `chat:send`, `chat:history`, `chat:sync`) com seus acks. |
-| Migrations TypeORM | Entregue | 33 migrations em `apps/backend/src/migrations`, com `synchronize: false`. `migration.integration.test.ts` aplica todas em ordem num MySQL real, reverte até o schema vazio e testa a transformação de dados das migrations que migram dados. |
+| Migrations TypeORM | Entregue | 37 migrations em `apps/backend/src/migrations`, com `synchronize: false`. `migration.integration.test.ts` aplica todas em ordem num MySQL real, reverte até o schema vazio e testa a transformação de dados das migrations que migram dados. |
 | Testes de integração e E2E | Entregue | Job `backend` da CI contra MySQL 8.0 e job E2E com Playwright sobre o Docker Compose (seção 16). |
 | Segurança: rate limiting, helmet e boot seguro (#13) | Entregue | Rate limit em login, cadastro e refresh, em `POST /sessions`, nas Compras da Loja e na escolha da Missão; o boot em produção recusa valores de exemplo (`change-me`) na configuração. |
-| Provisionamento da VM Oracle Always Free (ADR-006) | Não iniciado | As issues #8 e #14 foram fechadas sem implementação. |
+| Provisionamento da VM Oracle Always Free (ADR-006) | Não iniciado | As issues #8 e #14 foram fechadas sem implementação. Existe um ambiente de homologação na AWS (EC2, RDS MySQL, ALB, ECR e liga/desliga agendado), descrito em CloudFormation em `infra/cloudformation/` e implantado por `infra/scripts/deploy-hmg.sh`; ele não substitui a decisão do ADR-006 para produção. |
 
 ---
 
@@ -429,6 +429,7 @@ graph TD
             Economy["economy<br/>Moedas e Extrato"]
             Shop["shop<br/>Loja"]
             Objectives["objectives<br/>Crônicas"]
+            Billing["billing<br/>Stripe (ADR-015)"]
             RT["realtime<br/>(Socket.IO Gateway)"]
         end
         MySQL[("MySQL 8<br/>(HeatWave Always Free)")]
@@ -442,6 +443,7 @@ graph TD
     SPA -->|"HTTPS REST"| Economy
     SPA -->|"HTTPS REST"| Shop
     SPA -->|"HTTPS REST"| Objectives
+    SPA -->|"HTTPS REST"| Billing
     SPA <-->|"WSS — room user:{id}<br/>room guild:{id}"| RT
     SPA <-->|"WSS: comandos do Mural"| Chat
 
@@ -455,6 +457,7 @@ graph TD
     Prog --> Users
     Shop --> Economy
     Shop --> Raids
+    Billing --> Users
     Raids --> Guilds
     Raids --> Economy
     Raids --> Chat
@@ -470,6 +473,7 @@ graph TD
     Guilds --> MySQL
     Raids --> MySQL
     Economy --> MySQL
+    Billing --> MySQL
 ```
 
 Setas entre módulos representam chamadas ao Service público do módulo destino, nunca ao repositório (regra do Documento de Arquitetura, seção 3.2, reaplicada em todo o código da Fase 1). O diagrama mostra as dependências principais; o README tem a lista completa. Redis (adapter multi-réplica) não aparece porque está adiado (ADR-003).
@@ -660,7 +664,7 @@ Na v1.0, a verificação foi `tsc --noEmit` e `nest build` no backend, `tsc --no
 ## 17. Próximos passos imediatos
 
 1. Provisionar a VM Oracle Cloud Always Free o quanto antes (ADR-006) — erros de "out of capacity" são comuns nessa modalidade; não deixar para o fim do prazo.
-2. Atualizar a infraestrutura no Documento de Visão (seção 4.4) e no Documento de Arquitetura (seções 1, 5 e 6) depois que o time decidir a divergência entre o ADR-006 e o repositório (issue #5). A remoção do Koa.js (ADR-002) e o restante desses documentos já foram atualizados na versão 2.0, de 27/10/2026.
+2. ~~Atualizar a infraestrutura no Documento de Visão e no Documento de Arquitetura (issue #5)~~ — feito na versão 2.1, de 22/11/2026: produção na VM Oracle (ADR-006) e homologação na AWS.
 3. ~~Publicar `docs/api/openapi.yaml` e `docs/api/asyncapi.yaml`~~ — feito. Os dois cobrem as rotas e os eventos do backend (seção 7.5).
 4. ~~Escrever as migrations TypeORM versionadas~~ — feito (ver seção 7.5).
 5. Decidir, na primeira ticket de infraestrutura, entre MySQL gerenciado (Oracle HeatWave Always Free) ou MySQL em container na mesma VM (seção 11).
