@@ -1,0 +1,30 @@
+#cloud-config
+# VM limpa para testar o wise-warrior.zip seguindo só os READMEs da entrega.
+# Uso: orb create -c infra/orbstack/user-data.yaml ubuntu:noble wise-teste
+# Instala o que os READMEs pedem (Node.js 22, npm, Docker) e as dependências
+# de sistema do Chromium usado pelos testes e2e do Playwright.
+
+package_update: true
+packages:
+  - ca-certificates
+  - curl
+  - unzip
+  - docker.io
+  - docker-compose-v2
+
+write_files:
+  # O OrbStack cria o usuário padrão (grupo sudo) só depois do cloud-init, então
+  # um usermod aqui não o alcança: o socket do Docker passa a ser do grupo sudo.
+  - path: /etc/systemd/system/docker.socket.d/group.conf
+    content: |
+      [Socket]
+      SocketGroup=sudo
+
+runcmd:
+  - curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
+  - apt-get install -y nodejs
+  - systemctl daemon-reload
+  - systemctl enable docker.socket docker
+  - systemctl restart docker.socket docker
+  - npx -y playwright@1.63.0 install-deps chromium
+  - touch /var/lib/wise-ready

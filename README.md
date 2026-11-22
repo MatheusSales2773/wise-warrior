@@ -353,6 +353,38 @@ O Expo Go serve para uma checagem rápida enquanto o projeto usar só módulos
 compatíveis, mas não substitui a compilação nativa. Diretórios nativos gerados,
 `.expo`, `dist` e arquivos `.ipa`, `.apk` e `.aab` ficam fora do Git.
 
+### Cobrança com Stripe (modo de teste)
+
+A Assinatura premium e os Pacotes usam o Stripe só em modo de teste (ADR-015).
+Sem `STRIPE_SECRET_KEY` a cobrança fica indisponível e o resto do app funciona.
+Para rodá-la localmente, com a [Stripe CLI](https://docs.stripe.com/stripe-cli)
+instalada:
+
+1. No painel do Stripe, em modo de teste, crie um Price recorrente mensal de
+   R$ 9,90 e copie a chave secreta (`sk_test_...`).
+2. Encaminhe os eventos para o webhook local e copie o segredo `whsec_...` que
+   o comando imprime:
+
+   ```bash
+   stripe login
+   stripe listen --forward-to localhost:3000/api/v1/billing/webhook
+   ```
+
+3. Preencha em `apps/backend/.env` (nunca no repositório):
+
+   ```bash
+   STRIPE_SECRET_KEY=sk_test_...
+   STRIPE_WEBHOOK_SECRET=whsec_...   # o impresso pelo stripe listen
+   STRIPE_PRICE_PREMIUM=price_...
+   APP_URL=http://localhost:8081
+   ```
+
+   Com `STRIPE_SECRET_KEY` definido, o boot recusa subir sem as outras três.
+
+4. Reinicie `npm run dev:backend`, assine pela tela Plano e pague com o cartão
+   de teste `4242 4242 4242 4242` (qualquer data futura e CVC). Deixe o
+   `stripe listen` aberto: é ele que entrega os eventos que mudam o plano.
+
 ---
 
 ## Testes e gates de qualidade

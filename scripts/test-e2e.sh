@@ -4,6 +4,12 @@ set -euo pipefail
 
 readonly repository_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 readonly compose_file="${repository_root}/docker-compose.e2e.yml"
+# E2E_COMPOSE_OVERRIDE layers an extra Compose file, such as the CI build cache.
+compose_args=(--file "${compose_file}")
+if [[ -n "${E2E_COMPOSE_OVERRIDE:-}" ]]; then
+  compose_args+=(--file "${E2E_COMPOSE_OVERRIDE}")
+fi
+readonly compose_args
 readonly compose_project="${COMPOSE_PROJECT_NAME:-wise-e2e-${PPID}-${RANDOM}}"
 
 port_is_available() {
@@ -80,9 +86,9 @@ capture_failure_diagnostics() {
   local diagnostics_dir="${repository_root}/apps/frontend/test-results"
   mkdir -p "${diagnostics_dir}" || true
   COMPOSE_PROJECT_NAME="${compose_project}" docker compose \
-    --file "${compose_file}" ps >"${diagnostics_dir}/compose-ps.txt" 2>&1 || true
+    "${compose_args[@]}" ps >"${diagnostics_dir}/compose-ps.txt" 2>&1 || true
   COMPOSE_PROJECT_NAME="${compose_project}" docker compose \
-    --file "${compose_file}" logs --no-color \
+    "${compose_args[@]}" logs --no-color \
     | sed -E \
       -e 's/wise-e2e-(access|refresh)-secret/[REDACTED]/g' \
       -e 's/wise-e2e-(root-)?password/[REDACTED]/g' \
@@ -98,7 +104,7 @@ cleanup() {
       "${repository_root}/apps/frontend/test-results/compose-logs.txt" >&2 || true
   fi
   COMPOSE_PROJECT_NAME="${compose_project}" docker compose \
-    --file "${compose_file}" \
+    "${compose_args[@]}" \
     down --volumes --remove-orphans >/dev/null 2>&1 || true
   rm -f "${tls_dir}/server.crt" "${tls_dir}/server.key"
   rmdir "${tls_dir}" 2>/dev/null || true
@@ -123,7 +129,7 @@ export E2E_BASE_URL="${base_url}"
 export E2E_API_URL="${api_url}"
 export E2E_TLS_DIR="${tls_dir}"
 
-docker compose --file "${compose_file}" up --build --detach
+docker compose "${compose_args[@]}" up --build --detach
 
 for _ in {1..60}; do
   if curl --insecure --fail --silent "${base_url}/health" >/dev/null \

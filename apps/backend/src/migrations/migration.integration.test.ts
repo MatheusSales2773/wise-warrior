@@ -38,6 +38,14 @@ import {
   MADRUGADOR_ID,
   SessionCountBadgeConditions1788460560000,
 } from './1788460560000-session-count-badge-conditions';
+import {
+  CAJADO_ASTRAL_ID,
+  LENDA_DO_FOCO_ID,
+  MANTO_DO_ARQUIMAGO_ID,
+  SeedPremiumCosmeticItems1788460740000,
+} from './1788460740000-seed-premium-cosmetic-items';
+import { CreateSubscriptions1788460800000 } from './1788460800000-create-subscriptions';
+import { CreatePacks1788460860000, PACOTE_DO_DRAGAO_ID } from './1788460860000-create-packs';
 import { saoPauloWeekAt } from '../shared/time/sao-paulo-calendar';
 
 const ITEMS_FOR_SALE = [
@@ -1686,5 +1694,210 @@ describe('TypeORM migrations against an empty MySQL schema', () => {
 
     await dataSource.runMigrations();
     expect(await conditions()).toEqual([['Cem Sessões', 'sessions:100'], ['Madrugador', 'early-sessions:5']]);
+  });
+
+  it('creates subscriptions with one row per user, Customer and Subscription, deletes it with the user, and drops it on revert', async () => {
+    database = await createIntegrationDatabase('wise_migrations_test');
+    dataSource = new DataSource(database!.options(migrationsThrough(CreateSubscriptions1788460800000)));
+    await dataSource.initialize();
+    await dataSource.runMigrations();
+    const db = database!.identifier;
+    for (const id of ['sub-user-1', 'sub-user-2']) {
+      await database!.admin.query(
+        `INSERT INTO ${db}.users (id, email, password_hash, display_name, plan_tier) VALUES (?, ?, 'hash', 'Aluno', 'free')`,
+        [id, `${id}@example.com`],
+      );
+    }
+    const insert = (id: string, userId: string, customer: string, subscription: string | null) => database!.admin.query(
+      `INSERT INTO ${db}.subscriptions (id, user_id, stripe_customer_id, stripe_subscription_id) VALUES (?, ?, ?, ?)`,
+      [id, userId, customer, subscription],
+    );
+    await insert('row-1', 'sub-user-1', 'cus_1', 'sub_1');
+
+    await expect(insert('row-2', 'sub-user-1', 'cus_2', 'sub_2')).rejects.toThrow(/UQ_subscriptions_user_id/);
+    await expect(insert('row-3', 'sub-user-2', 'cus_1', 'sub_3')).rejects.toThrow(/UQ_subscriptions_stripe_customer_id/);
+    await expect(insert('row-4', 'sub-user-2', 'cus_4', 'sub_1')).rejects.toThrow(/UQ_subscriptions_stripe_subscription_id/);
+    // Without a Subscription yet (Customer created, Checkout not paid) several rows may have no stripe_subscription_id.
+    await insert('row-5', 'sub-user-2', 'cus_5', null);
+    expect(await rows(database!.admin, `SELECT status, current_period_end, cancel_at FROM ${db}.subscriptions WHERE id = 'row-5'`))
+      .toEqual([{ status: null, current_period_end: null, cancel_at: null }]);
+
+    await database!.admin.query(`DELETE FROM ${db}.users WHERE id = 'sub-user-1'`);
+    expect(await rows(database!.admin, `SELECT id FROM ${db}.subscriptions ORDER BY id`)).toEqual([{ id: 'row-5' }]);
+
+    await revertThrough(dataSource, CreateSubscriptions1788460800000);
+    expect(await rows(
+      database!.admin,
+      'SELECT table_name FROM information_schema.tables WHERE table_schema = ? AND table_name = ?',
+      [database!.name, 'subscriptions'],
+    )).toEqual([]);
+  });
+
+  it('creates packs and pack_payments with the Pacote do Dragão and its 3 items, one Pagamento per user, Pacote and session, and drops them on revert', async () => {
+    database = await createIntegrationDatabase('wise_migrations_test');
+    dataSource = new DataSource(database!.options(migrationsThrough(CreatePacks1788460860000)));
+    await dataSource.initialize();
+    await dataSource.runMigrations();
+    const db = database!.identifier;
+
+    expect(await rows(database!.admin, `SELECT slug, name, price_cents, currency, for_sale FROM ${db}.packs`))
+      .toEqual([{ slug: 'dragao', name: 'Pacote do Dragão', price_cents: 490, currency: 'brl', for_sale: 1 }]);
+    expect(await rows(
+      database!.admin,
+      `SELECT category, name, requires_premium, for_sale FROM ${db}.cosmetic_items WHERE unlock_condition = 'pack:dragao' ORDER BY name`,
+    )).toEqual([
+      { category: 'accessory', name: 'Amuleto de Brasa', requires_premium: 0, for_sale: 0 },
+      { category: 'avatar', name: 'Elmo de Escamas', requires_premium: 0, for_sale: 0 },
+      { category: 'weapon', name: 'Presa do Dragão', requires_premium: 0, for_sale: 0 },
+    ]);
+    const pack = (id: string, slug: string, price: number) => database!.admin.query(
+      `INSERT INTO ${db}.packs (id, slug, name, description, price_cents, currency, for_sale) VALUES (?, ?, 'P', 'D', ?, 'brl', 1)`,
+      [id, slug, price],
+    );
+    await expect(pack('pack-2', 'dragao', 490)).rejects.toThrow(/UQ_packs_slug/);
+    await expect(pack('pack-3', 'gratis', 0)).rejects.toThrow(/CHK_packs_price_cents/);
+
+    for (const id of ['pay-user-1', 'pay-user-2']) {
+      await database!.admin.query(
+        `INSERT INTO ${db}.users (id, email, password_hash, display_name, plan_tier) VALUES (?, ?, 'hash', 'Aluno', 'free')`,
+        [id, `${id}@example.com`],
+      );
+    }
+    const pay = (id: string, userId: string, session: string) => database!.admin.query(
+      `INSERT INTO ${db}.pack_payments (id, user_id, pack_id, stripe_checkout_session_id, amount_cents, currency, paid_at)
+       VALUES (?, ?, ?, ?, 490, 'brl', NOW())`,
+      [id, userId, PACOTE_DO_DRAGAO_ID, session],
+    );
+    await pay('payment-1', 'pay-user-1', 'cs_1');
+    await expect(pay('payment-2', 'pay-user-1', 'cs_2')).rejects.toThrow(/UQ_pack_payments_user_id_pack_id/);
+    await expect(pay('payment-3', 'pay-user-2', 'cs_1')).rejects.toThrow(/UQ_pack_payments_stripe_checkout_session_id/);
+    await pay('payment-4', 'pay-user-2', 'cs_4');
+
+    await database!.admin.query(`DELETE FROM ${db}.users WHERE id = 'pay-user-1'`);
+    expect(await rows(database!.admin, `SELECT id FROM ${db}.pack_payments`)).toEqual([{ id: 'payment-4' }]);
+
+    await revertThrough(dataSource, CreatePacks1788460860000);
+    expect(await rows(
+      database!.admin,
+      'SELECT table_name FROM information_schema.tables WHERE table_schema = ? AND table_name IN (?, ?)',
+      [database!.name, 'packs', 'pack_payments'],
+    )).toEqual([]);
+    expect(await rows(database!.admin, `SELECT id FROM ${db}.cosmetic_items WHERE unlock_condition LIKE 'pack:%'`)).toEqual([]);
+  });
+
+  describe('Itens premium (#354)', () => {
+    const MESTRE_DA_AURORA_ID = 'c05e71c0-0000-4000-8000-000000000008';
+    const PREMIUM_NAMES = ['Cajado Astral', 'Lenda do Foco', 'Manto do Arquimago'];
+
+    const seedCharacter = async (id: string, level: number) => {
+      await database!.admin.query(
+        `INSERT INTO ${database!.identifier}.users (id, email, password_hash, display_name, plan_tier)
+         VALUES (?, ?, 'hash', ?, 'free')`,
+        [id, `${id}@example.com`, id],
+      );
+      await database!.admin.query(
+        `INSERT INTO ${database!.identifier}.characters (id, user_id, level, xp_total) VALUES (?, ?, ?, 0)`,
+        [`${id}-character`, id, level],
+      );
+    };
+    const premiumRows = async () => (await rows(
+      database!.admin,
+      `SELECT uci.user_id, ci.name, uci.equipped FROM ${database!.identifier}.user_cosmetic_items uci
+       JOIN ${database!.identifier}.cosmetic_items ci ON ci.id = uci.cosmetic_item_id
+       WHERE ci.id IN (?, ?, ?) ORDER BY uci.user_id, ci.name`,
+      [MANTO_DO_ARQUIMAGO_ID, CAJADO_ASTRAL_ID, LENDA_DO_FOCO_ID],
+    )).map((row) => [row.user_id, row.name, Number(row.equipped)]);
+    const equippedOf = async (userId: string) => (await rows(
+      database!.admin,
+      `SELECT ci.name FROM ${database!.identifier}.user_cosmetic_items uci
+       JOIN ${database!.identifier}.cosmetic_items ci ON ci.id = uci.cosmetic_item_id
+       WHERE uci.user_id = ? AND uci.equipped = 1 ORDER BY ci.name`,
+      [userId],
+    )).map((row) => row.name);
+
+    const migrateBeforePremium = async () => {
+      database = await createIntegrationDatabase('wise_migrations_test');
+      initialDataSource = new DataSource(database.options(migrationsBefore(SeedPremiumCosmeticItems1788460740000)));
+      await initialDataSource.initialize();
+      await initialDataSource.runMigrations();
+      await seedCharacter('veteran', 20);
+      await seedCharacter('newcomer', 1);
+      // The veteran wears Mestre da Aurora (premium, level 15) as the Título and the initial Avatar.
+      await database.admin.query(
+        `INSERT INTO ${database.identifier}.user_cosmetic_items (id, user_id, cosmetic_item_id, equipped)
+         VALUES ('veteran-aurora', 'veteran', ?, 1), ('veteran-capuz', 'veteran', 'c05e71c0-0000-4000-8000-000000000001', 1)`,
+        [MESTRE_DA_AURORA_ID],
+      );
+      await initialDataSource.destroy();
+      initialDataSource = undefined;
+      dataSource = new DataSource(database.options(migrationsThrough(SeedPremiumCosmeticItems1788460740000)));
+      await dataSource.initialize();
+      await dataSource.runMigrations();
+    };
+
+    it('seeds the three premium items unequipped for every existing Character and keeps what is equipped', async () => {
+      await migrateBeforePremium();
+
+      expect(await rows(
+        database!.admin,
+        `SELECT name, category, unlock_condition, requires_premium, for_sale FROM ${database!.identifier}.cosmetic_items
+         WHERE id IN (?, ?, ?) ORDER BY name`,
+        [MANTO_DO_ARQUIMAGO_ID, CAJADO_ASTRAL_ID, LENDA_DO_FOCO_ID],
+      )).toEqual([
+        { name: 'Cajado Astral', category: 'weapon', unlock_condition: 'level:1', requires_premium: 1, for_sale: 0 },
+        { name: 'Lenda do Foco', category: 'title', unlock_condition: 'level:1', requires_premium: 1, for_sale: 0 },
+        { name: 'Manto do Arquimago', category: 'avatar', unlock_condition: 'level:1', requires_premium: 1, for_sale: 0 },
+      ]);
+      expect(await premiumRows()).toEqual([
+        ...PREMIUM_NAMES.map((name) => ['newcomer', name, 0]),
+        ...PREMIUM_NAMES.map((name) => ['veteran', name, 0]),
+      ]);
+      expect(await equippedOf('veteran')).toEqual(['Capuz do Erudito', 'Mestre da Aurora']);
+    });
+
+    it('seeds the premium items idempotently and removes them on revert', async () => {
+      await migrateBeforePremium();
+      // A choice made since the migration survives running it again: the newcomer wears the Manto.
+      await database!.admin.query(
+        `UPDATE ${database!.identifier}.user_cosmetic_items SET equipped = 1 WHERE user_id = 'newcomer' AND cosmetic_item_id = ?`,
+        [MANTO_DO_ARQUIMAGO_ID],
+      );
+      const runner = dataSource!.createQueryRunner();
+      try {
+        await new SeedPremiumCosmeticItems1788460740000().up(runner);
+      } finally {
+        await runner.release();
+      }
+      expect(await premiumRows()).toEqual([
+        ['newcomer', 'Cajado Astral', 0],
+        ['newcomer', 'Lenda do Foco', 0],
+        ['newcomer', 'Manto do Arquimago', 1],
+        ...PREMIUM_NAMES.map((name) => ['veteran', name, 0]),
+      ]);
+
+      await revertThrough(dataSource!, SeedPremiumCosmeticItems1788460740000);
+      expect(await premiumRows()).toEqual([]);
+      expect(await equippedOf('veteran')).toEqual(['Capuz do Erudito', 'Mestre da Aurora']);
+
+      await dataSource!.runMigrations();
+      expect(await premiumRows()).toHaveLength(6);
+    });
+
+    it('refuses to put a premium or Pacote item for sale at the database', async () => {
+      database = await createIntegrationDatabase('wise_migrations_test');
+      dataSource = new DataSource(database.options(APPLICATION_MIGRATIONS));
+      await dataSource.initialize();
+      await dataSource.runMigrations();
+      const forSaleInsert = (id: string, unlockCondition: string, requiresPremium: number) =>
+        database!.admin.query(
+          `INSERT INTO ${database!.identifier}.cosmetic_items (id, category, name, unlock_condition, requires_premium, price, for_sale)
+           VALUES (?, 'avatar', ?, ?, ?, 100, 1)`,
+          [id, id, unlockCondition, requiresPremium],
+        );
+
+      await expect(forSaleInsert('premium-level-one', 'level:1', 1)).rejects.toThrow(/CHK_cosmetic_items_for_sale/);
+      await expect(forSaleInsert('premium-purchase', 'purchase', 1)).rejects.toThrow(/CHK_cosmetic_items_for_sale/);
+      await expect(forSaleInsert('pack-dragao', 'pack:dragao', 0)).rejects.toThrow(/CHK_cosmetic_items_for_sale/);
+    });
   });
 });

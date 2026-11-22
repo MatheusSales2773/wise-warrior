@@ -16,6 +16,7 @@ jest.mock('@/features/market/api', () => ({
   purchaseShopMission: jest.fn(),
   purchaseShopItem: jest.fn(),
 }));
+jest.mock('@/features/market/packs-api', () => ({ listPacks: jest.fn(() => Promise.resolve({ available: false, packs: [] })), openPackCheckout: jest.fn() }));
 jest.mock('@/features/profile/api', () => ({ equipCosmeticItem: jest.fn() }));
 
 let mockParams: { secao?: string } = {};
@@ -77,7 +78,8 @@ describe('Mercado on desktop', () => {
   it('leads with the purse and lists each Mission in its state', async () => {
     await renderMarket();
 
-    expect((await screen.findByTestId('market-balance')).props.children).toBe('132');
+    // The figure renders as "…" until the balance loads, so wait for the value, not the element.
+    await waitFor(() => expect(screen.getByTestId('market-balance').props.children).toBe('132'));
     expect(screen.getByTestId('market-purse').props.accessibilityLabel).toBe('132 Moedas na bolsa');
     expect(await screen.findByTestId('market-mission-m1-owned')).toBeTruthy();
     expect(screen.getByTestId('market-mission-m2-buy')).toBeTruthy();

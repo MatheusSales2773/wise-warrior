@@ -1,24 +1,30 @@
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery } from '@tanstack/react-query';
 import { Link, useLocalSearchParams, useRouter } from 'expo-router';
-import { useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Image, Platform, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { FeedbackMessage, ProgressBar, WiseButton, WiseIcon, WiseText, isDesktopLayout, theme } from '@/design-system';
 import { DEFAULT_HERO_ID, cosmeticSprite, equipmentCategoryById } from '@/features/character/catalog';
 import { useFocusRing } from '@/features/character/character-parts';
 import { PixelSprite } from '@/features/character/PixelSprite';
-import { heroSprites, itemSprites } from '@/features/character/sprites';
+import { LayeredHero } from '@/features/character/layered-hero';
+import { dragaoDevoradorDeHoras, heroSprites, itemSprites } from '@/features/character/sprites';
 import { raidSceneArt } from '@/features/guild/raid-scene-art';
 import { RaidScene } from '@/features/guild/raid-scene';
 import type { CosmeticCategory } from '@/features/profile/api';
+import { billingErrorMessage, openStripePage } from '@/features/settings/billing';
 import type { ShopItem, StoreMission } from './api';
 import { CoinAmount, CoinMark } from './coin';
 import { RAID_WIN_COINS, coinsLabel, formatCoins, missingHint, orderShopItems, presentCategories } from './formatters';
+import { openPackCheckout, type BillingPack } from './packs-api';
+import { packsQueryOptions, priceLabel } from './packs';
 import { LedgerLines, PurchaseDialog, usePurchase, type Purchase } from './purchase';
 import { coinBalanceQueryOptions, shopItemsQueryOptions, shopMissionsQueryOptions } from './queries';
 
-/* Mercado: a bolsa de Moedas e a Loja, com as seções Missões e Itens (ADR-012). */
+/* Mercado: a bolsa de Moedas e a Loja, com as seções Missões e Itens (ADR-012) e, com a cobrança ligada, Pacotes (ADR-015). */
 
-type Section = 'missoes' | 'itens';
+type Section = 'missoes' | 'itens' | 'pacotes';
+
+const CONFIRM_WAIT_MS = 30_000;
 
 const DESKTOP_GUTTER = 48;
 const MOBILE_GUTTER = 16;
@@ -30,23 +36,28 @@ export function MarketScreen() {
   const { width } = useWindowDimensions();
   const desktop = isDesktopLayout(Platform.OS, width);
   const router = useRouter();
-  const params = useLocalSearchParams<{ secao?: string }>();
-  const section: Section = params.secao === 'itens' ? 'itens' : 'missoes';
+  const params = useLocalSearchParams<{ secao?: string; checkout?: string }>();
+  const packs = useQuery(packsQueryOptions());
+  const packsOn = packs.data?.available === true;
+  // While the packs load, `?secao=pacotes` (the return from Checkout) waits on its own section instead of flashing Missões.
+  const section: Section = params.secao === 'itens' ? 'itens' : params.secao === 'pacotes' && (packsOn || packs.isPending) ? 'pacotes' : 'missoes';
   const balance = useQuery(coinBalanceQueryOptions());
   const missions = useQuery(shopMissionsQueryOptions());
   const items = useQuery(shopItemsQueryOptions());
   const purchase = usePurchase();
+  const granted = usePackGrantNotice(packs.data?.packs);
 
   const content = <>
-    <Header balance={balance.data} balanceFailed={balance.isError && balance.data === undefined} desktop={desktop} />
+    <Header balance={balance.data} balanceFailed={balance.isError && balance.data === undefined} desktop={desktop} packs={packsOn} showPurse={section !== 'pacotes'} />
     <Tabs
-      counts={{ missoes: missions.data?.length, itens: items.data?.length }}
+      counts={{ missoes: missions.data?.length, itens: items.data?.length, pacotes: packs.data?.packs.length }}
+      packs={packsOn}
       onChange={(next) => router.setParams({ secao: next })}
       section={section}
     />
-    {section === 'missoes'
-      ? <MissionsSection desktop={desktop} purchase={purchase} query={missions} width={width} />
-      : <ItemsSection desktop={desktop} purchase={purchase} query={items} />}
+    {section === 'missoes' ? <MissionsSection desktop={desktop} purchase={purchase} query={missions} width={width} /> : null}
+    {section === 'itens' ? <ItemsSection desktop={desktop} purchase={purchase} query={items} /> : null}
+    {section === 'pacotes' ? <PacksSection checkout={params.checkout} desktop={desktop} granted={granted} query={packs} /> : null}
   </>;
 
   return <View style={styles.root} testID="market">
@@ -57,21 +68,24 @@ export function MarketScreen() {
   </View>;
 }
 
-function Header({ balance, balanceFailed, desktop }: { balance: number | undefined; balanceFailed: boolean; desktop: boolean }) {
+const LEDE = 'Troque as Moedas do seu foco por Missões para a sua Guilda e por itens para o seu herói.';
+const LEDE_WITH_PACKS = `${LEDE} Os Pacotes vendem conjuntos de itens por dinheiro.`;
+
+function Header({ balance, balanceFailed, desktop, packs, showPurse }: { balance: number | undefined; balanceFailed: boolean; desktop: boolean; packs: boolean; showPurse: boolean }) {
   const figure = balance === undefined ? (balanceFailed ? '?' : '…') : formatCoins(balance);
   const label = balance === undefined ? (balanceFailed ? 'Saldo indisponível' : 'Carregando o saldo') : `${coinsLabel(balance)} na bolsa`;
   if (!desktop) {
     return <View style={styles.headerCompact}>
       <Text accessibilityRole="header" aria-level={1} style={styles.titleCompact}>Mercado</Text>
-      <PurseChip figure={figure} label={label} />
+      {showPurse ? <PurseChip figure={figure} label={label} /> : null}
     </View>;
   }
   return <View style={styles.header}>
     <View style={styles.headerCopy}>
       <Text accessibilityRole="header" aria-level={1} style={styles.title}>Mercado</Text>
-      <Text style={styles.lede}>Troque as Moedas do seu foco por Missões para a sua Guilda e por itens para o seu herói.</Text>
+      <Text style={styles.lede} testID="market-lede">{packs ? LEDE_WITH_PACKS : LEDE}</Text>
     </View>
-    <View style={styles.purse}>
+    {showPurse ? <View style={styles.purse}>
       <View accessibilityLabel={label} accessible role="status" style={styles.purseFigures} testID="market-purse">
         <CoinMark scale={4} />
         <View>
@@ -81,7 +95,7 @@ function Header({ balance, balanceFailed, desktop }: { balance: number | undefin
       </View>
       <View style={styles.purseRule} />
       <StatementLink />
-    </View>
+    </View> : null}
   </View>;
 }
 
@@ -105,15 +119,16 @@ function PurseChip({ figure, label }: { figure: string; label: string }) {
   </Link>;
 }
 
-function Tabs({ counts, onChange, section }: { counts: Record<Section, number | undefined>; onChange: (section: Section) => void; section: Section }) {
+function Tabs({ counts, onChange, packs, section }: { counts: Record<Section, number | undefined>; onChange: (section: Section) => void; packs: boolean; section: Section }) {
+  const ids: Section[] = packs ? ['missoes', 'itens', 'pacotes'] : ['missoes', 'itens'];
   return <View accessibilityRole="tablist" style={styles.tabs}>
-    {(['missoes', 'itens'] as const).map((id) => <Tab active={section === id} count={counts[id]} id={id} key={id} onPress={() => onChange(id)} />)}
+    {ids.map((id) => <Tab active={section === id} count={counts[id]} id={id} key={id} onPress={() => onChange(id)} />)}
   </View>;
 }
 
 function Tab({ active, count, id, onPress }: { active: boolean; count: number | undefined; id: Section; onPress: () => void }) {
   const { focusProps, focusStyle } = useFocusRing();
-  const label = id === 'missoes' ? 'Missões' : 'Itens';
+  const label = id === 'missoes' ? 'Missões' : id === 'itens' ? 'Itens' : 'Pacotes';
   return <Pressable
     {...focusProps}
     accessibilityLabel={count === undefined ? label : `${label}, ${count}`}
@@ -369,6 +384,176 @@ function PreviewLedger({ price }: { price: number }) {
   return balance === undefined ? null : <LedgerLines balance={balance} price={price} />;
 }
 
+/* ---------- Pacotes ---------- */
+
+/**
+ * S8.7: the name of a Pacote that turned `owned` while the Loja was open, on any tab, so the notice is waiting when Pacotes opens.
+ * shortcut: a grant that lands while the Loja is closed shows only "Adquirido"; upgrade if the notice must survive a reload.
+ */
+function usePackGrantNotice(packs: BillingPack[] | undefined): string | null {
+  const [granted, setGranted] = useState<string | null>(null);
+  const seen = useRef(new Map<string, boolean>());
+  useEffect(() => {
+    for (const pack of packs ?? []) {
+      if (seen.current.get(pack.slug) === false && pack.owned) setGranted(pack.name);
+      seen.current.set(pack.slug, pack.owned);
+    }
+  }, [packs]);
+  return granted;
+}
+
+/** What Pacotes shows: the messages (S8.6, S8.7, S8.9), the card (K1) and, on desktop, the side Prévia (K4). */
+function PacksSection({ checkout, desktop, granted, query }: { checkout: string | undefined; desktop: boolean; granted: string | null; query: { data: { packs: BillingPack[] } | undefined; isPending: boolean; isError: boolean; isRefetching: boolean; refetch: () => unknown } }) {
+  const packs = query.data?.packs;
+  const router = useRouter();
+  const [late, setLate] = useState(false);
+  const confirming = checkout === 'success' && (packs?.some((pack) => !pack.owned) ?? false);
+  const open = useMutation({
+    mutationFn: openPackCheckout,
+    onSuccess: (url) => openStripePage(url),
+  });
+  const actions = (pack: BillingPack): PackActions => ({
+    buying: open.isPending && open.variables === pack.slug,
+    onBuy: () => open.mutate(pack.slug),
+    onEquip: () => router.push('/perfil'),
+  });
+
+  useEffect(() => {
+    if (!confirming) return undefined;
+    // Back from Checkout before the webhook: `user:packGranted` refetches; after 30 s the wait gets a calmer line.
+    const timer = setTimeout(() => setLate(true), CONFIRM_WAIT_MS);
+    return () => clearTimeout(timer);
+  }, [confirming]);
+
+  const status = <ListStatus
+    empty={<WiseText color="textSecondary" variant="body">Nenhum Pacote à venda agora.</WiseText>}
+    noun="os Pacotes"
+    query={{ data: packs, isPending: query.isPending, isError: query.isError, isRefetching: query.isRefetching, refetch: query.refetch }}
+    testID="market-packs"
+  />;
+  const list = packs ?? [];
+  const main = <View style={styles.packsMain}>
+    {list.length > 0
+      ? <View style={styles.packsHeader}>
+        <Text style={styles.packsHeaderTitle}>◈ Pacotes à venda</Text>
+        <Text style={styles.packsHeaderCount} testID="market-packs-count">{list.length} {list.length === 1 ? 'pacote' : 'pacotes'} · pagamento único em reais</Text>
+      </View>
+      : null}
+    {confirming
+      ? <FeedbackMessage message={late ? 'Pagamento recebido. Os itens chegam em instantes.' : 'Confirmando seu pagamento…'} testID="market-pack-confirming" variant="info" />
+      : null}
+    {granted ? <FeedbackMessage message={`Itens do ${granted} no seu Inventário`} testID="market-pack-granted" variant="success" /> : null}
+    {open.isError ? <FeedbackMessage message={billingErrorMessage(open.error, [404, 409, 502, 503])} testID="market-pack-failure" variant="error" /> : null}
+    {status ?? null}
+    {list.length > 0 ? <View style={styles.contracts}>{list.map((pack) => <PackCard desktop={desktop} key={pack.slug} pack={pack} {...actions(pack)} />)}</View> : null}
+    {list.length > 0 ? <Text style={styles.packsNote} testID="market-packs-note">Pacotes são pagos em dinheiro, não em Moedas. A bolsa e o Extrato não mudam.</Text> : null}
+  </View>;
+  return <View style={[styles.section, desktop && styles.packsDesktop]} testID="market-packs">
+    {main}
+    {desktop && list[0] ? <PackPreview pack={list[0]} side {...actions(list[0])} /> : null}
+  </View>;
+}
+
+type PackActions = { buying: boolean; onBuy: () => void; onEquip: () => void };
+
+/** The hero wearing the Pacote's avatar, weapon and accessory, picked by category. */
+function PackHero({ pack, scale }: { pack: BillingPack; scale: number }) {
+  const worn = (category: string) => pack.items.find((item) => item.category === category) ?? null;
+  return <LayeredHero equipped={{ avatar: worn('avatar'), weapon: worn('weapon'), accessory: worn('accessory') }} scale={scale} testID="market-pack-hero" />;
+}
+
+function PackCard({ buying, desktop, onBuy, onEquip, pack }: PackActions & { desktop: boolean; pack: BillingPack }) {
+  const [previewing, setPreviewing] = useState(false);
+  const price = priceLabel(pack.priceCents);
+  const { focusProps, focusStyle } = useFocusRing();
+  const owned = pack.owned;
+  const actions = <>
+    {desktop ? null : <Pressable
+      {...focusProps}
+      accessibilityRole="button"
+      accessibilityState={{ expanded: previewing }}
+      hitSlop={8}
+      onPress={() => setPreviewing((on) => !on)}
+      style={StyleSheet.flatten([styles.statementLink, focusStyle])}
+      testID={`market-pack-${pack.slug}-preview-toggle`}
+    >
+      <Text style={styles.linkText}>{previewing ? 'Fechar prévia' : 'Prévia no herói'}</Text>
+    </Pressable>}
+    <View style={desktop ? undefined : styles.packButton}>
+    {owned
+      ? <WiseButton label="Equipar no Personagem" leading={<WiseIcon color="textPrimary" name="person-outline" size="small" />} onPress={onEquip} testID={`market-pack-${pack.slug}-equip`} variant="secondary" />
+      : <WiseButton label={`Comprar por ${price}`} loading={buying} onPress={onBuy} testID={`market-pack-${pack.slug}-buy`} />}
+    </View>
+  </>;
+  return <View accessibilityLabel={`${pack.name}. ${price}. ${owned ? 'Adquirido.' : 'Disponível para comprar.'}`} role="article" style={[styles.pack, owned && styles.packOwned]} testID={`market-pack-${pack.slug}`}>
+    <View style={styles.packBanner}>
+      <View style={styles.packDragon}><PixelSprite scale={3} sprite={dragaoDevoradorDeHoras} /></View>
+      <View style={styles.packBannerHero}><PackHero pack={pack} scale={5} /></View>
+      {owned
+        ? <View style={[styles.packPill, styles.packPillOwned]} testID={`market-pack-${pack.slug}-owned`}><WiseIcon color="feedbackSuccess" name="checkmark" size="xsmall" /><Text style={[styles.packPillText, styles.packPillTextOwned]}>Adquirido</Text></View>
+        : <View style={styles.packPill}><Text style={styles.packPillText}>Pagamento único</Text></View>}
+    </View>
+    <View style={styles.packBody}>
+      <Text style={styles.packKicker}>Pacote · {pack.items.length} itens · seus para sempre</Text>
+      <Text accessibilityRole="header" aria-level={2} style={styles.packTitle}>{pack.name}</Text>
+      <Text style={styles.packCopy}>{pack.description}</Text>
+      <View style={styles.packItems}>
+        {pack.items.map((item) => <View key={item.id} style={styles.packItem}>
+          <View style={styles.packThumb}><PixelSprite scale={3} sprite={itemSprites[cosmeticSprite(item)]} /></View>
+          <View style={styles.packItemCopy}>
+            <Text style={styles.packItemName}>{item.name}</Text>
+            <Text style={styles.packItemCategory}>{equipmentCategoryById[item.category].label}</Text>
+          </View>
+          {owned ? <View style={styles.ownedRow}><WiseIcon color="feedbackSuccess" name="checkmark" size="xsmall" /><Text style={styles.packReleased}>Liberado</Text></View> : null}
+        </View>)}
+      </View>
+      {previewing ? <PackPreview pack={pack} buying={buying} onBuy={onBuy} onEquip={onEquip} /> : null}
+    </View>
+    <View style={[styles.packFoot, desktop && styles.packFootDesktop]}>
+      <View>
+        <Text style={[styles.packPrice, owned && styles.packPriceOwned]}>{price}</Text>
+        <Text style={styles.packPriceNote}>{owned ? 'Pago · itens no Inventário' : 'Pagamento único no cartão'}</Text>
+      </View>
+      <View style={styles.packActions}>{actions}</View>
+    </View>
+  </View>;
+}
+
+/** S8.4: the hero with the 3 items at once, nothing equipped or saved. `side` is the desktop column with the purchase (K4). */
+function PackPreview({ buying, onBuy, onEquip, pack, side = false }: PackActions & { pack: BillingPack; side?: boolean }) {
+  const price = priceLabel(pack.priceCents);
+  const owned = pack.owned;
+  const stage = <View style={[styles.stage, side && styles.packStageSide]}>
+    <Text style={styles.stageBadge}>{owned ? 'Seu herói' : 'Prévia no seu herói'}</Text>
+    <PackHero pack={pack} scale={side ? 6 : 7} />
+  </View>;
+  const rows = <View style={styles.packLedger}>
+    {pack.items.map((item) => <View key={item.id} style={styles.packLedgerRow} testID={`market-pack-preview-item-${item.id}`}>
+      <Text style={styles.packLedgerName}>{item.name}</Text>
+      <Text style={styles.packLedgerCategory}>{equipmentCategoryById[item.category].label}</Text>
+    </View>)}
+    {side
+      ? <View style={[styles.packLedgerRow, styles.packLedgerTotal]}>
+        <Text style={styles.packLedgerTotalLabel}>{owned ? 'Pago' : 'Total · pagamento único'}</Text>
+        <Text style={styles.packLedgerTotalValue}>{price}</Text>
+      </View>
+      : null}
+  </View>;
+  if (!side) return <View accessibilityLabel={`Prévia de ${pack.name}`} role="region" style={styles.packPreviewInline} testID="market-pack-preview">{stage}{rows}</View>;
+  return <View accessibilityLabel={`Prévia de ${pack.name}`} role="region" style={[styles.packSide]} testID="market-pack-side">
+    {stage}
+    <View style={styles.packSideCopy}>
+      <Text style={styles.packKicker}>{owned ? 'Pacote · adquirido' : 'Pacote · nada é equipado na prévia'}</Text>
+      <Text accessibilityRole="header" aria-level={2} style={styles.packTitle}>{pack.name}</Text>
+    </View>
+    {rows}
+    {owned
+      ? <WiseButton label="Equipar no Personagem" leading={<WiseIcon color="textPrimary" name="person-outline" size="small" />} onPress={onEquip} testID={`market-pack-${pack.slug}-side-equip`} variant="secondary" />
+      : <WiseButton accessibilityLabel={`Comprar o ${pack.name} por ${price}`} label={`Comprar por ${price}`} loading={buying} onPress={onBuy} testID={`market-pack-${pack.slug}-side-buy`} />}
+    <Text style={styles.packSideNote}>{owned ? 'Os itens são seus em qualquer plano, com ou sem premium.' : 'O pagamento abre na página segura do Stripe. Os itens vão para o Inventário assim que o pagamento é confirmado.'}</Text>
+  </View>;
+}
+
 const cinzel = 'Cinzel-SemiBold';
 
 const styles = StyleSheet.create({
@@ -392,7 +577,7 @@ const styles = StyleSheet.create({
   purseFigures: { flexDirection: 'row', alignItems: 'center', gap: 16 },
   purseRule: { width: theme.border.standard, alignSelf: 'stretch', backgroundColor: theme.color.borderSubtle },
   statementLink: { flexDirection: 'row', alignItems: 'center', gap: 6, minHeight: theme.layout.touchTarget, paddingHorizontal: 4 },
-  linkText: { fontFamily: 'Inter-SemiBold', fontSize: 13, lineHeight: 16, color: theme.color.accentPrimary },
+  linkText: { flexShrink: 0, fontFamily: 'Inter-SemiBold', fontSize: 13, lineHeight: 16, color: theme.color.accentPrimary },
   chip: {
     flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: theme.layout.touchTarget, paddingHorizontal: 14,
     borderRadius: theme.radius.pill, borderWidth: theme.border.standard, borderColor: theme.color.borderEmphasis, backgroundColor: theme.color.surfaceCard,
@@ -490,6 +675,66 @@ const styles = StyleSheet.create({
   },
   stageFigures: { flexDirection: 'row', alignItems: 'flex-end', gap: 22 },
   stageItem: { marginBottom: 60 },
+  packsMain: { flex: 1, minWidth: 0, gap: 16 },
+  packsDesktop: { flexDirection: 'row', alignItems: 'flex-start', gap: 24 },
+  packsHeader: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', gap: 12 },
+  packsHeaderTitle: { flexShrink: 0, fontFamily: cinzel, fontSize: 12, lineHeight: 15, letterSpacing: 2, textTransform: 'uppercase', color: theme.color.accentPrimary },
+  packsHeaderCount: { flex: 1, textAlign: 'right', fontFamily: 'JetBrainsMono-Medium', fontSize: 11, lineHeight: 13, color: theme.color.textTertiary },
+  packsNote: {
+    padding: 13, borderRadius: theme.radius.control, borderWidth: theme.border.standard, borderColor: theme.color.borderSubtle, borderStyle: 'dashed',
+    fontFamily: 'Inter-Regular', fontSize: 13, lineHeight: 18, color: theme.color.textTertiary,
+  },
+  pack: { overflow: 'hidden', borderRadius: theme.radius.card, borderWidth: theme.border.standard, borderColor: theme.color.borderSubtle, backgroundColor: theme.color.surfaceCard },
+  packOwned: { borderColor: theme.color.feedbackSuccess },
+  packBanner: { height: 150, overflow: 'hidden', backgroundColor: theme.color.surfaceInset },
+  packDragon: { position: 'absolute', left: 36, top: 14 },
+  packBannerHero: { position: 'absolute', right: 22, top: 22 },
+  packPill: {
+    position: 'absolute', top: 16, left: 232, flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 3,
+    borderRadius: theme.radius.pill, borderWidth: theme.border.standard, borderColor: theme.color.accentMuted, backgroundColor: theme.color.surfaceInset,
+  },
+  packPillOwned: { borderColor: theme.color.feedbackSuccess },
+  packPillText: { fontFamily: 'JetBrainsMono-Medium', fontSize: 9, lineHeight: 12, letterSpacing: 0.8, textTransform: 'uppercase', color: theme.color.accentPrimary },
+  packPillTextOwned: { color: theme.color.feedbackSuccess },
+  packBody: { gap: 12, paddingVertical: 20, paddingHorizontal: 24 },
+  packKicker: { fontFamily: 'JetBrainsMono-Medium', fontSize: 10, lineHeight: 13, letterSpacing: 0.8, textTransform: 'uppercase', color: theme.color.textTertiary },
+  packTitle: { fontFamily: cinzel, fontSize: 22, lineHeight: 28, color: theme.color.textPrimary },
+  packCopy: { fontFamily: 'Inter-Regular', fontSize: 13, lineHeight: 20, color: theme.color.textSecondary },
+  packItems: { gap: 8, paddingTop: 4 },
+  packItem: {
+    flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 10, paddingLeft: 12, paddingRight: 14,
+    borderRadius: theme.radius.control, borderWidth: theme.border.standard, borderColor: theme.color.borderGhost, backgroundColor: theme.color.surfaceInset,
+  },
+  packThumb: {
+    width: 46, height: 46, alignItems: 'center', justifyContent: 'center',
+    borderRadius: theme.radius.detail, borderWidth: theme.border.standard, borderColor: theme.color.borderSubtle, backgroundColor: theme.color.backgroundCanvas,
+  },
+  packItemCopy: { flex: 1, minWidth: 0, gap: 2 },
+  packItemName: { fontFamily: 'Inter-SemiBold', fontSize: 14, lineHeight: 18, color: theme.color.textPrimary },
+  packItemCategory: { fontFamily: 'JetBrainsMono-Medium', fontSize: 10, lineHeight: 13, letterSpacing: 0.6, textTransform: 'uppercase', color: theme.color.textTertiary },
+  packReleased: { fontFamily: 'Inter-Medium', fontSize: 13, lineHeight: 18, color: theme.color.feedbackSuccess },
+  packFoot: { gap: 12, paddingVertical: 18, paddingHorizontal: 24, backgroundColor: theme.color.backgroundRaised },
+  packFootDesktop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  packButton: { flex: 1, minWidth: 0 },
+  packActions: { flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', gap: 16 },
+  packPrice: { fontFamily: 'JetBrainsMono-SemiBold', fontSize: 22, lineHeight: 28, color: theme.color.accentHighlight },
+  packPriceOwned: { color: theme.color.textTertiary },
+  packPriceNote: { fontFamily: 'JetBrainsMono-Medium', fontSize: 10, lineHeight: 13, letterSpacing: 0.6, textTransform: 'uppercase', color: theme.color.textTertiary },
+  packPreviewInline: { gap: 12 },
+  packStageSide: { height: 220, justifyContent: 'center', paddingBottom: 0 },
+  packLedger: { paddingHorizontal: 14, paddingVertical: 4, borderRadius: theme.radius.control, backgroundColor: theme.color.surfaceInset },
+  packLedgerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 7 },
+  packLedgerName: { fontFamily: 'Inter-Regular', fontSize: 13, lineHeight: 18, color: theme.color.textSecondary },
+  packLedgerCategory: { fontFamily: 'JetBrainsMono-Medium', fontSize: 11, lineHeight: 14, letterSpacing: 0.6, textTransform: 'uppercase', color: theme.color.textTertiary },
+  packLedgerTotal: { marginTop: 3, paddingTop: 10, paddingBottom: 4, borderTopWidth: theme.border.standard, borderTopColor: theme.color.borderSubtle },
+  packLedgerTotalLabel: { fontFamily: 'Inter-SemiBold', fontSize: 13, lineHeight: 18, color: theme.color.textPrimary },
+  packLedgerTotalValue: { fontFamily: 'JetBrainsMono-SemiBold', fontSize: 13, lineHeight: 18, color: theme.color.accentHighlight },
+  packSide: {
+    width: 392, gap: 16, paddingVertical: 20, paddingHorizontal: 22,
+    borderRadius: theme.radius.card, borderWidth: theme.border.standard, borderColor: theme.color.accentMuted, backgroundColor: theme.color.surfaceCard,
+  },
+  packSideCopy: { gap: 4 },
+  packSideNote: { fontFamily: 'Inter-Regular', fontSize: 11, lineHeight: 16, color: theme.color.textTertiary },
   previewCopy: { gap: 4 },
   previewTitle: { fontFamily: cinzel, fontSize: 22, lineHeight: 28, color: theme.color.textPrimary },
   previewText: { fontFamily: 'Inter-Regular', fontSize: 14, lineHeight: 21, color: theme.color.textSecondary },

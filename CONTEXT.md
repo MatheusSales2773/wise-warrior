@@ -31,7 +31,7 @@ Os Cosmetic Items que um usuário já desbloqueou.
 _Avoid_: Coleção, bolsa
 
 **Condição de desbloqueio**:
-A regra que dá um Cosmetic Item a um usuário, por exemplo alcançar um nível, concluir uma Raid, somar um número de Study Sessions, terminar Study Sessions antes das 7h ou fazer a Compra do item.
+A regra que dá um Cosmetic Item a um usuário, por exemplo alcançar um nível, concluir uma Raid, somar um número de Study Sessions, terminar Study Sessions antes das 7h, fazer a Compra do item ou pagar o Pacote que o contém (Condição `pack:<slug>`, por exemplo `pack:dragao`).
 _Avoid_: requisito, critério
 
 **Desbloqueio**:
@@ -43,7 +43,7 @@ A troca de Moedas por uma Missão ou por um Cosmetic Item à venda na Loja. A Co
 _Avoid_: aquisição, transação
 
 **À venda**:
-A marca de um Cosmetic Item que pode ser comprado na Loja. Recompensas de Raid, itens de nível, Itens premium e Badges nunca estão à venda: o Badge é sempre conquistado.
+A marca de um Cosmetic Item que pode ser comprado na Loja. Recompensas de Raid, itens de nível, Itens premium, itens de Pacote e Badges nunca estão à venda por Moedas: o Badge é sempre conquistado.
 _Avoid_: vendável, disponível
 
 **Fora de venda**:
@@ -59,12 +59,24 @@ O Cosmetic Item da categoria Título que está equipado no Character. Não exist
 _Avoid_: rank, cargo, título livre
 
 **Item inicial**:
-Um Cosmetic Item cuja Condição de desbloqueio é o nível 1, de modo que todo Character já começa com ele no Inventário e equipado.
+Um Cosmetic Item de nível 1 e não premium, de modo que todo Character já começa com ele no Inventário e equipado. Os Itens premium de nível 1 também entram no Inventário de todo Character, mas desequipados.
 _Avoid_: item padrão, item grátis
 
 **Item premium** (✦):
-Um Cosmetic Item marcado como exclusivo do plano premium. No MVP o selo ✦ é exibido, mas a política de entitlement libera o item para todos.
+Um Cosmetic Item marcado como exclusivo do plano premium. Só quem tem plano premium o equipa; quando o plano volta a free, ele é desequipado e a categoria volta ao Item inicial. Sem cobrança configurada, `COSMETICS_PREMIUM_FOR_ALL` ainda pode liberá-lo para todos.
 _Avoid_: item pago, item VIP
+
+**Assinatura**:
+O vínculo pago e mensal de um usuário com o plano premium, cobrado pelo Stripe (ADR-015). Enquanto está ativa, ou com pagamento pendente, o plano é premium; cancelada, vale até o fim do período pago e o plano volta a free. Cada usuário tem no máximo uma.
+_Avoid_: plano (que é o resultado, free ou premium), mensalidade, subscription
+
+**Pacote**:
+Um conjunto de Cosmetic Items vendido na Loja por dinheiro, não por Moedas. Pagar o Pacote dá seus itens para sempre, em qualquer plano. Não se paga duas vezes o mesmo Pacote.
+_Avoid_: bundle, kit, combo
+
+**Pagamento**:
+O registro de que um usuário pagou um Pacote, com o valor e a moeda cobrados. Existe no máximo um por usuário e Pacote, e é ele que atende a Condição `pack:<slug>`. Não confundir com a Compra, que é com Moedas.
+_Avoid_: compra (quando é com dinheiro), transação, pedido
 
 **Prévia**:
 A visualização de um Cosmetic Item aplicado ao Character antes de confirmar a ação de Equipar. Nada é persistido.
@@ -167,7 +179,7 @@ O modelo temático de uma Raid, com nome, descrição, imagem e a Recompensa de 
 _Avoid_: quest, modelo de raid, template
 
 **Loja**:
-O único lugar onde o usuário gasta Moedas, com duas seções: Missões e os Cosmetic Items À venda. A Missão comprada pertence a quem comprou e não é consumida ao ser usada. O Líder escolhe, entre as Missões dos membros atuais, a Missão da próxima Raid, e pode repetir uma Missão. A escolha trava quando a Raid começa; se o dono sai da Guild antes disso, a escolha é anulada e vale o rodízio. Se o dono sai durante a Raid, a Raid continua. O dono não ganha nada quando sua Missão é usada.
+O único lugar onde o usuário gasta Moedas e onde paga Pacotes com dinheiro, com três seções: Missões e os Cosmetic Items À venda, por Moedas, e Pacotes, por dinheiro. A Missão comprada pertence a quem comprou e não é consumida ao ser usada. O Líder escolhe, entre as Missões dos membros atuais, a Missão da próxima Raid, e pode repetir uma Missão. A escolha trava quando a Raid começa; se o dono sai da Guild antes disso, a escolha é anulada e vale o rodízio. Se o dono sai durante a Raid, a Raid continua. O dono não ganha nada quando sua Missão é usada.
 _Avoid_: Catálogo (que é todo o conjunto de Cosmetic Items, à venda ou não), mercado
 
 **Participante**:

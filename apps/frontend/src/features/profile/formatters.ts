@@ -11,12 +11,21 @@ export function describeDevice(device: Pick<DeviceSession, 'deviceLabel' | 'user
   return 'Dispositivo desconhecido';
 }
 
+/** Nome de cada Pacote pelo slug da Condição `pack:<slug>`; o Catálogo só traz o slug. */
+const PACK_NAMES: Record<string, string> = { dragao: 'Pacote do Dragão' };
+
+/** "Do Pacote do Dragão": a mesma legenda com ou sem posse do item (ADR-015). */
+export function describePackItem(slug: string): string {
+  return `Do ${PACK_NAMES[slug] ?? 'Pacote'}`;
+}
+
 export function describeUnlockCondition(item: Pick<CatalogCosmeticItem, 'unlockCondition' | 'forSale'>): string {
   const condition: UnlockCondition = item.unlockCondition;
   if (condition.type === 'level') return `Alcance o nível ${condition.level}`;
   if (condition.type === 'purchase') return item.forSale ? 'À venda na Loja' : 'Fora de venda';
   if (condition.type === 'sessions') return `Conclua ${condition.count} Study Sessions`;
   if (condition.type === 'early-sessions') return `Conclua ${condition.count} Study Sessions antes das 7h`;
+  if (condition.type === 'pack') return describePackItem(condition.slug);
   return condition.slug === '*' ? 'Conclua uma Raid com sua Guilda' : `Conclua a Raid ${condition.slug}`;
 }
 
@@ -28,6 +37,8 @@ export function cosmeticItemState(item: CatalogCosmeticItem): CosmeticItemState 
   switch (item.unlockCondition.type) {
     case 'level': return 'lockedByLevel';
     case 'purchase': return item.forSale ? 'lockedByPurchase' : 'offSale';
+    // Pago em dinheiro na Loja: ordena e se descreve junto dos itens À venda.
+    case 'pack': return 'lockedByPurchase';
     case 'raid': return 'lockedByRaid';
     case 'sessions':
     case 'early-sessions': return 'lockedBySessions';

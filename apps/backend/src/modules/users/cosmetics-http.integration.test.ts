@@ -16,7 +16,7 @@ import { Character } from '../progression/entities/character.entity';
 import { ProgressionService } from '../progression/progression.service';
 import type { RealtimeGateway } from '../realtime/realtime.gateway';
 import { HttpExceptionFilter } from '../../shared/filters/http-exception.filter';
-import { APPLICATION_MIGRATIONS, createIntegrationDatabase, type IntegrationDatabase } from '../../test/integration-database';
+import { APPLICATION_MIGRATIONS, createMigratedIntegrationDatabase, type IntegrationDatabase } from '../../test/integration-database';
 import { CosmeticItem } from './entities/cosmetic-item.entity';
 import { User } from './entities/user.entity';
 import { UserCosmeticItem } from './entities/user-cosmetic-item.entity';
@@ -46,7 +46,7 @@ describe('Cosmetics Catalog HTTP contract against MySQL', () => {
     .sort(([a], [b]) => String(a).localeCompare(String(b), 'pt-BR'));
 
   beforeEach(async () => {
-    database = await createIntegrationDatabase('wise_cosmetics_http');
+    database = await createMigratedIntegrationDatabase('wise_cosmetics_http');
     dataSource = new DataSource(database.options(APPLICATION_MIGRATIONS));
     await dataSource.initialize();
     await dataSource.runMigrations();
@@ -131,6 +131,7 @@ describe('Cosmetics Catalog HTTP contract against MySQL', () => {
     expect(response.status).toBe(200);
     const catalog = await response.json() as CatalogCosmeticItem[];
     expect(summarize(catalog)).toEqual([
+      ['Amuleto de Brasa', false, false],
       ['Âncora das Brumas', false, false],
       ['Andarilho do Saber', false, false],
       ['Aprendiz', true, true],
@@ -140,16 +141,20 @@ describe('Cosmetics Catalog HTTP contract against MySQL', () => {
       ['Brasão da Forja', false, false],
       ['Caçador de Monstros', false, false],
       ['Cajado', false, false],
+      ['Cajado Astral', true, false],
       ['Capuz do Erudito', true, true],
       ['Cem Sessões', false, false],
       ['Chave da Torre', false, false],
+      ['Elmo de Escamas', false, false],
       ['Espada', true, true],
       ['Estudante Crepuscular', false, false],
       ['Guardião das Páginas', false, false],
       ['Lanterna do Silêncio', false, false],
       ['Lanterna do Vigia', false, false],
+      ['Lenda do Foco', true, false],
       ['Madrugador', false, false],
       ['Manto da Vigília', false, false],
+      ['Manto do Arquimago', true, false],
       ['Manto Estelar', false, false],
       ['Marcador de Fita', false, false],
       ['Marcador do Grimório', false, false],
@@ -158,6 +163,7 @@ describe('Cosmetics Catalog HTTP contract against MySQL', () => {
       ['Navegante das Brumas', false, false],
       ['Pena do Escriba', false, false],
       ['Pluma de Grifo', false, false],
+      ['Presa do Dragão', false, false],
       ['Selo dos Madrugadores', false, false],
       ['Sino da Torre', false, false],
       ['Túnica do Viajante', false, false],
@@ -232,7 +238,7 @@ describe('Cosmetics Catalog HTTP contract against MySQL', () => {
 
     expect(response.status).toBe(200);
     const catalog = await response.json() as CatalogCosmeticItem[];
-    expect(catalog).toHaveLength(30); // the 12 level and Raid items (with the Espada), the 8 items À venda (#174), the 2 Armas À venda (#257) and the 8 Recompensas das Missões à venda (#177)
+    expect(catalog).toHaveLength(36); // the 12 level and Raid items (with the Espada), the 3 Itens premium (#354), the 3 Pacote items (#360), the 8 items À venda (#174), the 2 Armas À venda (#257) and the 8 Recompensas das Missões à venda (#177)
     expect(catalog.map((item) => item.name)).not.toContain('Quebrado');
   });
 
@@ -248,6 +254,7 @@ describe('Cosmetics Catalog HTTP contract against MySQL', () => {
 
     const catalog = await (await getCatalog(veteran)).json() as CatalogCosmeticItem[];
     expect(summarize(catalog)).toEqual([
+      ['Amuleto de Brasa', false, false],
       ['Âncora das Brumas', false, false],
       ['Andarilho do Saber', false, false],
       ['Aprendiz', true, false],
@@ -257,16 +264,20 @@ describe('Cosmetics Catalog HTTP contract against MySQL', () => {
       ['Brasão da Forja', false, false],
       ['Caçador de Monstros', false, false],
       ['Cajado', false, false],
+      ['Cajado Astral', true, false],
       ['Capuz do Erudito', true, false],
       ['Cem Sessões', false, false],
       ['Chave da Torre', false, false],
+      ['Elmo de Escamas', false, false],
       ['Espada', true, false],
       ['Estudante Crepuscular', true, false],
       ['Guardião das Páginas', false, false],
       ['Lanterna do Silêncio', false, false],
       ['Lanterna do Vigia', false, false],
+      ['Lenda do Foco', true, false],
       ['Madrugador', false, false],
       ['Manto da Vigília', true, false],
+      ['Manto do Arquimago', true, false],
       ['Manto Estelar', false, false],
       ['Marcador de Fita', false, false],
       ['Marcador do Grimório', false, false],
@@ -275,11 +286,12 @@ describe('Cosmetics Catalog HTTP contract against MySQL', () => {
       ['Navegante das Brumas', false, false],
       ['Pena do Escriba', false, false],
       ['Pluma de Grifo', false, false],
+      ['Presa do Dragão', false, false],
       ['Selo dos Madrugadores', false, false],
       ['Sino da Torre', false, false],
       ['Túnica do Viajante', false, false],
     ]);
-    expect(await dataSource!.getRepository(UserCosmeticItem).count({ where: { userId: veteran } })).toBe(5);
+    expect(await dataSource!.getRepository(UserCosmeticItem).count({ where: { userId: veteran } })).toBe(8);
 
     // Tolerating the repeated (user + item) row must not hide other failures, such as an unknown user.
     await expect(dataSource!.transaction((manager) => users.unlockCosmeticItems(

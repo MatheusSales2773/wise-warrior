@@ -11,7 +11,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { EntityManager, In, Repository } from 'typeorm';
-import { User } from './entities/user.entity';
+import { PlanTier, User } from './entities/user.entity';
 import { ProgressionService } from '../progression/progression.service';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
 import { CosmeticCategory, CosmeticItem } from './entities/cosmetic-item.entity';
@@ -25,6 +25,7 @@ import {
   UnlockCondition,
 } from './domain/unlock-condition';
 import { MILESTONE_BADGE_IDS, milestoneProgress } from './domain/milestone';
+import { isDevToolsEmail } from '../../shared/dev-tools/dev-tools';
 
 export interface UserProfile {
   id: string;
@@ -37,6 +38,8 @@ export interface UserProfile {
   nextLevelXp: number;
   /** ADR-010: nome do Cosmetic Item de categoria Título equipado, ou `null`. */
   title: string | null;
+  /** O e-mail está em `DEV_TOOLS_EMAILS`: o app mostra a seção Desenvolvedor. */
+  devTools: boolean;
   equipped: EquippedCosmeticItem[];
 }
 
@@ -80,6 +83,25 @@ export interface CatalogCosmeticItem {
   unlockCondition: UnlockCondition;
 }
 
+/** Um item de Pacote, como a Loja o mostra. */
+export interface PackItem {
+  id: string;
+  name: string;
+  category: CosmeticCategory;
+}
+
+/** A categoria que mudou de equipagem e o item agora equipado nela (`null`: ficou vazia). */
+export interface EquipmentChange {
+  category: CosmeticCategory;
+  cosmeticItemId: string | null;
+}
+
+/** O que `applyPlanTier` fez: se o plano mudou e a equipagem que mudou junto. */
+export interface PlanTierChange {
+  changed: boolean;
+  equipment: EquipmentChange[];
+}
+
 /** Um Marco (ADR-014): um Badge do Catálogo com o progresso até a sua Condição de desbloqueio. */
 export interface Milestone {
   id: string;
@@ -111,11 +133,32 @@ export class UsersService {
 
   /** Serializes work for a user inside the caller's transaction, including the first insert. */
   async lockForUpdate(userId: string, manager: EntityManager): Promise<boolean> {
+    return (await this.lockPlanTier(manager, userId)) !== null;
+  }
+
+  /** `lockForUpdate` que devolve o `plan_tier` lido sob a trava; `null` quando o usuário não existe. */
+  async lockPlanTier(manager: EntityManager, userId: string): Promise<PlanTier | null> {
     const user = await manager.getRepository(User).findOne({
       where: { id: userId },
       lock: { mode: 'pessimistic_write' },
     });
-    return user !== null;
+    return user?.planTier ?? null;
+  }
+
+  private isDevToolsEmail(email: string): boolean {
+    return isDevToolsEmail(email, this.config?.get<string>('DEV_TOOLS_EMAILS'));
+  }
+
+  /** O usuário pode usar as ferramentas de desenvolvedor (`DEV_TOOLS_EMAILS`); `false` também quando ele não existe. */
+  async isDevToolsUser(userId: string): Promise<boolean> {
+    const user = await this.users.findOne({ where: { id: userId }, select: { email: true } });
+    return user !== null && this.isDevToolsEmail(user.email);
+  }
+
+  /** O `plan_tier` do usuário; `null` quando ele não existe. */
+  async findPlanTier(userId: string): Promise<PlanTier | null> {
+    const user = await this.users.findOne({ where: { id: userId }, select: { planTier: true } });
+    return user?.planTier ?? null;
   }
 
   /**
@@ -206,14 +249,14 @@ export class UsersService {
       .execute();
   }
 
-  /** Inventário de um Character recém-criado: os Itens iniciais, já equipados. */
+  /** Inventário de um Character recém-criado: os Itens iniciais equipados, e os Itens premium de nível 1 desequipados. */
   async grantStarterInventory(manager: EntityManager, userId: string): Promise<void> {
     await this.unlockCosmeticItems(manager, userId, 1);
     const inventory = manager.getRepository(UserCosmeticItem);
     const starters = (await inventory.find({ where: { userId }, relations: ['cosmeticItem'] }))
       .filter((row) => {
         const condition = parseUnlockCondition(row.cosmeticItem.unlockCondition);
-        return condition !== null && isStarterItem(condition);
+        return condition !== null && isStarterItem(condition, row.cosmeticItem.requiresPremium);
       });
     const equippedCategories = new Set<CosmeticCategory>();
     for (const starter of starters) {
@@ -287,6 +330,34 @@ export class UsersService {
   }
 
   /**
+   * Os itens de cada Pacote (Condição `pack:<slug>`), por slug, na ordem das categorias da Aparência do Herói. Um slug
+   * sem itens fica fora do mapa.
+   */
+  async listPackItems(slugs: readonly string[]): Promise<Map<string, PackItem[]>> {
+    const catalog = await this.readCatalog(this.cosmeticItems);
+    const rank = (category: CosmeticCategory) => [...APPEARANCE_CATEGORIES, 'title', 'badge'].indexOf(category);
+    const bySlug = new Map<string, PackItem[]>();
+    for (const { item, condition } of catalog) {
+      if (condition.type !== 'pack' || !slugs.includes(condition.slug)) continue;
+      bySlug.set(condition.slug, [...(bySlug.get(condition.slug) ?? []), { id: item.id, name: item.name, category: item.category }]);
+    }
+    for (const items of bySlug.values()) items.sort((left, right) => rank(left.category) - rank(right.category));
+    return bySlug;
+  }
+
+  /**
+   * Concede ao Inventário os itens do Pacote (Condição `pack:<slug>`), na transação de quem chama, desequipados e sem
+   * duplicar o que o usuário já tem. Devolve os ids dos itens do Pacote.
+   */
+  async grantPackItems(manager: EntityManager, userId: string, slug: string): Promise<string[]> {
+    const ids = (await this.readCatalog(manager.getRepository(CosmeticItem)))
+      .filter(({ condition }) => condition.type === 'pack' && condition.slug === slug)
+      .map(({ item }) => item.id);
+    if (ids.length > 0) await this.grantToInventory(manager, ids.map((cosmeticItemId) => ({ userId, cosmeticItemId })));
+    return ids;
+  }
+
+  /**
    * Os Marcos do usuário (`MILESTONE_BADGE_IDS`, na ordem de Crônicas) com o progresso até a Condição de
    * desbloqueio, segundo as `counts` de Study Sessions.
    */
@@ -344,6 +415,7 @@ export class UsersService {
       levelStartXp: projection.levelStartXp,
       nextLevelXp: projection.nextLevelXp,
       title: equipped.find((item) => item.category === 'title')?.name ?? null,
+      devTools: this.isDevToolsEmail(user.email),
       equipped,
     };
   }
@@ -358,10 +430,55 @@ export class UsersService {
   }
 
   /**
-   * Política de entitlement do MVP (ADR-007): enquanto `COSMETICS_PREMIUM_FOR_ALL` não for
-   * `false`, os itens premium ficam liberados para todos. A checagem continua no caminho de Equipar.
+   * Grava o `plan_tier` do usuário na transação de quem chama (o Billing, ADR-015), que já travou a linha do usuário
+   * (`lockForUpdate`). Repetir o mesmo plano não muda nada. Quando o plano vira `free`, desequipa cada Item premium
+   * equipado e equipa em seu lugar o Item inicial da categoria, se o usuário tiver um; Itens de Pacote continuam
+   * equipados. Devolve a equipagem que mudou, para o chamador emitir depois do commit.
+   */
+  async applyPlanTier(manager: EntityManager, userId: string, planTier: PlanTier): Promise<PlanTierChange> {
+    const user = await manager.getRepository(User).findOne({ where: { id: userId } });
+    if (!user || user.planTier === planTier) return { changed: false, equipment: [] };
+    await manager.getRepository(User).update({ id: userId }, { planTier });
+    return { changed: true, equipment: planTier === 'free' ? await this.releasePremiumItems(manager, userId) : [] };
+  }
+
+  private async releasePremiumItems(manager: EntityManager, userId: string): Promise<EquipmentChange[]> {
+    const inventory = manager.getRepository(UserCosmeticItem);
+    const rows = await inventory.find({ where: { userId }, relations: ['cosmeticItem'] });
+    const categories = [...new Set(rows.filter((row) => row.equipped && row.cosmeticItem.requiresPremium).map((row) => row.cosmeticItem.category))];
+    const changes: EquipmentChange[] = [];
+    for (const category of categories) {
+      await inventory.update(
+        rows.filter((row) => row.equipped && row.cosmeticItem.requiresPremium && row.cosmeticItem.category === category).map((row) => row.id),
+        { equipped: false },
+      );
+      // Item inicial da categoria (nível 1 e não premium). Mais de um: o de menor id, para o resultado ser estável.
+      const starter = rows
+        .filter((row) => row.cosmeticItem.category === category)
+        .filter((row) => {
+          const condition = parseUnlockCondition(row.cosmeticItem.unlockCondition);
+          return condition !== null && isStarterItem(condition, row.cosmeticItem.requiresPremium);
+        })
+        .sort((a, b) => a.cosmeticItemId.localeCompare(b.cosmeticItemId))[0];
+      if (starter) await inventory.update({ id: starter.id }, { equipped: true });
+      changes.push({ category, cosmeticItemId: starter?.cosmeticItemId ?? null });
+    }
+    return changes;
+  }
+
+  /** Depois do commit de quem mudou o plano: os dispositivos do usuário refletem a equipagem nova (#22, ADR-009). */
+  publishEquipmentChanges(userId: string, changes: EquipmentChange[]): void {
+    for (const { category, cosmeticItemId } of changes) this.publishEquipmentChanged(userId, category, cosmeticItemId);
+  }
+
+  /**
+   * Política de entitlement (ADR-007, revisada pela ADR-015): sem cobrança configurada, enquanto
+   * `COSMETICS_PREMIUM_FOR_ALL` não for `false`, os itens premium ficam liberados para todos. Com
+   * `STRIPE_SECRET_KEY` definido só o plano `premium` os equipa, qualquer que seja a flag. A checagem continua no
+   * caminho de Equipar.
    */
   private premiumReleasedToEveryone(): boolean {
+    if (this.config?.get<string>('STRIPE_SECRET_KEY')) return false;
     return this.config?.get<string>('COSMETICS_PREMIUM_FOR_ALL') !== 'false';
   }
 

@@ -22,7 +22,7 @@ import { UserCosmeticItem } from '../users/entities/user-cosmetic-item.entity';
 import { UsersController } from '../users/users.controller';
 import { UsersService, type CatalogCosmeticItem } from '../users/users.service';
 import { HttpExceptionFilter } from '../../shared/filters/http-exception.filter';
-import { APPLICATION_MIGRATIONS, createIntegrationDatabase, type IntegrationDatabase } from '../../test/integration-database';
+import { APPLICATION_MIGRATIONS, createMigratedIntegrationDatabase, type IntegrationDatabase } from '../../test/integration-database';
 import { SessionsController } from './sessions.controller';
 import { SessionsService } from './sessions.service';
 import { StudySessionStartService } from './study-session-start.service';
@@ -77,7 +77,7 @@ describe('Cosmetic Item unlock on level-up through the Study Session API', () =>
     dataSource!.getRepository(Character).update({ userId }, { xpTotal, level });
 
   beforeEach(async () => {
-    database = await createIntegrationDatabase('wise_levelup_unlock');
+    database = await createMigratedIntegrationDatabase('wise_levelup_unlock');
     dataSource = new DataSource(database.options(APPLICATION_MIGRATIONS));
     await dataSource.initialize();
     await dataSource.runMigrations();
@@ -170,14 +170,14 @@ describe('Cosmetic Item unlock on level-up through the Study Session API', () =>
 
   it('no longer unlocks Madrugador when completing a Study Session takes the Character to level 3', async () => {
     await seedCharacterAt(2_500, 2);
-    expect(await unlockedNames()).toEqual(['Aprendiz', 'Capuz do Erudito', 'Espada']);
+    expect(await unlockedNames()).toEqual(['Aprendiz', 'Cajado Astral', 'Capuz do Erudito', 'Espada', 'Lenda do Foco', 'Manto do Arquimago']);
 
     const completed = await (await startSession(900, 'level-3')).complete();
 
     expect(completed.status).toBe(200);
     const character = await dataSource!.getRepository(Character).findOneByOrFail({ userId });
     expect(character.level).toBe(3);
-    expect(await unlockedNames()).toEqual(['Aprendiz', 'Capuz do Erudito', 'Espada']);
+    expect(await unlockedNames()).toEqual(['Aprendiz', 'Cajado Astral', 'Capuz do Erudito', 'Espada', 'Lenda do Foco', 'Manto do Arquimago']);
   });
 
   it('unlocks the level items reached by a gain, without equipping them', async () => {
@@ -190,7 +190,7 @@ describe('Cosmetic Item unlock on level-up through the Study Session API', () =>
     expect(character.level).toBe(5);
     const catalog = await (await send('GET', '/users/me/cosmetics')).json() as CatalogCosmeticItem[];
     expect(catalog.filter((item) => item.unlocked).map((item) => item.name).sort())
-      .toEqual(['Aprendiz', 'Capuz do Erudito', 'Espada', 'Estudante Crepuscular']);
+      .toEqual(['Aprendiz', 'Cajado Astral', 'Capuz do Erudito', 'Espada', 'Estudante Crepuscular', 'Lenda do Foco', 'Manto do Arquimago']);
     expect(catalog.filter((item) => item.equipped).map((item) => item.name).sort())
       .toEqual(['Aprendiz', 'Capuz do Erudito', 'Espada']);
   });
@@ -203,7 +203,7 @@ describe('Cosmetic Item unlock on level-up through the Study Session API', () =>
 
     await dataSource!.transaction((manager) => users.unlockCosmeticItems(manager, userId, 3));
 
-    expect(await dataSource!.getRepository(UserCosmeticItem).count({ where: { userId } })).toBe(3);
+    expect(await dataSource!.getRepository(UserCosmeticItem).count({ where: { userId } })).toBe(6);
   });
 
   it('unlocks nothing and keeps the level when the XP transaction fails', async () => {
@@ -214,7 +214,7 @@ describe('Cosmetic Item unlock on level-up through the Study Session API', () =>
     const completed = await (await startSession(900, 'rollback')).complete();
 
     expect(completed.status).toBe(500);
-    expect(await unlockedNames()).toEqual(['Aprendiz', 'Capuz do Erudito', 'Espada']);
+    expect(await unlockedNames()).toEqual(['Aprendiz', 'Cajado Astral', 'Capuz do Erudito', 'Espada', 'Lenda do Foco', 'Manto do Arquimago']);
     const character = await dataSource!.getRepository(Character).findOneByOrFail({ userId });
     expect({ level: character.level, xpTotal: character.xpTotal }).toEqual({ level: 2, xpTotal: 2_500 });
   });

@@ -2,14 +2,14 @@ import type { Href } from 'expo-router';
 import type { ComponentType } from 'react';
 import type { WiseIconName } from '@/design-system';
 import type { UserProfile } from '@/features/dashboard/api';
-import { planLabel } from './plan';
 import { AccessibilityContent } from './accessibility-content';
+import { DevContent } from './dev-content';
 import { DevicesContent } from './devices-content';
 import { FocusContent } from './focus-content';
 import { PublicProfile } from './public-profile-card';
-import { PlanContent } from './settings-content';
+import { PlanContent } from './plan-content';
 
-export type SettingsSectionId = 'conta' | 'foco' | 'dispositivos' | 'acessibilidade' | 'plano';
+export type SettingsSectionId = 'conta' | 'foco' | 'dispositivos' | 'acessibilidade' | 'plano' | 'dev';
 
 /** A read-only line of the phone list, shown under the section's row. */
 export type SettingsDetail = { readonly icon: WiseIconName; readonly title: string; readonly value: string };
@@ -32,7 +32,11 @@ export type SettingsSection = {
     readonly icon: WiseIconName;
     readonly value?: (user: UserProfile) => string;
   };
+  /** Only for profiles with `devTools`; the section stays out of the menu and the list for everyone else. */
+  readonly devOnly?: true;
   readonly details?: (user: UserProfile) => readonly SettingsDetail[];
+  /** The section draws its own cards: no wrapping card and no description line (#380). */
+  readonly bare?: boolean;
   /** What the section shows below its description; `null` while it is still a skeleton. */
   readonly Content: ComponentType | null;
 };
@@ -58,10 +62,19 @@ export const settingsSections: readonly SettingsSection[] = [
   },
   {
     id: 'plano', label: 'Plano', description: 'O plano da sua conta.', href: '/configuracao/plano', icon: 'diamond-outline',
-    group: 'Plano', row: { title: 'Plano atual', icon: 'diamond-outline', value: (user) => planLabel(user.planTier) },
-    Content: PlanContent,
+    group: 'Plano', row: { title: 'Plano atual', icon: 'diamond-outline' },
+    bare: true, Content: PlanContent,
+  },
+  {
+    id: 'dev', label: 'Desenvolvedor', description: 'Ferramentas de teste desta conta.', href: '/configuracao/dev', icon: 'construct-outline',
+    group: 'Desenvolvedor', row: { title: 'Desenvolvedor', icon: 'construct-outline' }, devOnly: true, Content: DevContent,
   },
 ];
+
+/** The sections the menu and the list show: the Desenvolvedor one only once the profile says `devTools`. */
+export function visibleSettingsSections(user: UserProfile | undefined): readonly SettingsSection[] {
+  return settingsSections.filter((section) => !section.devOnly || user?.devTools === true);
+}
 
 export function settingsSection(id: SettingsSectionId): SettingsSection {
   const section = settingsSections.find((candidate) => candidate.id === id);

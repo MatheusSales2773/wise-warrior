@@ -6,7 +6,7 @@ import { SessionsService } from './sessions.service';
 import { StudySession } from './entities/study-session.entity';
 import {
   APPLICATION_MIGRATIONS,
-  createIntegrationDatabase,
+  createMigratedIntegrationDatabase,
   type IntegrationDatabase,
 } from '../../test/integration-database';
 
@@ -22,7 +22,7 @@ describe('recent study sessions against MySQL', () => {
   });
 
   it('returns the five newest ended sessions with deterministic ties and user isolation', async () => {
-    database = await createIntegrationDatabase('wise_sessions_integration');
+    database = await createMigratedIntegrationDatabase('wise_sessions_integration');
     dataSource = new DataSource(database.options(APPLICATION_MIGRATIONS));
     await dataSource.initialize();
     await dataSource.runMigrations();
@@ -89,7 +89,7 @@ describe('recent study sessions against MySQL', () => {
   });
 
   it('returns metrics from valid ended sessions and excludes discarded sessions', async () => {
-    database = await createIntegrationDatabase('wise_sessions_metrics_integration');
+    database = await createMigratedIntegrationDatabase('wise_sessions_metrics_integration');
     dataSource = new DataSource(database.options(APPLICATION_MIGRATIONS));
     await dataSource.initialize();
     await dataSource.runMigrations();
@@ -170,7 +170,7 @@ describe('recent study sessions against MySQL', () => {
   });
 
   it('counts the São Paulo day across midnight: 23:00 in São Paulo is still that day, 00:00 is the next', async () => {
-    database = await createIntegrationDatabase('wise_sessions_metrics_midnight');
+    database = await createMigratedIntegrationDatabase('wise_sessions_metrics_midnight');
     dataSource = new DataSource(database.options(APPLICATION_MIGRATIONS));
     await dataSource.initialize();
     await dataSource.runMigrations();
@@ -208,7 +208,7 @@ describe('recent study sessions against MySQL', () => {
   });
 
   it('keeps all canonical terminal states auditable while counting only eligible focus', async () => {
-    database = await createIntegrationDatabase('wise_sessions_terminals');
+    database = await createMigratedIntegrationDatabase('wise_sessions_terminals');
     dataSource = new DataSource(database.options(APPLICATION_MIGRATIONS));
     await dataSource.initialize();
     await dataSource.runMigrations();
@@ -259,7 +259,7 @@ describe('recent study sessions against MySQL', () => {
   });
 
   it('persists the continuous-limit truncation of a legacy 5-hour session with XP on 4 hours', async () => {
-    database = await createIntegrationDatabase('wise_sessions_capped_integration');
+    database = await createMigratedIntegrationDatabase('wise_sessions_capped_integration');
     dataSource = new DataSource(database.options(APPLICATION_MIGRATIONS));
     await dataSource.initialize();
     await dataSource.runMigrations();

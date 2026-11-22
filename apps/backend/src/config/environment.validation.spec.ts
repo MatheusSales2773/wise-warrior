@@ -30,6 +30,27 @@ describe('validateEnvironment', () => {
     expect(() => validateEnvironment({ ...production, ...override })).toThrow(message);
   });
 
+  const billing = {
+    STRIPE_SECRET_KEY: 'sk_test_secret-value',
+    STRIPE_WEBHOOK_SECRET: 'whsec_test',
+    STRIPE_PRICE_PREMIUM: 'price_test',
+    APP_URL: 'https://app.wise.test',
+  };
+
+  it('boots with billing off or with every billing variable set', () => {
+    expect(() => validateEnvironment({ NODE_ENV: 'development' })).not.toThrow();
+    expect(() => validateEnvironment({ NODE_ENV: 'development', ...billing })).not.toThrow();
+  });
+
+  it.each(['STRIPE_WEBHOOK_SECRET', 'STRIPE_PRICE_PREMIUM', 'APP_URL'])(
+    'refuses to boot with STRIPE_SECRET_KEY set and %s missing, naming only the variable',
+    (key) => {
+      const call = () => validateEnvironment({ NODE_ENV: 'development', ...billing, [key]: ' ' });
+      expect(call).toThrow(`${key} é obrigatório com STRIPE_SECRET_KEY definido`);
+      expect(call).not.toThrow(billing.STRIPE_SECRET_KEY);
+    },
+  );
+
   it('reports every problem at once', () => {
     expect(() => validateEnvironment({ NODE_ENV: 'production' })).toThrow(
       /JWT_ACCESS_SECRET[\s\S]*DB_PASSWORD[\s\S]*CORS_ORIGIN/,

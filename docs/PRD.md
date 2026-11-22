@@ -23,7 +23,7 @@ Quando duas fontes discordam, vale a primeira desta lista:
 | Feature "Companheiro" | Adiada para Fase 2 | ADR-004 (Aceito) |
 | Provedor de nuvem / hosting | Oracle Cloud Always Free, mantendo MySQL + NestJS | ADR-006 (Aceito) |
 | Redis Adapter | Adiado — reforçado pelo limite de recursos do Oracle Always Free | ADR-003 (Aceito) |
-| Modelo freemium | Flags de entitlement (`plan_tier`) entram já na Fase 1; gateway de pagamento continua fora | ADR-007 (Aceito) |
+| Modelo freemium | Flags de entitlement (`plan_tier`) entram já na Fase 1; gateway de pagamento continua fora | ADR-007 (revisado pela ADR-015) |
 
 ### Registro de decisão revisada em 03/09/2026
 
@@ -170,9 +170,9 @@ O usuário pediu que as informações se propaguem "no mesmo ambiente" por um si
 | **Should** | Perfil com itens cosméticos e equipagem | `users` | Importante |
 | **Should** | Notificações em tempo real (level-up, raid concluída, convite) | `notifications` | Importante |
 | **Should** | Flags de entitlement (`plan_tier`) nos recursos marcados como premium no Pitch | `users`/`shared` | ADR-007 — sem gateway de pagamento, só a checagem de flag |
+| **Must** | Cobrança/assinatura premium e Pacotes pagos (Stripe, modo de teste) | `billing` | ADR-015 — pedido do professor para a apresentação de 13/11/2026 |
 | **Could** | i18n multi-idioma (além de pt-BR) | frontend `shared` | Só pt-BR é necessário no MVP; o frontend não tem biblioteca de i18n instalada |
 | **Won't (nesta fase)** | Companheiro/mascote RPG com XP próprio | `progression` (sub-feature) | ADR-004 — adiado para Fase 2 |
-| **Won't (nesta fase)** | Cobrança/assinatura premium (gateway de pagamento) | — | ADR-007 — fora do horizonte técnico da Fase 1 |
 | **Won't (nesta fase)** | Parcerias educacionais / integrações externas | — | Modelo de negócio, não requisito técnico do MVP |
 
 ### 6.1 Sequenciamento da Fase 1 após a M4
@@ -297,7 +297,7 @@ Situação conferida no código da branch `develop` em 27/10/2026. Os estados s�
 | `objectives`: Crônicas com Objetivos, Marcos e Diário | Entregue | 3 Objetivos diários e 3 semanais pagos em Moedas, no horário de São Paulo (ADR-014). |
 | `realtime`: gateway Socket.IO | Entregue | Rooms `user:{id}` e `guild:{id}`, atualizadas ao entrar ou sair da Guild sem reconectar. |
 | Companheiro (mascote RPG) | Adiado | ADR-004. A issue #15 foi fechada sem implementação. A coluna `characters.companion_id` existe e não é usada. |
-| Gateway de pagamento | Adiado | ADR-007. |
+| Gateway de pagamento | Parcial | ADR-015. Stripe em modo de teste: Checkout e Portal da Assinatura premium e webhook que sincroniza o `plan_tier` (`/billing/*`). Faltam a tela Plano e os Pacotes. |
 | Redis Adapter | Adiado | ADR-003. O backend roda em uma réplica com o `IoAdapter` padrão do Socket.IO. |
 | i18n além de pt-BR | Não iniciado | Prioridade Could; nenhuma biblioteca de i18n instalada. |
 | Frontend universal (ADR-008) | Entregue | Expo + Expo Router + React Native Web; registros de validação dos marcos M1, M2, M4 e M5 em `docs/validation/`. Mercado, Crônicas e Configuração já têm telas e não aparecem mais como "Em breve". |
@@ -337,7 +337,7 @@ Situação conferida no código da branch `develop` em 27/10/2026. Os estados s�
 **Consequência:** o Documento de Visão (seção 4.4) e o Documento de Arquitetura (tabela de tecnologias) precisam ser atualizados para substituir as menções a AWS/EC2/ELB/ECS/CloudFront por Oracle Cloud Always Free.
 
 ### ADR-007: Flags de entitlement (freemium) entram na Fase 1, sem gateway de pagamento
-**Status:** Aceito. **Contexto:** Pitch descreve tiers grátis/premium sem nenhuma contrapartida técnica nos outros documentos. **Decisão:** adicionar `plan_tier` ao perfil do usuário e checagem de feature flag nos recursos marcados como premium no Pitch (cosméticos exclusivos, raids avançados, perfil destacado) — todos liberados por padrão no MVP, mas já passando pela checagem de flag em vez de código hardcoded. **Consequência:** nenhuma migração de dados será necessária quando um gateway de pagamento real for integrado pós-MVP; nenhum código de cobrança (Stripe, PIX, etc.) entra na Fase 1.
+**Status:** revisado pela ADR-015 (08/11/2026): a cobrança entrou, com Stripe em modo de teste. **Contexto:** Pitch descreve tiers grátis/premium sem nenhuma contrapartida técnica nos outros documentos. **Decisão:** adicionar `plan_tier` ao perfil do usuário e checagem de feature flag nos recursos marcados como premium no Pitch (cosméticos exclusivos, raids avançados, perfil destacado) — todos liberados por padrão no MVP, mas já passando pela checagem de flag em vez de código hardcoded. **Consequência:** nenhuma migração de dados será necessária quando um gateway de pagamento real for integrado pós-MVP; nenhum código de cobrança (Stripe, PIX, etc.) entra na Fase 1.
 
 ### ADR-008: Frontend universal com Expo para Web, iOS e Android
 **Status:** Revisado e aceito em 03/09/2026; substitui integralmente a versão “Web responsivo mobile-first, sem app nativo”. **Contexto:** o frontend Web responsivo já existe, mas o objetivo passou a exigir as mesmas capacidades em Web, iOS e Android. Não há versão pública a manter durante a migração, e o projeto acadêmico pode validar aplicativos localmente sem publicação nas lojas. **Decisão:** transformar `apps/frontend` numa única aplicação Expo com Expo Router e React Native Web. A UI usa primitivas React Native, `StyleSheet`, tokens TypeScript e componentes próprios; diferenças legítimas ficam em adaptadores ou arquivos específicos por plataforma. REST permanece canônico, TanStack Query gerencia somente estado remoto e Socket.IO invalida consultas. Web mantém refresh token em cookie protegido; iOS/Android usam credencial rotativa em armazenamento seguro. A compatibilidade segue a matriz oficial do Expo SDK fixado.
@@ -398,6 +398,16 @@ Situação conferida no código da branch `develop` em 27/10/2026. Os estados s�
 7. **Marcos:** um Marco é a Condição de desbloqueio de um Badge mostrada com progresso. Madrugador passa de `level:3` para 5 Study Sessions terminadas antes das 7h, e Cem Sessões passa de `level:12` para 100 Study Sessions não descartadas. Quem já desbloqueou esses Badges continua com eles.
 8. **Sem Capítulos:** a trilha de Capítulos da proposta sai do escopo.
 **Consequência:** a curva de nível da ADR-011 não muda; a economia da ADR-012 ganha uma fonte de Moedas, com origem própria no Extrato. Crônicas sai de "Em breve" com Objetivos, Marcos e Diário juntos. Glossário em `CONTEXT.md`.
+
+### ADR-015: Assinatura premium e Pacotes pagos com Stripe, em modo de teste
+**Status:** Aceito em 08/11/2026; revisa a ADR-007. **Contexto:** o professor da disciplina pediu monetização funcionando na apresentação de 13/11/2026. A ADR-007 deixou o `plan_tier` pronto, mas proibia código de cobrança na Fase 1. **Decisão:**
+1. **Dois modelos:** uma Assinatura mensal (R$ 9,90) que deixa o `plan_tier` em `premium` e Pacotes de Cosmetic Items em pagamento único (o "Pacote do Dragão", R$ 4,90), com Checkout e Portal do cliente hospedados pelo Stripe. Só cartão, em BRL.
+2. **Modo de teste:** chaves, segredo do webhook, Price da Assinatura e a origem do frontend vêm do ambiente. Ir para cobrança real é configuração e ativação da conta Stripe, sem código novo. Sem `STRIPE_SECRET_KEY`, a cobrança fica indisponível e o resto do app funciona.
+3. **O webhook é o único caminho que concede algo:** ele verifica a assinatura do Stripe, relê o objeto na API e deriva o estado. Premium se, e somente se, o status da assinatura for `active`, `trialing` ou `past_due`.
+4. **Voltar para `free` desequipa os Itens premium ✦** na mesma transação; a categoria volta ao Item inicial dela quando ele existir.
+5. **Item premium nunca é Item inicial**, mesmo com Condição `level:1`. Item de Pacote tem a Condição `pack:<slug>`, nunca é premium nem À venda por Moedas, e fica com quem pagou para sempre.
+6. **Fora:** cobrança real, compra in-app no iOS e Android, PIX e boleto, impostos e reembolso.
+**Consequência:** novo módulo `billing`, dono de `subscriptions`, `packs` e `pack_payments`, que muda `plan_tier` e Inventário só pelo `UsersService` (ADR-001). Com a cobrança configurada, `COSMETICS_PREMIUM_FOR_ALL` é ignorado. A issue #7 continua aberta para validar preço e empacotamento. Design em `.design/assinatura-premium.md`; glossário em `CONTEXT.md`.
 
 ### 8.1 Diagrama de arquitetura (módulos presentes em `develop`)
 

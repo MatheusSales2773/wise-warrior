@@ -193,6 +193,73 @@ export const avatarLayers: Readonly<Record<string, PixelSpriteData>> = {
   /** The green robe of the Figma sprites page, worn by the traveler. */
   'Túnica do Viajante': avatarLayerFrom(druida),
   'Manto Estelar': avatarLayerFrom(heroSprites.arcanista),
+  /**
+   * The premium sorcerer's coat (✦), after the mages of The Witcher 3: a dark cowl edged in silver, a high collar with silver
+   * pauldrons and a gold clasp, an open coat lined in crimson over a linen tunic, a leather corset with a crimson sash and
+   * a silver-embroidered hem. On the Figma sprites page as Sprite/Avatar/Manto do Arquimago.
+   */
+  'Manto do Arquimago': avatarLayerFrom({
+    palette: [
+      '#0a0a12', '#3d364c', '#655b7e', '#272132', '#e8b48a', '#07070c', '#b97d5b',
+      '#c9cfdc', '#f3f5fa', '#4a2e1e', '#7a2a3a', '#b04a5a', '#d8d0bc', '#f0c97a',
+    ],
+    rows: [
+      '......aaaa......',
+      '.....abbbba.....',
+      '....abcbbbda....',
+      '...abcbbbbbda...',
+      '...abhaaaahba...',
+      '..abha....ahba..',
+      '..abd......dba..',
+      '..abd......dba..',
+      '...abd....dba...',
+      '..ahhaa..aahha..',
+      '.ahhhbknnkbhhha.',
+      '.abcbbkmmkbbbda.',
+      '.abcbhkmmkhbbda.',
+      '.a.ajjjnnjjja.a.',
+      '.a.akjjjjjjja.a.',
+      '..aakbkmmkbbaa..',
+      '..abkbkmmkbbba..',
+      '..abkckmmkcbba..',
+      '..akbbkmmkbbda..',
+      '..albbkmmkbbda..',
+      '.akbbbkmmkbbdda.',
+      '.ahhihkmmkhihha.',
+      '..aaajjaajjaaa..',
+      '...aaaa..aaaa...',
+    ],
+  }),
+  /** Pacote do Dragão (#360): a red-scaled dragon helm with gold horns and an ember gorget; on the Figma sprites page as Sprite/Avatar/Elmo de Escamas. */
+  'Elmo de Escamas': {
+    palette: ['#0a0a12', '#9a2f2a', '#d4553a', '#5a1a18', '#f0c97a', '#ffe3a0', '#3a1410', '#f3ead4'],
+    rows: [
+      '....a.aaaa.a....',
+      '....aabbbbaa....',
+      '....abcbbbba....',
+      '...abcbbbbbba...',
+      '...abdaaaadba...',
+      '...ada....ada...',
+      '...ad......da...',
+      '...ad......da...',
+      '....ad....da....',
+      '...abeaaaaeba...',
+      '..abbbeffebbba..',
+      '.abdbdbeedbdbda.',
+      '.adcdbdeebdbdba.',
+      '.a.agggggggga.a.',
+      '.a.aghhhhhhga.a.',
+      '..aaghhffhhgaa..',
+      '..abaggggggaba..',
+      '..adbdbeedbdba..',
+      '..abcbdeebdbda..',
+      '..adcdbeedbdda..',
+      '.adbdbdeebdbdda.',
+      '.adddddeeddddda.',
+      '..aaaggaaggaaa..',
+      '...aaaa..aaaa...',
+    ],
+  },
   /** Wolf pelt armour with pointed ears on the hood and red-trimmed pauldrons; on the Figma sprites page as Sprite/Avatar/Armadura do Lobo. */
   'Armadura do Lobo': robeLayer(
     { cloth: ['#0a0a12', '#7a7466', '#b3a98e', '#4a463c'], trim: ['#c44545', '#e87070', '#2a2820', '#f3ead4'] },
@@ -212,6 +279,18 @@ export const accessoryLayers: Readonly<Record<string, PixelSpriteData>> = {
       '.........aba....',
       '.........bcb....',
       '.........aba....',
+      ...Array<string>(10).fill('................'),
+    ],
+  },
+  /** Pacote do Dragão (#360): an ember on a gold chain over the chest; on the Figma sprites page as Sprite/Acessório/Amuleto de Brasa. */
+  'Amuleto de Brasa': {
+    palette: ['#d4a85a', '#0a0a12', '#ff9a4a'],
+    rows: [
+      ...Array<string>(10).fill('................'),
+      '......a..a......',
+      '.......bb.......',
+      '......bccb......',
+      '.......bb.......',
       ...Array<string>(10).fill('................'),
     ],
   },
@@ -244,6 +323,23 @@ export const weaponLayers: Readonly<Record<string, PixelSpriteData>> = {
     rows: layerAt([
       [3, 12, '.a.'], [4, 12, 'aba'], [5, 12, 'aba'], [6, 12, 'aba'], [7, 12, 'aba'], [8, 12, 'aba'], [9, 12, 'aba'],
       [10, 11, 'accca'], [11, 12, 'ada'], [12, 12, 'ada'], [13, 13, 'd'], [14, 13, 'd'],
+    ]),
+  },
+  /** Pacote do Dragão (#360): a curved ivory fang with a crimson grip; on the Figma sprites page as Sprite/Arma/Presa do Dragão. */
+  'Presa do Dragão': {
+    palette: ['#0a0a12', '#f3ead4', '#c44545', '#7d2a2a'],
+    rows: layerAt([
+      [3, 14, 'a'], [4, 13, 'aba'], [5, 13, 'aba'], [6, 12, 'aba'], [7, 12, 'aba'], [8, 12, 'aba'], [9, 12, 'aba'],
+      [10, 11, 'accca'], [11, 12, 'ada'], [12, 12, 'ada'], [13, 13, 'd'], [14, 13, 'd'],
+    ]),
+  },
+  /** Item premium ✦ of the Assinatura (#354): the Cajado with a violet shaft and a five-point gold crown, until the Figma art is approved. */
+  'Cajado Astral': {
+    palette: ['#0a0a12', '#5b3fa0', '#f0c97a', '#fff6dc'],
+    rows: layerAt([
+      [0, 11, 'a.a.a'], [1, 11, 'acdca'], [2, 12, 'aca'], [3, 12, 'aba'],
+      ...[4, 5, 6, 7, 8, 9, 10, 11, 12, 15, 16, 17, 18, 19, 20].map((y) => [y, 12, 'aba'] as const),
+      [13, 13, 'b'], [14, 13, 'b'], [21, 13, 'a'],
     ]),
   },
   Cajado: {
@@ -288,6 +384,15 @@ export const itemSprites = {
   moedaDaGuilda: {
     palette: ['#3a2a10', '#f0c97a', '#b8863a', '#fff6dc'],
     rows: ['..aaaa..', '.abbbca.', 'abbdbbca', 'abdbbbca', 'abbbbbca', 'abbbbcca', '.acccca.', '..aaaa..'],
+  },
+  /** The Cajado Astral and Lenda do Foco (#354), recoloured from existing art until the Figma sprites are approved. */
+  cajadoAstral: {
+    palette: ['#0a0a12', '#5b3fa0', '#f0c97a', '#fff6dc'],
+    rows: ['.a.aa.a.', '..acda..', '...aa...', '...bb...', '...bb...', '...bb...', '...bb...', '...aa...'],
+  },
+  lendaDoFoco: {
+    palette: ['#0a0a12', '#f0c97a', '#5b3fa0', '#fff6dc'],
+    rows: ['.aaaaaa.', 'abbbbbba', '.abccba.', '.abddba.', '.abccba.', '.abbbba.', 'abbbbbba', '.aaaaaa.'],
   },
   mestreDaAurora: {
     palette: ['#0a0a12', '#f0c97a', '#c44545'],
@@ -377,6 +482,23 @@ export const itemSprites = {
     palette: ['#0a0a12', '#2a1f5e', '#f0c97a', '#5b3fa0'],
     rows: ['..aaaa..', '.abccba.', 'abbbbbba', 'abdbbdba', 'abdbbdba', 'abdbbdba', 'addbbdda', 'aaaaaaaa'],
   },
+  mantoDoArquimago: {
+    palette: ['#0a0a12', '#3d364c', '#c9cfdc', '#7a2a3a', '#f0c97a', '#d8d0bc', '#4a2e1e'],
+    rows: ['...aa...', '..abba..', '.acbbca.', 'abdeedba', 'abdffdba', 'aggeegga', 'acdffdca', 'aaaaaaaa'],
+  },
+  /** Pacote do Dragão (#360), from the Figma sprites page (Sprite/Item/…). */
+  elmoDeEscamas: {
+    palette: ['#f0c97a', '#0a0a12', '#9a2f2a', '#d4553a'],
+    rows: ['a......a', 'ab.bb.ba', '.bccccb.', 'bcdcdccb', 'bccccccb', 'bcbbbbcb', '.bccccb.', '..bbbb..'],
+  },
+  presaDoDragao: {
+    palette: ['#0a0a12', '#f3ead4', '#c44545', '#7d2a2a'],
+    rows: ['......aa', '.....aba', '....aba.', '...aba..', 'acaba...', '.ada....', 'ada.....', '.a......'],
+  },
+  amuletoDeBrasa: {
+    palette: ['#d4a85a', '#0a0a12', '#c44545', '#ff9a4a'],
+    rows: ['a......a', '.a....a.', '..a..a..', '...bb...', '..bccb..', '.bcddcb.', '..bccb..', '...bb...'],
+  },
   marcadorDoGrimorio: {
     palette: ['#0a0a12', '#5b3fa0', '#d4a85a', '#8a5bc4'],
     rows: ['.aaaaaa.', 'abbbbbba', 'abcbbcba', 'abbccbba', 'abbccbba', 'abbbbbba', 'abbaabba', '.aa..aa.'],
@@ -400,3 +522,51 @@ export const companionSprites = {
 
 export type HeroSpriteName = keyof typeof heroSprites;
 export type ItemSpriteName = keyof typeof itemSprites;
+
+/** Sprite/Chefe/Dragão — O Devorador de Horas, exportado do Figma (App v2, Monetização): o dragão sozinho, sem os efeitos de chama da cena da Raid. 57 × 41 pixels; escale só por inteiros. */
+export const dragaoDevoradorDeHoras: PixelSpriteData = {
+  palette: ['#1a0a0e', '#f3ead4', '#7d2a2a', '#e06a5a', '#c44545', '#f0c97a', '#5a1a1e', '#3a0d12', '#d4a85a'],
+  rows: [
+    '................a.............a..........................',
+    '.........aaa...aba...........acaaaa......................',
+    '........abbba.abba..........adddcccaaaa..................',
+    '........abba.abbba..........addccccccccaaaa..............',
+    '........abba.abba...........addcccccccccccca.............',
+    '........abbaabba............addccccccccccddda............',
+    '........abbabba............addccccccccccdddccaa..........',
+    '......aaabbebba............addcccccccccdddccccca.........',
+    '.....aeeebeeeeea...........addccccccccdddccccccca........',
+    '.aaaadddddddeeeea..........addcccccccdddcccccccccaa......',
+    'aeeeeeeeeeffeeeea.........addcccccccdddccccccccdddda.....',
+    '.aeeeeeeeeeaeeeeea........addccccccdddcccccccddddda......',
+    '.aeeeeeeeeeeeddeea........addcccccddcccccccdddddca.......',
+    '.aeeeeeeeeeeeddeega......addcccccdddccccddddddcca........',
+    '.abhbhbhbheeeeddegga.....addcccdddccccdddddaaaaa.........',
+    '.ahbhbhbhbeeeeeddeeaa....addccdddcccdddddca..............',
+    '.aeeeeeeeeaeeeeddeeega...addcdddccdddddcca...............',
+    '..aaaaaaaa.aeeeeddeegga.addcdddddddddaccca...............',
+    '............aeeedddeea.agdddddddddgaa.aaa................',
+    '.............aeeeddeeeaaggddddddccggaaga.................',
+    '.............aeeeeddeeeaaddeeeeeeeeeaagga................',
+    '..............aeeeddeeeeeeeeeeeeeeeeeeeaa...............a',
+    '...............aeeeeeeeeeeeeeeeeeeeeeeeeea.............ac',
+    '................aeeeeeeeeeeeeeeeeeeeeeeeeea..a.........aa',
+    '................aeeeeeeeeeeeeeeeeeeeeeeeeeeaaga.......aca',
+    '.................aeeeeeeeeeeeeeeeeeeeeeeeeeeagga.a...aaca',
+    '..................aeeeeeeeeeeeeeeeeeeeeeeeeeaaa.aga.aecca',
+    '.................aeeeeeeeeeeeeeeeeeeeeeeeeeeeaaaaggaeecca',
+    '..................aeeeeeeefffffffeeeeeeeeeeeeeeeaaaeeccca',
+    '..................aeeeiiiiiiiiiiiiiiieeeeeeeeeeeeaeeeeea.',
+    '...................affffffffffffffffffeeeeeeeeeeeeeeeea..',
+    '...................aiiiiiiiiiiiiiiiiiiccccccceeeeeeeea...',
+    '..................aeeeeeefffffffffcccccccaacceeeeeeea....',
+    '..................aeeeeeeiiccccciiccccccca.aaaeeeeeea....',
+    '..................aeeeeeeaaccccceeccccccca....aeeeea.....',
+    '..................aeeeeeeaacccccaaccccccca.....aaaa......',
+    '..................aeeeeeeaacccccaaccccccca...............',
+    '..................aeeeeeeaacccccaaccccccca...............',
+    '..................aaaaaaa.aaaaaa.aaaaaaaa................',
+    '.................abababa.abababaabababa..................',
+    '..................a.a.a...a.a.a..a.a.a...................',
+  ],
+};

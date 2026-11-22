@@ -12,7 +12,7 @@ import { GuildMembership } from '../guilds/entities/guild-membership.entity';
 import { GuildsService } from '../guilds/guilds.service';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
 import { HttpExceptionFilter } from '../../shared/filters/http-exception.filter';
-import { APPLICATION_MIGRATIONS, createIntegrationDatabase, type IntegrationDatabase } from '../../test/integration-database';
+import { APPLICATION_MIGRATIONS, createMigratedIntegrationDatabase, type IntegrationDatabase } from '../../test/integration-database';
 import { CosmeticItem } from '../users/entities/cosmetic-item.entity';
 import { UserCosmeticItem } from '../users/entities/user-cosmetic-item.entity';
 import { UsersService } from '../users/users.service';
@@ -66,7 +66,7 @@ describe('Ranking interno of a Raid against MySQL', () => {
   }
 
   beforeEach(async () => {
-    database = await createIntegrationDatabase('wise_raid_ranking');
+    database = await createMigratedIntegrationDatabase('wise_raid_ranking');
     dataSource = new DataSource(database.options(APPLICATION_MIGRATIONS));
     await dataSource.initialize();
     await dataSource.runMigrations();

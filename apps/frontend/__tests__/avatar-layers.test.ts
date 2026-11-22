@@ -1,15 +1,20 @@
-import { readFileSync, readdirSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { FACE_ROWS, GRID_HEIGHT, GRID_WIDTH, HAND_ROWS, SKIN_KEYS, avatarLayers, heroBody } from '@/features/character/sprites';
 
 /** The Avatars seeded in the Catalog by the backend migrations: each one needs a layer of its own (#261). */
-const MIGRATIONS = join(__dirname, '../../backend/src/migrations');
+// The backend folder is backend/ in the monorepo and api/ beside web/ and app/ in the delivered zip.
+const MIGRATIONS = ['backend', 'api']
+  .map((folder) => join(__dirname, '../..', folder, 'src/migrations'))
+  .find((path) => existsSync(path))!;
 const CATALOG_AVATARS = [
-  ...new Set(
-    readdirSync(MIGRATIONS)
+  ...new Set([
+    ...readdirSync(MIGRATIONS)
       .filter((file) => file.endsWith('.ts') && !file.endsWith('.test.ts'))
       .flatMap((file) => [...readFileSync(join(MIGRATIONS, file), 'utf8').matchAll(/'avatar',\s*'([^']+)'/g)].map((match) => match[1]!)),
-  ),
+    /** The premium Avatar of the Assinatura, drawn before its seed lands. */
+    'Manto do Arquimago',
+  ]),
 ];
 
 const isSkin = (pixel: string) => SKIN_KEYS.includes(pixel);

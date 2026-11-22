@@ -6,7 +6,6 @@ import { HeroGlow } from '@/features/character/character-art';
 import { LayeredHero } from '@/features/character/layered-hero';
 import type { UserProfile } from '@/features/dashboard/api';
 import { profileQueryOptions } from '@/features/dashboard/queries';
-import { planLabel } from './plan';
 
 function ProfileCard({ user }: { user: UserProfile }) {
   return <View style={styles.profileCard} testID="settings-profile">
@@ -44,14 +43,6 @@ export function InfoRow({ icon, title, value }: { icon: WiseIconName; title: str
     <WiseIcon color="textSecondary" name={icon} size="compact" />
     <Text style={settingsStyles.rowTitle}>{title}</Text>
     <Text numberOfLines={1} style={settingsStyles.rowValue}>{value}</Text>
-  </View>;
-}
-
-export function PlanContent() {
-  const profile = useQuery(profileQueryOptions());
-  if (!profile.data) return <AccountHeader />;
-  return <View style={settingsStyles.list}>
-    <InfoRow icon="diamond-outline" title="Plano atual" value={planLabel(profile.data.planTier)} />
   </View>;
 }
 

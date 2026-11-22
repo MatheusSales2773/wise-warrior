@@ -1,0 +1,68 @@
+import { Controller, Get, Headers, Param, HttpCode, HttpStatus, Post, Req, UseGuards, type RawBodyRequest } from '@nestjs/common';
+import type { Request } from 'express';
+import { CurrentUser } from '../auth/decorators/current-user.decorator';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import type { JwtPayload } from '../auth/strategies/jwt.strategy';
+import { BillingService, type PackList } from './billing.service';
+import type { SubscriptionView } from './domain/subscription-view';
+
+@Controller('billing')
+export class BillingController {
+  constructor(private readonly billing: BillingService) {}
+
+  @Get('packs')
+  @UseGuards(JwtAuthGuard)
+  listPacks(@CurrentUser() user: JwtPayload): Promise<PackList> {
+    return this.billing.listPacks(user.sub);
+  }
+
+  /** Abre o Checkout do premium para o próprio usuário (S3); o usuário vem do token, nunca do corpo. */
+  @Post('checkout')
+  @UseGuards(JwtAuthGuard)
+  @HttpCode(HttpStatus.CREATED)
+  checkout(@CurrentUser() user: JwtPayload): Promise<{ url: string }> {
+    return this.billing.openCheckout(user.sub);
+  }
+
+  /** Abre o Checkout de um Pacote para o próprio usuário (S7). */
+  @Post('packs/:slug/checkout')
+  @UseGuards(JwtAuthGuard)
+  @HttpCode(HttpStatus.CREATED)
+  packCheckout(@CurrentUser() user: JwtPayload, @Param('slug') slug: string): Promise<{ url: string }> {
+    return this.billing.openPackCheckout(user.sub, slug);
+  }
+
+  /** Abre o Portal do cliente do Stripe para o próprio usuário (S4). */
+  @Post('portal')
+  @UseGuards(JwtAuthGuard)
+  @HttpCode(HttpStatus.CREATED)
+  portal(@CurrentUser() user: JwtPayload): Promise<{ url: string }> {
+    return this.billing.openPortal(user.sub);
+  }
+
+  /** Ferramenta de desenvolvedor: cancela já a Assinatura do próprio usuário; o plano volta a Free pelo webhook. */
+  @Post('dev/reset-plan')
+  @UseGuards(JwtAuthGuard)
+  @HttpCode(HttpStatus.ACCEPTED)
+  resetPlan(@CurrentUser() user: JwtPayload): Promise<void> {
+    return this.billing.resetPlan(user.sub);
+  }
+
+  /** Estado da Assinatura do próprio usuário (S5.1); aqui por causa de `premiumUntil` (S4.5). */
+  @Get('subscription')
+  @UseGuards(JwtAuthGuard)
+  subscription(@CurrentUser() user: JwtPayload): Promise<SubscriptionView> {
+    return this.billing.getSubscription(user.sub);
+  }
+
+  /** Rota pública: quem autentica é a assinatura do Stripe sobre o corpo bruto (`rawBody` no bootstrap). */
+  @Post('webhook')
+  @HttpCode(HttpStatus.OK)
+  async webhook(
+    @Req() request: RawBodyRequest<Request>,
+    @Headers('stripe-signature') signature: string | undefined,
+  ): Promise<{ received: true }> {
+    await this.billing.handleWebhook(request.rawBody, signature);
+    return { received: true };
+  }
+}

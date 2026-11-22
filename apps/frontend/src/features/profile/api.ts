@@ -16,7 +16,8 @@ export type UnlockCondition =
   | { type: 'raid'; slug: string }
   | { type: 'purchase' }
   | { type: 'sessions'; count: number }
-  | { type: 'early-sessions'; count: number };
+  | { type: 'early-sessions'; count: number }
+  | { type: 'pack'; slug: string };
 
 export type CatalogCosmeticItem = {
   id: string;

@@ -12,6 +12,8 @@ export type UserProfile = {
   xpTotal: number;
   /** ADR-010: nome do Título equipado, ou `null`. */
   title: string | null;
+  /** The e-mail is in the server's `DEV_TOOLS_EMAILS`: the Desenvolvedor section shows. */
+  devTools: boolean;
   equipped: EquippedCosmeticItem[];
 };
 

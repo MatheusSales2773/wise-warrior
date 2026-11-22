@@ -8,7 +8,7 @@ import type { Server } from 'socket.io';
 import { DataSource } from 'typeorm';
 import {
   APPLICATION_MIGRATIONS,
-  createIntegrationDatabase,
+  createMigratedIntegrationDatabase,
   type IntegrationDatabase,
 } from '../../test/integration-database';
 import { Guild } from '../guilds/entities/guild.entity';
@@ -60,7 +60,7 @@ describe('guild chat and presence against MySQL and Socket.IO', () => {
   });
 
   async function setup(): Promise<{ gateway: ChatGateway; service: ChatService }> {
-    database = await createIntegrationDatabase('wise_chat_integration');
+    database = await createMigratedIntegrationDatabase('wise_chat_integration');
     dataSource = new DataSource(database.options(APPLICATION_MIGRATIONS));
     await dataSource.initialize();
     await dataSource.runMigrations();

@@ -13,7 +13,7 @@ import { User } from '../users/entities/user.entity';
 import { UsersService } from '../users/users.service';
 import {
   APPLICATION_MIGRATIONS,
-  createIntegrationDatabase,
+  createMigratedIntegrationDatabase,
   type IntegrationDatabase,
 } from '../../test/integration-database';
 
@@ -36,7 +36,7 @@ describe('progression persistence against MySQL', () => {
   });
 
   async function setup(): Promise<void> {
-    database = await createIntegrationDatabase('wise_progression_integration');
+    database = await createMigratedIntegrationDatabase('wise_progression_integration');
     dataSource = new DataSource(database.options(APPLICATION_MIGRATIONS));
     await dataSource.initialize();
     await dataSource.runMigrations();

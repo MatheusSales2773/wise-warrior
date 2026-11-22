@@ -29,6 +29,17 @@ describe('Cosmetic Item À venda (ADR-012)', () => {
     expect(forSaleViolation({ ...sellable, requiresPremium: true })).not.toBeNull();
   });
 
+  it('rejects a premium item whatever its Condição de desbloqueio, and a Pacote item', () => {
+    expect(forSaleViolation({ ...sellable, unlockCondition: 'level:1', requiresPremium: true })).not.toBeNull();
+    expect(forSaleViolation({ ...sellable, unlockCondition: 'purchase', requiresPremium: true })).toBe('Item premium não pode estar À venda');
+  });
+
+  it('refuses a Pacote item for sale', () => {
+    const reason = 'Só um item com Condição de desbloqueio de compra pode estar À venda';
+    expect(forSaleViolation({ ...sellable, unlockCondition: 'pack:dragao' })).toBe(reason);
+    expect(forSaleViolation({ ...sellable, unlockCondition: 'pack:dragao', requiresPremium: true })).toBe(reason);
+  });
+
   it('rejects a Badge: the Badge is always earned, never À venda', () => {
     expect(forSaleViolation({ ...sellable, category: 'badge' })).not.toBeNull();
   });

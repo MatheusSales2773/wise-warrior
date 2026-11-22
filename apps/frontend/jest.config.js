@@ -12,6 +12,7 @@ module.exports = {
   preset: 'jest-expo',
   roots: ['<rootDir>/__tests__'],
   setupFilesAfterEnv: ['<rootDir>/jest.setup.ts'],
+  testSequencer: '<rootDir>/jest-sequencer.js',
   moduleNameMapper: {
     '^@/(.*)$': '<rootDir>/src/$1',
     // npm keeps this optional-peer dependency nested under Expo in the workspace.

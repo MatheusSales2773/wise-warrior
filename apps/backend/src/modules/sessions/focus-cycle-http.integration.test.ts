@@ -10,7 +10,7 @@ import type { ProgressionService } from '../progression/progression.service';
 import type { RaidsService } from '../raids/raids.service';
 import { User } from '../users/entities/user.entity';
 import { HttpExceptionFilter } from '../../shared/filters/http-exception.filter';
-import { APPLICATION_MIGRATIONS, createIntegrationDatabase, type IntegrationDatabase } from '../../test/integration-database';
+import { APPLICATION_MIGRATIONS, createMigratedIntegrationDatabase, type IntegrationDatabase } from '../../test/integration-database';
 import { StudySession, type StudySessionState } from './entities/study-session.entity';
 import { SessionsController } from './sessions.controller';
 import { SessionsService } from './sessions.service';
@@ -57,7 +57,7 @@ describe('Focus cycle HTTP contract against MySQL', () => {
 
   beforeEach(async () => {
     sessionCounter = 0;
-    database = await createIntegrationDatabase('wise_focus_cycle_http');
+    database = await createMigratedIntegrationDatabase('wise_focus_cycle_http');
     dataSource = new DataSource(database.options(APPLICATION_MIGRATIONS));
     await dataSource.initialize();
     await dataSource.runMigrations();

@@ -6,8 +6,10 @@ import { chroniclesKeys } from '@/features/chronicles/queries';
 import { dashboardKeys } from '@/features/dashboard/queries';
 import { guildKeys } from '@/features/guild/queries';
 import type { CoinOrigin } from '@/features/market/api';
+import { packKeys } from '@/features/market/packs';
 import { marketKeys } from '@/features/market/queries';
 import { profileKeys } from '@/features/profile/queries';
+import { billingKeys } from '@/features/settings/billing';
 import { activeStudySessionQueryKey, invalidateStudySessionResult } from '@/features/study-session/queries';
 import { holdOwnStudySessionEcho, isConfirmedStudySessionEcho } from '@/features/study-session/pending-command';
 import type { StudySessionSnapshot } from '@/features/study-session/api';
@@ -118,6 +120,19 @@ export function applyLevelUp(queryClient: QueryClient): void {
  * The device that made the change receives it too; refetching there is harmless.
  */
 export function applyEquipmentChanged(queryClient: QueryClient): void {
+  void queryClient.invalidateQueries({ queryKey: dashboardKeys.profile() });
+  void queryClient.invalidateQueries({ queryKey: profileKeys.cosmeticsCatalog() });
+}
+
+/** S5.12: the plan changed (Checkout, Portal or the end of the Assinatura), so the Plano and the profile refetch. */
+export function applyPlanChanged(queryClient: QueryClient): void {
+  void queryClient.invalidateQueries({ queryKey: billingKeys.subscription() });
+  void queryClient.invalidateQueries({ queryKey: dashboardKeys.profile() });
+}
+
+/** S8.7: a Pacote was paid, so the Pacotes, the profile and the Catálogo (the items arrive unequipped) refetch. */
+export function applyPackGranted(queryClient: QueryClient): void {
+  void queryClient.invalidateQueries({ queryKey: packKeys.all });
   void queryClient.invalidateQueries({ queryKey: dashboardKeys.profile() });
   void queryClient.invalidateQueries({ queryKey: profileKeys.cosmeticsCatalog() });
 }
@@ -252,6 +267,8 @@ export function createRealtimeClient({
   const onXpUpdated = () => applyXpUpdated(queryClient);
   const onLevelUp = () => applyLevelUp(queryClient);
   const onEquipmentChanged = () => applyEquipmentChanged(queryClient);
+  const onPlanChanged = () => applyPlanChanged(queryClient);
+  const onPackGranted = () => applyPackGranted(queryClient);
   const onCoinsChanged = (event: CoinsChangedEvent) => applyCoinsChanged(queryClient, event);
   const onStudySessionChanged = (event: StudySessionChangedEvent) => applyStudySessionChanged(queryClient, event);
   const handleConnectionLoss = () => {
@@ -288,6 +305,8 @@ export function createRealtimeClient({
   socket.on('progress:xpUpdated', onXpUpdated);
   socket.on('notification:levelup', onLevelUp);
   socket.on('character:equipmentChanged', onEquipmentChanged);
+  socket.on('user:planChanged', onPlanChanged);
+  socket.on('user:packGranted', onPackGranted);
   socket.on('coins:changed', onCoinsChanged);
   socket.on('studySession:changed', onStudySessionChanged);
   socket.on('connect', onConnect);
@@ -334,6 +353,8 @@ export function createRealtimeClient({
       socket.off('progress:xpUpdated', onXpUpdated);
       socket.off('notification:levelup', onLevelUp);
       socket.off('character:equipmentChanged', onEquipmentChanged);
+      socket.off('user:planChanged', onPlanChanged);
+      socket.off('user:packGranted', onPackGranted);
       socket.off('coins:changed', onCoinsChanged);
       socket.off('studySession:changed', onStudySessionChanged);
       socket.off('connect', onConnect);

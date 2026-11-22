@@ -28,7 +28,7 @@ import { User } from '../users/entities/user.entity';
 import { UserCosmeticItem } from '../users/entities/user-cosmetic-item.entity';
 import { UsersService } from '../users/users.service';
 import { HttpExceptionFilter } from '../../shared/filters/http-exception.filter';
-import { APPLICATION_MIGRATIONS, createIntegrationDatabase, type IntegrationDatabase } from '../../test/integration-database';
+import { APPLICATION_MIGRATIONS, createMigratedIntegrationDatabase, type IntegrationDatabase } from '../../test/integration-database';
 import { MilestonesController } from './milestones.controller';
 import { MilestonesService } from './milestones.service';
 import { ObjectivesController } from './objectives.controller';
@@ -115,7 +115,7 @@ describe('Objetivos pay Moedas when a Study Session ends', () => {
   };
 
   beforeEach(async () => {
-    database = await createIntegrationDatabase('wise_objectives');
+    database = await createMigratedIntegrationDatabase('wise_objectives');
     dataSource = new DataSource(database.options(APPLICATION_MIGRATIONS));
     await dataSource.initialize();
     await dataSource.runMigrations();

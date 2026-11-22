@@ -12,6 +12,7 @@ import { GuildsModule } from './modules/guilds/guilds.module';
 import { RaidsModule } from './modules/raids/raids.module';
 import { ShopModule } from './modules/shop/shop.module';
 import { ChatModule } from './modules/chat/chat.module';
+import { BillingModule } from './modules/billing/billing.module';
 import { RealtimeModule } from './modules/realtime/realtime.module';
 import { createDatabaseOptions } from './config/database.config';
 import { RateLimitModule } from './shared/security/rate-limit';
@@ -45,6 +46,7 @@ import { RateLimitModule } from './shared/security/rate-limit';
     ShopModule,
     RealtimeModule,
     ChatModule,
+    BillingModule,
   ],
   controllers: [HealthController],
 })
