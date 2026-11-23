@@ -14,6 +14,7 @@ e React Native Web (ADR-008). Para instalar e executar, veja o
 | `core/auth` | Contexto de autenticação e armazenamento do refresh token (cookie na Web, SecureStore no nativo) |
 | `core/query` | Runtime do TanStack Query e detecção de conexão |
 | `core/realtime` | Cliente Socket.IO que invalida consultas do TanStack Query a cada evento |
+| `core/preferences` | Preferências deste dispositivo (duração padrão do foco, sugestão de matérias, confirmação ao parar, reduzir movimento), guardadas no `localStorage` na Web e no SecureStore no nativo |
 | `design-system/` | Componentes, tema e catálogo de navegação |
 | `config/` | Leitura das variáveis `EXPO_PUBLIC_*` |
 
@@ -36,7 +37,9 @@ O catálogo imutável em `src/design-system/navigation/destinations.ts` é a fon
 única para as duas composições.
 
 A Configuração tem uma rota por seção: `/configuracao/conta`, `/foco`,
-`/dispositivos`, `/acessibilidade` e `/plano`. No desktop, `/configuracao` abre
+`/dispositivos`, `/acessibilidade`, `/plano` e `/dev` (Desenvolvedor, só para
+contas com `devTools` no perfil; as demais são redirecionadas para
+`/configuracao`). `/configuracao/nome` edita o nome do guerreiro. No desktop, `/configuracao` abre
 em “Conta e segurança” com o menu lateral interno; no celular, mostra a lista
 agrupada, e no iOS/Android cada seção é empilhada sobre ela, de modo que o
 voltar nativo retorna à lista mesmo depois de um deep link.
@@ -64,6 +67,8 @@ e seus contratos estáveis são:
 | `FeedbackMessage` | variantes `info`, `success`, `warning` e `error`, com título opcional e live region apropriada |
 | `ProgressBar` | modo determinado com intervalo/valor ou `indeterminate`, ambos com semântica de progresso |
 | `ResourcePill` | metadado não interativo por padrão; quando acionável, exige `onPress` e rótulo acessível |
+| `WiseDialog` | modal com rótulo acessível obrigatório: cartão centralizado no desktop, bottom sheet no celular; fecha pelo fundo, Escape na Web e voltar no Android |
+| `WiseSwitch` | interruptor controlado (`value`/`onValueChange`) com rótulo acessível obrigatório e estado disabled; sem animação com reduzir movimento |
 
 O mesmo barrel exporta `theme`, `typographyFor`, `motionDuration`,
 `isSemanticColor`, `isDesktopLayout`, `screenGutter`, nomes/tipos de ícone e os

@@ -41,6 +41,7 @@ para derrotar o dragão da Raid semanal.
 | 💬 Chat da guilda | Mensagens e presença em tempo real via Socket.IO | Importante |
 | 👤 Personagem | Herói em camadas com Avatar, Arma, Acessório, Título e Badges equipáveis | Importante |
 | 📜 Crônicas | Objetivos diários e semanais pagos em Moedas, Marcos e Diário de estudo | Importante |
+| 💎 Plano premium e Pacotes | Assinatura premium e Pacote do Dragão pagos pelo Stripe em modo de teste (ADR-015) | Crítico |
 
 As regras de cada funcionalidade estão nos ADRs de [`docs/PRD.md`](docs/PRD.md)
 e os termos do domínio em [`CONTEXT.md`](CONTEXT.md).
@@ -107,6 +108,7 @@ flowchart TD
     guilds["guilds<br/>guildas e membros"]
     raids["raids<br/>missões, dragão, ranking"]
     chat["chat<br/>mensagens e presença"]
+    billing["billing<br/>Assinatura e Pacotes (Stripe)"]
     realtime["realtime<br/>gateway Socket.IO"]
 
     auth --> users
@@ -126,6 +128,7 @@ flowchart TD
     raids --> users
     raids --> chat
     chat --> guilds
+    billing --> users
     realtime --> auth
     realtime --> guilds
 ```
@@ -196,9 +199,11 @@ Os contratos completos estão em [`docs/api/openapi.yaml`](docs/api/openapi.yaml
 | Testes | Jest 29, React Native Testing Library, Playwright 1.63 |
 | Contratos | OpenAPI e AsyncAPI, validados com Redocly CLI |
 | Infraestrutura | Docker Compose, nginx, GitHub Actions, Oracle Cloud Always Free (ADR-006) |
+| Cobrança | Stripe em modo de teste (ADR-015) |
 
-Koa.js e AWS, citados nos documentos acadêmicos originais, saíram do escopo
-(ADR-002 e ADR-006).
+Koa.js, citado nos documentos acadêmicos originais, saiu do escopo (ADR-002).
+A produção segue na Oracle Cloud (ADR-006); a AWS é usada só no ambiente de
+homologação descrito em CloudFormation em `infra/`.
 
 ---
 
@@ -218,9 +223,12 @@ Koa.js e AWS, citados nos documentos acadêmicos originais, saíram do escopo
 ├── docs/
 │   ├── PRD.md            # requisitos e ADRs
 │   ├── api/              # OpenAPI e AsyncAPI
+│   ├── dados/            # modelo de dados (fonte do DADOS.pdf)
 │   ├── plans/            # planos de implementação
 │   └── validation/       # registros de validação por marco
-├── scripts/              # script do gate E2E
+├── entrega/              # READMEs de instalação da entrega final (api, web, app)
+├── infra/                # homologação na AWS (CloudFormation), VM de teste OrbStack, diagrama
+├── scripts/              # gate E2E, PDF do modelo de dados, empacotamento da entrega
 ├── docker-compose.yml    # stack completa
 ├── docker-compose.e2e.yml
 └── CONTEXT.md            # glossário do domínio
@@ -480,10 +488,13 @@ Esse teste não faz parte de `npm test`; a CI o executa num job com MySQL 8.
 | [`docs/api/openapi.yaml`](docs/api/openapi.yaml) | contrato REST |
 | [`docs/api/asyncapi.yaml`](docs/api/asyncapi.yaml) | eventos Socket.IO |
 | [`apps/frontend/README.md`](apps/frontend/README.md) | design system, rotas e layout adaptativo |
+| [`docs/README.md`](docs/README.md) | integrantes, vídeo e documentos da entrega final |
+| [`entrega/`](entrega/) | instalação da API, da Web e do app para a entrega final |
+| [`docs/dados/DADOS.md`](docs/dados/DADOS.md) | modelo de dados: diagrama ER e dicionário |
 | [`docs/plans/`](docs/plans/) | planos de implementação por marco |
 | [`docs/validation/`](docs/validation/) | registros de validação dos marcos M1, M2, M4 e M5 e do build Android local |
 | [`docs/cronograma.md`](docs/cronograma.md) | cronograma por semana |
-| `docs/*.pdf`, `docs/*.docx` | documentos acadêmicos: Visão, Arquitetura e Interface (versão 2.0, de 27/10/2026), Pitch e Casos de Uso UC01 a UC04 |
+| `docs/*.pdf`, `docs/*.docx` | documentos acadêmicos: Visão, Arquitetura e Interface (versão 2.1, de 22/11/2026, com fontes em `docs/academico/`), Casos de Uso UC01 a UC04 (versão 2.0) e Pitch |
 | [`AGENTS.md`](AGENTS.md) | regras para contribuições e agentes |
 
 Quando duas fontes discordam, vale o código da branch `develop`, depois os ADRs
