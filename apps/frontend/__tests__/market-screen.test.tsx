@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react-native';
+import { configure, fireEvent, render, screen, waitFor, within } from '@testing-library/react-native';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Dimensions, Platform, StyleSheet } from 'react-native';
 import { ApiError } from '@/core/api/api-error';
@@ -8,6 +8,9 @@ import {
 import { MarketScreen } from '@/features/market/market-screen';
 import { equipCosmeticItem } from '@/features/profile/api';
 import { profileKeys } from '@/features/profile/queries';
+
+// The Mission scenes are heavy to render and a CI shard is several times slower than a laptop: the default 1s lookup is too tight.
+configure({ asyncUtilTimeout: 5000 });
 
 jest.mock('@/features/market/api', () => ({
   getCoinBalance: jest.fn(),

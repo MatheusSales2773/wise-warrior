@@ -184,6 +184,8 @@ describe('Stripe webhook against MySQL', () => {
 
   afterEach(async () => {
     jest.restoreAllMocks();
+    // Every emit starts a query on the pool; let them finish before the pool closes, or the next test fails with "Pool is closed".
+    await Promise.allSettled(emitted.map((entry) => entry.planTierWhenEmitted));
     await app?.close();
     if (dataSource?.isInitialized) await dataSource.destroy();
     await database?.close();
