@@ -5,11 +5,11 @@
 | Nome completo | Matrícula | Turma |
 |---|---|---|
 | Guilherme Luan Silva dos Reis | UC23200423 | GPE17M80094 (turma de sábado) |
-| Luís Medrado | UC23100609 | - |
-| Matheus Lopes | UC23200433 | - |
-| Matheus Sales Carvalho | UC23101276 | - |
-| Otton Simão | UC23101332 | - |
-| Raul Moreira | UC23102081 | - |
+| Luís Medrado | UC23100609 | GPE17M80081 (turma de sexta) |
+| Matheus Lopes | UC23200433 | GPE17M80081 (turma de sexta) |
+| Matheus Sales Carvalho | UC23101276 | GPE17M80081 (turma de sexta) |
+| Otton Simão | UC23101332 | GPE17M80081 (turma de sexta) |
+| Raul Moreira | UC23102081 | GPE17M80081 (turma de sexta) |
 
 **Vídeo de apresentação (YouTube, não listado):** https://youtu.be/WZKWlqQ1UQ8
 
