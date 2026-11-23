@@ -374,7 +374,7 @@ describe('Study Session HTTP contract against MySQL', () => {
       headers: { ...authHeaders(ownerSessionId), 'Idempotency-Key': 'late-complete-start', 'content-type': 'application/json' },
       body: JSON.stringify({ plannedDurationSeconds: 900 }),
     });
-    const { id, startedAt, runDeadlineAt } = await started.json() as { id: string; startedAt: string; runDeadlineAt: string };
+    const { id, runDeadlineAt } = await started.json() as { id: string; runDeadlineAt: string };
     // Earlier focus on the deadline day leaves five minutes of the 16 h daily limit. It sits at the start of that day,
     // not at startedAt: a run started in the last minutes of a day has its deadline on the next one.
     const deadlineDayStart = new Date(runDeadlineAt);
