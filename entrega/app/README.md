@@ -20,8 +20,7 @@ Para cada plataforma, também é preciso:
 
 - **Android** (Windows, macOS ou Linux): [Android Studio](https://developer.android.com/studio)
   com Android SDK Platform 36, Build Tools 36 e `platform-tools`; JDK 17
-  (o JDK 21 que vem com o Android Studio também serve; JDK 24 ou mais novo
-  quebra o build); e um emulador criado no Device Manager do
+  (versões mais novas podem quebrar o build); e um emulador criado no Device Manager do
   Android Studio, ou um aparelho com depuração USB ligada. A variável
   `ANDROID_HOME` precisa apontar para o SDK. No macOS:
 
@@ -71,14 +70,15 @@ Antes de compilar para Android, confira o JDK do terminal:
 java -version
 ```
 
-A versão precisa ser 17 ou 21. Com 24 ou mais nova, o build falha (veja
-"Problemas comuns"). Para trocar no mesmo terminal, aponte o `JAVA_HOME` para um
-JDK 17 ou 21. No macOS, para usar o JDK 21 que vem com o Android Studio:
+A versão precisa ser 17. Com versões mais novas o build pode falhar (veja
+"Problemas comuns"). Se não for 17, instale o JDK 17 e aponte o `JAVA_HOME`
+para ele no mesmo terminal. No macOS:
 
 ```bash
-export JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home"
+brew install --cask zulu@17
+export JAVA_HOME="$(/usr/libexec/java_home -v 17)"
 export PATH="$JAVA_HOME/bin:$PATH"
-java -version   # deve mostrar 21
+java -version   # deve mostrar 17
 ```
 
 Com o emulador Android aberto (ou o aparelho conectado):
@@ -128,8 +128,8 @@ e abrir o Wise no emulador ou simulador.
   Manager do Android Studio antes de rodar `npm run android`, ou confira o
   aparelho com `adb devices`.
 - **`configureCMakeDebug` falha com `A restricted method in java.lang.System
-  has been called`**: o Gradle rodou com JDK 24 ou mais novo. Aponte o
-  `JAVA_HOME` para um JDK 17 ou 21 (veja o passo 3), pare o Gradle que ficou
+  has been called`**: o Gradle rodou com um JDK mais novo que o 17. Aponte o
+  `JAVA_HOME` para o JDK 17 (veja o passo 3), pare o Gradle que ficou
   aberto com `(cd android && ./gradlew --stop)` e rode `npm run android` de
   novo.
 - **Erro de CocoaPods no iOS**: instale com `brew install cocoapods` e rode
