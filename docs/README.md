@@ -27,7 +27,7 @@
 | [dados/DADOS.md](dados/DADOS.md) | Fonte do DADOS.pdf |
 | [dados/modelo-er.mmd](dados/modelo-er.mmd) | Diagrama ER em Mermaid |
 | [Wise Warrior _standalone_.html](<Wise Warrior _standalone_.html>) e [Wise - Standalone Prototype.html](<Wise - Standalone Prototype.html>) | Protótipos navegáveis das telas |
-| [../infra/diagrama-aws.drawio](../infra/diagrama-aws.drawio) | Diagrama da infraestrutura de homologação na AWS (draw.io) |
+| [diagrama-aws.drawio](diagrama-aws.drawio) e [diagrama-aws.drawio.png](diagrama-aws.drawio.png) | Diagrama da infraestrutura de homologação na AWS (draw.io e imagem exportada) |
 | [api/openapi.yaml](api/openapi.yaml) e [api/asyncapi.yaml](api/asyncapi.yaml) | Contratos da API REST e de tempo real |
 
 Para gerar os PDFs de novo depois de editar o `dados/DADOS.md` ou os fontes em `academico/` (Visão, Arquitetura e Interface), na raiz do repositório e com internet:
